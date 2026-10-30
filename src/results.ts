@@ -132,7 +132,9 @@ export function checkText(results: Results): string {
     );
   }
   out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
-  const costs = new Map(results.calls.map((c) => [c.role, c.costUsd]));
+  // A reviewer of a pull request reviewed in parts makes one call per part.
+  const costs = new Map<string, number>();
+  for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
   for (const r of results.reviewers) {
     out.push(`| ${r.name} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
   }

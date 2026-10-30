@@ -19,7 +19,10 @@ export interface IndexedRule {
 export interface Decision {
   id: string;
   title: string;
+  // The Decision and Consequences sections: what a record accepts is often only in its consequences.
   decision: string;
+  // The pull request adds or changes this record, so it's under review with the code.
+  proposed?: boolean;
 }
 
 export interface Context {
@@ -93,20 +96,45 @@ export function repositoryRules(files: RuleFile[]): IndexedRule[] {
   return rules;
 }
 
-// The repository's accepted decision records: title and the Decision section.
+const decisionFolders = ['docs/decisions', 'docs/adr', 'doc/adr', 'adr'];
+const decisionName = /^\d{4}-.+\.md$/;
+
+function isDecisionName(name: string): boolean {
+  return decisionName.test(name) && !name.startsWith('0000-');
+}
+
+function parseDecision(name: string, text: string): Decision & { status: string } {
+  const status = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(text)?.[1] ?? 'Accepted';
+  const title = /^#\s+(.+)$/m.exec(text)?.[1]?.trim() ?? name;
+  const sections = text.split(/^(?=## )/m);
+  const section = (heading: string) => sections.find((s) => s.startsWith(`## ${heading}`))?.replace(new RegExp(`^## ${heading}\\s*`), '').trim() ?? '';
+  const consequences = section('Consequences');
+  const decision = consequences ? `${section('Decision')}\n\nConsequences:\n${consequences}` : section('Decision');
+  return { id: `ADR-${name.slice(0, 4)}`, title, decision: decision.slice(0, maxDecisionChars), status };
+}
+
+// The repository's accepted decision records.
 export function readDecisions(basePath: string): Decision[] {
   const decisions: Decision[] = [];
-  for (const folder of ['docs/decisions', 'docs/adr', 'doc/adr', 'adr']) {
+  for (const folder of decisionFolders) {
     const dir = path.join(basePath, folder);
     if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).filter((n) => /^\d{4}-.+\.md$/.test(n) && !n.startsWith('0000-')).sort()) {
-      const text = readFileSync(path.join(dir, name), 'utf8');
-      const status = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(text)?.[1] ?? 'Accepted';
-      if (status !== 'Accepted') continue;
-      const title = /^#\s+(.+)$/m.exec(text)?.[1]?.trim() ?? name;
-      const section = text.split(/^(?=## )/m).find((s) => s.startsWith('## Decision'))?.replace(/^## Decision\s*/, '').trim() ?? '';
-      decisions.push({ id: `ADR-${name.slice(0, 4)}`, title, decision: section.slice(0, maxDecisionChars) });
+    for (const name of readdirSync(dir).filter(isDecisionName).sort()) {
+      const { status, ...decision } = parseDecision(name, readFileSync(path.join(dir, name), 'utf8'));
+      if (status === 'Accepted') decisions.push(decision);
     }
+  }
+  return decisions;
+}
+
+// The decision records among the changed files, read from the pull request's head: accepted or still proposed.
+export function readProposedDecisions(prPath: string, changed: string[]): Decision[] {
+  const decisions: Decision[] = [];
+  for (const file of changed.filter((f) => decisionFolders.includes(path.posix.dirname(f)) && isDecisionName(path.posix.basename(f))).sort()) {
+    const full = path.join(prPath, file);
+    if (!existsSync(full)) continue;
+    const { status, ...decision } = parseDecision(path.posix.basename(file), readFileSync(full, 'utf8'));
+    if (status === 'Accepted' || status === 'Proposed') decisions.push({ ...decision, proposed: true });
   }
   return decisions;
 }
@@ -136,11 +164,14 @@ export async function selectContext(
   decisions: Decision[],
   describe: (gathered: Gathered) => string,
 ): Promise<{ context: Context; result: AgentResult<{ rules: string[]; decisions: string[] }> | undefined }> {
-  const empty: Context = { rulesFor: new Map(), decisions: [] };
-  if (!rules.length && !decisions.length) return { context: empty, result: undefined };
+  // The records the pull request adds or changes are part of the change, so every reviewer gets them without a pick.
+  const proposed = decisions.filter((d) => d.proposed);
+  const accepted = decisions.filter((d) => !d.proposed);
+  const empty: Context = { rulesFor: new Map(), decisions: proposed };
+  if (!rules.length && !accepted.length) return { context: empty, result: undefined };
   const catalog = [
     ...rules.map((r) => `${r.id}: ${r.summary}`),
-    ...decisions.map((d) => `${d.id}: ${d.title}`),
+    ...accepted.map((d) => `${d.id}: ${d.title}`),
   ].join('\n');
   const result = await runAgent<{ rules: string[]; decisions: string[] }>(
     { provider: run.provider, proxyUrl: run.proxyUrl },
@@ -162,6 +193,6 @@ export async function selectContext(
     for (const reviewer of rule.reviewers) rulesFor.set(reviewer, [...(rulesFor.get(reviewer) ?? []), rule]);
   }
   const wanted = result.output.decisions;
-  const chosen = decisions.filter((d) => wanted.includes(d.id)).sort((a, b) => wanted.indexOf(a.id) - wanted.indexOf(b.id)).slice(0, maxDecisions);
-  return { context: { rulesFor, decisions: chosen }, result };
+  const chosen = accepted.filter((d) => wanted.includes(d.id)).sort((a, b) => wanted.indexOf(a.id) - wanted.indexOf(b.id)).slice(0, maxDecisions);
+  return { context: { rulesFor, decisions: [...proposed, ...chosen] }, result };
 }

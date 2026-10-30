@@ -46,8 +46,11 @@ export const budgets = {
 
 export const maxTurns = { specialist: 30 };
 
-// The diff the agents see. Past this, files are listed but their hunks are left out, and the summary says so.
-export const maxDiffChars = 240_000;
+// The diff goes to the reviewers in parts of up to maxChunkChars, each part to its own set of reviewers, so a large pull
+// request gets the same attention per line as a small one. Past maxChunks parts, files are listed but their hunks are
+// left out, and the summary says so. Each part costs about one more review.
+export const maxChunkChars = 160_000;
+export const maxChunks = 6;
 export const maxConventionChars = 40_000;
 export const maxPullRequestTextChars = 8_000;
 export const maxIssueChars = 8_000;
@@ -55,4 +58,7 @@ export const maxIssueChars = 8_000;
 // Inline findings worth showing on one pull request.
 // The maintainer prefers a noisy review to a quiet one: extra findings get an answer, missed ones get merged.
 export const maxFindings = 40;
+// Each further part of a large diff raises the limit by this much, up to maxFindingsCap.
+export const findingsPerExtraChunk = 20;
+export const maxFindingsCap = 100;
 export const minConfidence = 0.3;

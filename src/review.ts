@@ -4,9 +4,9 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, maxFindings, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
-import type { ChangedFile, Gathered } from './gather.ts';
+import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -80,8 +80,9 @@ const synthesisSchema = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { ...findingProperties, reviewers: { type: 'array', items: { type: 'string' } } },
-        required: [...findingRequired, 'reviewers'],
+        // The ids of the reviewers' findings this one merges.
+        properties: { ...findingProperties, sources: { type: 'array', items: { type: 'string' } } },
+        required: [...findingRequired, 'sources'],
         additionalProperties: false,
       },
     },
@@ -155,11 +156,14 @@ function fileList(gathered: Gathered): string {
     .join('\n');
 }
 
-function changeContext(gathered: Gathered, diff: string): string {
+function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
+  const scope = parts > 1
+    ? ` This pull request is too large for one review, so its diff is reviewed in ${parts} parts and this is part ${part + 1}. Review the files in this part's diff; other reviewers have the rest. Read any other file when you need its context.`
+    : '';
   return [
     pullRequestBlock(gathered),
     `Changed files:\n${fileList(gathered)}`,
-    `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.\n<diff>\n${diff}\n</diff>`,
+    `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.${scope}\n<diff>\n${diff}\n</diff>`,
   ].join('\n\n');
 }
 
@@ -170,13 +174,52 @@ function rulesBlock(rules: IndexedRule[] | undefined): string {
 
 function decisionsBlock(decisions: Decision[]): string {
   if (!decisions.length) return '';
-  const text = decisions.map((d) => `${d.id}: ${d.title}\n${d.decision}`).join('\n\n');
-  return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts; do report code that breaks one, citing it.\n<decisions>\n${text}\n</decisions>`;
+  const text = decisions.map((d) => `${d.id}: ${d.title}${d.proposed ? ' (added or changed by this pull request)' : ''}\n${d.decision}`).join('\n\n');
+  return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts, including what its consequences accept; do report code that breaks one, citing it. A decision this pull request adds or changes is part of the change: what it accepts isn't a defect in the code, but you may question the decision itself.\n<decisions>\n${text}\n</decisions>`;
 }
 
-// The part every specialist shares, so the provider can cache it; each charter comes after it.
-function sharedContext(gathered: Gathered, decisions: Decision[]): string {
-  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, gathered.diff)}`;
+// The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
+function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, diff, part, parts)}`;
+}
+
+// The limit on posted findings: higher for a pull request reviewed in parts.
+export function findingLimit(parts: number): number {
+  return Math.min(maxFindingsCap, maxFindings + findingsPerExtraChunk * Math.max(0, parts - 1));
+}
+
+// What synthesis sees of the diff: the files the findings name, then the start of the diff, within the budget.
+function synthesisDiff(gathered: Gathered, files: string[], budget: number): string {
+  const sections = splitDiff(gathered.diff);
+  let out = '';
+  for (const file of new Set(files)) {
+    const section = sections.get(file);
+    if (section && out.length + section.length <= budget) out += section;
+  }
+  return out || gathered.diff.slice(0, budget);
+}
+
+const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+
+// Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
+// after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
+// naming it doesn't count.
+export function mergeSynthesis(
+  merged: (Finding & { sources: string[] })[],
+  raw: (Finding & { id: string; reviewer: string })[],
+  limit: number,
+): ReviewedFinding[] {
+  const byId = new Map(raw.map((f) => [f.id, f]));
+  for (const f of merged) f.sources = f.sources.filter((id) => byId.get(id)?.file === f.file);
+  const covered = new Set(merged.flatMap((f) => f.sources));
+  const missed = raw
+    .filter((f) => !covered.has(f.id))
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  const out = [
+    ...merged.map(({ sources, ...f }) => ({ ...f, reviewers: [...new Set(sources.flatMap((id) => (byId.has(id) ? [byId.get(id)!.reviewer] : [])))] })),
+    ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
+  ];
+  return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
 }
 
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -222,7 +265,6 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   if (contextResult) calls.push(contextResult.record);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
   log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
-  const shared = sharedContext(gathered, context.decisions);
 
   // Selection only routes, so Sonnet is enough, at about half Opus's cost.
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
@@ -247,19 +289,23 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
   log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
-  // Specialists, each with the picked rules for its charter. The part they share is the first block of every prompt;
-  // one reviewer per model goes first and caches it, and the rest of that model's reviewers read the cache instead of
-  // each writing it again.
+  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
+  // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
+  // rest read the cache instead of each writing it again.
   const tiers = reviewerTiers();
-  const sharedBlock = `${shared}\n\nThe checkout is at: ${run.checkout}`;
+  const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
-  const jobs = [...selected].map((reviewer) => ({
-    name: reviewer,
-    tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-    prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
-  }));
-  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier) === i);
-  const reviewOne = async ({ name, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
+  const jobs = parts.flatMap((diff, part) => {
+    const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
+    return [...selected].map((reviewer) => ({
+      name: reviewer,
+      part,
+      tier: tiers[reviewer] ?? ('haiku' as ModelTier),
+      prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
+    }));
+  });
+  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
+  const reviewOne = async ({ name, part, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
     const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
       role: `reviewer:${name}`,
       tier,
@@ -272,27 +318,41 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(result.record);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    log(`  ${name}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    log(`  ${name}${parts.length > 1 ? ` (part ${part + 1})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   };
-  const outcomes = [
-    ...(await mapWithConcurrency(first, 4, reviewOne)),
-    ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), 4, reviewOne)),
+  const concurrency = 6;
+  const perJob = [
+    ...(await mapWithConcurrency(first, concurrency, reviewOne)),
+    ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
   ];
+  // One outcome per reviewer across the parts: it ran if any part ran.
+  const outcomes: ReviewerOutcome[] = [...selected].map((name) => {
+    const mine = perJob.filter((o) => o.name === name);
+    const errors = mine.flatMap((o) => (o.error ? [o.error] : []));
+    return {
+      name,
+      status: mine.some((o) => o.status === 'ran') ? 'ran' : 'failed',
+      findings: mine.flatMap((o) => o.findings),
+      ...(errors.length ? { error: errors.join('; ') } : {}),
+    };
+  });
 
   // Synthesis.
-  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f })));
+  const limit = findingLimit(parts.length);
+  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
   if (raw.length) {
-    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { reviewers: string[] })[] }>(
+    const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
+    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
       {
         role: 'synthesis',
         tier: 'opus',
         systemPrompt: charters.synthesisPrompt,
-        prompt: `Limit: ${maxFindings} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 120_000)}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
+        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
         schema: synthesisSchema,
         maxTurns: 3,
         budgetUsd: budgets.synthesis,
@@ -303,15 +363,11 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     if (synthesis.output) {
       summary = synthesis.output.summary;
       verdict = synthesis.output.verdict;
-      findings = synthesis.output.findings.slice(0, maxFindings).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+      findings = mergeSynthesis(synthesis.output.findings, raw, limit);
     } else {
       // Without synthesis, fall back to the reviewers' own findings, most severe first.
-      const rank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
       summary = `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`;
-      findings = raw
-        .sort((a, b) => rank[a.severity] - rank[b.severity] || b.confidence - a.confidence)
-        .slice(0, maxFindings)
-        .map(({ reviewer, ...f }, i) => ({ ...f, reviewers: [reviewer], id: `F${i + 1}` }));
+      findings = mergeSynthesis([], raw, limit);
     }
   } else {
     summary = 'No findings.';

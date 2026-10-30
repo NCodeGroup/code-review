@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { budgetDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
+import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
-import { changedLines, selectionFloor } from '../src/review.ts';
+import { changedLines, findingLimit, mergeSynthesis, selectionFloor, type Finding } from '../src/review.ts';
 
 test('globToRegExp matches applyTo patterns the way Copilot does', () => {
   assert.ok(globToRegExp('src/**/*.cs').test('src/NCode.Identity.Jwk/JsonWebKey.cs'));
@@ -76,14 +76,59 @@ test('changedLines maps added lines to new-file line numbers', () => {
   assert.deepEqual([...lines.get('docs/readme.md')!], [1, 2]);
 });
 
-test('budgetDiff keeps product code first, stubs generated files, and leaves out what is over budget', () => {
+test('chunkDiff keeps product code first, stubs generated files, and leaves out what is past the last part', () => {
   const files = [file('docs/readme.md'), file('src/A.cs'), file('src/package-lock.json', true)];
   const sections = splitDiff(diff);
-  const out = budgetDiff(files, sections, sections.get('src/A.cs')!.length);
-  assert.match(out, /added two/);
-  assert.match(out, /\[generated file: 2 changed lines not shown\]/);
-  assert.doesNotMatch(out, /line one/);
+  const [out, ...rest] = chunkDiff(files, sections, sections.get('src/A.cs')!.length, 1);
+  assert.equal(rest.length, 0);
+  assert.match(out!, /added two/);
+  assert.match(out!, /\[generated file: 2 changed lines not shown\]/);
+  assert.doesNotMatch(out!, /line one/);
   assert.deepEqual(files.map((f) => f.shown), [false, true, true]);
+});
+
+test('chunkDiff opens a new part when one is full', () => {
+  const files = [file('docs/readme.md'), file('src/A.cs')];
+  const sections = splitDiff(diff);
+  const chunks = chunkDiff(files, sections, sections.get('src/A.cs')!.length, 2);
+  assert.equal(chunks.length, 2);
+  assert.match(chunks[0]!, /added two/);
+  assert.match(chunks[1]!, /line one/);
+  assert.deepEqual(files.map((f) => f.shown), [true, true]);
+});
+
+const finding = (title: string, severity: Finding['severity'] = 'nit', confidence = 0.5): Finding =>
+  ({ severity, file: 'src/A.cs', line: 1, title, problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence });
+
+test('mergeSynthesis adds back every reviewer finding synthesis left out, most severe first', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'correctness', ...finding('a', 'should-fix') },
+    { id: 'R2', reviewer: 'security', ...finding('a again', 'should-fix') },
+    { id: 'R3', reviewer: 'conventions', ...finding('style') },
+    { id: 'R4', reviewer: 'security', ...finding('dropped', 'blocker') },
+  ];
+  const out = mergeSynthesis([{ ...finding('merged a', 'should-fix'), sources: ['R1', 'R2'] }], raw, 10);
+  assert.deepEqual(out.map((f) => [f.id, f.title, f.reviewers]), [
+    ['F1', 'merged a', ['correctness', 'security']],
+    ['F2', 'dropped', ['security']],
+    ['F3', 'style', ['conventions']],
+  ]);
+  assert.equal(mergeSynthesis([], raw, 2).length, 2);
+});
+
+test('mergeSynthesis does not count a finding in another file as merged', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'conventions', ...finding('helpers') },
+    { id: 'R2', reviewer: 'api-compat', ...finding('int, not the enum'), file: 'src/ProtocolError.cs' },
+  ];
+  const out = mergeSynthesis([{ ...finding('helpers'), sources: ['R1', 'R2'] }], raw, 10);
+  assert.deepEqual(out.map((f) => [f.title, f.reviewers]), [['helpers', ['conventions']], ['int, not the enum', ['api-compat']]]);
+});
+
+test('findingLimit grows with the parts of a large diff', () => {
+  assert.equal(findingLimit(1), 40);
+  assert.equal(findingLimit(3), 80);
+  assert.equal(findingLimit(6), 100);
 });
 
 test('isGenerated recognizes lock files, designer files and binaries', () => {
@@ -251,5 +296,19 @@ test('the context stage indexes guidance bullets, repository bullets and accepte
   mkdirSync(path.join(base, 'docs', 'decisions'), { recursive: true });
   writeFileSync(path.join(base, 'docs', 'decisions', '0007-keep-it.md'), '# 7. Keep it\n\n- **Status:** Accepted\n\n## Context\n\nc\n\n## Decision\n\nWe keep it.\n\n## Consequences\n\nx');
   writeFileSync(path.join(base, 'docs', 'decisions', '0008-old.md'), '# 8. Old\n\n- **Status:** Superseded\n\n## Decision\n\nNo.');
-  assert.deepEqual(readDecisions(base), [{ id: 'ADR-0007', title: '7. Keep it', decision: 'We keep it.' }]);
+  assert.deepEqual(readDecisions(base), [{ id: 'ADR-0007', title: '7. Keep it', decision: 'We keep it.\n\nConsequences:\nx' }]);
+});
+
+test('decision records the pull request adds or changes are read from its head and always reach the reviewers', async () => {
+  const { readProposedDecisions, selectContext } = await import('../src/context.ts');
+  const head = mkdtempSync(path.join(tmpdir(), 'adr-head-'));
+  mkdirSync(path.join(head, 'docs', 'adr'), { recursive: true });
+  writeFileSync(path.join(head, 'docs', 'adr', '0009-new.md'), '# 9. New\n\n- **Status:** Proposed\n\n## Decision\n\nWe add it.');
+  writeFileSync(path.join(head, 'docs', 'adr', '0010-rejected.md'), '# 10. Rejected\n\n- **Status:** Rejected\n\n## Decision\n\nNo.');
+  const proposed = readProposedDecisions(head, ['docs/adr/0009-new.md', 'docs/adr/0010-rejected.md', 'src/0011-not-adr.md']);
+  assert.deepEqual(proposed, [{ id: 'ADR-0009', title: '9. New', decision: 'We add it.', proposed: true }]);
+  // With nothing to pick from, the stage makes no call and still passes the proposed record on.
+  const { context, result } = await selectContext({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1' }, {} as Gathered, [], proposed, () => '');
+  assert.equal(result, undefined);
+  assert.deepEqual(context.decisions.map((d) => d.id), ['ADR-0009']);
 });
