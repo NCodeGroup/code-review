@@ -49,12 +49,24 @@ export function shortModel(model: string): string {
 
 // Finds the bot's one summary comment on a pull request, so a later run edits it instead of adding another.
 export const summaryMarker = '<!-- ncode-review:summary -->';
+export const botLogin = 'ncode-review[bot]';
+
+// Records in the summary comment which commit was reviewed, so an automatic run on the same commit, such as marking a
+// draft ready without pushing, can skip the review.
+export function headMarker(sha: string): string {
+  return `<!-- ncode-review:head=${sha} -->`;
+}
+
+export function reviewedHead(body: string): string | undefined {
+  return /<!-- ncode-review:head=([0-9a-f]{40}) -->/.exec(body)?.[1];
+}
 
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;
   const lines = [
     summaryMarker,
+    headMarker(results.headSha),
     '### 🤖 Review complete',
     '',
     `**Verdict: ${verdictLabel[results.verdict]}** — ${results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' ')}`,

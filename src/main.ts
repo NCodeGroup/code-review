@@ -11,7 +11,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { topSeverity, type Results } from './results.ts';
+import { botLogin, reviewedHead, summaryMarker, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,6 +32,21 @@ function take(name: string): string | undefined {
 function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
   const all = changedLines(diff);
   return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
+}
+
+// The commit the bot's summary comment says it last reviewed, or undefined when there's none or it can't be read.
+async function lastReviewedHead(repository: string, number: number, token: string | undefined): Promise<string | undefined> {
+  for (let page = 1; page <= 10; page++) {
+    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=100&page=${page}`, {
+      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) return undefined;
+    const comments = (await response.json()) as { body?: string; user?: { login?: string } }[];
+    const mine = comments.find((c) => c.user?.login === botLogin && c.body?.startsWith(summaryMarker));
+    if (mine) return reviewedHead(mine.body ?? '');
+    if (comments.length < 100) return undefined;
+  }
+  return undefined;
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
@@ -75,6 +90,14 @@ async function main(): Promise<void> {
       return;
     }
     event = { pull_request: pullRequest };
+  } else {
+    // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
+    // the same review. /review still reviews it.
+    const head = event.pull_request?.head?.sha;
+    if (head && (await lastReviewedHead(repository, event.pull_request.number, githubToken)) === head) {
+      console.log(`${String(head).slice(0, 7)} was already reviewed; comment /review to review it again.`);
+      return;
+    }
   }
 
   const credentials: Credentials = {};

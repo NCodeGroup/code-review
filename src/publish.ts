@@ -5,11 +5,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
-import { annotations, checkSummary, checkText, checkTitle, summaryComment, summaryMarker, type Results } from './results.ts';
+import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, summaryMarker, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
-const botLogin = 'ncode-review[bot]';
 
 async function github(token: string, method: string, url: string, body?: unknown): Promise<any> {
   const response = await fetch(url.startsWith('https://') ? url : `https://api.github.com${url}`, {
