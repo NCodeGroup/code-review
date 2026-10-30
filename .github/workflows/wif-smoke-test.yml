@@ -20,7 +20,7 @@ env:
 jobs:
   with-environment:
     if: >-
-      github.event.comment.body == '/wif-test' &&
+      startsWith(github.event.comment.body, '/wif-test') &&
       contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     environment: code-review
@@ -56,7 +56,7 @@ jobs:
 
   without-environment:
     if: >-
-      github.event.comment.body == '/wif-test' &&
+      startsWith(github.event.comment.body, '/wif-test') &&
       contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     permissions:
