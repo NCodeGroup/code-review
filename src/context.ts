@@ -81,8 +81,12 @@ export function repositoryRules(files: RuleFile[]): IndexedRule[] {
       if (current) rules.push({ id: `R-${name}-${rules.filter((r) => r.id.startsWith(`R-${name}-`)).length + 1}`, reviewers: ['conventions'], summary: summarize(current.join(' ')), text: `${current.join('\n')} (${file.name})` });
       current = undefined;
     };
+    // A file that uses the legend marks its review-only bullets. One that doesn't (a repository that never adopted the
+    // legend) has every top-level bullet read as a rule, or its rules would never reach a reviewer.
+    const marked = /^\s*- (?:👁|⏳|✅)/m.test(file.text);
+    const ruleStart = marked ? /^- (?:👁|⏳)/ : /^- \S/;
     for (const line of file.text.split('\n')) {
-      if (/^- (?:👁|⏳)/.test(line)) {
+      if (ruleStart.test(line)) {
         flush();
         current = [line];
       } else if (current && (/^\s+\S/.test(line))) {

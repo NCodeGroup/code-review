@@ -329,6 +329,29 @@ test('the context stage indexes guidance bullets, repository bullets and accepte
   assert.deepEqual(readDecisions(base), [{ id: 'ADR-0007', title: '7. Keep it', decision: 'We keep it.\n\nConsequences:\nx' }]);
 });
 
+test('a file without the review-only legend has every top-level bullet read as a rule', async () => {
+  const { repositoryRules } = await import('../src/context.ts');
+  const text = [
+    '---', 'applyTo: "**/*.tf"', '---', '# OpenTofu conventions', '', 'Prose.', '', '## Layout', '',
+    '- Every module has a `tests/` folder,', '  one `tftest` per behavior.',
+    '- Name resources `this` when a module has one.', '  - A nested bullet belongs to the rule above.', '', 'More prose.',
+  ].join('\n');
+  const rules = repositoryRules([{ name: 'opentofu.instructions.md', globs: ['**/*.tf'], text }]);
+  assert.deepEqual(rules.map((r) => [r.id, r.reviewers]), [['R-opentofu-1', ['conventions']], ['R-opentofu-2', ['conventions']]]);
+  assert.match(rules[0]!.text, /one `tftest` per behavior/);
+  assert.match(rules[1]!.text, /nested bullet/);
+  // A file that marks its bullets keeps only the marked ones.
+  const marked = repositoryRules([{ name: 'csharp.instructions.md', globs: ['**'], text: ['- ✅ Tool-enforced.', '- 👁 Review-only.', '- Plain bullet in a marked file.'].join('\n') }]);
+  assert.deepEqual(marked.map((r) => r.text.split(' (')[0]), ['- 👁 Review-only.']);
+});
+
+test('infrastructure changes get the infrastructure reviewer and the code reviewers', () => {
+  const floor = selectionFloor([file('modules/aws-github-oidc/main.tf'), file('live/global/email.tf')], true);
+  for (const name of ['hygiene', 'correctness', 'security', 'infrastructure', 'intent', 'tests']) assert.ok(floor.includes(name), `${name} in ${floor.join(',')}`);
+  assert.ok(!selectionFloor([file('src/A.cs')], false).includes('infrastructure'));
+  assert.ok(selectionFloor([file('live/prod/terraform.tfvars')], false).includes('infrastructure'));
+});
+
 test('decision records the pull request adds or changes are read from its head and always reach the reviewers', async () => {
   const { readProposedDecisions, selectContext } = await import('../src/context.ts');
   const head = mkdtempSync(path.join(tmpdir(), 'adr-head-'));
