@@ -1,0 +1,31 @@
+{
+  "hash": "848b6e7a6750f81f",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0125",
+  "rules": [
+    {
+      "statement": "Gate a deployment job that promotes to a hosted environment with a deployment environment (`environment:`) that has its own required reviewers and secrets, not just a branch condition.",
+      "why": "A branch conveys no approval and leaves no audit record. An environment gate records the approval decision against the deployment instead of implying it from a merge.",
+      "check": "In CI/CD workflow diffs, look for deploy or promote jobs that rely only on `if: github.ref == ...` or branch triggers, have no `environment:` key, or read deployment secrets from repository-level secrets instead of environment-scoped ones.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trigger CI workflows on the `main` trunk and on pull requests targeting `main`, and don't name a long-lived integration branch (such as `dev` or `master`) in workflow triggers, image tags or deployment gates.",
+      "why": "The repository develops on a single trunk with no integration branch. A workflow that names an integration branch points at a branch that gets no commits, and builds from it would not match `publicReleaseRefSpec`.",
+      "check": "Look for workflow `on.push.branches` or `on.pull_request.branches` entries, or tag/deploy conditions, that reference `dev`, `develop` or `master` instead of `main` (release branches `release/v*` and version tags are allowed).",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

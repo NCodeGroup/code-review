@@ -1,0 +1,67 @@
+{
+  "hash": "246efb5ea02b22c2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0027",
+  "rules": [
+    {
+      "statement": "Set an access token's `aud` claim to the distinct identifiers of the enabled resource servers that own its effective scopes, not to the client id.",
+      "why": "`aud` should name the party that must accept the token, not the party that asked for it. If `aud` is the client id, a resource server cannot tell a token minted for it from any other token the client holds, so a token for API A would be accepted by API B.",
+      "check": "Look for access-token issuance code that sets `aud` to the client id, or to anything other than the resource-server identifiers resolved from the token's effective scopes. Also look for resolution that includes disabled resource servers or emits duplicate audiences.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no resource-server audience applies to an access token (for example a scopeless token), fall back to the client id so the token is never issued with an empty or missing `aud`.",
+      "why": "An access token must never be audience-less.",
+      "check": "Look for audience-resolution or encoding paths that can produce an empty audience collection, or leave out the `aud` claim, without falling back to the client id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serialize the `aud` claim as a single JSON string when there is one audience and as a JSON array when there are several.",
+      "why": "A token whose scopes span several resource servers carries a multi-valued audience, and RFC 7519 defines `aud` as either a string or an array of strings.",
+      "check": "Look for token encoders that always write an array (even for one value), or that join several audiences into one string or keep only the first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an ID token's `aud` claim set to the client id, and apply scope-derived audiences only to access tokens.",
+      "why": "OpenID Connect requires the ID token's audience to be the client id.",
+      "check": "Look for changes that send ID tokens through the scope-to-resource-server audience resolution, or that set an ID token's `aud` to anything other than the client id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Token audience validation must accept an `aud` that is either a single string or a JSON array, and must check that the resource server's own identifier is one of the values.",
+      "why": "Access tokens can carry multi-valued audiences, and RFC 7519 already requires accepting an array `aud`. A token whose audience does not include the resource server must be rejected.",
+      "check": "Look for validation code that reads `aud` only as a string, compares the whole claim for equality, or accepts a token whose audience does not include the validating resource server's identifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

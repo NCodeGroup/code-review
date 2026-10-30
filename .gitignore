@@ -1,2 +1,5 @@
 node_modules/
 out/
+evals/.work/
+evals/out/
+*.log

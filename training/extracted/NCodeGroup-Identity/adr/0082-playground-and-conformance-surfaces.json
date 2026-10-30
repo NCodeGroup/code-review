@@ -1,0 +1,61 @@
+{
+  "hash": "68541034ca2dbcd3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0082",
+  "rules": [
+    {
+      "statement": "Do not bake deployment or tier configuration such as OAuth client ids or redirect URIs into a frontend bundle at build time (env vars, .env files); discover it at runtime from the host's bootstrap configuration endpoint.",
+      "why": "The platform's 'one bundle, every tier' invariant requires one build artifact to run in every tier; the client id is a deployment coordinate discovered at boot.",
+      "check": "Look for client ids, issuer URLs or other tier coordinates read from import.meta.env, process.env or .env files, or hard-coded in SPA source, instead of loaded from the runtime bootstrap config.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/.env*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Interactive OAuth/OIDC client code and developer tooling must offer only the authorization-code flow with PKCE using S256; do not make the implicit, hybrid front-channel-token or resource-owner-password flows, or the `plain` PKCE method, selectable.",
+      "why": "The security-practice default exposes only the recommended flow; tooling that can emit implicit or hybrid requests would make insecure patterns look normal.",
+      "check": "Look for response_type values other than `code`, grant_type=password or implicit, code_challenge_method=plain, or UI options that let users pick these flows.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "OIDC authorization requests built by client code must include a `nonce` and check it against the ID token, alongside `state` and PKCE.",
+      "why": "The nonce ties the ID token to the request so it cannot be replayed.",
+      "check": "Look for authorize URL builders or OIDC sign-in flows that send the openid scope without generating a nonce, or that never compare the ID token's nonce claim with the stored value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put protocol orchestration and security-audit logic in UI-free modules that have their own unit tests, and keep it out of UI components.",
+      "why": "Keeping flow and audit logic out of the UI makes it unit-testable and lets it be built from shared primitives.",
+      "check": "Look for OAuth flow steps, token handling or metadata-audit rules written inside React components or views with no matching UI-free module and unit tests.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

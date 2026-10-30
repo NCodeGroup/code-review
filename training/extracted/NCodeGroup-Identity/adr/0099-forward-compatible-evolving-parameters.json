@@ -1,0 +1,73 @@
+{
+  "hash": "63ded17634a29853",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0099",
+  "rules": [
+    {
+      "statement": "Model an optional, growing set of selection or filter criteria on a public or store interface method as a single dedicated criteria DTO parameter instead of adding positional or optional parameters.",
+      "why": "Once a library is GA, adding a positional or optional parameter changes the method signature and breaks source and binary compatibility for implementers and callers. A DTO can gain criteria without changing the signature.",
+      "check": "Look for interface or public methods that gain another optional filter parameter (for example, a nullable clientId or sessionId was added next to existing ones), or methods with several nullable filter parameters, where a filter DTO should be used.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare a criteria/filter DTO as a `readonly record struct` with init-only, non-`required` properties, and do not give it a positional primary constructor.",
+      "why": "Init-only optional properties let new criteria be added without breaking existing object initializers. A positional constructor parameter, or a `required` member, would itself be a breaking change and defeat the purpose.",
+      "check": "Look for filter/criteria types declared with a positional record syntax (`record struct Foo(string A, ...)`), with `required` properties, with settable rather than init-only properties, or as a mutable class.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Construct filter/criteria DTOs with object initializers or `with` expressions, never through positional constructor arguments.",
+      "why": "Initializer-based construction stays source-compatible when new criteria are added.",
+      "check": "Look for criteria DTO instances created through constructor arguments, or for a constructor added to a criteria DTO.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a filter DTO an `IsEmpty`-style guard, and check it, wherever an empty filter would be dangerous, such as an unscoped bulk delete or revoke.",
+      "why": "An empty filter on a bulk operation would match everything, for example revoking every grant.",
+      "check": "Look for bulk delete/revoke/update methods that take a filter DTO but do not reject an empty filter, or filter DTOs used for bulk operations that have no IsEmpty property.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep required identity keys that scope an operation (its subject) as positional parameters rather than folding them into a filter DTO.",
+      "why": "Required keys are the operation's subject, not a growing filter, so wrapping them adds nothing. The rule is: optional and growing go in an init-only DTO; a required key stays positional.",
+      "check": "Look for a required scoping key (for example, the id a query is scoped to) moved into an optional property of a filter DTO, or wrapped in a DTO without need.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have store paging methods take pagination as a single page-request DTO (cursor and limit, for example `PageRequest` from `NCode.Persistence.Stores`) rather than separate positional `cursor` and `limit` parameters.",
+      "why": "Pagination can then grow, for example with a sort direction, without a breaking signature change.",
+      "check": "Look for `GetPageAsync`-style methods with separate `cursor`/`limit` parameters instead of a `PageRequest` parameter.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

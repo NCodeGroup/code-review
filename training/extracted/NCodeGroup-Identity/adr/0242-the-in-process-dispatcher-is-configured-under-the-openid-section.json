@@ -1,0 +1,63 @@
+{
+  "hash": "a0e28188d102ba8d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0242",
+  "rules": [
+    {
+      "statement": "An options validator must reject an enum-typed option whose value is not a defined member (for example, check with `Enum.IsDefined`), and the failure message must list the valid member names.",
+      "why": "The configuration binder accepts a number that no enum member has, such as \"7\". The undefined value then only fails later, when a consumer like `BoundedChannelOptions` refuses it, instead of stopping the host at startup.",
+      "check": "Look for options classes with enum properties bound from configuration whose `IValidateOptions` implementation never checks that the value is a defined member, or whose failure message does not list the allowed names.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validation failure message must name the option property, its configuration key path, the constraint and the actual value, for example `Options.QueueCapacity ('Section:QueueCapacity') must be at least 1; it is 0.`",
+      "why": "When a misspelled key or invalid value stops the host at startup, the error must tell the operator which key to fix.",
+      "check": "Look for `ValidateOptionsResult.Fail` messages, or validator failures, that leave out the configuration key or the offending value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options bound from configuration must use strict binding (unknown keys are errors) and must be registered with `ValidateOnStart`, so that invalid configuration stops the host when it starts.",
+      "why": "A misspelled key or an invalid value should stop the host when it starts and name the key, not be silently ignored or fail later at first use.",
+      "check": "Look for new `AddOptions<T>().Bind(...)` or `Configure<T>(section)` registrations that lack strict binding (for example `ErrorOnUnknownConfiguration`) or `ValidateOnStart`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options class bound from a configuration subsection must expose a `public const string SectionName` that names its subsection, and the binding code must use that constant instead of a string literal.",
+      "why": "This names the subsection in a single place, the same way the other options classes name theirs.",
+      "check": "Look for a new options class bound by a literal section name string, or one that has no `SectionName` constant.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Host configuration files and deployment charts must not restate library default values for tuning options; leave the keys out so that the library defaults apply.",
+      "why": "The defaults belong to the library, and the host's files carry no tuning keys for the other options either.",
+      "check": "Look for diffs that add keys to appsettings*.json or Helm values whose values only repeat a library's built-in option defaults.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/appsettings*.json",
+        "**/values*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

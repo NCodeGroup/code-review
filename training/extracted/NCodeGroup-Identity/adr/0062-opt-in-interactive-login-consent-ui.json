@@ -1,0 +1,71 @@
+{
+  "hash": "e7290f125c0f6305",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0062",
+  "rules": [
+    {
+      "statement": "After a successful interactive sign-in, redirect only to a `ReturnUrl` that has been validated as a local URL (for example with `Url.IsLocalUrl` or `LocalRedirect`), never to an unvalidated caller-supplied URL.",
+      "why": "The ADR requires the login endpoint to return to a validated local ReturnUrl after issuing the cookie, which prevents open-redirect attacks.",
+      "check": "Look for login/sign-in handlers that call `Redirect(returnUrl)` or set a Location header from a query/form value without a local-URL check.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An interactive login endpoint must verify credentials through the existing local-account credential store used by the other grants, and must not add a second credential verifier.",
+      "why": "Reusing the one local-account store keeps a single credential path, so login adds no new authentication model, credential store or persistence.",
+      "check": "Look for new password hashing/verification logic or new user/credential stores in login UI code instead of calls to the existing local-account authentication services.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An interactive login/consent UI must plug into the existing ASP.NET Core authentication scheme seam (register a scheme whose name matches the configured challenge/authenticate scheme and set its `LoginPath`) rather than changing the authorize/authenticate/challenge pipeline.",
+      "why": "The UI is only the form surface, not a new authentication model; the server-driven cookie challenge flow stays unchanged.",
+      "check": "Look for UI changes that modify the authorization endpoint's authenticate/challenge handlers or bypass `ChallengeAsync`/`AuthenticateAsync`, instead of adding a cookie scheme and its login path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Form elements that browser automation depends on must have their stable ids (e.g. `username`, `password`, `login`, `consent-allow`, `consent-deny`) set explicitly, defined in one place, and must never rely on framework-generated ids such as Material UI's.",
+      "why": "The stable-locator contract is the architectural invariant for conformance automation; changing an id without updating the automation config silently breaks it.",
+      "check": "Look for login/consent markup or components where these ids are missing, renamed, generated automatically, or duplicated across files without updating the automation `browser` config.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.cshtml",
+        "**/*.razor",
+        "**/*.html",
+        "**/*.tsx",
+        "**/*.jsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A dev- or conformance-grade login/consent module must only be enabled by an explicit opt-in registration method and must never be wired by default in library service registration.",
+      "why": "The module is not a production login experience; it is enabled only under the conformance profile.",
+      "check": "Look for the dev interactive authentication registration being called from default `Add*` extension methods or unconditionally in production host setup.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

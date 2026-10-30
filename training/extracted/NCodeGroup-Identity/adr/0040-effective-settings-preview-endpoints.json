@@ -1,0 +1,52 @@
+{
+  "hash": "101ceffe58643ee0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0040",
+  "rules": [
+    {
+      "statement": "Do not emit an `ETag` or concurrency token on an HTTP resource whose representation is assembled from more than one persisted entity; only return one when a single entity's version fully determines the response.",
+      "why": "No single entity's concurrency token versions a merged view correctly, so a conditional request could get a stale `304 Not Modified`.",
+      "check": "Look for endpoints that build a response from several stored entities (merged, computed or effective views) and still set an `ETag` header or include a `ConcurrencyToken` field taken from just one of those entities.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never add an anonymous query-string or request flag that bypasses a visibility filter (such as a discoverability check) to expose hidden data; put that data behind a separate authenticated and authorized endpoint.",
+      "why": "The anonymous `?showAll=true` discovery override was removed as a security leak because it let anyone bypass `IsDiscoverable`.",
+      "check": "Look for public or anonymous endpoints that read a query parameter or header to skip filtering, or to include internal or non-discoverable values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A preview or diagnostic endpoint that shows a resolved or merged value must compute it with the same resolution path the runtime pipeline uses, not a separate reimplementation.",
+      "why": "The preview has to match what the server actually resolves, or it misleads operators trying to find out why an entity got a given effective value.",
+      "check": "Look for preview or effective-view handlers that rebuild merge or resolution logic by hand instead of calling the same merge or provider APIs the request pipeline calls.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A read-only derived view of an entity's data (such as an effective or merged view) must authorize the same read operation on the same resource as the endpoint that reads the underlying raw data; do not add a new permission or scope for it, and do not leave it less protected.",
+      "why": "If you may read an entity's persisted settings, you may read its effective view. Reusing the existing permission keeps authorization consistent and avoids new scopes.",
+      "check": "Look for new derived-view endpoints whose authorization requirement differs from the corresponding raw-data read endpoint: a new scope, a missing check, or a different resource or operation.",
+      "scope": "domain",
+      "domain": "management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

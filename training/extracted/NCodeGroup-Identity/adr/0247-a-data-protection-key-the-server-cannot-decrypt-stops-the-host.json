@@ -1,0 +1,99 @@
+{
+  "hash": "69ef229fda688221",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0247",
+  "rules": [
+    {
+      "statement": "A startup check that depends on state loaded by a hosted service must itself be an IHostedService inserted after that service, and must not be written as ValidateOnStart or another startup validator.",
+      "why": "ValidateOnStart and all startup validators run before any hosted service starts, so they run before the state the check needs has loaded.",
+      "check": "Look for ValidateOnStart, IStartupFilter or options validators that use services or data a hosted service warms up, and for gate hosted services added with AddHostedService when their order relative to the warmup service and the consuming service matters.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outside Development, the host must refuse to start when the ASP.NET Core Data Protection key ring holds a live key that cannot be decrypted. Do not let Data Protection quietly mark the key ineligible and create a new default key.",
+      "why": "Data Protection otherwise writes a new key and carries on, so cookies and anti-forgery tokens become unreadable and operators only find out when users get signed out.",
+      "check": "Look for Data Protection setup or key-ring handling that catches or ignores key decryption failures (for example when reading IKey.Descriptor) in non-Development environments instead of throwing at startup.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not automatically revoke an undecryptable Data Protection key in Production. Automatic revocation, logged as a warning, is allowed only in Development, and in other environments keys are revoked only by IDs the operator lists in configuration.",
+      "why": "Revoking in Production hides a lost master key that the operator might restore, and a revoked key can never protect its data again.",
+      "check": "Look for IKeyManager.RevokeKey calls on decryption failure that are not limited to IHostEnvironment.IsDevelopment() or to IDs listed in configuration.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When checking a Data Protection key ring, skip keys that are revoked or expired by reading KeyId, IsRevoked and ExpirationDate, and do this before reading the key's Descriptor (which decrypts it).",
+      "why": "A revoked or expired key protects nothing live, so an unreadable one must never stop the host, and reading Descriptor is what triggers decryption.",
+      "check": "Look for key-ring loops that read IKey.Descriptor before filtering out IsRevoked keys or keys whose ExpirationDate is at or before the current TimeProvider time.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An exception that stops the host at startup must name every offending item and the configuration setting an operator can use to recover. Before throwing, log one error entry for each offending item.",
+      "why": "The operator has to be able to recover with one setting and a restart, without reading the code.",
+      "check": "Look for startup InvalidOperationException messages that don't list the failing IDs or don't mention the recovery setting, and for missing per-item error logs before the throw.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A recovery action driven by configuration that runs at startup (such as revoking by ID) must be idempotent, skipping items already handled, so its settings can stay in place or be removed after the host starts.",
+      "why": "The revocation is stored durably, so running it again must not fail or repeat work, and operators can leave the entries in place.",
+      "check": "Look for startup recovery code that re-applies or throws on items already in the target state.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A service-registration extension must register the framework services its components need (for example call AddDataProtection() when IKeyManager is used), and must register TimeProvider.System with TryAdd so that a TimeProvider the host registered wins.",
+      "why": "Required dependencies must always resolve, and the host must stay free to substitute its own time provider.",
+      "check": "Look for registration methods that add components which resolve IKeyManager, TimeProvider or other framework services without registering them, or that register TimeProvider with Add instead of TryAdd.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every test host that starts must keep its Data Protection key ring in an isolated store of its own (an in-memory XmlRepository or a per-factory in-memory database), never the machine's default key directory.",
+      "why": "Otherwise keys written by earlier runs under another master key leak into tests and trip the key-ring checks.",
+      "check": "Look for WebApplicationFactory or test host setup that starts a host without configuring a Data Protection key repository of its own.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

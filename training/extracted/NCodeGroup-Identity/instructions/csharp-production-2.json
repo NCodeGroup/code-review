@@ -1,0 +1,118 @@
+{
+  "hash": "dd0ee657c251e90f",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-production.instructions.md",
+  "rules": [
+    {
+      "statement": "Declare one type per file, so an interface and its implementation go in separate files; the only exception is a generic interface and its non-generic sibling of the same name (IFoo and IFoo<T>), which may share a file.",
+      "why": "A same-named generic and non-generic pair is one contract in two arities. Any other types are easier to find in their own files.",
+      "check": "Look for a .cs file that declares more than one top-level type, other than an IFoo/IFoo<T> pair.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Name the single canonical implementation of an interface IFoo that consumers resolve through DI and never name directly `DefaultFoo` (drop the I, add Default), and make it internal so it is reached only through the interface.",
+      "why": "This follows the ASP.NET Core idiom (DefaultHttpContextFactory). It leaves the bare concept name free, separates the interface from its implementation, and signals a replaceable default.",
+      "check": "Look for a sole DI-registered implementation of IFoo named something other than DefaultFoo (FooService, FooImpl, plain Foo), or a public DefaultFoo class.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use the Default prefix for a class that is not the one canonical DI implementation: name one of several variants of an interface for what makes it specific, name an implementation of a framework interface by that framework's own pattern, and give a public data/message/model/result type that consumers construct directly the bare concept name, even when it implements an interface.",
+      "why": "Default* signals the one replaceable default behind an interface. Using it on variants, framework implementations or consumer-facing models gives the wrong signal.",
+      "check": "Look for a public model/DTO/result type named Default*, or several implementations of one interface where one is just called DefaultFoo instead of being named for what makes it specific.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not declare nested types, except a private nested type that must close over the enclosing type's generic type parameter, or a nested static class that holds only const fields grouping a related constant vocabulary.",
+      "why": "All other types should be their own top-level files so they are easy to find and the one-type-per-file layout stays intact.",
+      "check": "Look for class/struct/record/interface/enum declarations inside another type that are neither a private type using the outer type's generic parameter nor a static class with only const fields.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not create vague catch-all folders or namespaces such as Logic, Helpers, Misc or Common; name each folder for the purpose its types serve, and split a folder that has collected several unrelated purposes.",
+      "why": "A catch-all bucket keeps growing without cohesion, and readers cannot find types by purpose.",
+      "check": "Look for new folders or namespaces named Logic, Helpers, Utils, Misc, Common or similar, or new unrelated types added to such a folder.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a type in a folder based on what it is and the purpose it serves: keep a contract, its DTOs and its Default* implementation in one purpose namespace across the abstractions/implementation package pair, keep headline public entry points at the package root, keep a single-purpose abstractions package flat, and place a service used by only one feature next to that feature, not in a generic sub-bucket.",
+      "why": "Organizing by purpose lets a reader find related types, such as the serializers or the endpoints, by folder.",
+      "check": "Look for a contract and its implementation split into unrelated namespaces, headline public types buried in subfolders, subfolders in a single-purpose package, or a feature-specific service placed in a shared sub-bucket.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have each purpose folder register its own services through a dedicated extension method (for example AddXxxServices()), not through a catch-all registration method.",
+      "why": "Self-registering purpose groups stay cohesive and avoid a catch-all registration grab-bag.",
+      "check": "Look for services from several unrelated purpose folders registered in one general-purpose registration method, or a new purpose folder without its own Add*Services extension.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a public type's namespace as a stable contract: do not change it when moving the type between folders, and keep the public surface flat under the package root (except public options, which use a .Options sub-namespace).",
+      "why": "The public namespace is part of the contract, so reorganizing folders must not cause breaking namespace churn for consumers.",
+      "check": "Look for public types whose namespace changed only because the file moved, or public types given folder-based sub-namespaces other than .Options.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give internal implementation types in a dedicated folder a namespace that matches the folder (for example …Logging for Logging/); do not flatten internal types into the package root namespace.",
+      "why": "Internal types carry no contract, so their namespace should reflect the structure. The flat-namespace rule is only for the public surface.",
+      "check": "Look for internal types in a subfolder whose namespace is the package root namespace instead of the folder's sub-namespace.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an interface for its role and let the namespace supply the brand; add a qualifier or brand prefix only when the bare role noun would collide with a well-known BCL/framework type or is too generic to stand alone.",
+      "why": "Role names are clear and short, and the namespace already provides the product context.",
+      "check": "Look for new interfaces with a needless product or brand prefix, or a bare name that collides with a common BCL/framework type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

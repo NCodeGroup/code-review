@@ -1,0 +1,89 @@
+{
+  "hash": "668e57775db83ec6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0091",
+  "rules": [
+    {
+      "statement": "Do not force-synthesize `auth_time` into access tokens; include it only when the authenticated principal actually carries it.",
+      "why": "RFC 9068 says `auth_time` goes in the access token only when available, so always synthesizing it is the wrong default.",
+      "check": "Look for access-token claim building that adds `auth_time` from a fallback source (for example, the cookie's IssuedUtc) when the principal has no real `auth_time` claim.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always include `auth_time` in the ID token when it is required (a `max_age` request was made, or `auth_time` was requested as an essential claim), whatever optional-inclusion setting is in effect, and limit any fallback synthesis of `auth_time` to that required case.",
+      "why": "OpenID Connect Core 1.0 makes `auth_time` mandatory only in these cases and optional otherwise, so synthesizing it every time goes beyond the spec, and dropping it when required breaks the spec.",
+      "check": "Check that ID-token issuance calculates whether `auth_time` is required from `max_age` or essential claim requests and honors that even when the include-by-default toggle is off, and that synthesis code runs only when the claim is required and missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hardcode `acr` values at login. Resolve `acr` through a replaceable, DI-overridable service whose honest default leaves the claim out unless the methods performed or a configured baseline justify a value.",
+      "why": "OpenID Connect defers the meaning of `acr` values to the deployment, so a hardcoded value invents a policy decision that deployments cannot cleanly override.",
+      "check": "Look for literal `acr` values (for example \"1\", \"2\", or LoA numbers) assigned directly in authentication or token code instead of coming from a resolver service or configuration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record authentication-event properties (`amr`, `acr`, `auth_time`, `idp`) when authentication happens, have the component that performed the authentication set its own `amr`, and store these values on the principal and session instead of deriving them later at token issuance.",
+      "why": "These values describe the authentication event, and only the authenticating component knows which methods it used. Recording them once keeps them consistent for the whole session.",
+      "check": "Look for new authentication entry points (sign-in, ROPC, external login) that don't stamp `amr` and the resolved `acr` on the principal and session, and for token issuance code that computes `acr` from `amr` after the fact.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an extensibility service interface async from the start if a replacement implementation could reasonably need IO.",
+      "why": "A real replacement may need a database or external lookup, and switching a synchronous signature to async later is a breaking change.",
+      "check": "Look for new public interfaces meant to be replaced (policy or resolver seams) that use synchronous method signatures even though plausible implementations would do IO.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register default implementations of replaceable services with `TryAdd*`, such as `TryAddSingleton`, so applications can override them through DI.",
+      "why": "The default must be replaceable by a deployment's own registration without having to remove or fight the library's registration.",
+      "check": "Look for default implementations of extensibility interfaces registered with `Add*` instead of `TryAdd*` in service-collection extension methods.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an `acr` claim is requested as essential with specific `values` and the principal's `acr` satisfies none of them, deny with `access_denied`. Handle voluntary `acr` requests, including the `acr_values` parameter, on a best-effort basis without denying.",
+      "why": "OpenID Connect Core 1.0 §5.5.1.1 requires essential `acr` values to be enforced, while voluntary requests are only hints.",
+      "check": "Check that subject-authentication validation compares an essential `id_token.acr` request's values with the principal's `acr` and returns `access_denied` when none match, and that it does not reject requests that are only voluntary.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

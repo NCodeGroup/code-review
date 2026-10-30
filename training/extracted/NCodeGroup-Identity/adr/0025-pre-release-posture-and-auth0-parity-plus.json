@@ -1,0 +1,54 @@
+{
+  "hash": "14a35e574a584f0d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0025",
+  "rules": [
+    {
+      "statement": "In a library that has not yet had a stable release, make breaking changes as a clean cutover: remove or reshape the old API outright instead of adding compatibility shims, deprecation cycles or dual code paths that keep two sources of truth.",
+      "why": "No released consumers exist to protect, so a deprecation cycle buys nothing. A half-migrated state with two sources of truth is the worse outcome.",
+      "check": "In a pre-1.0 package, look for [Obsolete] forwarding members, legacy setting aliases, fallback branches that read both old and new shapes, or adapter types kept only for backward compatibility after a redesign.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before the first stable release, do not flag `PublicAPI.Unshipped.txt` churn or breaking public-API changes as problems in their own right; judge a breaking change by its design quality, not its compatibility cost. Once a stable version is tagged, the normal compatible-evolution rules apply in full.",
+      "why": "Pre-release API churn is the normal, accepted signal of evolution. The latitude ends at the first stable tag.",
+      "check": "In a pre-release package, review comments should not object to a rename, removed setting, non-nullable tightening or reshaped contract only because it breaks compatibility. In a released package, such changes still need the compatible-evolution process.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement special behavior through a general, data-driven property or mechanism, not through a hardcoded special case for one named entity (for example, check a resource-server flag like `IsSystem` rather than hardcoding the OIDC scopes or one resource identifier).",
+      "why": "A general mechanism delivers the same behavior and can later be reused for any operator-chosen entity, while hardcoded special cases are hard to extend.",
+      "check": "Look for conditionals that compare against specific well-known identifiers, names or scope strings (for example `if (resource == \"openid\")`) to grant behavior that could instead come from a configurable property on the entity.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model identity-server concepts after Auth0's vocabulary and shapes (tenants, resource servers, scopes/permissions, client grants), and justify each deliberate deviation as a concrete operator control Auth0 lacks, added at low complexity, that keeps the Auth0 mental model intact.",
+      "why": "Auth0's familiar model lowers onboarding and review cost and is battle-tested. Requiring a justification keeps divergence intentional rather than accidental.",
+      "check": "Look for new concepts or names that diverge from Auth0's equivalents without a stated parity-plus justification, or for deviations that break the Auth0 user's mental model or add a lot of complexity.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity-server",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

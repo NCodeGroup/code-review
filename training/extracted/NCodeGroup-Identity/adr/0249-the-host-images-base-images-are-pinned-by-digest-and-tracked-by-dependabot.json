@@ -1,0 +1,78 @@
+{
+  "hash": "86bd9c84921d16e6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0249",
+  "rules": [
+    {
+      "statement": "Every Dockerfile `FROM` line names both the image tag and the `@sha256:` digest of its multi-architecture index, never a tag alone.",
+      "why": "A tag moves when the registry repoints it, so two builds of one commit can differ and a compromised or broken tag can reach the image without review. The index digest pins the layers for every platform.",
+      "check": "Look for `FROM image:tag` with no `@sha256:` digest, a digest with no tag beside it, or a digest of a single platform manifest instead of the multi-arch index.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not build a Dockerfile `FROM` reference from an `ARG` (for example a `NODE_VERSION` or `DOTNET_VERSION` build argument); write the image reference as a literal.",
+      "why": "Dependabot cannot update a `FROM` built from an `ARG`, and the digest overrides any tag or version the argument names, so the argument would name an image the build does not use.",
+      "check": "Look for `ARG` declarations used inside `FROM` lines, such as `FROM node:${NODE_VERSION}-slim@sha256:...`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Digest-pinned Docker base images are tracked by a Dependabot `docker` update entry that stays active even while version updates for other ecosystems are paused.",
+      "why": "A digest pin only gets operating-system and runtime fixes through Dependabot, so without that stream the image stays on the layers of the day it was pinned.",
+      "check": "When a diff adds digest pins or changes `.github/dependabot.yml`, check that a `docker` ecosystem entry covers the Dockerfile's directory and that it is not removed or paused.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The Dependabot `docker` entry ignores `version-update:semver-major`, so major versions of a base image only change in a deliberate edit.",
+      "why": "A runtime major should move deliberately, together with the target framework or the pinned tool version, not through an automatic update.",
+      "check": "Check that the `docker` entry in `.github/dependabot.yml` has an ignore rule for `version-update:semver-major` and that the rule is not removed.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave the `# syntax=docker/dockerfile:1` frontend directive unpinned rather than adding a digest to it.",
+      "why": "The frontend is the build's parser and never ships in the image. Dependabot cannot update a pin of it, so a digest would freeze the parser with nothing to update it.",
+      "check": "Look for `# syntax=docker/dockerfile:1@sha256:...` or any other digest-pinned syntax directive.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a Dockerfile base-image major must match a version pinned somewhere else (for example a `.node-version` file), write the major as a literal in the Dockerfile and change both files in the same change.",
+      "why": "The single version pin stays the source, and a CI check fails the build when the Dockerfile's literal disagrees with it.",
+      "check": "Look for a change to the version pin file without a matching change to the Dockerfile `FROM` major, or the reverse.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/.node-version"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "hash": "44d2cf3fc8e3c305",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0130",
+  "rules": [
+    {
+      "statement": "Do not give a deployable, internet-facing process project a name that marks it as a toy or experiment (such as `Playground` or `Sample`); name it for its role as the deployable host.",
+      "why": "A name that tells readers not to take the deployable seriously invites 'it's only the playground' reasoning, which leaves unsafe defaults like ephemeral signing keys, wildcard AllowedHosts and dev seeding switched on in a publicly reachable process.",
+      "check": "Look for new or renamed .csproj files, namespaces or folders for a runnable, deployable service whose name contains Playground, Sample, Demo, Test or a similar throwaway term.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a development-only orchestrator project (such as a .NET Aspire host) for its purpose, for example `*.LocalDev`, and not `*.AppHost` or after the technology it uses; Aspire finds it through `<IsAspireHost>true</IsAspireHost>` and `Aspire.AppHost.Sdk`, not through the project name.",
+      "why": "`AppHost` sounds like the central host of the application even though the project is never deployed, and a technology name stops being accurate if the orchestrator is rebuilt on something else.",
+      "check": "Look for Aspire orchestrator projects named `*.AppHost`, `*.Aspire` or something similarly central-sounding, rather than a name that says it is local-dev only.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Projects that belong to one deployable host, such as its EF migrations project or its one-shot migration worker, share the host project's name prefix (for example `*.Host.Database` and `*.Host.MigrationService`).",
+      "why": "The shared prefix groups the deployable with the projects it owns, which travel and deploy with it.",
+      "check": "Look for migration or worker projects owned by a deployable host whose names do not start with the host project's name prefix.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set `IsPackable=false` on runnable host, migration-worker and local-dev orchestrator projects so that only library projects produce NuGet packages.",
+      "why": "The split between a library you reference and a process you run should be explicit, and only libraries ship.",
+      "check": "Look for a new deployable host, worker or orchestrator .csproj that does not set `<IsPackable>false</IsPackable>`, directly or through an imported props file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

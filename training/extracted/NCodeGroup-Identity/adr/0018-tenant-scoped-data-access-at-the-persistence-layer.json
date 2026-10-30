@@ -1,0 +1,115 @@
+{
+  "hash": "bb4b45de405bf760",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0018",
+  "rules": [
+    {
+      "statement": "Enforce tenant isolation for tenant-owned data at the persistence layer with a global query filter on the data context, not by loading a resource and then comparing its tenant id to the request's tenant.",
+      "why": "A post-fetch check materializes another tenant's (possibly sensitive) data before the scope decision, so a log statement, early return or refactor in that window can leak it; per-call-site scoped getters leak on a single omission.",
+      "check": "Look for code that fetches a tenant-bound entity by id and then compares `entity.TenantId` to the resolved tenant (or calls a boundary/guard helper after the fetch), or new repository methods that take the tenant as a parameter instead of relying on the ambient query filter.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every new tenant-owned entity, including child rows such as secrets and settings, implement the tenant-entity marker so that the tenant query filter covers it, and leave only the tenant root and global (server-level) data outside the filter.",
+      "why": "New tenant-bound resource families get isolation only by joining the filtered set; an entity left out is readable across tenants.",
+      "check": "A new entity with an owning-tenant relationship that doesn't implement the tenant-scoped marker interface or doesn't get the global query filter in the model configuration.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write the tenant query filter as 'ambient tenant is unset OR the row's denormalized, indexed tenant discriminator column equals the ambient tenant', not as a navigation or join to the tenant entity.",
+      "why": "A single indexed-column predicate is cheap and keeps the persistence framework decoupled from the concrete tenant entity, and the unset case keeps the filter a no-op for the runtime and central-admin surfaces.",
+      "check": "A `HasQueryFilter` on a tenant-owned entity that navigates to the tenant entity, uses a non-indexed column, or lacks the 'no ambient tenant' branch.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take the owning tenant of a newly created tenant-bound resource from the request's resolved ambient tenant scope, and never accept a tenant identifier in the create request contract.",
+      "why": "A tenant-bound resource is always owned by the request's tenant; echoing a client-supplied tenant is redundant and a footgun, while deriving it means a caller can only create within its own tenant.",
+      "check": "Create request DTOs that carry a tenant id field, or create handlers that set the owning tenant from request input rather than the ambient tenant accessor.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a separate 'parent tenant exists' lookup to create validation when the request's tenant scope was opened from a tenant the resolver already loaded from the store.",
+      "why": "Opening the scope already proves the tenant exists, so a second lookup is a redundant round-trip for a row that was just loaded.",
+      "check": "Create validators for tenant-bound resources that query the store to check that the owning tenant exists.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the ambient tenant scope once per request in a reusable endpoint filter on the tenant-bound route group, for every tenant strategy including static single-tenant, and short-circuit with the mapped result (typically 404) when the tenant can't be resolved.",
+      "why": "Setting it once in a shared filter means no per-endpoint logic is needed and new endpoints inherit isolation; skipping it for one strategy would leave those requests unscoped.",
+      "check": "Tenant-bound endpoints that resolve the tenant or open the scope themselves, endpoints added outside the scoped route group, or conditional logic that skips the scope for some tenant strategies.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store the ambient tenant scope in an `AsyncLocal<T>`, not in a scoped DI service, so it flows across async calls to data contexts created by a factory from the root provider.",
+      "why": "Data contexts made by `IDbContextFactory` from the root provider live outside the request's DI scope, so a DI-scoped holder would leave them unscoped.",
+      "check": "An ambient tenant accessor implementation that keeps the current tenant in a scoped-service field or `HttpContext` item instead of an `AsyncLocal<T>`.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the data context require a non-null tenant accessor, represent the 'no tenant' state as a null tenant id on the accessor, and have tests or tooling that build the context directly pass an explicit no-tenant accessor.",
+      "why": "A required dependency fails fast at startup when it isn't registered, instead of silently running without tenant isolation (fail-closed against cross-tenant leaks).",
+      "check": "A data context constructor parameter for the tenant accessor that is nullable or optional, null-coalescing around a missing accessor, or tests passing `null` for it.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a tenant-bound resource owned by another tenant as not found (404) by loading it through the tenant-filtered query, so the null result is returned before validation runs, and don't return a distinct forbidden response.",
+      "why": "A cross-tenant resource should be unreachable and indistinguishable from a missing one, so nothing about it can be logged, inspected or returned.",
+      "check": "Get, update or delete handlers for tenant-bound resources that return 403 or another distinct error for cross-tenant ids, or that run validation before the tenant-filtered lookup.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

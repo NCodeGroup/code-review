@@ -1,0 +1,91 @@
+{
+  "hash": "7e690805c199e49b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0100",
+  "rules": [
+    {
+      "statement": "When a management operation targets a route-addressed tenant and drives protocol machinery (issuing grants, signing tokens, back-channel logout), run it on a context materialized for that addressed tenant, not on the request's ambient OpenID context.",
+      "why": "The ambient context carries the request-resolved tenant (the management host), so using it would key grants and sign logout tokens in the wrong tenant's security domain.",
+      "check": "Look for admin/management endpoints under a {tenantId} route that pass the request's ambient OpenIdContext (or its Tenant/Mediator) to session, grant or token services instead of a context created for the route tenant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a secondary context materialized for an explicit tenant as caller-owned: dispose it (e.g. with a using declaration) and never publish it as the ambient request feature.",
+      "why": "It is a secondary context distinct from the request's own; publishing it would replace the request's tenant identity, and the caller owns its lifetime.",
+      "check": "Look for explicitly created tenant contexts that are not disposed, or that are set into HttpContext.Features or another ambient accessor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not read from or write to the shared request-materialized tenant cache when materializing a tenant by explicit id; materialize it fresh.",
+      "why": "Cached tenants take their base address from the request host. Mixing them with issuer-derived admin materializations, in either direction, causes correctness bugs. Admin operations are rare, so the extra cost is acceptable.",
+      "check": "Look for by-id or explicit-tenant materialization code that probes, populates or shares the tenant cache used by request-driven tenant resolution.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When materializing a tenant independently of a request, use the tenant's own configured issuer as its identity and base address, and fail fast if no issuer is configured rather than deriving one from the current request host.",
+      "why": "There is no inbound request for that tenant to derive a host from. Falling back to the request host would make the tenant's identity vary by request and sign under the wrong issuer.",
+      "check": "Look for explicit-tenant materialization that falls back to HttpContext.Request host/scheme for the issuer or base address, or that quietly continues when the issuer setting is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement admin session revocation by delegating to the context-bound session service's termination path, not by deleting or revoking grants directly in the store.",
+      "why": "Going directly to the store skips the termination seam, so back-channel logout is never sent to relying parties and no per-session audit runs.",
+      "check": "Look for admin endpoints that call store bulk-revoke/delete methods (e.g. RevokeWhereAsync) for sessions instead of ISessionService.RevokeAsync/RevokeAllAsync on an addressed-tenant context.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep tenant-bound services context-bound; to target another tenant, materialize a context for it instead of adding tenant-id-parameterized overloads.",
+      "why": "Overloads fork the service surface, and downstream machinery still needs a materialized tenant to sign under, so they collapse into context materialization anyway.",
+      "check": "Look for new overloads on context-bound services that take a tenantId parameter to bypass the bound context.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record administrator-initiated session revocations in the management audit, attributed to the acting administrator, in addition to the per-session protocol audit.",
+      "why": "The admin action has to be traceable to whoever performed it, separately from the per-session audit that the termination seam records.",
+      "check": "Look for admin revoke endpoints that do not record a management audit event identifying the acting administrator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

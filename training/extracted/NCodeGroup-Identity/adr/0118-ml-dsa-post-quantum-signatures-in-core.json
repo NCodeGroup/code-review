@@ -1,0 +1,92 @@
+{
+  "hash": "896e33e336b7a0ec",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0118",
+  "rules": [
+    {
+      "statement": "When serializing an ML-DSA (AKP) private key to a JWK, write `priv` as the 32-byte seed only, never the expanded private key, and write `pub` as the raw public key.",
+      "why": "RFC 9964 defines the AKP key representation as seed form only for `priv` and the raw public key for `pub`.",
+      "check": "Look for AKP/ML-DSA JWK export or import code that writes or accepts the expanded private key in `priv`, or that puts anything other than the raw public key in `pub`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store asymmetric key material at rest as standard PKCS#8 (private) or SubjectPublicKeyInfo (public) DER, including post-quantum key types, instead of a raw or custom format.",
+      "why": "Every asymmetric family then has the same at-rest format, the parameter set is self-describing through its OID, and X.509 interop stays possible.",
+      "check": "Look for a new asymmetric key type that persists or deserializes its key material as raw bytes, a seed blob or a custom encoding instead of PKCS#8/SPKI DER.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Suppress an `[Experimental]` BCL diagnostic (such as SYSLIB5006) with a narrowly scoped `#pragma warning disable` at the specific call site, plus a comment pointing to the decision that justifies it, and never suppress it project-wide.",
+      "why": "Narrow suppressions keep the reliance on experimental APIs visible, and they can be deleted with no other change once the BCL drops the flag.",
+      "check": "Look for experimental diagnostic IDs disabled in .csproj, Directory.Build.props, .editorconfig or GlobalSuppressions, or for a pragma that spans more than the call sites that need it or has no justifying comment.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate platform-dependent signing algorithms on their runtime support check (for example `MLDsa.IsSupported`) so that discovery metadata and JWKS never advertise an `alg` the running OS cannot sign or verify.",
+      "why": "Advertising an algorithm the platform cannot fulfill is an interop bug.",
+      "check": "Look for algorithm registrations or data sources that add OS-dependent algorithms (ML-DSA and similar) to the advertised set without checking the primitive's IsSupported property.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make tests that exercise OS-dependent cryptographic primitives no-op when the primitive's IsSupported check is false, so they don't fail on CI platforms without support.",
+      "why": "This keeps the tests portable across CI operating systems.",
+      "check": "Look for tests that use MLDsa or other OS-dependent crypto types without first checking IsSupported, so they would throw PlatformNotSupportedException on some CI runners.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a catalog `internal` when a specification fixes it to a closed set (such as the three FIPS 204 ML-DSA parameter sets), and let callers select an entry by its `alg` name instead of extending the catalog.",
+      "why": "The spec defines exactly those entries and each one is its own `alg`, so a public extension point would have no valid use.",
+      "check": "Look for a new public or consumer-extensible catalog or registry whose entries a specification fixes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement a cryptographic algorithm by composing the stable in-box BCL primitive when one exists, and don't add a third-party cryptographic dependency or a custom implementation for it.",
+      "why": "A stable BCL primitive needs no third-party dependency and fits the same pattern as the existing RSA and ECC algorithms.",
+      "check": "Look for a new third-party crypto package reference, or hand-written crypto math, for an algorithm that System.Security.Cryptography already supports in a stable form.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "hash": "af97542bc846ed8a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0193",
+  "rules": [
+    {
+      "statement": "Map interactive (login, consent, logout, account) endpoints under the tenant route prefix taken from the tenant resolver, the same prefix the protocol endpoints use, never at absolute root paths.",
+      "why": "Under path-based tenant selection, absolute routes have no tenant route value to resolve, so every interactive flow fails and login challenges send the browser outside its tenant.",
+      "check": "Look for interactive or account endpoint groups, or cookie LoginPath values, hard-coded to absolute paths such as `/account/...` and not built from the tenant route prefix.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build every redirect, challenge, and cookie path the interactive surface issues from the request's `PathBase` plus the tenant route bound from the request's route values, not from the ambient tenant scope.",
+      "why": "The cookie handler refreshes the session as the response starts, which can be after the ambient tenant scope has ended. Route values last longer than that scope, so the browser stays within its tenant.",
+      "check": "Look for redirect URLs, `OnRedirectToLogin` handlers, consent challenges, or cookie paths that read the ambient or current tenant accessor, or that hard-code a root-relative path, when they should use `HttpRequest.PathBase` and route values.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make form actions on server-rendered tenant-hosted pages page-relative (for example `login`, `consent`) rather than absolute paths.",
+      "why": "A relative action posts back to the tenant that served the page without the renderer needing to know the tenant's path.",
+      "check": "Look for rendered `<form action=\"/...\">` values with a leading slash or an absolute URL on pages served beneath a tenant route.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.cshtml",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Isolate per-tenant session cookies on a shared origin by writing and deleting them with `Path` set to the tenant's path (`/` at the root), not by giving each tenant its own cookie name.",
+      "why": "Under RFC 6265 §5.1.4 path-matching, the browser returns a tenant's cookie only to that tenant's endpoints. A per-tenant name still sends every tenant's cookie to every tenant, and `CookieBuilder.Name` is resolved without the request.",
+      "check": "Look for session cookies written without a tenant-scoped `Path`, for per-tenant cookie names used as the isolation mechanism, and for delete calls whose `Path` differs from the one used to write the cookie.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve static files through a `PhysicalFileProvider` rooted at the asset directory. Answer `404` for paths that leave the root, for hidden files, and for files with no known content type, and send `ETag`/`Last-Modified` validators and support range requests.",
+      "why": "The file provider stops path traversal and access to hidden files, and the validators and range support give correct HTTP caching and partial-content behaviour.",
+      "check": "Look for asset endpoints that join a request path onto a filesystem path by hand, serve unknown content types, or return file bodies without validators or range handling.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make pages and front-end bundles mount-agnostic: write `<base href=\"{tenant path}/surface/\">` first inside `<head>` on every page served, build the bundle with a relative base (`./`), and resolve its API and page URLs against `document.baseURI`.",
+      "why": "With these, one build works beneath any tenant path without a rebuild and never assumes where it is mounted.",
+      "check": "Look for served pages with no `<base href>` or one placed after other head elements, bundle configs with an absolute `base`, and front-end code that fetches root-absolute paths such as `/account/api/...`.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

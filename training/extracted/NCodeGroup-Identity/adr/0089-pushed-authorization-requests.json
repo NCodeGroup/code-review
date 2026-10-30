@@ -1,0 +1,139 @@
+{
+  "hash": "8811a1be126f90c7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0089",
+  "rules": [
+    {
+      "statement": "A pushed authorization request endpoint must accept only POST with application/x-www-form-urlencoded, authenticate the client through the same shared client-authentication path as the token endpoint, and answer success with 201 Created carrying `request_uri` and `expires_in`.",
+      "why": "The push has to be a client-authenticated back-channel call shaped the way RFC 9126 requires, and confidential clients should authenticate the same way everywhere.",
+      "check": "Look for a PAR handler that accepts GET or other content types, has its own ad-hoc client authentication, or returns 200 or a different response body.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a pushed authorization request that itself contains a `request_uri` parameter.",
+      "why": "RFC 9126 §2.1 forbids `request_uri` inside a pushed request.",
+      "check": "Check that the PAR endpoint explicitly rejects a `request_uri` form parameter instead of processing or forwarding it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate pushed authorization requests by reusing the authorization endpoint's own load and validation logic, not a parallel copy.",
+      "why": "A separate copy of the validation could drift away from what the authorization endpoint enforces.",
+      "check": "Look for PAR code that duplicates authorization-request validation rules instead of calling the shared authorize validation components.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store pushed authorization requests as single-use, short-lived grants keyed by a high-entropy cryptographically random reference, and consume them with an atomic consume-once operation so a replayed `request_uri` is rejected.",
+      "why": "A pushed request must be single-use with a bounded lifetime to limit exposure and prevent replay.",
+      "check": "Look for PAR lookups that read without consuming, references made with non-cryptographic or low-entropy generators, or lifetimes that are missing or unbounded.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Strip client-authentication material (`client_secret`, `client_assertion`, `client_assertion_type`) from pushed parameters before persisting them.",
+      "why": "Credentials authenticated the push itself and must never be written to the grant store or replayed at the authorization endpoint.",
+      "check": "Check that the code removes these parameters before the pushed form values are serialized into the grant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expand a PAR `request_uri` into its stored parameters immediately after loading the raw request values and before deriving response delivery or trusting `redirect_uri`, `state` or `response_mode`.",
+      "why": "The delivery resolver reads those parameters to decide whether an error may be redirected, so it must see the stored request and not an empty one.",
+      "check": "Look for PAR expansion placed after response-mode or redirect resolution, or deep inside later commands.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a pushed `request_uri` to the client that pushed it, and reject it with `invalid_request_uri` when the authorization request's `client_id` does not match the stored client.",
+      "why": "Otherwise one client could redeem a request pushed by another client.",
+      "check": "Check that request_uri resolution compares the request's client_id with the grant's stored ClientId.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return failures to resolve a pushed `request_uri` directly as HTTP 400 and never redirect them to a `redirect_uri`.",
+      "why": "If the request could not be recovered, no `redirect_uri` can be trusted as an error destination.",
+      "check": "Look for invalid, expired, replayed or client-mismatched request_uri errors that go through the redirect error path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tell PAR `request_uri` values apart from JAR `request_uri` values by the `urn:ietf:params:oauth:request_uri:` prefix: resolve prefixed values from server storage and never fetch them over HTTPS, and keep fetching only non-prefixed values as RFC 9101 request objects.",
+      "why": "The two mechanisms share the parameter name but have different semantics, and they must not be conflated.",
+      "check": "Look for request_uri handling that does not branch on the URN prefix, or that could send an HTTP fetch for a PAR reference.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the `require_pushed_authorization_requests` setting (default `false`) is on for a client, reject direct authorization requests without a pushed `request_uri` with `invalid_request`, and advertise the setting in discovery.",
+      "why": "RFC 9126 §5 defines this policy and its discovery metadata, so clients can be forced onto PAR as a secure opt-in.",
+      "check": "Check that authorization handling enforces the flag, that it defaults to false, and that it is exposed in discovery metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise the PAR endpoint in discovery as `pushed_authorization_request_endpoint` through the standard endpoint-discovery mechanism, not hand-written metadata.",
+      "why": "Clients learn the endpoint from discovery, and the shared mechanism keeps the metadata consistent.",
+      "check": "Look for a PAR endpoint that is missing from discovery or hard-coded into the metadata document separately.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

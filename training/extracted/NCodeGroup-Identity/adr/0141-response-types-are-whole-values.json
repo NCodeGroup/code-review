@@ -1,0 +1,103 @@
+{
+  "hash": "7c22c1e890592ec0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0141",
+  "rules": [
+    {
+      "statement": "Treat an OAuth `response_type` as one whole value everywhere it is stored, compared, advertised or registered; never split it into its names and accept or recombine them independently.",
+      "why": "Each multi-name response type (e.g. `code id_token`) is a distinct flow with its own security properties (RFC 6749 §3.1.1, Multiple Response Type Encoding Practices). Splitting it into names lets a client or operator who chose one flow use others nobody chose.",
+      "check": "Look for code that splits response_type values into names and checks each against a set of allowed single names, expands names into combinations for discovery, or maps a registered combination onto its component names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store and compare response types in canonical form (names in ordinal order, separated by a single space); canonicalize protocol input at the protocol boundary, but require configured and stored values to already be in canonical form instead of normalizing them when read.",
+      "why": "Settings are compared and merged verbatim, so a value has to be configured in the form it is compared in. Normalizing on read would turn a typo into an accepted value. Protocol input may order its names freely.",
+      "check": "Look for config or stored response-type values accepted in non-canonical order or normalized when read, or for request `response_type` values compared without canonicalizing them first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, accept a request only when its canonicalized `response_type` exactly equals a supported value and the grant types it uses are supported; reject an unsupported response type with `unsupported_response_type`, and one the client may not use with `unauthorized_client`.",
+      "why": "RFC 6749 §4.1.2.1 defines these errors, and exact matching is the only way an operator can enable a single flow.",
+      "check": "Look for subset or per-name matching of response_type, no check that the derived grant types are supported, or the wrong error code for unsupported versus unauthorized response types.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive grant types from response types as OpenID Connect Registration §2 says (`code` uses `authorization_code`, `id_token` or `token` uses `implicit`, hybrid values use both), and never define or accept a `hybrid` grant type.",
+      "why": "`hybrid` is not an OAuth grant type. It breaks clients registered the standard way and lets the token endpoint accept a non-standard `grant_type` for redeeming a code.",
+      "check": "Look for a `hybrid` grant type constant or check, or for a code-redemption handler that answers any `grant_type` other than `authorization_code`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether a response type returns tokens from the authorization endpoint with one rule (it includes `id_token` or `token`); for such response types, default to the `fragment` response mode for both success and error responses, on first and resumed passes, reject `query`, and require `nonce` for `openid` requests.",
+      "why": "The query encoding MUST NOT be used for responses that return tokens (Multiple Response Type Encoding Practices §2.1, §2.2, §3, §5). Tokens in a query string get recorded in server logs and `Referer` headers.",
+      "check": "Look for a default response mode chosen without looking at the response type, error redirects that use `query` for token-returning flows, allowing `response_mode=query` for them, a missing nonce check, or more than one copy of the 'returns tokens' logic.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, store each registered response type in canonical form with duplicates removed and report it back in that form; default omitted `grant_types` from the registered response types and omitted `response_types` to `code` (or none when the grant types do not use the authorization endpoint); and report an empty list explicitly rather than omitting it.",
+      "why": "RFC 7591 §2 requires registered values to match the `response_type` parameter. An omitted `response_types` is read as `code`, so leaving out an empty list would misreport the registration.",
+      "check": "Look for registration handlers that drop or rewrite registered combinations, return non-canonical or duplicate values, use defaults that disagree with each other, or omit an empty `response_types` from the response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a client registration with `invalid_client_metadata` when a registered response type uses a grant type the client does not register, or when it requests a grant type or response type the server does not support; do not enforce the reverse direction (an unused registered grant type is allowed).",
+      "why": "RFC 7591 §2.1 and §3.2.2 ask the server to prevent inconsistent pairs, and reporting unusable values as registered would be false. OpenID Connect Registration requires only the forward direction, and enforcing the reverse would break clients that register a broad grant list.",
+      "check": "Look for registration code that accepts inconsistent response type/grant type pairs or unsupported values, uses a different error code, or refuses a registered grant type just because no response type uses it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `code` alone as the secure-by-default `response_types_supported` baseline, and advertise exactly the configured list in discovery without expanding or adding combinations.",
+      "why": "An operator should enable a front-channel flow only by listing that flow, and discovery must not advertise flows nobody chose.",
+      "check": "Look for default supported response types beyond `code`, or for discovery code that computes combinations or otherwise changes the configured list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

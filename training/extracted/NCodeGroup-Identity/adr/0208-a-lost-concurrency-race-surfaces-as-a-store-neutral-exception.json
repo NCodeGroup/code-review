@@ -1,0 +1,63 @@
+{
+  "hash": "61a5bfc829306682",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0208",
+  "rules": [
+    {
+      "statement": "Translate a persistence technology's concurrency failure (such as Entity Framework's `DbUpdateConcurrencyException` from a save) into the store-neutral `StoreConcurrencyException` at the store or store-manager boundary, and keep the original exception as its inner exception.",
+      "why": "Callers above the store, such as protocol code, do not reference Entity Framework, and a store need not be built on it. Catching the technology's own type would tie them to one store technology.",
+      "check": "Look for store or store-manager save paths that let `DbUpdateConcurrencyException` escape, or that rethrow the neutral exception without passing the original as the inner exception.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a store compares the concurrency token its caller presents with the stored token and they differ, throw the store-neutral `StoreConcurrencyException`, not a technology-specific or generic exception.",
+      "why": "Every source of a lost race should reach callers as one store-neutral type, so they can handle it the same way whatever the store technology.",
+      "check": "Look for store methods that compare a caller-supplied concurrency token or version and then throw something other than `StoreConcurrencyException`, or throw nothing, when the tokens differ.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Only translate the concurrency failure of a save. Let every other exception from the save propagate unchanged.",
+      "why": "The neutral exception means one specific thing: the caller lost a race on an entity's concurrency token. Other failures must not be disguised as a lost race.",
+      "check": "Look for catch blocks around SaveChanges or SaveChangesAsync that catch a broad type such as `DbUpdateException` or `Exception` and map it to the concurrency exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code outside the persistence implementation that calls stores or `IStoreManager.SaveChangesAsync` must catch `StoreConcurrencyException`, not Entity Framework's `DbUpdateConcurrencyException`.",
+      "why": "Catching the Entity Framework type in protocol or service layers couples those layers to one store technology, and a different store would then have to throw the Entity Framework type to be handled.",
+      "check": "Look for `catch (DbUpdateConcurrencyException` in projects that are not the Entity Framework store implementation, or new references to Entity Framework packages added only so that the type can be caught.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a single-use artifact (authorization code, device code, CIBA auth_req_id, PAR request_uri, initial access token, or saved flow state) is spent, handle a lost concurrency race on the spend exactly like a sequential second spend: return the same protocol error and run the same side effects, such as revoking the session on code replay.",
+      "why": "An uncaught lost race reached the client as a 500, while a sequential replay got its protocol error. Each grant should answer a second spend in one way, whether it is concurrent or sequential.",
+      "check": "Look for consume-once or spend logic that saves without catching `StoreConcurrencyException`, or that maps the concurrent case to a different error or skips the replay side effects that the sequential case performs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "hash": "5f53b0767f2a779d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0028",
+  "rules": [
+    {
+      "statement": "The token revocation endpoint must respond 200 OK to every authenticated request, whether the token was revoked, unknown, or of a type that can't be revoked. It must never return 400 or 404 for an unknown or non-revocable token.",
+      "why": "RFC 7009 requires this leniency so that the endpoint does not become an oracle that tells real tokens apart from fake ones.",
+      "check": "Look for revocation handlers that return an error status, or a different response, when the token is not found, is already revoked, or is an access token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In the token revocation endpoint, treat a missing `token` parameter as the only hard request error, and return 400 with `invalid_request` for it.",
+      "why": "RFC 7009 makes `token` required. Every other outcome must look the same to the caller so that token state is not revealed.",
+      "check": "Check that a missing or empty `token` produces invalid_request, and that no other token-state condition produces a distinct error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before revoking a persisted grant or refresh token, verify that its owning client ID matches the authenticated client. If it doesn't match, do not revoke it, and still return 200.",
+      "why": "RFC 7009 section 2.1 says only the client a token was issued to may revoke it. Without this check, a client that obtained another client's token value could revoke it.",
+      "check": "Look for revocation code that sets a revoked marker (such as RevokedWhen) without comparing the grant's ClientId to the authenticated client's ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require client authentication before any token revocation logic runs.",
+      "why": "Only a registered client may reach revocation, and ownership can only be checked against an authenticated client.",
+      "check": "Look for revocation endpoints that call the revocation logic before authenticating the client, or without authenticating it at all.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat revocation of a stateless self-contained JWT access token as an accepted no-op. Do not add per-token server state, such as a denylist lookup, on the resource-server validation path unless that is explicitly required.",
+      "why": "A stateless JWT can't be invalidated without server state, and adding a lookup on every call defeats the purpose of stateless tokens. Short access-token lifetimes limit the exposure instead.",
+      "check": "Look for revocation code that tries to persist or denylist JWT access tokens, or for access-token validation that adds a store lookup for revocation state.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep OAuth endpoint providers thin. The provider authenticates the client and parses the form into a typed request, then delegates to a mediator command handler that holds the business logic.",
+      "why": "This follows the established OAuth endpoint and mediator conventions, so every endpoint has the same structure, for example matching the token endpoint.",
+      "check": "Look for endpoint provider classes that contain revocation, grant, or other business logic inline instead of sending a command through the mediator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

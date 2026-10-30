@@ -1,0 +1,85 @@
+{
+  "hash": "2ece5b9f8ce3f678",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0160",
+  "rules": [
+    {
+      "statement": "When more than one path writes the same value (configuration at startup, a management API, an import), have all of them apply one shared set of validation rules instead of each keeping its own copy.",
+      "why": "Rules that exist only for configuration let the API store values nothing can serve, and a second copy of the rules drifts away from the first.",
+      "check": "Look for validation logic copied between options validators and API/request validators, or a new write path that skips validation an existing path already does.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When behaviour comes from pluggable strategies or providers, let each implementation supply its own validation through a seam on its abstraction, and do not branch on the built-in implementation codes inside a shared validator.",
+      "why": "Branching on built-in codes closes an open vocabulary, so a custom implementation could not add rules of its own for its options or the data it serves.",
+      "check": "Look for switch/if statements on strategy or provider codes in shared validators or services, where the logic should be a method on the strategy interface.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a validation seam return structured failures that say whether each one is an invalid value or a conflict with existing data, and have the API answer 400 for invalid values before checking for 409 conflicts.",
+      "why": "With plain messages the caller cannot tell a value that is wrong on its own (400) from one another record already holds (409).",
+      "check": "Look for validation that returns only strings or a bool when callers need to tell invalid from conflict, or endpoints that report conflicts before input errors or use the wrong status code.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an issuer as an absolute https URL (http only for a loopback host) with no user information, query, fragment or whitespace, and at most 1000 characters.",
+      "why": "OpenID Connect Discovery §3 and RFC 8414 §2 require it, and clients that follow the specs reject a discovery document whose issuer breaks these rules.",
+      "check": "Look for issuer validation that accepts http on non-loopback hosts, or allows a query, fragment, userinfo, whitespace or unlimited length.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validator that belongs to one selectable implementation should be registered next to that implementation and should skip validation when a different implementation is selected.",
+      "why": "Each implementation then owns its own options rules, and a custom one can add its rules by registering an IValidateOptions<T> of its own.",
+      "check": "Look for implementation-specific IValidateOptions that fail or run when their implementation is not selected, or implementation-specific checks placed in the shared options validator.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On update, re-check a field's validation rules only when the update changes that field, not on every update of the record.",
+      "why": "A record written under an earlier configuration must still allow edits to unrelated fields (such as its display name), and a field can only become wrong at the moment it changes.",
+      "check": "Look for update validators that re-run address or identity rules on every update, even when those fields are unchanged.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject values that cannot be served when they are written (at startup or by the management API), not when a request later tries to use them.",
+      "why": "A failure at request time reaches relying parties instead of the operator who wrote the bad value.",
+      "check": "Look for checks on configuration or stored data that only run in request handling, when they could run in a write-time or startup validator.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

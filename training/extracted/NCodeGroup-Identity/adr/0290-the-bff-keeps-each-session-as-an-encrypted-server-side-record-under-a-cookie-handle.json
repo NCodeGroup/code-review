@@ -1,0 +1,158 @@
+{
+  "hash": "06356966914135b0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0290",
+  "rules": [
+    {
+      "statement": "Derive a server-side session's store key and its encryption key from the client-held handle with HKDF using distinct info strings; never use the handle itself as the store key and never encrypt session records under a server-wide key.",
+      "why": "If the store key equals the handle, or a server-wide key encrypts every record, whoever can read the store can read or replay every session. Deriving both keys from the handle means a store dump or a replacement store sees only ciphertext and digests.",
+      "check": "Look for session or transaction records stored under the raw cookie/handle value, or encrypted with a single application-wide key instead of a key derived from the handle.",
+      "scope": "domain",
+      "domain": "web-session-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encrypting a stored record with an AEAD such as AES-GCM, include the store key, the record version and any plaintext metadata stored beside the ciphertext in the associated data.",
+      "why": "A plaintext field changed in the store, such as an expiry pushed out, then fails decryption, and so does a record moved to another key or replayed at another version.",
+      "check": "Look for AEAD encryption of stored records with empty associated data, or with associated data that leaves out the record's key, its version or plaintext metadata the code later relies on.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build storage or index keys from attacker-supplied values by hashing a length-prefixed encoding of every component (for example base64url(SHA-256)), never by concatenating the raw values.",
+      "why": "Hashing length-prefixed input means a value an attacker supplies cannot make a key ambiguous or unbounded in size.",
+      "check": "Look for cache, store or index keys built by string concatenation or interpolation of external input such as issuer, sid or sub values without length-prefixing and hashing.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Surface any failure of the backing store adapter as a dedicated store-unavailable exception that is answered with 503, never as an authentication failure (401).",
+      "why": "An unreachable store is an outage, not an unauthenticated user. Answering 401 would wrongly end or deny valid sessions.",
+      "check": "Look for catch blocks around store calls that return null, treat the session as missing, or produce 401 instead of wrapping the error in a store-unavailable exception mapped to 503.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce single use of one-time protocol values such as OAuth `state` by atomically taking (read-and-delete) the stored transaction from shared storage before decrypting or validating it.",
+      "why": "An atomic take makes the value single-use on every replica, and a wrong initiator cannot probe the same transaction twice.",
+      "check": "Look for callbacks that read the transaction, validate or decrypt it, then delete it separately, or that enforce single use only in local memory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an OAuth authorization-code callback, check the `iss` response parameter (RFC 9207) before exchanging the code, delete the login-transaction cookie on every path, and always mint a new session handle instead of reusing an existing one.",
+      "why": "Checking `iss` first prevents mix-up attacks, deleting the cookie on every path leaves no reusable login state behind, and a fresh handle prevents session fixation.",
+      "check": "Look for a code exchange that happens before the `iss` check, error paths that return without clearing the login cookie, or a session that reuses a pre-login handle.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue session cookies with the `__Host-` prefix, `Secure`, `HttpOnly`, `Path=/`, no `Domain`, and `SameSite=Strict` by default (`Lax` only when selected), and refuse `SameSite=None`.",
+      "why": "These attributes, defined in RFC 6265bis, keep the cookie away from scripts, subdomains and cross-site requests.",
+      "check": "Look for session cookie options that set a Domain, omit Secure or HttpOnly, use a path other than /, lack the __Host- prefix, or allow SameSite=None.",
+      "scope": "domain",
+      "domain": "web-session-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate session handles and similar secrets as 32 random bytes from a cryptographic RNG, encoded in unpadded base64url, and ignore any presented value that does not have the exact expected length.",
+      "why": "A fixed-format, high-entropy handle cannot be guessed, and rejecting other lengths keeps malformed or oversized input out of key derivation.",
+      "check": "Look for handles made with Guid, Random or fewer bytes, or code that processes a cookie value without first checking its exact length.",
+      "scope": "domain",
+      "domain": "web-session-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never log or audit tokens, session handles, cookie values, OAuth state, authorization codes or secrets.",
+      "why": "These values grant access, so writing them to logs or audit records would leak credentials.",
+      "check": "Look for log messages, audit details or exception messages that include token, handle, cookie, state, code or secret values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Get claims from validated JWTs through the shared JWT stack's claim mapping, and never write a second mapping from token JSON to claims.",
+      "why": "A second claim mapping beside the JWT stack's would drift from it.",
+      "check": "Look for code that parses ID token or JWT payload JSON and builds Claim objects by hand instead of using the validation result's identity.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implementation packages reference only the abstractions packages of the family; only the composition-root package references other implementation packages.",
+      "why": "It keeps implementations replaceable. The host or the composition root registers the concrete dependencies.",
+      "check": "Look for a new project or package reference from an implementation package to another family implementation package outside the composition root.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write versioned shared-state records as an optimistic read-modify-write with a compare-and-replace on the version, retried a bounded number of times on a version conflict.",
+      "why": "Concurrent requests on several replicas can update the same record, and a version check stops one write from silently overwriting another.",
+      "check": "Look for unconditional overwrites of shared versioned records, or conflict-retry loops with no upper bound.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Classify an upstream identity provider that cannot be reached or read (metadata, keys, token endpoint, HTTP errors, or a timeout the caller did not cause) as a single provider-unavailable failure, separate from authentication failures.",
+      "why": "Login, refresh, logout and back-channel logout share one classification, so outages are not reported as invalid credentials.",
+      "check": "Look for HttpRequestException, provider exceptions or non-caller timeouts that are treated as invalid tokens or failed authentication, or that use an inconsistent error classification.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

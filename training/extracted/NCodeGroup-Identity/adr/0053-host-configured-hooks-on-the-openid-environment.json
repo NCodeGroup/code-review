@@ -1,0 +1,101 @@
+{
+  "hash": "8eb70f36961dca7d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0053",
+  "rules": [
+    {
+      "statement": "Declare host-replaceable logic hooks (delegates the host can swap out) on a shared environment abstraction in the `*.Abstractions` package, wire them up from the options delegate in core, and have consumers use them through that abstraction instead of injecting the core options type (for example `IOptions<TOptions>`).",
+      "why": "Injecting the core options adds a dependency on core, and packages that may depend only on abstractions cannot do it at all. That pushes each surface to write its own version of the hook, and the versions drift apart.",
+      "check": "Look for a non-core package or consumer that injects `IOptions<...Options>` from core just to call a behavioral delegate, or for a new replaceable delegate that is only reachable through the options type and not through an abstraction member.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hardcode or copy the default logic of a host-configurable behavior (for example `sub ?? nameidentifier`) or put it in a public static helper. Call the single configured seam so that host overrides take effect everywhere.",
+      "why": "Hardcoded copies and static helpers share the default logic but skip the host's configured override. A customization is then honored on one surface and silently ignored on another.",
+      "check": "Look for inline claim lookups or static helper calls that re-derive a value which already has a configurable seam (such as subject id extraction), instead of calling the context or environment method.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a concern has both a per-tenant data choice and host-level logic, store the data as a tenant setting, expose the logic as an environment delegate, and add one context method that combines the two. Every surface calls that method.",
+      "why": "Each dimension stays where it belongs, and every surface honors both the tenant's data and the host's logic through one source of truth.",
+      "check": "Look for per-tenant choices modeled as host start-up options or booleans, host logic modeled as a setting, or call sites that read the tenant setting and apply the delegate themselves instead of calling the combining context method.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep environment behavioral hooks as pure leaf operations: a hook computes its result only from its inputs (such as the `ClaimsPrincipal` and claim types) and never calls environment, context, server, tenant or store creation. No factory or creation path may call a hook.",
+      "why": "This keeps the seam acyclic and prevents re-entrancy and recursion.",
+      "check": "Look for hook implementations that resolve services, call factories or providers, or access stores, and for factory or creation code that calls a hook such as `GetSubjectId`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep raw subject id extraction from claims store-free, separate from the persistence-backed resolution of a caller to a stable server-owned principal id. Do not merge the two or make the extraction hook return the resolved id.",
+      "why": "The environment is a lightweight store-free value that cannot take a store manager, and the raw subject is the input to resolution. Returning the resolved id from extraction would be circular.",
+      "check": "Look for subject-extraction hooks that take store or persistence dependencies or return a resolved federated principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read the end-user subject through the tenant-aware context seam. Read a control-plane or admin actor's subject, such as in a management audit trail, with the default subject claim types through the app-level environment provider, never with the request tenant's setting.",
+      "why": "An admin actor is a self-issued control-plane identity, not the target tenant's federated user, so the target tenant's claim configuration must not apply to it.",
+      "check": "Look for audit or management code that calls the tenant-aware subject seam, or reads the request tenant's subject claim setting, to identify the admin actor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Handlers that build a principal must stamp the subject under the tenant's primary (first) configured subject claim type, so that writing and later reading the subject use the same claim.",
+      "why": "This keeps the write/read round-trip consistent with the tenant's subject claim configuration.",
+      "check": "Look for subject-building code (for example password grant handlers) that adds the subject under a hardcoded claim type such as `sub` instead of the tenant's first configured subject claim type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record every new public abstract or virtual member added to a shared abstraction in `PublicAPI.Unshipped.txt` as a deliberate public surface change.",
+      "why": "Each new hook is a public API addition and must be tracked so the surface can evolve compatibly.",
+      "check": "Look for new public abstract or virtual members in a diff that have no matching `PublicAPI.Unshipped.txt` entry.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.Unshipped.txt"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

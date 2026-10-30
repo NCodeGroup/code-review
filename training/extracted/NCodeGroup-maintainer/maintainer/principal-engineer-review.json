@@ -1,0 +1,107 @@
+{
+  "hash": "8c4d513f818a37a7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "NCodeGroup maintainer: principal-engineer-review",
+  "rules": [
+    {
+      "statement": "Replace hardcoded magic numbers and literal strings in logic with named constants or configuration options.",
+      "why": "The maintainer counts unexplained hardcoded values as 'duct tape' technical debt that makes code fragile and hard to understand.",
+      "check": "Look for unexplained numeric or string literals in conditionals, timeouts, sizes or limits that are not named constants or bound options.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the project's existing abstraction for a concern instead of bypassing it with direct calls to the underlying implementation.",
+      "why": "Bypassing established abstractions adds coupling and inconsistency, which builds up technical debt across incremental patches.",
+      "check": "Look for new code that reaches past an existing service, interface or helper (for example, it calls a lower-level API directly when the project already wraps it).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add special-case conditionals or workarounds that patch a symptom; fix the underlying logic or design instead.",
+      "why": "The maintainer's main concern is complex conditionals that look like temporary fixes and pile up as patch upon patch.",
+      "check": "Look for new if or switch branches keyed on specific values, flags or edge cases that exist only to work around a bug somewhere else.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Move logic that is repeated in the change into a shared reusable method or component instead of duplicating it.",
+      "why": "The review asks for repeated logic to be refactored, following the DRY principle, so the code stays maintainable.",
+      "check": "Look for blocks of code in the diff that are the same or nearly the same, or that copy logic already in the codebase.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Handle every failure path explicitly, including null inputs, timeouts and failed external or API calls.",
+      "why": "The maintainer requires production-ready code that covers all failure paths instead of relying on fragile assumptions.",
+      "check": "Look for external calls with no timeout or cancellation and no error handling, and for inputs dereferenced without null or validity checks.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate input and enforce authentication and authorization checks on every API endpoint.",
+      "why": "The review treats missing auth checks or input validation as a security risk in the API contract.",
+      "check": "Look for new or changed endpoints or handlers that accept request data without validating it, or that have no authorization requirement.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hardcode secrets or credentials in source code or committed configuration; load them from a secure configuration source.",
+      "why": "The review requires environment variables and secrets to be handled securely.",
+      "check": "Look for passwords, keys, connection strings with credentials, or tokens written as literals in code or appsettings files.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Avoid N+1 query patterns: do not issue a database query per item inside a loop when one batched query can fetch the data.",
+      "why": "The review asks whether queries are optimized and calls out N+1 problems explicitly.",
+      "check": "Look for database or repository calls inside loops over a result set, and for lazy-loaded navigation access inside iterations.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run multi-step data modifications that must succeed or fail together inside a single transaction.",
+      "why": "The review requires transaction integrity and data integrity to be kept.",
+      "check": "Look for several related writes or SaveChanges calls in one operation with no surrounding transaction.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

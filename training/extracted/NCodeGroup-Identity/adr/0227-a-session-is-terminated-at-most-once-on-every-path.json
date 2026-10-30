@@ -1,0 +1,67 @@
+{
+  "hash": "b11f50361c561c3d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0227",
+  "rules": [
+    {
+      "statement": "Every code path that terminates a named session must first claim it with an atomic revoke-once operation (revoking the session and every grant issued under its sid in one unit of work), and dispatch the termination notification only when that call's claim succeeded.",
+      "why": "Without a claim, a session that two paths end at the same time notifies its relying parties twice and is audited twice.",
+      "check": "Look for code that dispatches a session-terminated command/event or sends back-channel logout without first calling the revoke-once claim, or that dispatches even when the claim returned false.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A subject-wide session termination must revoke every grant of the subject (for example with a grant filter naming the subject) before it dispatches its termination notification, not only inside the dispatch handlers.",
+      "why": "If grants are revoked only in the dispatch, a dispatch that fails leaves the subject's grants active.",
+      "check": "Look for subject-wide revoke/logout code that dispatches the termination before, or instead of, revoking all grants of the subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A subject-wide termination dispatches exactly one subject-wide event (null session id, distinct clients of the sessions it claimed), not one per session, and dispatches it even when it claimed no session.",
+      "why": "A subject-wide back-channel logout token with sub already covers every session of the relying party, and skipping the dispatch would hide the termination and its audit record from the handlers that extend the seam.",
+      "check": "Look for loops that dispatch a termination per session in a subject-wide revoke, for subject-wide dispatches skipped when the claimed count is zero, or for participating clients taken from sessions this call did not claim.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Session revocation APIs must report what this call actually terminated (a bool for a single session, a count for bulk), and callers must report and audit those results rather than counting sessions before terminating them.",
+      "why": "A pre-count is wrong when a concurrent caller has already revoked some sessions, so responses and audits would overstate what the request did.",
+      "check": "Look for revoke methods that return void/ValueTask without a result, or for management endpoints and audit code that count sessions before revoking and report that count.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Endpoints such as RP-initiated logout and session eviction must terminate sessions through the session service's claiming termination path instead of dispatching termination commands directly, and must log or audit an eviction only for a session they claimed.",
+      "why": "Bypassing the shared claim lets concurrent paths terminate, log and notify for the same session more than once.",
+      "check": "Look for logout handlers or eviction logic that dispatch a termination command directly, or that log SessionEvicted-style events for sessions whose claim returned false.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

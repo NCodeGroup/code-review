@@ -1,0 +1,63 @@
+{
+  "hash": "3a101738aef717b5",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0022",
+  "rules": [
+    {
+      "statement": "A bulk destructive endpoint that is keyed by optional filters must require at least one filter, and must return 400 Bad Request when none is given rather than acting on the whole collection.",
+      "why": "Revoking or deleting a whole tenant's data in one request is too dangerous. Any tenant-wide purge should be a separate, explicit operation.",
+      "check": "Look for bulk DELETE or revoke handlers whose filters are all optional and that do not reject the request with 400 when every filter is missing, or a store method that accepts all-null filters and matches every row.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not apply updates with set-based EF Core `ExecuteUpdate`/`ExecuteDelete` to entities whose concurrency tokens are maintained by a SaveChanges interceptor; load the matching entities, change them, and call SaveChanges.",
+      "why": "Set-based updates bypass the change tracker and the concurrency-token interceptor, so the row tokens are not bumped and other running instances never see the change.",
+      "check": "Look for `ExecuteUpdate(Async)` or `ExecuteDelete(Async)` on entity sets that carry interceptor-managed concurrency tokens.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement a bulk soft-revoke so that it is idempotent: select only active (not yet revoked) rows, stamp their revocation timestamp, keep the rows for audit, and return the number of rows actually changed.",
+      "why": "This keeps audit history, means repeated calls do not re-touch already-revoked items, and tells the operator how many items were affected.",
+      "check": "Look for bulk revoke code that physically deletes rows, overwrites the timestamp on rows already revoked, counts rows already revoked, or returns no affected count.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose filtering on collection endpoints as specific, named parameters backed by explicit store methods and indexed columns, and keep it within keyset pagination; do not add a general query protocol such as OData or JSON:API, and do not expose `IQueryable`.",
+      "why": "A general query language leaks `IQueryable`, gives attackers a denial-of-service and complexity surface over a security store, and becomes a heavyweight versioned contract.",
+      "check": "Look for OData, JSON:API or free-form filter and sort expressions on collection endpoints, `IQueryable` returned from stores, or filters on columns that have no index.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a bulk operation on a tenant-scoped resource use the same tenant-scope filter and the same authorization operation (for example Delete for revoke, List for listing) as the single-item operations on that resource.",
+      "why": "This keeps tenant isolation and authorization consistent, so a tenant admin cannot reach another tenant's data through a bulk path.",
+      "check": "Look for new bulk or filtered endpoints that are not registered under the tenant-scope endpoint filter, or that authorize with a different operation or scope than the matching single-item endpoint.",
+      "scope": "domain",
+      "domain": "multi-tenant",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

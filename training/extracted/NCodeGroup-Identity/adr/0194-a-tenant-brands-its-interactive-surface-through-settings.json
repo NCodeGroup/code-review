@@ -1,0 +1,54 @@
+{
+  "hash": "8c7dd241b01eb828",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0194",
+  "rules": [
+    {
+      "statement": "Validate a configurable setting's value when it is set, against the exact shape its consumer reads, so that a stored value can always be used and never fails at run time.",
+      "why": "A value the consumer can't read, such as a CSS color the theme engine can't parse, would break the surface at run time instead of being rejected when it is set.",
+      "check": "Look for new settings or options whose values are stored without validation, or are validated more loosely than the code that reads them. Examples: free-form CSS colors, unbounded strings, arbitrary URIs.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a tenant-supplied URI that an end-user's browser fetches from a TLS-served page (such as a logo) to be an absolute `https` URI, and reject relative or non-https values when the setting is saved.",
+      "why": "The browser fetches the resource from a page served over TLS, so a non-https or relative value would not load correctly or securely.",
+      "check": "Look for validation of tenant or client asset URIs (logo, image and similar) that accepts relative URIs, `http`, or other schemes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Restrict tenant-configurable color values to hexadecimal `#rgb` or `#rrggbb` notation, and reject named or functional CSS color notations.",
+      "why": "Hexadecimal is the one notation every theme engine reads the same way. Theme engines disagree on named and functional notations.",
+      "check": "Look for color setting validators that accept named colors, rgb()/hsl() or other CSS notations, or that skip validation.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound display-name style settings to a maximum length, and reject control characters in them.",
+      "why": "A stored value must always render. The source limits display names to 100 characters with no control characters.",
+      "check": "Look for display-name or title settings that are validated without a length limit or without rejecting control characters.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

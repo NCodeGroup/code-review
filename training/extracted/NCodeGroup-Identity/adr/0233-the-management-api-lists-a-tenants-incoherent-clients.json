@@ -1,0 +1,74 @@
+{
+  "hash": "fda00e67822c6496",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0233",
+  "rules": [
+    {
+      "statement": "When a list endpoint filters by a predicate that has to be computed in memory and can't be pushed to the database, make each request check one bounded page of the underlying rows and return a continuation token, even when the filtered page comes back empty. Never scan the whole set in one request.",
+      "why": "If a request scanned every row, its cost would grow with the size of the tenant. Callers page until the continuation token is null.",
+      "check": "Look for a management or list handler that loads every row of a tenant or collection, filters them in memory and returns everything in one response. Also look for one that stops returning a continuation token as soon as a filtered page is empty.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a literal sub-route under a resource collection, such as `/items/report`, when it collides with the collection's `/{id}` route. Put the new route at a separate path instead, for example on the parent scope.",
+      "why": "A literal segment under the collection collides with `/{id}`, so the request would be answered as a lookup of a resource with that identifier.",
+      "check": "Look for newly mapped routes like `/clients/something` next to an existing `/clients/{clientId}` route.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a failure to read or parse a stored document in its own error field, such as a message taken from the `JsonException`. Never encode it as a domain violation or result entry with empty or placeholder names.",
+      "why": "A violation names a relation that a rule actually checked. A caller that reads the names of a fake violation would find none.",
+      "check": "Look for code that catches a parse or deserialization exception and turns it into a violation, finding or result object with empty or placeholder fields, instead of setting a dedicated error property.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a background process logs a computed condition and an API also reports it, have both call the same shared component that computes the condition, rather than each reimplementing the check.",
+      "why": "Sharing one component means the log and the API can't disagree about which items meet the condition.",
+      "check": "Look for a hosted service or handler and an API endpoint that each have their own copy of the same evaluation logic, instead of calling one shared service.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a report of a derived state, such as which entities break current rules, at request time. Don't store snapshots that go stale after the next write.",
+      "why": "Stored findings become stale after any write to the entities or settings involved.",
+      "check": "Look for new tables, columns or caches that persist derived validation or coherence results which a later write could invalidate.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read-only reports over clients or other credential-bearing entities should read through an untracked projection that leaves out secrets, not load the full tracked entity.",
+      "why": "The report only needs the settings. Projecting them avoids loading secrets and avoids change-tracking overhead.",
+      "check": "Look for report or list code that loads full client entities, including their secrets, or tracked entities when it only reads settings.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

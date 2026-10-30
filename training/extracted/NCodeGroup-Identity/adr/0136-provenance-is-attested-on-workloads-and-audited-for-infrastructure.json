@@ -1,0 +1,97 @@
+{
+  "hash": "29c43bd537cfdbe2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0136",
+  "rules": [
+    {
+      "statement": "Do not put commit SHAs, pipeline run IDs, or timestamps in cloud resource tags; tag resources only with static ownership values such as `source` (repository and root) and `managed_by`.",
+      "why": "Tags that change on every apply rewrite every resource, keep plans from ever showing \"no changes\", and hide real drift from scheduled drift detection. A SHA on a resource the apply didn't touch also says nothing about the code that defines it.",
+      "check": "Look for tag maps in OpenTofu/Terraform code that use values like commit, sha, run_id, run_attempt, github.sha, timestamp(), or other values that change per run.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.tfvars"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build every container image, Helm chart, and published module artifact in GitHub Actions with a build-provenance attestation and a keyless Sigstore signature, and reference deployed artifacts by digest, not by mutable tag.",
+      "why": "Provenance that travels with the artifact can be checked at deployment time and never causes drift. Trusting by convention that `main` is what runs gives no verification.",
+      "check": "Look for build/publish workflows that are missing attest-build-provenance or cosign keyless signing steps, and for deployment manifests or Flux sources that point at images or charts by tag with no @sha256 digest.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure Flux to verify an artifact's Sigstore signature against the identity of the workflow that built it before applying a release, and admit only signed images from the platform registry into the cluster.",
+      "why": "Without verification at the point of deployment, nothing proves that the running workload came from the reviewed code.",
+      "check": "Look for Flux OCIRepository/HelmRepository sources that have no `verify` block with cosign keyless identity matching, and for admission policies that allow unsigned images or images from other registries.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make CI assume AWS roles with the session name `gh-<run_id>-<run_attempt>`, and have the role trust policy enforce that form with an `sts:RoleSessionName` condition.",
+      "why": "CloudTrail then attributes every API call to the exact workflow run, and through it to the commit and approver. CI can't get credentials without naming its run.",
+      "check": "Look for configure-aws-credentials steps that are missing `role-session-name: gh-${{ github.run_id }}-${{ github.run_attempt }}`, and for GitHub OIDC role trust policies that have no `sts:RoleSessionName` condition.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each CI scope its own named Cloudflare API token instead of sharing one token across pipelines.",
+      "why": "Cloudflare's audit log can then attribute each change to a specific pipeline scope.",
+      "check": "Look for workflows or jobs for different scopes that reuse the same Cloudflare token secret.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run every infrastructure apply job in a GitHub environment.",
+      "why": "GitHub then records a deployment with the commit, run, and approval, which answers \"which commit is live in production\".",
+      "check": "Look for workflow jobs that run `tofu apply`/`terraform apply` without an `environment:` key.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add OpenTofu-managed \"last deployed\" records (for example an SSM parameter holding the current commit) to track which commit is deployed.",
+      "why": "Such a record shows a diff on every apply, which blinds drift detection. GitHub deployments already answer the question.",
+      "check": "Look for managed resources whose value is set from the commit SHA or run metadata.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

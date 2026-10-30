@@ -1,0 +1,103 @@
+{
+  "hash": "36cb45a02112fad1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0102",
+  "rules": [
+    {
+      "statement": "When authenticating a client by a JWT `client_assertion`, require `iss` and `sub` to be present and equal, use the unverified `sub` only to look up the client's registered keys, and trust no other claim until the signature verifies against those keys.",
+      "why": "OpenID Connect Core §9 requires iss == sub == client_id, and the unverified payload must not be trusted beyond locating the verification keys.",
+      "check": "Look for client-assertion code that reads claims other than `sub` before signature verification, skips the iss/sub equality check, or accepts a missing iss or sub.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Identify the client of a JWT-bearer client authentication from the assertion's `sub`, and don't require a separate `client_id` form parameter.",
+      "why": "FAPI `private_key_jwt` clients send only the assertion, and §9 already pins sub to the client_id.",
+      "check": "Look for JWT-bearer client authentication that rejects requests without a `client_id` parameter or that resolves the client from `client_id` instead of the assertion.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept a client assertion's `aud` when it equals either the issuer identifier or the URL of the endpoint receiving it, and reject any other audience.",
+      "why": "FAPI 2.0 §5.3.2.1 requires the issuer and OIDC Core §9 permits the token endpoint URL, so accepting both lets standard and FAPI clients interoperate.",
+      "check": "Look for audience validation of client assertions that accepts only one of the two values, accepts arbitrary audiences, or skips the check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require `exp` on client assertions, and reject replay by recording each `jti` as single-use in shared expiring state, written atomically and keyed by tenant, client_id and jti.",
+      "why": "RFC 7523 §3 requires single-use assertions. A non-atomic or per-instance record lets the same assertion be replayed across concurrent requests or replicas.",
+      "check": "Look for client-assertion validation that accepts a missing `exp` or `jti`, does a separate check and then a write instead of an atomic add-if-absent, keys replay entries without the tenant or client, or keeps them only in process memory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For `private_key_jwt`, reject assertions whose `alg` is `none`, symmetric (HMAC) or unknown. For `client_secret_jwt`, accept only HMAC algorithms. Classify the algorithm by its registered key type rather than by matching strings.",
+      "why": "Each method must only accept its own key family, so that asymmetric authentication can't be downgraded to a shared secret or to an unsigned token.",
+      "check": "Look for assertion validation that lets `alg=none` or an unrecognized alg through, lets an HMAC alg satisfy `private_key_jwt`, or decides the key family by checking alg name prefixes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When `token_endpoint_auth_signing_alg_values_supported` is configured, reject client assertions whose `alg` is not in that list.",
+      "why": "The algorithms advertised in discovery must match the algorithms actually accepted.",
+      "check": "Look for client-assertion validation that ignores the configured supported signing algorithm list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement each client authentication method as its own handler that advertises exactly one method and defers on requests it doesn't own, and derive `token_endpoint_auth_methods_supported` from the registered handlers instead of a hand-maintained list.",
+      "why": "Deriving discovery from the handlers keeps the advertised methods truthful, and each request gets handled exactly once.",
+      "check": "Look for a single handler that claims more than one auth method, discovery metadata that lists auth methods by hand, or a handler that returns an error for a request belonging to a sibling handler's method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let `client_secret_jwt` or other symmetric client authentication satisfy a FAPI profile; FAPI deployments must require `private_key_jwt` or mutual TLS.",
+      "why": "The FAPI security profiles require strong (asymmetric or mTLS) client authentication and exclude symmetric methods.",
+      "check": "Look for FAPI profile configuration or checks that list `client_secret_jwt`, `client_secret_basic` or `client_secret_post` as allowed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

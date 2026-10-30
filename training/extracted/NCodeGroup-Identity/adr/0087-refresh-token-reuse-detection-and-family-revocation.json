@@ -1,0 +1,90 @@
+{
+  "hash": "ee001737ce543ce2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0087",
+  "rules": [
+    {
+      "statement": "When a rotated refresh token is presented again (it is already revoked, or a concurrent request already spent it), reject and audit it, then revoke every active refresh token in its rotation family instead of only rejecting the replayed one.",
+      "why": "A replayed rotated token is a clear sign the token leaked, and RFC 9700 §4.14.2 says to revoke all refresh tokens for that grant. Revoking only the replayed token leaves the attacker's current token usable.",
+      "check": "Look at refresh-token grant handling that finds a revoked, spent or lost-race token. Flag it if it only returns an error or writes an audit entry without also revoking the whole family by lineage, unless an explicit audit-only policy is set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each fresh refresh-token issuance a new server-generated opaque lineage (family) id, and make every rotated replacement inherit its predecessor's lineage id.",
+      "why": "Family revocation needs a way to identify every descendant of one authorization grant. A rotation that starts a new lineage breaks the chain, and reusing a lineage on a fresh issuance merges unrelated families.",
+      "check": "Check token issuance paths. Grant types such as authorization code, password, device code and CIBA should create a new lineage id. Refresh rotation should copy the old grant's lineage id into the new token request. Flag rotation code that drops the lineage id or makes up a new one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Scope refresh-token reuse revocation to the compromised rotation family (lineage id), not to coarser groupings such as subject plus client or session id.",
+      "why": "A subject can hold several independent families at one client (for example several devices with no server session), and many families have no session. Revoking by subject plus client signs the victim out everywhere, and revoking by session misses families that have no session.",
+      "check": "Flag reuse-detection code that revokes by SubjectId and ClientId, or by SessionId, instead of by the family or lineage identifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store metadata that queries filter or bulk-update on (grouping ids such as subject, session or lineage) as a dedicated indexed column on the persisted entity, not only inside a serialized JSON payload.",
+      "why": "Set-based `WHERE` queries need a column that can be queried and indexed. Payload JSON can't be queried portably and can't be indexed.",
+      "check": "Flag new identifiers that are used in lookups or revocation filters but are stored only in a JSON payload, or columns added without an index that covers the query (including the tenant column where data is tenant-scoped).",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement bulk soft-revocation by loading the matching rows and changing them through the change tracker, not with a set-based `ExecuteUpdate`, when a SaveChanges interceptor manages concurrency tokens.",
+      "why": "`ExecuteUpdate` skips the interceptor, so changed rows would not get their concurrency tokens stamped.",
+      "check": "Flag `ExecuteUpdate`/`ExecuteUpdateAsync` used to revoke or change entities whose concurrency tokens an interceptor maintains.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make bulk revocation idempotent by filtering to active rows only, so rows that are already revoked are left untouched.",
+      "why": "Touching already-revoked rows would rewrite their revocation data and bump concurrency tokens on rows that did not change.",
+      "check": "Check that bulk revoke queries filter on not-yet-revoked rows and don't overwrite existing revocation timestamps.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default security-behaviour settings to the secure option (for example revoke the family on refresh-token reuse), and keep the weaker behaviour available only as an explicit opt-out.",
+      "why": "The project's posture is secure by default. An insecure default keeps the risk in place (a detected compromise leaves the family usable), and the secure default costs nothing until the attack actually happens.",
+      "check": "Flag new or changed security policy options whose default value is the less secure choice, such as audit-only or disabled protection.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

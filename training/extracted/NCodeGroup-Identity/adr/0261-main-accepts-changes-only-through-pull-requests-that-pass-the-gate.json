@@ -1,0 +1,19 @@
+{
+  "hash": "104ea42e051c966e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0261",
+  "rules": [
+    {
+      "statement": "A GitHub Actions workflow whose job is a required status check must not use `paths`/`paths-ignore` filters on its `pull_request` trigger; it runs on every pull request and decides inside a first job, from the changed files, whether the gated job runs, so that a skipped job still reports success.",
+      "why": "A path-filtered workflow that does not run leaves its required check pending forever, which blocks the merge.",
+      "check": "Look for `paths:` or `paths-ignore:` under `on.pull_request` in a workflow that defines a job used as a required check, or a new gating workflow that has no change-detection job and so cannot report on every pull request. A path filter on `push` to main is fine.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

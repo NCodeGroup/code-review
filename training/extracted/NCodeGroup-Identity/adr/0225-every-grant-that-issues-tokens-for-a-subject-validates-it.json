@@ -1,0 +1,113 @@
+{
+  "hash": "982ef21759483d82",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0225",
+  "rules": [
+    {
+      "statement": "Every token grant that issues tokens for an end user (including device-code, CIBA and token exchange) must validate that subject's standing (account disabled/deleted, session, allowed identity providers) before it issues tokens, the same way every other grant does.",
+      "why": "Grants that skipped subject validation let a disabled or deleted account keep redeeming approved device codes or auth_req_ids and keep exchanging tokens.",
+      "check": "Look for a new or changed grant handler that issues tokens for a subject without calling the shared subject-validation step before issuing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the token endpoint refuses a subject, return `access_denied` with status 400. When an approved grant payload has no subject authentication, return `invalid_grant`.",
+      "why": "This keeps refusals the same across grants, and `access_denied` ends the client's polling.",
+      "check": "Look at the error codes a grant returns when subject validation fails or when the stored subject authentication is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run every validation check before consuming a one-time stored credential, so a refused request leaves the credential unspent. The only exception is a credential whose replay is itself a security signal, such as an authorization code.",
+      "why": "If the credential is spent first, a refused request uses up a credential that should stay valid until it expires.",
+      "check": "Look for a consume-once or delete call on a device code, auth_req_id or similar credential that comes before the subject, client or status checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let only the client a stored grant credential (device code, auth_req_id) was issued to redeem it. Check the client right after the lookup, before the expiry and status checks and before any poll is recorded, and return `invalid_grant` on a mismatch.",
+      "why": "RFC 8628 §3.4 and CIBA Core §11 bind the credential to its client. Before this fix, any client that presented the credential could redeem it.",
+      "check": "Look for a grant handler that looks up a stored credential and does not compare its client ID with the authenticated client, or does so only after the expiry/status checks or after the poll is recorded.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An approval step that can issue tokens directly (such as CIBA push delivery) must validate the approving subject before it records the approval. If the subject is refused, deny the request and report failure instead of recording the approval.",
+      "why": "Push delivery issues tokens at the approval, and there is no later token request to catch a refused subject. Validating after recording would leave an approved request and never record the denial.",
+      "check": "Look for approval code that records the approval or issues tokens before subject validation, or that does not deny the request when validation fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint authenticates a user from a cookie, it must also validate the cookie's server-side session (its `sid`). If the session is invalid, treat the user as unauthenticated and challenge for a new login.",
+      "why": "Without the session check, the cookie of a terminated session could still approve requests.",
+      "check": "Look for cookie-based authentication of a subject that accepts the cookie principal without checking the session store for its sid.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a validation runs outside a protocol request, pass `null` for the request (making the parameter nullable) and skip the request-specific checks. Do not build an empty or fake request object.",
+      "why": "A fake request pretends there is a request when there isn't one; `null` says plainly that there is none.",
+      "check": "Look for code that creates an empty or dummy protocol request just to call a validator from outside a request.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In token exchange, validate the subject the tokens are issued for, record the tenant it was validated under in its authentication properties, and do not run end-user subject validation on the actor.",
+      "why": "The actor appears only in `act`, is not the subject the tokens are issued for, and its token was already validated. An ID token carries no `tid`, so the tenant has to be recorded explicitly.",
+      "check": "Look for token-exchange code that drops the subject's tenant, or that runs subject validation on the actor token's subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a validation step that several handlers share in one shared helper, and have every handler call it instead of keeping its own private copy.",
+      "why": "Private copies drift apart. The ADR replaced the copies in several grants with a single helper.",
+      "check": "Look for a newly added private method that duplicates an existing shared validation helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

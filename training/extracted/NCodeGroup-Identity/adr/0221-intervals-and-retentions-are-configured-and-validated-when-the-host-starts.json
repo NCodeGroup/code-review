@@ -1,0 +1,96 @@
+{
+  "hash": "e757ffb93bcd89ec",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0221",
+  "rules": [
+    {
+      "statement": "Validate every options value that a timer, delay, lease or cache lifetime runs on as a valid timer period (NCode.Time.TimerPeriod.IsValid, 1 ms to 4,294,967,294 ms), not just as non-zero.",
+      "why": "Zero, negative or over-range periods stop polls, break leases, fail cache writes, or fault a hosted service after the host has started.",
+      "check": "A new or changed TimeSpan option used as an interval, period, lease duration or cache lifetime with no validation, or with validation that doesn't use TimerPeriod's range.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate timer-period bounds in code with NCode.Time.TimerPeriod, not with DataAnnotations [Range] attributes on the options.",
+      "why": "The bounds come from how .NET timers behave at runtime, and TimerPeriod defines them once in code.",
+      "check": "A [Range] attribute on a TimeSpan interval or lifetime option, or hard-coded min/max timer bounds.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject negative retention options and accept zero, where zero means a row is removed as soon as it has ended.",
+      "why": "A negative retention makes no sense, and zero is a legitimate setting for immediate removal.",
+      "check": "A retention option validator that allows negative values or rejects zero.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check option values in an IValidateOptions<T> registered with ValidateOnStart, not inside the hosted service that uses them.",
+      "why": "If the check runs in the hosted service, the failure happens after the host is up and serving traffic, and it faults only one background service while the rest of the host keeps running.",
+      "check": "Options validation added inside a BackgroundService/IHostedService, or a validator registered without ValidateOnStart.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give IValidateOptions<T> implementations no constructor dependencies, and register each one next to the services that read its options.",
+      "why": "A validator that reads options deadlocks the host while it starts.",
+      "check": "A validator class whose constructor takes parameters, especially IOptions/IOptionsMonitor or other services.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make options validation failures name each failing option along with its configuration key and the actual value, and list every failure instead of stopping at the first one.",
+      "why": "Operators need to find and fix every misconfigured key from a single startup failure.",
+      "check": "A validator that returns on the first failure, or messages that leave out the option name, its configuration key, or the bad value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind operator-tunable options from a configuration subsection with BindStrictly and ValidateOnStart, and expose the subsection name as a SectionName constant on the options type.",
+      "why": "Without binding, operators can't set the values, and strict binding stops the host when a key is misspelled.",
+      "check": "A new options type that isn't bound from configuration, is bound without BindStrictly or ValidateOnStart, or has no SectionName constant.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put configuration for the OpenID server's options under subsections of the OpenId section, not in new top-level sections.",
+      "why": "These options configure the OpenID server, so they belong in its section next to the existing subsections.",
+      "check": "An OpenID server options type bound from a top-level configuration section.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

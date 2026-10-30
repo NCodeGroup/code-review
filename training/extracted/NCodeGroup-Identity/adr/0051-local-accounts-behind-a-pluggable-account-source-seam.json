@@ -1,0 +1,121 @@
+{
+  "hash": "22dfcf170438eb21",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0051",
+  "rules": [
+    {
+      "statement": "Pass passwords and other raw secret credentials across APIs as `ReadOnlyMemory<byte>` (or `ReadOnlySpan<byte>` in synchronous code), never as a managed `string`.",
+      "why": "The caller then owns a buffer it can zero, and the raw secret does not stay on the GC heap. A string cannot be cleared.",
+      "check": "Look for new method parameters, properties or return values that carry a raw password or secret as `string`. A stored one-way hash may still be a string.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a raw secret into bytes, rent a pinned, zeroed-on-return buffer from `NCode.Buffers` `SecureMemoryPool<byte>` and encode with `SecureEncoding.UTF8`, not with `Encoding.UTF8.GetBytes` into an ordinary array.",
+      "why": "This reuses the secure-memory foundation, so the secret's bytes are pinned and wiped after use.",
+      "check": "Look for `Encoding.UTF8.GetBytes(password)`, `new byte[]` or `ArrayPool` used to hold secret bytes.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare secrets and derived hashes with `CryptographicOperations.FixedTimeEquals`, and clear working buffers that held secret material with `CryptographicOperations.ZeroMemory`.",
+      "why": "A constant-time comparison prevents timing attacks, and zeroing keeps secret material from staying in memory.",
+      "check": "Look for `SequenceEqual`, `==` or loops that compare hashes or secrets, and for temporary secret buffers that are never zeroed.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep abstraction packages on BCL types such as `ReadOnlyMemory<byte>`, and add dependencies like `NCode.Buffers` only to the implementation packages.",
+      "why": "Abstractions stay free of dependencies. Only the packages that implement the behavior need the helper library.",
+      "check": "Look for a package reference or `NCode.Buffers` type added to an abstractions project or used in its public signatures.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the absence of an optional service must behave differently from that service reporting a failure, inject it as a nullable dependency that is absent by default, not as a no-op default that returns null or 'not found'.",
+      "why": "A no-op default would make 'feature not configured' look the same as 'operation rejected', and the two need different outcomes.",
+      "check": "Look for new no-op or null-returning default registrations of an optional seam where the caller needs to tell 'not configured' apart from 'rejected'.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no credential-validating service is configured, the resource-owner password grant returns `unsupported_grant_type`. When a configured service rejects the credential, it returns `invalid_grant`.",
+      "why": "Without the service, the server does not offer the grant. A bad credential is a different error.",
+      "check": "Look for password-grant code that returns `invalid_grant` when no validator is registered, or `unsupported_grant_type` for a rejected credential.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model persisted data contracts as concrete DTO records, and put backend differences behind a separate provider or store interface, not by turning the record into an interface.",
+      "why": "Every data contract is a persistence boundary DTO. What differs between backends is the provider, not the row.",
+      "check": "Look for new interfaces standing in for persisted record or DTO shapes so that each backend can implement the row.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a pluggable seam interface limited to its core operations, and add extra features (lockout, two-factor, reset) as separate optional capability interfaces that consumers probe for, not as new members on the core interface.",
+      "why": "Segregated store interfaces, as in ASP.NET Core Identity, let capabilities be added later without reworking the surface that has already shipped.",
+      "check": "Look for new optional-feature members added to an existing core seam interface instead of to a separate capability interface.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hash passwords through an in-house hasher abstraction that takes the password as bytes and returns a self-describing, versioned hash string that supports rehash-on-verify. Do not couple directly to one specific hasher implementation.",
+      "why": "Hosts can swap the backend, such as ASP.NET Core Identity's `PasswordHasher<TUser>`, and versioned parameters let old hashes be upgraded when they are verified.",
+      "check": "Look for direct calls to `PasswordHasher<TUser>` or hand-rolled hashing in consuming code, and for hash formats that store no version or parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep core packages free of dependencies on any concrete store such as EF Core or ASP.NET Core Identity, and provide store implementations as opt-in satellite packages that depend only on abstractions.",
+      "why": "End-user storage is the host's concern. A host must be able to plug in its own store without the core depending on one.",
+      "check": "Look for a core or abstractions project that gains a reference to EF Core, `Microsoft.AspNetCore.Identity` or another concrete store package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "hash": "c06262a55f556aa4",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0132",
+  "rules": [
+    {
+      "statement": "Authenticate CI workflows to cloud providers with GitHub OIDC role assumption rather than long-lived access keys stored as repository secrets, and trust the write/apply role only from a protected deployment environment while plan jobs use a separate read-only role.",
+      "why": "GitHub must hold no long-lived cloud credentials, so compromising a workflow outside the protected environment yields at most read-only access.",
+      "check": "Look for AWS access keys or similar static cloud credentials in workflow secrets/env, missing `id-token: write` with role assumption, apply roles whose trust policy is not restricted to the protected environment, or plan jobs using the write role.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never run untrusted pull-request code with credentials: do not expose secrets to fork pull requests and do not use `pull_request_target` with a checkout of the pull-request head.",
+      "why": "A `tofu plan` from untrusted code can exfiltrate credentials through providers and data sources.",
+      "check": "Flag workflows triggered by `pull_request_target` that check out `github.event.pull_request.head` refs, or jobs that pass secrets/cloud roles to runs triggered by fork pull requests.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never post OpenTofu/Terraform plans to pull requests or upload them unencrypted as CI artifacts or logs.",
+      "why": "Plan files contain secrets in plain text, and CI logs and artifacts on a public repository are public.",
+      "check": "Look for steps that comment plan output on PRs, `upload-artifact` of plan files without encryption, or `tofu show` of plans printed to logs.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark secret-bearing OpenTofu variables and outputs `sensitive = true`, and enable OpenTofu state and plan encryption.",
+      "why": "Values that are not marked sensitive, or state and plans that are not encrypted, end up published in logs or stored in readable form.",
+      "check": "Flag variables/outputs carrying tokens, keys or passwords without `sensitive = true`, and backend/terraform blocks lacking an `encryption` configuration covering both state and plan.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep vendor API tokens and operator-specific values (admin IP allowlists, contact details) in a secret store such as SSM Parameter Store SecureString, read at run time, never hard-coded in infrastructure code.",
+      "why": "Public infrastructure code must not reveal credentials or operator-specific details.",
+      "check": "Flag literal tokens, admin IP/CIDR allowlists, or personal contact values in .tf/.tfvars or workflow files instead of secret-store lookups.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tfvars",
+        "**/*.tofu",
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configuration that deploys the platform must consume reusable infrastructure modules and stacks only by a released tag, not by a branch, local path, or untagged commit.",
+      "why": "The platform runs the same released artifacts that are shipped.",
+      "check": "Look for module `source` references in live/cluster configuration that point to `main`, a branch, a relative path to the components, or no `ref` tag.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/live/**",
+        "**/clusters/**",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give state-storage S3 buckets versioning, default encryption, a public-access block, and a TLS-only bucket policy, and use the S3 backend with native lockfile locking (`use_lockfile = true`).",
+      "why": "State needs locking and history and must not be exposed.",
+      "check": "Flag state bucket definitions missing versioning, server-side encryption, public access block, or an `aws:SecureTransport` deny policy, and S3 backends without `use_lockfile`.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt database backups on the client side before upload, and write them with write-only credentials to a separate bucket that has Object Lock in compliance mode.",
+      "why": "Backups contain signing keys and the Data Protection key ring, must be immutable, and must survive losing the database vendor.",
+      "check": "Flag backup jobs that upload unencrypted dumps, use credentials with read/delete permissions, or target buckets without Object Lock in COMPLIANCE mode.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        ".github/workflows/**/*.yml",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not create IAM users or static access keys for automation; automation must use assumable roles with short-lived credentials.",
+      "why": "The dedicated cloud account permits no IAM users for automation, so no long-lived credentials exist.",
+      "check": "Flag `aws_iam_user` or `aws_iam_access_key` resources intended for CI or automation.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin the OpenTofu version in the infrastructure repository and in CI.",
+      "why": "Features such as `use_lockfile` and plan encryption need a recent OpenTofu, so the version must be pinned.",
+      "check": "Flag missing or loosened `required_version` constraints, or workflow setup steps installing an unpinned/latest OpenTofu.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

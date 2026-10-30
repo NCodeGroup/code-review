@@ -1,0 +1,128 @@
+{
+  "hash": "fd282c7ea1dc68e5",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp.instructions.md",
+  "rules": [
+    {
+      "statement": "Place each test file in the same relative folder as the code under test, and give it the production namespace with a `.Tests` suffix.",
+      "why": "Test files mirror the folder structure and namespace of the code under test.",
+      "check": "Look for new test files whose folder path or namespace does not match the production type's folder and namespace plus `.Tests`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name test methods `Method_State_Expected`.",
+      "why": "This is the test naming convention.",
+      "check": "Look for test methods that do not follow the three-part Method_State_Expected pattern.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write `// Arrange`, `// Act` or `// Assert` comments in tests; separate the sections with blank lines.",
+      "why": "The convention uses blank lines, not comments, to separate test sections.",
+      "check": "Look for Arrange/Act/Assert comments in test methods.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Group tests in a test class with one `#region` per member under test, named `Constructor Tests`, `{MethodName} Tests`, `{PropertyName} Property Tests` or `Generic Type Tests`.",
+      "why": "Consistent regions make it easy to find the tests for a given member.",
+      "check": "Look for new tests outside a region, or regions whose names don't follow these patterns.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `Assert.Empty` for an expected count of 0 and `Assert.Single` for 1, not `Assert.Equal(0/1, collection.Count)`.",
+      "why": "The dedicated xUnit assertions say what is expected and give clearer failure messages.",
+      "check": "Look for `Assert.Equal(0, x.Count)` or `Assert.Equal(1, x.Count)` (or `.Length`/`Count()`).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End every Moq setup with `.Verifiable()`, and name the lambda parameter `x` in `Setup` and `Verify`.",
+      "why": "This keeps mock setups verifiable and consistent across tests.",
+      "check": "Look for `.Setup(...)` chains without `.Verifiable()`, or Setup/Verify lambdas with a parameter name other than `x`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a project whose internal types are tested, add `[assembly: InternalsVisibleTo(\"DynamicProxyGenAssembly2\")]` along with an `InternalsVisibleTo` entry that matches the real test assembly name.",
+      "why": "`DynamicProxyGenAssembly2` lets Moq proxy internal types, and the test assembly needs access to internals.",
+      "check": "Look for tests of internal types where the production project lacks either attribute, or where the test assembly name in the attribute is wrong.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use collection expressions (`[1, 2, 3]`, `[]`) instead of array and collection initializers, and add a cast such as `(byte[])[...]` where type inference needs it.",
+      "why": "Collection expressions are the house style, and the IDE warnings about them are treated as errors.",
+      "check": "Look for `new[] { ... }`, `new byte[] { ... }`, `new List<T> { ... }`, `Array.Empty<T>()` or `new T[0]` where a collection expression would work.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare local literal values with `const`, not `var`.",
+      "why": "Compile-time constants should be `const`, and the analyzer warnings are treated as errors.",
+      "check": "Look for `var x = \"literal\";` or `var n = 5;` locals that are never reassigned and could be `const`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `u8` string literals for byte arrays that hold valid UTF-8 text, and keep explicit byte arrays for invalid UTF-8 or error-condition tests.",
+      "why": "`u8` literals are clearer and less error-prone than hand-written or encoded byte arrays for valid text.",
+      "check": "Look for `Encoding.UTF8.GetBytes(\"literal\")` or hand-written byte arrays that spell valid UTF-8 text.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read every property of a record struct, and remove redundant type specifications, in code you change.",
+      "why": "IDE and analyzer warnings must be fixed because the build treats warnings as errors.",
+      "check": "Look for record struct properties that are never read, and for redundant explicit type arguments or declarations.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

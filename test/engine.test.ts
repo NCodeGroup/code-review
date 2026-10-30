@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { batchRules, budgetDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
+import { budgetDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
-import { changedLines, conventionsPrompt, selectionFloor } from '../src/review.ts';
+import { changedLines, selectionFloor } from '../src/review.ts';
 
 test('globToRegExp matches applyTo patterns the way Copilot does', () => {
   assert.ok(globToRegExp('src/**/*.cs').test('src/NCode.Identity.Jwk/JsonWebKey.cs'));
@@ -39,30 +39,6 @@ test('readReviewRules picks instruction files whose applyTo matches a changed fi
   assert.deepEqual(rules.map((r) => r.name), ['prod.instructions.md', 'all.instructions.md']);
   assert.match(rules[0]!.text, /production rule/);
   assert.deepEqual(readReviewRules(base, ['docs/x.md']).map((r) => r.name), ['all.instructions.md']);
-});
-
-test('batchRules packs rule files into batches under the budget', () => {
-  const rule = (name: string, size: number) => ({ name, globs: ['**'], text: name[0]!.repeat(size) });
-  const batches = batchRules([rule('a', 130_000), rule('b', 40_000), rule('c', 5_000), rule('d', 200_000)], 140_000);
-  assert.equal(batches.length, 3);
-  assert.ok(batches.every((b) => b.length <= 140_000));
-  assert.match(batches[1]!, /^b+\n\nc+$/);
-  assert.match(batches[2]!, /rules cut to fit/);
-});
-
-test('conventionsPrompt cuts the diff so the prompt stays under Haiku 5.5\'s long-prompt price', () => {
-  const gathered = {
-    pullRequest: { number: 1, title: 't', author: 'a' },
-    files: [],
-    commits: [],
-    conventions: 'c'.repeat(40_000),
-    diff: 'd'.repeat(240_000),
-  } as unknown as Gathered;
-  const prompt = conventionsPrompt(gathered, '/checkout', 'charter', 'r'.repeat(140_000));
-  assert.ok(prompt.length <= 180_000, `prompt is ${prompt.length} characters`);
-  assert.match(prompt, /diff cut to fit/);
-  assert.match(prompt, /r{1000}/);
-  assert.doesNotMatch(prompt, /c{1000}/);
 });
 
 const diff = [
@@ -195,6 +171,8 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   const finding = { file: 'src/A.cs', line: 3, title: 'Leaks | a pipe', problem: '', consequence: '', fix: '', evidence: '', confidence: 0.8, reviewers: ['tests'] };
   const body = summaryComment(
     {
+      summary: 'Adds a cache.\nIt works.',
+      verdict: 'comment',
       findings: [{ ...finding, severity: 'should-fix', id: 'F1' }],
       reviewers: [
         { name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' },
@@ -212,6 +190,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
     'https://help',
   );
   assert.ok(body.startsWith(summaryMarker));
+  assert.ok(body.includes('**Verdict: 💬 Comment** — Adds a cache. It works.'));
   assert.match(body, /\*\*2 reviewers run\*\* — 1 finding \(\[run details\]\(https:\/\/check\)\)/);
   assert.match(body, /\| synthesis \| opus-5-5 \| 1 \| 🟠 \|/);
   assert.match(body, /\| correctness \| sonnet-5-5 \| 0 \| 🟢 \|/);
@@ -242,4 +221,35 @@ test('threadBody escapes HTML and carries the finding marker', async () => {
   const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
   assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
   assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker -->$/);
+});
+
+test('closedIssues reads the issues a description closes', async () => {
+  const { closedIssues } = await import('../src/gather.ts');
+  assert.deepEqual(closedIssues('Closes #12\nfixes #3 and Resolves #12. See #9; unfixed #4.'), [12, 3]);
+  assert.deepEqual(closedIssues(undefined), []);
+});
+
+test('every learned guidance topic reaches a reviewer that exists', async () => {
+  const { guidanceTopics } = await import('../src/context.ts');
+  const { readdirSync, existsSync } = await import('node:fs');
+  const root = path.resolve(import.meta.dirname, '..');
+  const reviewers = new Set(readdirSync(path.join(root, 'reviewers')).map((n) => n.replace(/\.md$/, '')));
+  for (const reviewer of Object.keys(guidanceTopics)) assert.ok(reviewers.has(reviewer), `${reviewer} has no charter`);
+  const routed = new Set(Object.values(guidanceTopics).flat());
+  if (existsSync(path.join(root, 'guidance'))) {
+    for (const file of readdirSync(path.join(root, 'guidance'))) assert.ok(routed.has(file.replace(/\.md$/, '')), `${file} reaches no reviewer`);
+  }
+});
+
+test('the context stage indexes guidance bullets, repository bullets and accepted decisions', async () => {
+  const { guidanceRules, repositoryRules, readDecisions } = await import('../src/context.ts');
+  const guidance = guidanceRules([{ name: 'testing.md', globs: ['**'], text: 'From x:\n# Testing\n- **Never weaken a test.** Why. *Check:* look.\n- **Second rule.** Why.' }]);
+  assert.deepEqual(guidance.map((r) => [r.id, r.reviewers, r.summary]), [['G-testing-1', ['tests'], 'Never weaken a test.'], ['G-testing-2', ['tests'], 'Second rule.']]);
+  const repo = repositoryRules([{ name: 'csharp.instructions.md', globs: ['**/*.cs'], text: 'From y:\n## Async\n\n- 👁 Use `ValueTask`, with a\n  token last.\n- 👁 **Rethrow aborts.** More.\n\nprose' }]);
+  assert.deepEqual(repo.map((r) => [r.id, r.reviewers, r.summary]), [['R-csharp-1', ['conventions'], 'Use `ValueTask`, with a token last.'], ['R-csharp-2', ['conventions'], 'Rethrow aborts.']]);
+  const base = mkdtempSync(path.join(tmpdir(), 'adr-'));
+  mkdirSync(path.join(base, 'docs', 'decisions'), { recursive: true });
+  writeFileSync(path.join(base, 'docs', 'decisions', '0007-keep-it.md'), '# 7. Keep it\n\n- **Status:** Accepted\n\n## Context\n\nc\n\n## Decision\n\nWe keep it.\n\n## Consequences\n\nx');
+  writeFileSync(path.join(base, 'docs', 'decisions', '0008-old.md'), '# 8. Old\n\n- **Status:** Superseded\n\n## Decision\n\nNo.');
+  assert.deepEqual(readDecisions(base), [{ id: 'ADR-0007', title: '7. Keep it', decision: 'We keep it.' }]);
 });

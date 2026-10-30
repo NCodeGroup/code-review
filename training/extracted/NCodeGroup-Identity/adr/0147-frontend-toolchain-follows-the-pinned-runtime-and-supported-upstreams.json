@@ -1,0 +1,138 @@
+{
+  "hash": "a5d19d60827ffc47",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0147",
+  "rules": [
+    {
+      "statement": "Keep the `@types/node` major version in line with the Node runtime major pinned in `.node-version`. Declare it once as a root devDependency, and add a pnpm override (`\"@types/node\": \"$@types/node\"`) that forces every transitive and auto-installed copy to that version.",
+      "why": "Newer Node types describe APIs the project does not run on. Without an override, pnpm's auto-install-peers resolves different `@types/node` versions in different workspaces, so two copies of the Node types end up side by side.",
+      "check": "Flag a diff that changes the `@types/node` major without changing `.node-version`. Also flag one that adds a second `@types/node` declaration in a workspace package, or removes the override.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json",
+        "**/pnpm-workspace.yaml",
+        "**/.node-version"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Move to a new Node major as one deliberate change that updates `.node-version`, `engines.node` and the `@types/node` range together, not as a side effect of bumping the types.",
+      "why": "A runtime change has its own consequences. If the pin, the engines floor and the types drift apart, the type checker describes a runtime the project does not use.",
+      "check": "Flag a diff that changes one of `.node-version`, `engines.node` or the `@types/node` major without the matching changes to the others.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json",
+        "**/.node-version",
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep TypeScript on the newest version that typescript-eslint's peer range supports, and do not upgrade TypeScript past that range.",
+      "why": "typescript-eslint parses with TypeScript's JavaScript compiler API. TypeScript 7 no longer ships that API, so moving past the supported range breaks linting.",
+      "check": "Flag a `typescript` version bump that falls outside the peer range declared by the installed typescript-eslint.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure ESLint with a single flat `eslint.config.js` at the workspace root, and do not add `.eslintrc.*` files or per-package ESLint configs.",
+      "why": "ESLint 9 dropped `.eslintrc.*` and ESLint 10 reads only flat config, so a legacy config file stops linting before any file is checked.",
+      "check": "Flag any new `.eslintrc*` file, any `eslintConfig` key in package.json, or an extra `eslint.config.*` below the workspace root.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.eslintrc*",
+        "**/eslint.config.*",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build lint configs from maintained, flat-config-native plugins that declare support for the installed ESLint version, such as `@eslint-react/eslint-plugin` instead of `eslint-plugin-react`. Do not wrap an unsupported plugin with compatibility shims like `@eslint/compat`'s `fixupPluginRules`.",
+      "why": "A shim pushes an unmaintained plugin past a peer range it does not declare. The project prefers a supported design over a compatibility layer.",
+      "check": "Flag a diff that adds `eslint-plugin-react`, uses `fixupPluginRules` or `fixupConfigRules`, or adds a plugin whose ESLint peer range excludes the installed version.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/eslint.config.*",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `eslint-plugin-react-hooks` alongside `@eslint-react`. Turn off its duplicate rules with `@eslint-react`'s `disable-conflict-eslint-plugin-react-hooks` preset, not with a hand-maintained list of disabled rules.",
+      "why": "The React team's plugin is the reference for the Rules of Hooks and the only source of the React Compiler diagnostics. The upstream preset makes sure each finding is reported once without maintaining a rule list by hand.",
+      "check": "Flag removal of `eslint-plugin-react-hooks`, or a hand-written list of `'off'` entries for react-hooks rules in place of the conflict preset.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/eslint.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `eslint-config-prettier` as the last entry in the flat ESLint config array.",
+      "why": "It has to come last so it can turn off formatting rules set by the configs before it.",
+      "check": "Flag any config entry added after `eslint-config-prettier` in the exported config array.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/eslint.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use Vitest-specific type entry points for tests. Name `@testing-library/jest-dom/vitest` (not the bare `@testing-library/jest-dom`) in tsconfig, import `defineConfig` from `vitest/config` when a Vite config has a `test` key, and list `\"node\"` explicitly in `types` for a jsdom app whose tests import `node:` modules.",
+      "why": "Newer Vitest no longer leaks `@types/node` or Jest's global matcher namespace into test programs. Implicit Jest augmentation and Node globals therefore stop compiling, and the `test` key is typed only through `vitest/config`.",
+      "check": "Flag a tsconfig `types` entry of bare `@testing-library/jest-dom`, a Vite config with a `test` key that imports from `vite` instead of `vitest/config`, or tests that import `node:` modules in a project whose tsconfig omits `\"node\"` from `types`.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/tsconfig*.json",
+        "**/vite.config.*",
+        "**/vitest.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set `engines.node` to the real minimum Node version the toolchain requires, and raise it when a dependency raises its floor.",
+      "why": "The engines field should state the actual minimum runtime, which is set by tools like ESLint and Vitest, so unsupported runtimes are rejected up front.",
+      "check": "Flag a toolchain upgrade that raises a dependency's required Node version without updating `engines.node`, or an `engines.node` range below a dependency's declared floor.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Storybook 10 or later, import story types from the framework package (for example `@storybook/react-vite`), not from `@storybook/react`, and do not add the `addon-essentials` addon, which is now part of core.",
+      "why": "Storybook 10 merged `addon-essentials` into core, so the direct renderer dependency and the addon are no longer needed.",
+      "check": "Flag story files that import types from `@storybook/react`, or package.json changes that add `@storybook/addon-essentials` or a direct `@storybook/react` dependency.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.stories.tsx",
+        "**/*.stories.ts",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

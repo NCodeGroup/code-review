@@ -1,0 +1,55 @@
+{
+  "hash": "e5444143c50ce34a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0036",
+  "rules": [
+    {
+      "statement": "Endpoints and services that need the per-request OpenID environment must get it from the request (the context feature published by the shared environment endpoint filter, e.g. `HttpContext.GetOpenIdContext()`) and must not build it themselves through the context or tenant factory.",
+      "why": "One shared filter builds the environment once per request, so every HTTP surface runs the same pipeline and new endpoints need no context plumbing.",
+      "check": "Look for endpoint handlers or request-scoped services that inject and call the context factory or tenant factory, or resolve the tenant themselves, when they could read the context already published on the HttpContext.",
+      "scope": "domain",
+      "domain": "multi-tenant-openid-server",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every HTTP endpoint family, management APIs included, must get its tenant resolution, tenant materialization and ambient persistence tenant scope from the single shared environment pipeline, installed on the route group, and not from a separate filter or middleware of its own.",
+      "why": "Three tenant mechanisms grew apart, which made maintenance and correctness risky. Without the shared pipeline, management endpoints also had no tenant with its settings loaded.",
+      "check": "Look for new endpoint filters, middleware or ad-hoc code that opens a tenant-id scope or resolves the tenant separately, and for route groups that are missing the shared environment filter.",
+      "scope": "domain",
+      "domain": "multi-tenant-openid-server",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model per-tenant behavior knobs as tenant settings with server defaults, read from the resolved tenant's merged settings, and not as process-wide start-up options.",
+      "why": "A tenant can then override the server default at runtime, which fits the data-driven, per-tenant approach.",
+      "check": "Look for new `IOptions<T>`/options-class properties or configuration values that control behavior that should be able to differ per tenant, where the code doesn't read the value from the tenant's settings provider.",
+      "scope": "domain",
+      "domain": "multi-tenant-openid-server",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each setting descriptor exactly once, in the layer that owns its concern: surface-neutral descriptors in the core library, and descriptors that depend on protocol concerns as an extra source in the protocol layer, without duplicating them or moving protocol logic down into core.",
+      "why": "The descriptor registry is built additively from several sources. Duplicating a descriptor or moving protocol logic down into core breaks the intended layering.",
+      "check": "Look for a setting descriptor defined in more than one place, or protocol-specific descriptors (client-auth methods, token formats) added to the core layer.",
+      "scope": "domain",
+      "domain": "multi-tenant-openid-server",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

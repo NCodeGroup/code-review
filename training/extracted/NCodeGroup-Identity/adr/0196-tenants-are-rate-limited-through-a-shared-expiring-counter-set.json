@@ -1,0 +1,174 @@
+{
+  "hash": "2fb054a3a6a0e403",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0196",
+  "rules": [
+    {
+      "statement": "Do not use in-process rate limiters such as ASP.NET Core's `FixedWindowRateLimiter`, `SlidingWindowRateLimiter` or `TokenBucketRateLimiter` for limits that must hold across replicas; keep the counts in a shared expiring counter store.",
+      "why": "Any replica may serve the next request, so a limiter that keeps its state in one process admits N times its limit on N replicas.",
+      "check": "Look for new uses of System.Threading.RateLimiting limiters or `AddRateLimiter` that enforce tenant or client limits in a multi-replica service.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a shared counter is incremented in a Redis/Valkey store, set its expiry in the same server-side script as the increment (for example `INCR` then `PEXPIRE` only when the counter was just created), not in a separate command.",
+      "why": "If the increment and the expiry are atomic on the server, a counter never outlives its window and a live counter's window is never extended.",
+      "check": "Look for a separate `StringIncrementAsync` followed by a separate `KeyExpireAsync` call, or for an expiry reset on every increment.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Count a request that a rate limiter rejects against the limit too, not only the requests it admits.",
+      "why": "If only admitted requests are counted, a client that retries without backing off is let in again at the start of every window, so the limit never slows it down.",
+      "check": "Look for limiter code that increments the counter only after it decides to admit the request, or that rolls the increment back when it rejects.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When rate limiting by remote address, count an IPv6 address by its /64 prefix and convert an IPv4-mapped IPv6 address to the IPv4 address it maps before building the partition key.",
+      "why": "A /64 is the smallest block a host is usually given, so one caller could otherwise spread its requests across its own addresses. Normalizing mapped addresses means one IPv4 caller is counted once.",
+      "check": "Look for an address-partition key built from the raw `RemoteIpAddress` with no /64 masking and no `MapToIPv4` for mapped addresses.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply a per-client rate limit only after the client has authenticated, and do not count public clients by their unauthenticated `client_id`.",
+      "why": "Otherwise a request could use up another client's allowance just by naming that client's `client_id`.",
+      "check": "Look for a per-client limit keyed by a `client_id` taken from the request before authentication succeeds, or one applied to public clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not put raw client IDs, IP addresses or similar identifiers into shared-store keys; build the keys with the tenant-scoped key builder so those values never show up in the store.",
+      "why": "A client ID or address must never appear in the store.",
+      "check": "Look for cache, Redis or Valkey keys made by concatenating or interpolating a client ID, address or user identifier directly.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Merge rate-limit settings with `Min`, so a narrower scope can only lower the ceiling set by the scope above it, and treat an unset limit as unlimited, not as a default value.",
+      "why": "The server operator sets the platform's ceiling, and a tenant, plan or client may tighten it but never loosen it.",
+      "check": "Look for limit settings merged with override or max semantics, given a default value, or treating unset as zero or as blocked.",
+      "scope": "domain",
+      "domain": "multi-tenant-settings",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a rate-limited request with `429 Too Many Requests`, a `Retry-After` header in whole seconds (rounded up, at least 1) and `Cache-Control: no-store`, and do not run the request's handler.",
+      "why": "RFC 6585 §4 and RFC 9110 §10.2.3 define this response, and the client needs an accurate retry delay.",
+      "check": "Look for rate-limit rejections that use another status code, leave out Retry-After, round the delay down or allow 0, leave out no-store, or go on to call the handler.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the rate-limit check before the exception and audit filters, so a refused request is not audited as a protocol error.",
+      "why": "An attacker who floods an endpoint should not also flood the audit log.",
+      "check": "Check the filter order: the rate-limit filter must run before the audit or exception filter, and a 429 must not raise an audit event.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log a rate-limit rejection with a stable event ID and only bounded fields (tenant, partition, limit), never the remote address or the client ID.",
+      "why": "The rejection log must not leak caller identifiers.",
+      "check": "Look for rejection log messages that have no EventId or that include the IP address or client_id as a parameter.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge a per-address limit before the tenant-wide limit, and do not count a request the address limit refuses against the tenant.",
+      "why": "Otherwise one address over its own limit could use up the allowance that every other caller of the tenant shares.",
+      "check": "Look for the tenant counter being incremented before the address check, or for it being incremented even when the address limit refused the request.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a rate limiter cannot reach its counter store, admit the request (fail open), unlike single-use checks, which must fail closed.",
+      "why": "Rate limiting protects capacity, not correctness. Failing closed would turn a cache outage into an authentication outage for every tenant.",
+      "check": "Look for limiter code that rejects or throws when the counter store fails, or single-use or replay checks that admit when the store fails.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each best-effort call to a shared store a short timeout (about 100 ms) and put a circuit breaker in front of the store. Time the breaker on a monotonic timestamp, not wall-clock time, and let only an answer to a call made after the breaker opened close it.",
+      "why": "Otherwise an outage costs every request the store client's own timeout (about 5 s) once per check. A wall-clock step could hold the breaker open, and a slow old call could undo a newer failure.",
+      "check": "Look for fail-open store calls with no explicit short timeout, breakers timed with `DateTime.UtcNow` or `TimeProvider.GetUtcNow`, or breakers that any late answer can close.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log a dependency outage once per state change (one warning with the exception when the breaker opens, one information message when it closes), not once per request.",
+      "why": "An outage should be logged once per replica, not once per request.",
+      "check": "Look for a warning or error logged inside the per-request failure path of a fail-open store call.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not start a timeout timer for an operation whose `ValueTask` or `Task` has already completed; check whether it completed synchronously first.",
+      "why": "A call that has already completed, as every in-process call has, should start no timer.",
+      "check": "Look for timeout wrappers such as `WaitAsync` or `CancelAfter` applied without first checking `IsCompleted`.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

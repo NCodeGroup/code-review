@@ -1,0 +1,73 @@
+{
+  "hash": "0fe8ea2e80cd2eac",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0015",
+  "rules": [
+    {
+      "statement": "Determine that a precondition failed (uniqueness, parent exists, no dependents) by querying the store for that fact directly, never by catching an exception such as InvalidOperationException and inferring the cause.",
+      "why": "A caught exception does not reliably identify which precondition failed. Querying the fact directly gives a deterministic 409/400 result.",
+      "check": "Look for catch blocks around store or persistence calls that turn an exception into a conflict, not-found or bad-request result instead of running an explicit existence or uniqueness query first.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run all precondition checks for one operation against the single store manager or unit of work that the caller already opened, passing it in, instead of letting each check open its own.",
+      "why": "When each check opens its own store manager, one operation runs across several units of work instead of one shared store and transaction view, which is also inefficient.",
+      "check": "Look for validators or check helpers that create or resolve a new store manager, DbContext or unit of work when the calling endpoint already has one open.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement a resource's fixed, intrinsic preconditions as one replaceable validator service with one ordered method per operation that stops at the first error, not as a mediator fan-out of one handler per check.",
+      "why": "These preconditions do not change between deployments. The per-check fan-out adds class ceremony and hides the execution order behind priorities, all for an extension point nobody uses.",
+      "check": "Look for new mediator commands or handlers with priority ordering that each run one built-in validation step of a single operation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a library's default service implementations with TryAdd* (for example TryAddSingleton<IService, DefaultService>()) so an integrator can replace them by registering their own implementation first.",
+      "why": "With TryAdd, an integrator can replace or wrap a default implementation through dependency injection.",
+      "check": "Look for library registration extension methods that use AddSingleton/AddScoped/AddTransient for services meant to be replaceable, instead of TryAdd*.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a replaceable service as a public interface and keep its default implementation internal.",
+      "why": "Integrators extend the library by implementing the public interface, not by depending on or subclassing the default implementation, so the public API surface stays small.",
+      "check": "Look for Default* implementation classes of replaceable service interfaces that are declared public.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For JSON Patch updates, apply the patch to a throwaway copy of the model and validate that proposed state (required fields, uniqueness) before persisting anything.",
+      "why": "Checks that depend on the patched state then become ordinary ordered validations instead of special cases inside the endpoint.",
+      "check": "Look for PATCH handlers that validate the original entity rather than the patched result, or that persist before validating the patched model.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

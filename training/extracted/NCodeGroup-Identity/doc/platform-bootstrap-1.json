@@ -1,0 +1,69 @@
+{
+  "hash": "f0cf125865fcfe35",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/platform-bootstrap.md",
+  "rules": [
+    {
+      "statement": "When a change alters infrastructure, settings or steps that an operational runbook describes, update the runbook in the same change.",
+      "why": "The runbook is a living document that must stay accurate for anyone reproducing the platform from scratch, so it has to change together with what it describes.",
+      "check": "A diff that changes bootstrap infrastructure code, required manual settings or token permissions without a matching edit to the runbook that documents them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.md",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin every third-party GitHub Action and reusable workflow reference to a full-length commit SHA, not a tag or branch.",
+      "why": "Someone can move a tag to point at different code; a full SHA cannot be swapped.",
+      "check": "`uses:` lines in workflow files that reference `@v1`, `@main` or any ref other than a 40-character commit SHA.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.github/workflows/*.yml",
+        "**/.github/workflows/*.yaml",
+        "**/action.yml"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Never commit API tokens, passphrases or other credentials to repository files; supply them only through environment variables or a secret store.",
+      "why": "The infrastructure repository is public, and bootstrap credentials are supposed to exist only for the duration of a shell session.",
+      "check": "Tokens, keys, passphrases or secret-looking literals in committed files such as tfvars, config or scripts, or code that writes a secret to a file inside the repository.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not create long-lived cloud IAM users or access keys for automation; CI must authenticate through federated OIDC roles that issue short-lived credentials.",
+      "why": "CI uses GitHub OIDC, so standing access keys aren't needed and would only add credentials that can leak.",
+      "check": "IaC that declares IAM users, access keys or static cloud credentials for pipelines (e.g. `aws_iam_user`, `aws_iam_access_key`) where an OIDC-assumed role would do.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Grant cloud access permissions to groups, never directly to individual users.",
+      "why": "With group grants, adding or removing an administrator takes one membership change.",
+      "check": "Permission-set or role assignments in IaC whose principal is a single user and not a group.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

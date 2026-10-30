@@ -1,0 +1,215 @@
+{
+  "hash": "681665d421bee693",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0140",
+  "rules": [
+    {
+      "statement": "Validate each configurable setting against its full value domain (allowed vocabulary, numeric or duration range, URI or identifier shape), not only against its type.",
+      "why": "A value of the right type that the server does not honor is otherwise accepted without effect, which is a silent failure (for example, a misspelled ceiling value narrows a capability to nothing and nobody is told).",
+      "check": "Look for new settings or options whose descriptor or validator only checks type or convertibility and accepts any string, any number, any TimeSpan or any URI, with no enumeration, range or shape rule.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check a setting value against the same domain rule at every entry point (configuration at startup and on reload, management API writes, deserialization of stored documents, client registration, seeders), and make stored documents that fail validation fail closed.",
+      "why": "Name, type and domain are checked together, at the same entry points, with the same outcome, so a value can't get in through a path that skips validation.",
+      "check": "Look for a new or changed input path that reads or writes settings without calling the shared validation, or that skips or ignores an invalid stored value when loading it instead of failing.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a setting names a registered strategy (a profile, an algorithm, an authentication method), validate it against the registered implementations, and have the lookup throw for a non-empty unknown name rather than applying nothing.",
+      "why": "An unknown name matches no strategy, so the intended behavior (for example, a security profile's requirements) silently isn't applied.",
+      "check": "Look for a lookup by name that returns null or a no-op when the name is not registered, or setting validation that accepts any string for a value that should name a registered strategy.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give durations and numeric settings explicit ranges: a protocol lifetime or interval is at least one second, a timeout is strictly positive, a value where zero means disabled is non-negative, and a size cap is at least one.",
+      "why": "A negative lifetime is still a valid TimeSpan, and a zero timeout removes the bound on an outbound fetch.",
+      "check": "Look for TimeSpan or int settings with no lower bound, or with a timeout that allows zero or negative values.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating a configured URI, require an explicit scheme and reject whitespace instead of relying on Uri.TryCreate alone, and check the scheme the runtime actually needs (for example https for a URI that will be fetched).",
+      "why": "Uri.TryCreate accepts an implicit file path and trims whitespace, and a non-https jwks_uri is never fetched, so the value is accepted but has no effect.",
+      "check": "Look for URI settings validated only with Uri.TryCreate or UriKind.RelativeOrAbsolute, with no check on the scheme or on whitespace.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a value that is compared verbatim (a host allow-list entry, a media type) in exactly the canonical form the runtime compares against, for example the host as Uri.Host reports it or a media type with no parameters.",
+      "why": "A value in a different form, such as a host written as `10.0.0`, never equals the runtime value, so it is accepted but never matches.",
+      "check": "Look for allow-list or comparison settings that accept free-form strings without checking they are in canonical form.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a list setting that contains a null element as not matching its type, and make a per-element rule report the first value that fails.",
+      "why": "Every value in a list must be in the domain, and the error has to name the offending value so the operator can fix it.",
+      "check": "Look for list validation that skips nulls or reports a failure without naming the bad element.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every registered default value satisfy its own validation rule, and add a test that checks each default against its rule.",
+      "why": "Code-set values are not validated when they are set, so a test is what keeps defaults inside their domain.",
+      "check": "Look for a new setting descriptor that has a default but is not covered by the test that checks defaults against rules, or whose default breaks its rule.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship a data migration with any change that narrows a persisted value domain, such as removing an enumeration value or unregistering a named strategy.",
+      "why": "Stored documents that use the removed value fail closed after the change.",
+      "check": "Look for removal of an allowed value, algorithm or registered profile in a diff that has no matching migration for stored data.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow only asymmetric signature algorithms for tokens that cross a trust boundary (ID tokens, userinfo responses, JWT access tokens, DPoP proofs), and keep symmetric algorithms only where a shared client secret legitimately applies (request objects, client_secret_jwt assertions).",
+      "why": "A shared key cannot authenticate the issuer to a third party, and RFC 9449 forbids symmetric algorithms for DPoP.",
+      "check": "Look for HS256, HS384 or HS512 accepted or advertised in the signing algorithm lists for id_token, userinfo, access_token or DPoP.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never accept or advertise `none` or `dir` in any configurable algorithm list, and derive both the advertised defaults and the accepted values from one algorithm classification.",
+      "why": "The server never offers these algorithms, and using one classification keeps the defaults and the accepted values from drifting apart.",
+      "check": "Look for algorithm lists that allow `none` or `dir`, or that keep separate hard-coded lists for defaults and for validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not offer a refresh-token expiration policy that never expires; refresh tokens always expire (absolute or sliding).",
+      "why": "RFC 9700 §4.14.2 expects refresh tokens to expire.",
+      "check": "Look for a 'never', 'none' or infinite refresh-token expiration option, or for code paths that issue refresh tokens with no expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Restrict the configured access-token type to the RFC 9068 `at+jwt` (with or without the `application/` prefix) so that explicit JWT typing cannot be configured away.",
+      "why": "RFC 8725 §3.11 requires explicit typing to prevent token confusion.",
+      "check": "Look for an access_token_type setting that accepts arbitrary strings, `JWT`, or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept as a grant type either one of the RFC 6749 names (authorization_code, implicit, password, client_credentials, refresh_token) or an absolute URI for an extension grant.",
+      "why": "RFC 6749 §4.5 names extension grants with absolute URIs, so extension grants are supported without changing a catalog.",
+      "check": "Look for grant-type validation that accepts arbitrary strings, or that rejects absolute-URI extension grants.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a redirect URI to be absolute with no fragment (any scheme, so native apps work), a logout URI to be http or https with no fragment, and jwks_uri, sector_identifier_uri and client_notification_endpoint to be https.",
+      "why": "Each URI has to be in a form the runtime can actually use. A relative redirect URI or a non-https jwks_uri can't be used.",
+      "check": "Look for client metadata URI validation that allows relative URIs or fragments, or that doesn't require https where it is needed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the device-flow user code length between 8 and 32 characters.",
+      "why": "RFC 8628 §6.1: a short code is guessable (eight characters give about 34.5 bits), and an unbounded length can exhaust memory.",
+      "check": "Look for user_code_length settings or code that allow fewer than 8 or an unbounded number of characters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, validate the client document that would be stored before storing it, returning `invalid_redirect_uri` for redirect URI failures and `invalid_client_metadata` for any other domain failure.",
+      "why": "Otherwise the server stores a client that fails every request that loads it (RFC 7591 §3.2.2).",
+      "check": "Look for registration handlers that persist metadata without running setting domain validation, or that return the wrong error code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate fixed OAuth/OIDC protocol vocabularies (subject types, CIBA delivery modes, response types, response modes, prompt and display values, PKCE methods, claim types) as ordinal enumerations, including every value in a supported-values ceiling list.",
+      "why": "A misspelled value in a ceiling list silently narrows it to nothing and is never reported.",
+      "check": "Look for *_supported or enumerated protocol settings that accept any string, or that compare values without ordinal comparison.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "hash": "854a66f418ebbb7e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0213",
+  "rules": [
+    {
+      "statement": "Do not use Entity Framework Core set-based operations such as `ExecuteDeleteAsync` or `ExecuteUpdateAsync` in stores; load the rows and remove or update them through the change tracker so the change is saved with the unit of work.",
+      "why": "Not every provider supports set-based operations. The EF InMemory provider used by the hermetic host does not, so every prune failed. A set-based delete also runs outside the unit of work.",
+      "check": "Look for `ExecuteDeleteAsync`/`ExecuteUpdateAsync` calls, or provider-specific branches that fall back to them, in store or repository code.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Delete or prune large or unbounded sets of rows in bounded batches, each in its own unit of work, and repeat while the last batch came back full; never load the whole set into one unit of work.",
+      "why": "A single unbounded unit of work loads everything at once, for example a whole day of every tenant. Bounded batches keep memory use small and let a long backlog drain in many small units of work.",
+      "check": "Look for removal or cleanup code that queries all matching rows with no limit/Take, or that saves everything in one SaveChanges, and for removal store methods that take no batch limit.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a batched delete's save fails with a concurrency exception because another replica deleted the same rows, treat it as progress and go on to the next batch instead of treating it as a failure.",
+      "why": "Losing the race means another replica already removed rows from that batch, so the work is getting done. Concurrent pruners waste at most one batch.",
+      "check": "In multi-replica cleanup loops, check that a store concurrency exception on save is caught and the loop goes on reading the next batch, rather than aborting or logging an error.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a periodic maintenance task fails, log the failure and leave the work unmarked as done so it runs again at the next scheduled run; do not mark it complete or put off the retry for a long time.",
+      "why": "Marking it done or waiting a day after a failure hides a real failure and can mean the work never gets done.",
+      "check": "Look at background or hosted service catch blocks: the 'last completed' marker should only be set on success, and the failure should be logged.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

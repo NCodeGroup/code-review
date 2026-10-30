@@ -1,0 +1,78 @@
+{
+  "hash": "376f6c9246e5f492",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0189",
+  "rules": [
+    {
+      "statement": "When a tenant is deleted or gives up its issuer, record the freed tenant identifier or issuer in a permanent tombstone, and reject any later attempt to reuse it as a conflict.",
+      "why": "Relying parties key their trust on the issuer string, not a database row. A reissued identifier or issuer would let a new tenant's JWKS and tokens be accepted by parties that trusted the old tenant.",
+      "check": "Look for tenant delete or issuer-change code paths that free an identifier or issuer without writing a tombstone, and for tenant create/update validation that does not check retired identifiers and issuers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a security-relevant side record, such as a tombstone or retirement row, inside the store method that performs the change and in the same unit of work, not in the API endpoint that calls the store.",
+      "why": "Seeders, importers or consumer code that call the store directly would skip a record that only the endpoint writes. Writing it in the store means no caller can make the change without it.",
+      "check": "Flag tombstone, retirement or similar invariant writes placed in controllers or endpoints instead of the store, or saved in a separate SaveChanges or transaction from the delete or update they belong to.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare issuers by their normalized form when deciding whether an issuer changed, so a change of letter case alone retires nothing, while clearing the issuer counts as a change and retires the previous one.",
+      "why": "A change of letter case only is not a new issuer. Clearing an issuer frees it just as replacing it does.",
+      "check": "Look for issuer-change detection that uses raw string comparison, or that skips retirement when the issuer is set to null or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let a retired issuer be claimed again only by the tenant that gave it up, and keep the retired row when that tenant takes it back.",
+      "why": "Tenant identifiers are never reissued, so the former holder is always the same tenant the relying parties trusted. No API is provided to release an issuer to another tenant.",
+      "check": "Flag validation that lets any tenant other than the recorded former holder take a retired issuer, code that deletes the retired row when the issuer is reclaimed, or any API that releases a retired issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse to delete a tenant the deployment requires (such as the root tenant or a configured static tenant), and have the management API answer 409 Conflict before it checks for dependents.",
+      "why": "Deleted identifiers are never reissued, so deleting a required tenant would make every later attempt to recreate it fail, and with it every request.",
+      "check": "Look for tenant delete paths that skip the required-tenant check (for example, the strategy's IsRequiredTenant), or that run it after the dependents check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return 409 Conflict from tenant management create and update endpoints when validation finds a retired identifier or issuer, and run the same validation in any preview endpoint and on strategy-derived default issuers.",
+      "why": "A retired identity must be reported the same way wherever an issuer is proposed or derived, so that no path bypasses the check.",
+      "check": "Look for create, update or preview endpoints that skip the tenant validation or map a retired-identity conflict to a status other than 409.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "hash": "be3280bfd44a9530",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0157",
+  "rules": [
+    {
+      "statement": "Make each frontend workspace's Vite/Vitest configuration file a single call to the shared preset factory for its kind of workspace, passing only its own coverage floors and serving options, instead of copying test gates, globs or serving rules into it.",
+      "why": "Copied configurations drifted (test globs, strictPort) and sat outside every gate. A shared preset changes a gate, glob or serving rule in one place for every workspace.",
+      "check": "A workspace vite.config.ts or vitest.config.ts that defines its own test include/coverage globs, setup files, requireAssertions, proxy or server settings instead of calling the shared preset factory.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin every frontend dev server's port with `strictPort` so it fails to start rather than moving to another port.",
+      "why": "Redirect URIs, CORS allowlists and orchestration assume fixed ports. Without strictPort, Vite silently moves to the next free port, which may belong to another surface.",
+      "check": "Vite server configuration that sets a port without `strictPort: true`, or a dev-server setup that leaves the port unpinned.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make Vitest test and coverage globs cover both `.ts` and `.tsx` files in every environment, including `node`.",
+      "why": "Workspaces that collected only `*.test.ts` and measured only `*.ts` silently never ran `.test.tsx` tests or measured `.tsx` sources.",
+      "check": "Vitest `include` or `coverage.include` patterns that match only `.ts` (e.g. `**/*.test.ts`) and leave out `.tsx`.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts",
+        "**/preset.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a configuration module that Node loads as TypeScript source by type stripping to erasable syntax only, with no relative imports and no runtime imports of other workspace packages.",
+      "why": "Node strips types but cannot resolve relative imports without `.ts` specifiers, and cannot map workspace packages' `.js` specifiers. Non-erasable syntax does not run under type stripping.",
+      "check": "In a Node-loaded TypeScript config preset: enums, namespaces, parameter properties or other non-erasable syntax; `./` or `../` imports; or value (non-type) imports of other workspace packages.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/vite-config/src/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a shared configuration factory's options (numeric floors, ports, base paths, hosts) at run time, because the files that call it are not type-checked.",
+      "why": "Workspace vite/vitest config files are outside type-checking, so the factory's TypeScript types alone do not catch bad values.",
+      "check": "A shared config factory option added or changed with no run-time validation that throws on invalid values.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/vite-config/src/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make Turborepo `test` and `typecheck` tasks depend on a no-op transit task (`dependsOn: [\"^transit\"]`) and list root configuration files every workspace reads (such as `tsconfig.base.json` and `eslint.config.js`) in `globalDependencies`.",
+      "why": "Otherwise a task's hash ignores changes to internal dependencies and root config, so Turbo replays stale cached results. The transit task does this without serializing the graph the way `^test` would.",
+      "check": "turbo.json changes that drop the transit dependency from test/typecheck, use `^test`/`^typecheck` instead, or add a shared root config file without adding it to `globalDependencies`.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/turbo.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Share frontend configuration through a workspace package rather than importing a shared file by relative path across package boundaries.",
+      "why": "A relative import across packages is a deep import that breaks package boundaries, and leaves the shared file outside lint, type-checking and tests.",
+      "check": "A vite/vitest/eslint config or source file that imports `../../` paths reaching into another package or the workspace root.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

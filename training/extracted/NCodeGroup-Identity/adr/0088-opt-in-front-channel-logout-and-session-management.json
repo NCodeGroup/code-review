@@ -1,0 +1,79 @@
+{
+  "hash": "b9b45570039d018a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0088",
+  "rules": [
+    {
+      "statement": "Make any OpenID Connect mechanism that depends on third-party cookies in iframes (Front-Channel Logout, Session Management) available but disabled by default, so it turns on only through an opt-in server setting whose default is false.",
+      "why": "Browsers are removing third-party cookies, so these mechanisms are unreliable by design. A stock OP must not depend on them, advertise them, or set a non-HttpOnly browser-state cookie.",
+      "check": "Look for new or changed settings for frontchannel_logout_supported, frontchannel_logout_session_supported, session_management_supported or similar iframe/cookie-based features whose default is true, or code paths that run the mechanism without checking the opt-in setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep what the OP actually does in line with what discovery advertises: emit protocol parameters and behaviors only while the matching advertised capability setting is enabled.",
+      "why": "Relying parties decide what to rely on from discovery metadata, so behavior that does not match the advertisement breaks the contract.",
+      "check": "Look for code that appends iss/sid to front-channel logout URIs, emits session_state, or exposes check_session_iframe without first checking the matching server capability setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject client registrations or settings that need a server capability that is disabled, for example a frontchannel_logout_uri while front-channel logout is unsupported, or frontchannel_logout_session_required while session support is off.",
+      "why": "This validation keeps per-client configuration consistent with the server's advertised capabilities, so what the OP does always matches what it advertises.",
+      "check": "Look for new per-client capability settings that are added without a validation rule rejecting them when the server-level capability is disabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat Front-Channel Logout as a best-effort addition to Back-Channel Logout, never a replacement: back-channel logout must stay always on and must not depend on the front-channel setting.",
+      "why": "Back-Channel Logout is the preferred mechanism that works without cookies. Front-channel logout is fragile by design and is only a supplement.",
+      "check": "Look for changes that skip, disable or condition back-channel logout delivery on front-channel logout being enabled, or that route logout only through the front-channel iframes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Delete the OP browser-state cookie used for Session Management on logout, and issue it with SameSite=None and Secure (non-HttpOnly only because the check-session iframe script has to read it).",
+      "why": "The browser state drives session_state change detection, so it must be cleared when the session ends. It is framed cross-site, so it needs SameSite=None; Secure.",
+      "check": "Look for a browser-state cookie set without SameSite=None/Secure, or logout paths that don't delete it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute the OIDC session_state value as a salted SHA-256 digest of the client id, the origin of the client's redirect URI, and the opaque OP browser state, following Session Management 1.0.",
+      "why": "The check-session iframe script recomputes the same value to answer the RP's postMessage poll with changed/unchanged, so both sides must use the same inputs.",
+      "check": "Look for session_state computations that leave out the salt, use a different hash, or use an origin other than the one from the client's redirect_uri.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

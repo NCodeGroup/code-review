@@ -1,0 +1,67 @@
+{
+  "hash": "33d97a34c269581d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0039",
+  "rules": [
+    {
+      "statement": "Do not embed per-request state (such as requested claims) in the access token payload; carry state needed after issuance in a short-lived server-side persisted grant keyed by the token's existing `jti`, with a lifetime equal to the access token's.",
+      "why": "Putting it in the token makes the token bigger for every resource server and exposes what the request asked for to all of them. Persisting it keyed by `jti` leaves the token unchanged.",
+      "check": "Look for new claims added to the access-token payload to carry request context to later endpoints, and for persisted grants that are not keyed by `jti` or whose lifetime differs from the access token's.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not advertise or accept an optional protocol request parameter until the server actually honors it; while it is unhonored, keep its discovery flag `false` and reject requests that use it.",
+      "why": "Otherwise the parameter could be accepted and then silently ignored.",
+      "check": "Look for discovery metadata or settings flipped to `true`, or validators loosened, for a parameter whose handling is still a TODO or missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When honoring the OIDC `claims` request parameter, add the requested claims on top of the claims the scopes already imply. Treat `value`/`values` as advisory: never filter, fabricate or substitute claim values. Treat `essential` as best-effort: a missing essential claim must not fail token issuance or the UserInfo response.",
+      "why": "Authentication has already succeeded, and the OP returns the subject's actual claims. A host that wants stricter enforcement can register a higher-priority handler.",
+      "check": "Look for code that throws or returns an error when an essential claim is missing, that rewrites or invents claim values to match a requested `value`/`values`, or that replaces scope-derived claims instead of adding to them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code paths for requests that lack an optional feature (for example a request without `claims.userinfo`) must not write or read persisted state for that feature.",
+      "why": "The ADR requires that a request without `claims.userinfo` writes and reads nothing, so requests that don't use the feature pay no storage cost for it.",
+      "check": "Look for unconditional grant writes or lookups that run even when the request did not use the feature.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A capability setting that has a server-level ceiling must combine server, tenant and client values with `And` semantics, so a tenant or client can opt out but never enable something the server does not support.",
+      "why": "The server decides what it supports and advertises. Lower levels can only narrow that.",
+      "check": "Look for capability settings merged with override or `Or` semantics that would let a tenant or client turn on something the server has disabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "hash": "c370d876df751d8b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #382",
+  "rules": [
+    {
+      "statement": "A serialization API writes its output to a caller-supplied IBufferWriter<byte> or Utf8JsonWriter instead of returning a newly allocated byte[].",
+      "why": "Returning a byte[] breaks the buffer convention and allocates an array for every call. Writing to a buffer writer lets callers use pooled buffers.",
+      "check": "Look for new public or internal methods that serialize to bytes and return byte[] (for example SerializeToUtf8Bytes or ToArray results) where a buffer-writer overload could be used instead.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Methods that produce bytes into a buffer writer take the destination as a generic `ref TWriter destination` parameter constrained `where TWriter : IBufferWriter<byte>, allows ref struct`, so ref struct writers are accepted.",
+      "why": "This is the standard producer shape. It lets callers pass stack-only, ref struct buffer writers without boxing.",
+      "check": "Look for new methods that take a plain `IBufferWriter<byte>` output parameter when the generic `ref TWriter ... allows ref struct` form would work. When the plain form is needed, for example to feed a Utf8JsonWriter, the reason should be documented.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the input or source parameter first and the output destination (writer, buffer writer, destination span) last in a method signature.",
+      "why": "It keeps signatures consistent with the existing source-first, destination-last APIs such as Decode(ciphertext, ref destination) and CopyPlaintext(source, destination).",
+      "check": "Look for new methods whose first parameter is a Utf8JsonWriter, IBufferWriter, destination span or other output, placed before the input being processed.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse JSON with JsonElement.Parse instead of JsonDocument.Parse in new code.",
+      "why": "The maintainer wants to stop using the older JsonDocument parsing APIs. JsonElement.Parse returns a value with no document to own and dispose.",
+      "check": "Look for newly added JsonDocument.Parse (or JsonDocument usage generally) in production or test code where JsonElement.Parse would do.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read endpoint information (such as the endpoint name) from HttpContext, for example via HttpContext.GetEndpoint() and IEndpointNameMetadata, instead of passing it as a separate parameter next to the HttpContext.",
+      "why": "The HttpContext already carries the endpoint metadata, so a separate parameter is redundant and can disagree with it.",
+      "check": "Look for methods that take both an HttpContext and an endpoint name or endpoint argument that could be derived from httpContext.GetEndpoint().",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

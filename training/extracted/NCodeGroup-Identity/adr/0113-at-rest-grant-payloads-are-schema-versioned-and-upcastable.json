@@ -1,0 +1,95 @@
+{
+  "hash": "0cf0283495a42858",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0113",
+  "rules": [
+    {
+      "statement": "Serialize and deserialize persisted JSON payload documents only through the single versioned payload-serializer seam, never with direct `JsonSerializer.SerializeToElement` / `JsonElement.Deserialize<T>` calls in persistence services.",
+      "why": "A bare round-trip has no version marker, so there is nowhere for a migration to hook in. One seam keeps all future migration in one place.",
+      "check": "Look for direct System.Text.Json serialize/deserialize calls on at-rest payload blobs in store or service code that skip the versioned serializer abstraction.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you add a member to a persisted payload DTO, make it optional (nullable or defaulted) and never mark it `required`.",
+      "why": "System.Text.Json enforces `required` on deserialize, so every row written before the member existed would throw JsonException when read.",
+      "check": "Look for new `required` properties, or new non-nullable members with no default, on types that are stored as at-rest JSON payloads.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never rename, remove or retype a member of a persisted payload DTO, or remove an enum value from it, in place. For a non-additive change, bump the payload's declared schema version and ship a single-step upcaster from the old version to the new one.",
+      "why": "Non-additive changes without a version bump silently mis-read old rows or make them throw. Versioning makes the change deliberate, testable and reviewable.",
+      "check": "Look for renamed, deleted or retyped properties, or removed enum members, on persisted payload types where the diff has no matching version-attribute bump and no new upcaster.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store enums in persisted JSON payloads as string values, never as ordinals.",
+      "why": "String-valued enums keep stored documents readable and stable as the schema changes, which the additive-only contract depends on.",
+      "check": "Look for persisted payload enums serialized as numbers, for example a removed string enum converter or a `[JsonConverter]` override that writes ordinals.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persisted payload members must not have JSON names that begin with `$`, because `$`-prefixed keys are reserved for the versioned envelope.",
+      "why": "The envelope uses `$ver` and `$payload` as sentinel keys, and payload members using the same prefix would collide with them.",
+      "check": "Look for `[JsonPropertyName(\"$...\")]`, or naming policies that produce `$`-prefixed names, on persisted payload types.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give long-lived persisted payloads that are read, modified and rewritten in place a `[JsonExtensionData]` bag, so members they don't recognize are kept.",
+      "why": "During a mixed-version deployment, an older node that rewrites a payload written by a newer node would otherwise silently drop the newer members.",
+      "check": "Look for new or changed payload types that are updated in place through a read-modify-write path but have no `[JsonExtensionData]` dictionary property.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each payload upcaster migrates exactly one step (FromVersion to FromVersion + 1) and transforms the mutable `System.Text.Json.Nodes.JsonNode` DOM. Use immutable `JsonElement` only at the storage boundary, and don't let the parsed node escape the serializer.",
+      "why": "An upcast is an in-place transformation, which is what JsonNode is built for. Single steps chain together predictably.",
+      "check": "Look for upcasters that skip versions, edit `JsonElement` by rebuilding strings, or keep or expose the node they were handed outside the serializer.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading a versioned persisted payload, throw a descriptive `JsonException` if an upcaster step is missing or the document is corrupt, rather than returning null or silently mis-reading. Read stored versions newer than the current one forward-compatibly, without down-casting.",
+      "why": "A silent mis-read corrupts data. Handling rollbacks forward-compatibly avoids fragile down-migrations.",
+      "check": "Look for upcaster chains that skip or tolerate gaps, deserializers that return null or default on a version mismatch, or attempts to down-cast newer documents.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

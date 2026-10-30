@@ -1,0 +1,135 @@
+{
+  "hash": "b2e7d90f6f520adf",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0201",
+  "rules": [
+    {
+      "statement": "Make an extensible protocol vocabulary (such as response modes) a set of handlers registered in DI and resolved by name, not a hard-coded switch, and register the built-in handlers with `TryAddEnumerable`.",
+      "why": "A hard-coded switch closes a vocabulary that nothing proves is closed, so no package can add a value without editing the library.",
+      "check": "Look for a `switch` or if-chain over the string values of a protocol vocabulary that decides behavior, or built-in handlers registered with `AddSingleton`/`AddTransient` instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validation rules for a setting whose vocabulary is open must accept any well-formed value (for example any whitespace-free name), not a fixed list of known values.",
+      "why": "Listing the values in the setting rule closes the vocabulary and blocks values that packages add.",
+      "check": "Look for setting or option validators that check an open protocol value against a hard-coded allow-list of known names.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pluggable handler must declare its behavioral traits as explicit properties, and code must never infer them from the handler's name (for example a suffix such as `.jwt` or a prefix such as `query`).",
+      "why": "Behavior inferred from names breaks for custom handlers and hides what each handler actually does.",
+      "check": "Look for string checks such as `EndsWith`, `StartsWith` or `Contains` on a handler's name that decide its behavior.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a registry of named handlers once, and have it refuse conflicting registrations at that point: duplicate names, two handlers claiming the same role, references to handlers that do not exist, and reserved names.",
+      "why": "Conflicts found when the registry is built fail fast, instead of producing ambiguous behavior on each request.",
+      "check": "Look for handler lookup that picks the first match or rebuilds the registry on each request with no duplicate or dangling-reference validation, or consumers that keep their own registry instead of using the composed provider.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no registered handler serves the requested `response_mode`, the authorization endpoint must answer `400` without redirecting, and a request object that names such a mode must be refused as `invalid_request`.",
+      "why": "A mode that cannot be delivered cannot carry even an error back to the client, so redirecting would be unsafe or impossible.",
+      "check": "Look for an unknown or unsupported response mode that leads to a redirect, or that falls back to a default mode without refusing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply a tenant's `response_modes_supported` both to the requested `response_mode` as written (so the `jwt` shorthand must itself be listed) and to the resolved mode, for explicit and default modes alike, and check this once, when the delivery is derived.",
+      "why": "Checking only the resolved mode would let a tenant's restrictions be bypassed through the shorthand or the default mode.",
+      "check": "Look for a supported-modes check that tests only the resolved mode or only the requested value, or that skips the check when the mode is the default.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never deliver a token or ID token in a query string, even inside a JWT: refuse query-delivered response modes (including `query.jwt`) for any response type that returns a token, and resolve `jwt` to `fragment.jwt` for those types and to `query.jwt` otherwise (JARM §2.3.4).",
+      "why": "Tokens in query strings leak through logs, history and referrers, and wrapping them in a JWT does not prevent that.",
+      "check": "Look for mode checks that refuse `query` but not `query.jwt` or other query-delivered handlers, or `jwt` resolution that ignores whether the response type returns a token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JARM response JWT must have `iss` set to the issuer and `aud` set to the `client_id`, expire after a lifetime counted from `iat` (default 5 minutes, capped at 10 minutes, merged as a minimum), and carry every serialized response parameter as a claim except the RFC 9207 `iss`; error responses are secured the same way.",
+      "why": "JARM §2.1 requires the response JWT to be short-lived and bound to the issuer and the client, so the client can verify the response's origin and integrity.",
+      "check": "Look for a missing `aud`/`iss`/`exp`, a lifetime above 10 minutes or merged with something other than a minimum, a duplicated `iss` parameter claim, dropped response parameters, or error responses sent unsecured in a JWT mode.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always sign a JWT-secured authorization response with the client's registered `authorization_signed_response_alg` (asymmetric baseline), and encrypt it only when the client registers `authorization_encrypted_response_alg`; never send it with weaker protection than the client registered.",
+      "why": "JWTs addressed to a client follow its registered metadata, and silently downgrading protection defeats the purpose of JARM.",
+      "check": "Look for unsigned JARM responses, symmetric algorithms in the baseline, encryption that is skipped when the client registered it, or a fallback to a weaker algorithm or to no protection.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Select the response-securing credentials when the authorization response delivery is derived, before the user authenticates or a code is issued, and report a selection failure as a non-redirected `server_error` (500); handlers only read the preselected credentials.",
+      "why": "Refusing up front avoids authenticating the user and issuing a code for a response that cannot be secured.",
+      "check": "Look for key or algorithm selection inside the response handler or after authentication, or selection failures that are redirected to the client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive how an authorization response is delivered (redirect URI, handler, state, credentials) once, and pass that object through the pipeline instead of resolving it again downstream.",
+      "why": "A single derivation keeps all endpoints and the continuation consistent, and keeps the executor from holding a registry of its own.",
+      "check": "Look for code downstream of request validation that looks up the response-mode handler or redirect URI again instead of using the delivery it was given.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

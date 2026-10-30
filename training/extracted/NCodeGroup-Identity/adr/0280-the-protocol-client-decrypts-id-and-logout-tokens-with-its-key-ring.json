@@ -1,0 +1,115 @@
+{
+  "hash": "b03c4441f7a6efb1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0280",
+  "rules": [
+    {
+      "statement": "When decrypting a JWT received from an OpenID provider, permit only asymmetric key management algorithms (RSA-OAEP*, ECDH-ES*) and never RSA1_5, dir, AES key wrap or PBES2.",
+      "why": "The provider encrypts only to a public key the client published, and RFC 8725 §3.2 forbids RSA1_5. A private_key_jwt client also has no shared secret.",
+      "check": "Look for decryption algorithm allow-lists that include RSA1_5, dir, A*KW or PBES2*, or that accept any algorithm without filtering to asymmetric key types.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never permit compression when validating a JWE: pass an empty compression allow-list.",
+      "why": "RFC 8725 §3.6 advises against compression in encrypted tokens.",
+      "check": "Look for JWT validation setup that sets ValidCompressionAlgorithms to anything other than empty, or permits `zip`/DEF.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the client registered token encryption, reject a plain signed JWS. When it registered none, name no decryption keys and leave the algorithm lists empty so that any JWE is rejected.",
+      "why": "Accepting an unencrypted token when encryption is registered is a downgrade: an attacker who cannot encrypt to the client could swap in a plain token.",
+      "check": "Look for validators that fall back to accepting a JWS when encryption is configured, or that accept a JWE when no encryption is registered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an empty or unset algorithm allow-list as permitting nothing, never as permitting every algorithm.",
+      "why": "The conventions require explicit allow-lists of algorithms and keys for JWT validation.",
+      "check": "Look for code where a null or empty algorithm list leads to skipping the algorithm check or allowing all algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a client's permitted token encryption algorithms from its own registration, not from the provider's `*_values_supported` discovery metadata.",
+      "why": "The registration fixes the values, so the provider's list adds nothing the client can trust more.",
+      "check": "Look for decryption policy built from provider metadata such as id_token_encryption_alg_values_supported.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE header replicates `iss`, require it to be a string equal to the expected issuer, and fail with an invalid-issuer error otherwise.",
+      "why": "RFC 7519 §5.3 and OIDC Back-Channel Logout §2.4 allow replicated claims, and a replicated value that disagrees with the issuer must not be trusted.",
+      "check": "Look for JWE validation that ignores a replicated `iss` header or doesn't compare it as a string to the issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a token decryption failure with its own machine-readable code and a fixed message that never contains the token.",
+      "why": "A decryption failure is a different fault from a signature failure, and putting the token in the error text would leak it.",
+      "check": "Look for decryption errors mapped to the signature-failure code, or failure messages that interpolate the raw token or exception text that contains it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run the algorithm policy, decryption and header checks before claim checks, and run replay detection that records a `jti` last.",
+      "why": "A token that fails any other check must never record its `jti`.",
+      "check": "Look for validators that record or store a jti before all other validation steps have passed, or that check claims before decryption.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw InvalidOperationException for an inconsistent token-encryption configuration, such as content encryption algorithms set without key management algorithms, or encryption registered without a key ring for decryption keys.",
+      "why": "These are configuration errors and should fail loudly instead of quietly turning into token-validation failures.",
+      "check": "Look for code that silently ignores or works around half-configured encryption settings or missing decryption keys instead of throwing InvalidOperationException.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

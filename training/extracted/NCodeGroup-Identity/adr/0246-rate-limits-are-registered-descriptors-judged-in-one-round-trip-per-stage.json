@@ -1,0 +1,160 @@
+{
+  "hash": "4310d37c632c7a47",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0246",
+  "rules": [
+    {
+      "statement": "Give every key that a Valkey/Redis multi-key script or transaction touches the same hash tag (for example the tenant in braces, `{purpose}:{tenant}:{digest}`), and limit each batch to keys of that one hash tag.",
+      "why": "A clustered Valkey lets a script touch only keys that hash to one slot. The slot is computed from the text between the first `{` and the next `}`.",
+      "check": "Look for Lua scripts or multi-key commands whose keys are built without a shared `{...}` hash tag, or batches that mix keys of different tenants or partitions.",
+      "scope": "domain",
+      "domain": "valkey-redis",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not let a configurable key prefix for Valkey/Redis keys contain braces; validate or document that it holds none.",
+      "why": "A prefix with braces becomes the hash tag of every key and puts every tenant in one cluster slot.",
+      "check": "Look for key-prefix options that are concatenated before the hash tag without rejecting `{` or `}`.",
+      "scope": "domain",
+      "domain": "valkey-redis",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several counters must be checked in order and processing must stop at the first refusal, run them as one atomic server-side script, not as sequential calls, a pipeline, or increment-then-compensate decrements.",
+      "why": "Sequential calls cost a round trip each. A pipeline cannot stop at the first refusal. Compensating decrements leave an over-count that refuses other callers and that lingers if a replica stops partway.",
+      "check": "Look for per-limit sequential awaits to the counter store in one request path, pipelined increments of dependent limits, or decrement-to-undo logic after a refusal.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every call from a shared-state or cache adapter through one measuring wrapper. The wrapper records the duration, records `error.type` on an exception, and rethrows. Don't repeat timing and error-recording code in each adapter method.",
+      "why": "Each adapter method repeated the same timing and error recording around its command. One wrapper keeps the metrics consistent.",
+      "check": "Look for adapter methods with their own Stopwatch/timestamp and try/catch metric recording, or new adapter methods that skip the shared wrapper.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define rate limits and quotas as registered descriptor data contributed through a collection data source, not as hard-coded per-limit methods and call sites, so that a package can add its own limits and stages.",
+      "why": "Vocabularies are open unless provably closed. Hard-coded limits leave a package nowhere to add a limit such as one per API key.",
+      "check": "Look for new limits added as dedicated methods or branches in the limiter or at endpoints instead of as registered descriptors, or for closed enums of stages or window kinds.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record usage meters for billing only after the endpoint has run and only when no rate-limit stage refused the request. Record each meter at most once per request, and never record a meter directly beside a limit check in endpoint code.",
+      "why": "A request that a later stage refuses must never be billed, and a meter added by several descriptors or stages must not be counted twice.",
+      "check": "Look for endpoint code that calls the usage recorder directly, recording that happens before later stages are judged, or recording that doesn't deduplicate meters.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order rate limits so that a narrower or per-minute limit refuses before a broader limit or daily quota is counted, and so that a refusal never spends a later counter.",
+      "why": "The address limit must refuse before the tenant limit counts, and a per-minute refusal must never spend a daily quota.",
+      "check": "Look for descriptor orders or evaluation code where a quota is incremented before, or regardless of, a short-window limit that might refuse.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Partition per-address rate limits by IPv6 `/64` prefix, normalize an IPv4-mapped IPv6 address to its IPv4 address, and skip the limit when there is no remote address.",
+      "why": "A single IPv6 host controls a whole /64, and a mapped address must count as the IPv4 address it maps.",
+      "check": "Look for address partition keys built from the raw `IPAddress.ToString()` without /64 truncation or `MapToIPv4` handling, or that throw or use an empty key when the remote address is null.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Align rate-limit windows to multiples of their length counted from the first tick of `DateTimeOffset`, so that daily windows start at midnight UTC, and allow overage only on fixed windows.",
+      "why": "Aligned windows give deterministic boundaries across replicas. An overage compares an exact count, which only a fixed window has.",
+      "check": "Look for windows computed from local time or from the request time, or for sliding windows configured with an overage.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rate-limit log messages name the tenant, the partition name, the limit and the window, and never log a remote address or client ID.",
+      "why": "Logs identify which limit was hit without recording personal or client identifiers.",
+      "check": "Look for rate-limit or quota log calls whose parameters include an IP address, a client ID, or a partition value.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the event ID of a removed log message retired, and never reuse it for a new message.",
+      "why": "A retired event ID keeps existing log queries and alerts from matching an unrelated event.",
+      "check": "Look for new LoggerMessage definitions that use an event ID that a removed message used before.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A catalog of registered descriptors validates every descriptor when it is first built. It throws `InvalidOperationException` naming the offending descriptor for empty or whitespace names, duplicate names, missing required members, or references to unregistered settings, and it orders entries deterministically using ordinal string comparison.",
+      "why": "A misregistered descriptor fails fast with a clear message, and ordering by `Order` then `Name` (ordinal) is deterministic across cultures and runs.",
+      "check": "Look for descriptor catalogs that skip validation, throw without naming the descriptor, or sort by name with culture-sensitive or unspecified comparison.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a rate limiter fail open: when the counter store throws or times out, admit the request without counting it, still add its usage meters, log the failure with the stage, and stop calling the store for a back-off period.",
+      "why": "An unavailable counter store must not take down the protocol endpoints.",
+      "check": "Look for limiter code that lets counter-store exceptions or timeouts reject the request, drops usage meters on fail-open, or retries the store on every request while it is down.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

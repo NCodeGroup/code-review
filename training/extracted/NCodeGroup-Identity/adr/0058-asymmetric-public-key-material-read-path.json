@@ -1,0 +1,79 @@
+{
+  "hash": "f399128fdbc7e7ee",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0058",
+  "rules": [
+    {
+      "statement": "Never return private key material from any API read path; expose asymmetric public material only through a dedicated, read-only public-key sub-resource, and keep shared secret read and list contracts metadata-only.",
+      "why": "The private half of a key is a standing liability that must never cross the API boundary. Putting public key data into the shared metadata contract bloats list responses and ties the metadata view to key export.",
+      "check": "Look for DTOs or responses on secret get/list endpoints that add encoded values, private key parameters (d, p, q, dp, dq, qi), or public-key fields to the shared secret resource instead of a separate public-key endpoint.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce a key's public JWK through the single shared export seam that the JWKS endpoint also uses, and do not write a second, bespoke JWK serializer.",
+      "why": "A duplicate serializer would drift from the JWKS output in curve names and member encoding. One source of truth keeps both surfaces consistent.",
+      "check": "Look for new code that builds JWK members (kty, crv, x, y, n, e) by hand or maps curve names separately, rather than calling the existing JWK export/converter abstraction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run the authorization check before unprotecting or deserializing stored key material, and decide whether the secret type applies (for example, rejecting symmetric secrets on a public-key read) from metadata alone, without unprotecting anything.",
+      "why": "Unprotected private material should exist in memory only briefly and only for callers who are allowed to see it. A type check that can be answered from metadata should never touch protected material.",
+      "check": "Look at the order of operations: is Unprotect, deserialize or key load called before the authorize call, or is the key type checked only after the material has been decrypted?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return 404 Not Found when a public-key read targets a symmetric secret, because that secret has no public-key sub-resource.",
+      "why": "A symmetric secret has no public half, so reporting the sub-resource as absent is the honest answer.",
+      "check": "Look for public-key endpoints that return 200 with empty data, a 400, or any symmetric material when the secret is symmetric.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When public key export meets a key type that has no registered exporter or converter, fail with a clear error instead of emitting a partial result.",
+      "why": "A partial key representation is misleading and could be pinned or trusted by a relying party.",
+      "check": "Look for export code that silently skips unknown key types, returns null JWK members, or builds incomplete output instead of throwing a descriptive error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit PEM public keys as SubjectPublicKeyInfo (`-----BEGIN PUBLIC KEY-----`) using the .NET `ExportSubjectPublicKeyInfoPem` API, not hand-built PEM or a format specific to one algorithm.",
+      "why": "SubjectPublicKeyInfo PEM (RFC 7468) is the copy-paste format that openssl, crypto libraries and JWT tooling accept directly.",
+      "check": "Look for manual Base64 wrapping with BEGIN/END headers, PKCS#1 `BEGIN RSA PUBLIC KEY` output, or private-key PEM exports in public-key code paths.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

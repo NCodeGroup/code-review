@@ -1,0 +1,88 @@
+{
+  "hash": "4bfdd693f0457fb9",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0098",
+  "rules": [
+    {
+      "statement": "Every code path that ends an end-user session (logout, idle or absolute expiry, eviction, administrative revocation, global sign-out, account changes, code replay and the like) must dispatch the single session-terminated mediator command instead of revoking grants or doing other cleanup directly.",
+      "why": "Bare grant revocations skipped back-channel logout, auditing and extension handlers, so relying parties never learned that the session had ended.",
+      "check": "Look for new or changed termination paths that call grant-store revocation (e.g. RevokeWhereAsync) or delete session state directly without dispatching the termination command through the mediator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When many independent contributors react to a state change, route that change through one fan-out mediator command with priority-ordered handlers registered via TryAddEnumerable, and don't hard-code the side effects inside the service that triggers it.",
+      "why": "A single seam keeps the side effects consistent on every path and lets consumers react to changes they did not start.",
+      "check": "Flag a service that performs several reaction side effects (revocation, notification, audit) inline for a state change that other code also triggers, and flag fan-out handlers registered with plain Add instead of TryAddEnumerable.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an operation with exactly one owner as a direct service capability, and don't add a mediator seam for it; the mediator must be earned by real fan-out.",
+      "why": "Something with a single owner, such as session creation at interactive sign-in, is not a fan-out concern, so a mediator only adds indirection.",
+      "check": "Flag new mediator commands or handlers for operations that have only one caller or owner and no expected set of independent reactors.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a reason or kind that extensions may add to as an open vocabulary: a string name with well-known constants, compared ordinally and passed through unchanged, not an enum.",
+      "why": "Extensions need to supply their own reasons (such as a risk signal), and handlers and audit events must carry those reasons without changes.",
+      "check": "Flag new enums for extensible reason or kind values, non-ordinal or case-insensitive comparisons of such names, and handlers that reject or rewrite unknown names.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A path that terminates a named session must claim it atomically before running termination side effects, so the session is terminated at most once when several paths end it concurrently.",
+      "why": "Several paths, such as a request and the background pass, can end the same session at the same time, and the side effects must run only once.",
+      "check": "Look for termination code that dispatches the termination command without first atomically claiming or marking the session, or that ignores the claim result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record an audit event and a structured log entry for every session lifecycle transition (creation, expiry, eviction, termination).",
+      "why": "Before this decision, session lifecycle transitions left no audit record and no structured log.",
+      "check": "Flag new session creation or termination paths that don't call the audit recorder or emit a structured log.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A tenant-addressed admin endpoint that acts on tenant-bound services must materialize a full context for the route's tenant and delegate to those services, so the full side-effect seam runs in that tenant's security domain; it must not bypass the services by touching stores directly.",
+      "why": "Going straight to the stores skips back-channel logout and auditing and runs outside the addressed tenant's context.",
+      "check": "Flag admin endpoints keyed by a route tenantId that use the ambient tenant, or that call stores directly instead of building a context for the addressed tenant and calling the service.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

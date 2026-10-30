@@ -1,0 +1,66 @@
+{
+  "hash": "9a802773591f2aa1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0228",
+  "rules": [
+    {
+      "statement": "When an action follows an atomic or conditional state transition (a claim, compare-and-swap or optimistic-concurrency update), take the data the action needs from the state that the transition itself read and returned, not from an earlier separate read.",
+      "why": "Data read before the claim can be stale: a concurrent write between the read and the claim, such as a client added to a session, would otherwise be missed. The claim's own read is complete because a concurrent write makes the claim retry.",
+      "check": "Look for code that reads an entity, then claims or conditionally updates it, then acts on fields from the first read (for example, notifying the clients listed in it). Also look for claim APIs that return only a bool when callers need the state that was claimed.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a claim-and-revoke operation, deserialize the stored payload only after the state change is saved, so a payload that cannot be read can never stop the revocation.",
+      "why": "If the payload were deserialized before the save, a corrupt payload would throw and leave the session or grant active.",
+      "check": "Look for payload deserialization that happens before the revocation is committed and can fail, aborting the revocation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization code that was already redeemed is presented again, terminate the session it was issued under through the shared session-termination path, so the session's grants are revoked, back-channel logout is sent to its relying parties and the termination is audited. Do not revoke the grants directly.",
+      "why": "Revoking grants outside the termination path leaves relying parties holding sessions whose tokens are revoked, and nothing is audited (RFC 6749 §4.1.2, OpenID Connect Back-Channel Logout 1.0).",
+      "check": "Look for authorization-code replay handling that revokes tokens or grants directly instead of calling the session termination service with a dedicated replay reason.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat only a code that was already redeemed as a replay that terminates its session. A code that expired unused, was revoked, or names no session must be refused without terminating anything.",
+      "why": "An expired or revoked code is no sign of compromise, and terminating a session signs the end user out of every relying party.",
+      "check": "Look for token-endpoint code that terminates a session for any refused code (expired, revoked, unknown) instead of checking that it was consumed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A termination of all of a subject's sessions must claim and terminate each unrevoked session grant, including sessions that have ended but are still waiting for background processing, so their relying parties get logout notifications instead of being revoked silently.",
+      "why": "Listing only active sessions and then revoking every grant of the subject revoked ended sessions without notifying their relying parties.",
+      "check": "Look for subject-wide revocation that enumerates only active sessions for notification and then bulk-revokes all grants of the subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

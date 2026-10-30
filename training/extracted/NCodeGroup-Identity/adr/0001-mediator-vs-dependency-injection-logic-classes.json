@@ -1,0 +1,62 @@
+{
+  "hash": "c5c36cee6e30fe7d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0001",
+  "rules": [
+    {
+      "statement": "When behavior has one deterministic implementation and the caller consumes its result, implement it as an injected service interface with a default implementation registered via `TryAddSingleton`, not as an NCode.Mediator command/handler.",
+      "why": "Routing a fixed, single-owner capability through the mediator costs discoverability and traceability (you can't 'Go to definition' from `SendAsync`) and adds runtime overhead, but gives no extensibility in return. That makes it 'a service wearing a costume'.",
+      "check": "Look for new `*Command` types with an `ICommandResponseHandler<T, TResponse>` where the sender knows exactly what answer it wants, no consumer is expected to add, reorder or override handlers, and nothing uses priority, pre/post processors or the exception pipeline. Flag these and suggest a `TryAddSingleton<IFoo, DefaultFoo>` service.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several independent implementations exist but the calling code itself iterates over them or picks one, and no priority ordering, pre/post processing or unified exception handling is needed, register them as a strategy collection with `TryAddEnumerable` of a domain interface instead of using mediator commands.",
+      "why": "A strategy collection is the lightweight extension mechanism. It avoids mediator ceremony and can be promoted to the mediator later if those pipeline semantics become a requirement.",
+      "check": "Flag new mediator fan-out commands whose only purpose is to let the caller enumerate or select plugin implementations without needing ordering, pre/post processors or exception semantics. Also flag plugin-style registrations that use `AddSingleton`/`TryAddSingleton` where `TryAddEnumerable` is needed.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reserve NCode.Mediator commands for deliberate request-pipeline seams: the sender must not know the handlers, consumers should be able to add, reorder or override participants, priority/pre/post/exception semantics are needed, or many contributors mutate shared state. Keep such a seam a mediator command even if it has only one handler today.",
+      "why": "The point of the mediator is to fully invert the dependency at seams that must stay open. The deciding factor is intent, not how many handlers exist, so collapsing a real seam just because it has one handler would close it to consumers.",
+      "check": "Check that each new command is justified as an extension or override seam. Don't ask to collapse a single-handler command into a service when it is clearly a pipeline seam meant for consumers to override.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Services must never call command handlers directly; they reach handlers only by sending a command through `IMediator`, while handlers may call services to do their work.",
+      "why": "Under the layering rule, services orchestrate and compute and the mediator marks the open seams. Calling a handler directly hard-wires a participant and breaks the sender's required ignorance of who handles the command.",
+      "check": "Flag services or endpoints that inject or construct a concrete `ICommandHandler<T>` / `ICommandResponseHandler<T, R>` implementation and invoke it, instead of calling `mediator.SendAsync`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not branch with `switch`/`if-else` over open-ended kinds (key types, grant types, claim types, and similar) inside a single class. Make each kind a pluggable implementation in a strategy collection, or a mediator seam if it needs pipeline semantics.",
+      "why": "Type-switching inside one class hard-codes a seam, so consumers can't plug in their own variant without changing framework code.",
+      "check": "Look for new or growing `switch` statements or if-else chains over type, kind or identifier values for concerns that consumers could reasonably extend.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

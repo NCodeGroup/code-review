@@ -1,0 +1,78 @@
+{
+  "hash": "0acd33f109520a14",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0166",
+  "rules": [
+    {
+      "statement": "Code that creates a row on demand must tolerate a concurrent creator: when the insert fails on a duplicate key, re-read the existing row rather than surfacing the error.",
+      "why": "Lazy, on-demand creation can race between concurrent requests, and the loser of the race should still end up with the created entity.",
+      "check": "Look for get-or-create paths that insert after a missing read and either let the duplicate-key failure propagate or don't re-read the row after a failed insert.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seed contributor must be idempotent, so running it again against an already-seeded tenant changes nothing and does not fail.",
+      "why": "Seeding runs again on every tenant cache miss, for the tenant and for the root tenant, so that contributors added later reach existing tenants.",
+      "check": "Look for seed contributors that insert without checking for existing data, that create duplicates, or that throw when their data already exists.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seeder that grants privileged credentials or well-known accounts must target one tenant named explicitly in configuration, must not fall back to a default or to every tenant, and must have its options validated so the host refuses to start when the name is missing.",
+      "why": "A fallback to all tenants would give every tenant created at runtime clients carrying GlobalAdmin, a well-known administrator, or test-suite credentials, and a default that changes with the strategy is a silent guess.",
+      "check": "Look for seeder options whose tenant id is optional or defaults to the root, static, or all tenants, and for missing startup validation of those options.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Lazily create only the tenants that configuration defines; a request for any other tenant that does not exist must return 404 and must not create it.",
+      "why": "Tenants other than configuration-defined ones are created only through the management API; creating them from request resolution would let any request bring a tenant into existence.",
+      "check": "Look for tenant-resolution code that inserts a tenant for an unknown id or path instead of returning not found.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A management create endpoint must finish provisioning or seeding the new tenant before it responds, and its response must carry the entity as it stands after that work.",
+      "why": "The tenant's system resources have to exist before its first request, and seeding may change the row, so the response should show the final state.",
+      "check": "Look for create endpoints that return before running seeding, or that return the object as it was before seeding instead of re-reading it.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run tenant seeding only on a tenant cache miss, never on every request.",
+      "why": "Some strategies resolve the tenant on every request before they can check the cache, so seeding during resolution would seed on every request.",
+      "check": "Look for seeding or provisioning calls in per-request tenant resolution paths that run outside the cache-miss factory.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

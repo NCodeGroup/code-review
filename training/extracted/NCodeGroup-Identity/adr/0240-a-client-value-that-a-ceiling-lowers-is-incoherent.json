@@ -1,0 +1,76 @@
+{
+  "hash": "f3c49d2c7e307adc",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0240",
+  "rules": [
+    {
+      "statement": "Format values embedded in validation or diagnostic messages with the invariant culture (for example `string.Create(CultureInfo.InvariantCulture, ...)` or `IFormattable.ToString(null, CultureInfo.InvariantCulture)`), so that values such as `TimeSpan` render in their constant format.",
+      "why": "A violation's description names values, and it has to read the same on every server culture.",
+      "check": "Look for string interpolation, `ToString()` or `string.Format` without an `IFormatProvider` that puts non-string values such as TimeSpan, numbers or dates into validation or problem messages.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code treats a value as a list by checking for `IEnumerable`, exclude `string` explicitly, and compare elements with default equality so that strings compare ordinally.",
+      "why": "A string is an `IEnumerable<char>` and must be compared as a scalar value, not as a list of characters.",
+      "check": "Look for `is IEnumerable` or `IEnumerable` type checks without a `string` exclusion before them, and for culture-sensitive or case-insensitive comparison of list elements where ordinal default equality is intended.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When matching validation violations before and after a change to find which ones the change introduced, match on the structured identifying fields (the subject, the offending value and the governing setting), never on the human-readable description text.",
+      "why": "A description can name values that the change itself moves, so matching by text would wrongly report a violation that already existed as new and block the write.",
+      "check": "Look for diffs or set comparisons of old and new validation results that compare by message or description strings.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "If a parent ceiling lowers a value that a child configuration registered (a meet merge: Min, And or Intersect), report it as a validation error to every caller. Do not clamp it silently and do not downgrade it to a warning.",
+      "why": "A write can only answer success or a validation problem, so a warning has no channel, and a silently clamped value surprises the client: it registers a one-hour lifetime and gets five-minute tokens.",
+      "check": "Look for code that applies a cascade ceiling to a child's registered value without a coherence violation, or that only logs or warns when the effective value is lower than the registered one.",
+      "scope": "domain",
+      "domain": "hierarchical-settings-cascade",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not report a violation when a join merge (Max, Or, Union) raises a child's registered value to a parent's floor.",
+      "why": "A join only raises a value to a floor, and refusing it would block a tenant from raising a floor.",
+      "check": "Look for coherence or validation checks that flag registered values that Max, Or or Union merges raise.",
+      "scope": "domain",
+      "domain": "hierarchical-settings-cascade",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether a merge can lower a value from the merge operation that the setting descriptor declares, not from `IComparable` on the value's type.",
+      "why": "Whether a merge lowers a value is a fact of the merge, not of the value's type.",
+      "check": "Look for coherence logic that compares registered and effective values through `IComparable` or `Comparer<T>` to infer a ceiling, instead of using the descriptor's merge property.",
+      "scope": "domain",
+      "domain": "hierarchical-settings-cascade",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

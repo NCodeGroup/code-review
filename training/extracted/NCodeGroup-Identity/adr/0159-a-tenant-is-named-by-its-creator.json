@@ -1,0 +1,67 @@
+{
+  "hash": "c55b897e060f97cf",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0159",
+  "rules": [
+    {
+      "statement": "A tenant's identifier must be chosen by its creator and sent in the create-tenant request; the server must not generate one.",
+      "why": "The tenant identifier is part of the tenant's issuer and its hostname. A server-generated identifier is only known once the create call returns, so a caller could not create a path-based tenant together with its issuer in a single request.",
+      "check": "Look for create-tenant handlers or request contracts that generate a tenant id (Guid.NewGuid, an id generator) or leave out a caller-supplied tenantId.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a tenant identifier as an RFC 1123 lowercase host label: 1 to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit. Reject uppercase and any wider character set.",
+      "why": "Only this form is valid both as a URL path segment and as the leftmost label of a hostname. Lowercase is the only spelling, so case-insensitive store comparison cannot let two spellings name the same tenant.",
+      "check": "Look for tenant-id validation that accepts uppercase, underscores, dots, other characters or lengths over 63, or that skips the start/end letter-or-digit check, or new code paths that accept tenant ids without this validation.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a tenant's identifier as immutable: no update request or update path may carry or change it. Put editable human-friendly labels in a separate display-name field.",
+      "why": "The identifier appears in the issuer, which every token asserts and every relying party configures, so changing it would break integrations.",
+      "check": "Look for update-tenant DTOs that include a tenantId or name property that can be written, or update logic that assigns a new tenant id.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate tenant identifiers at every entry point. That includes management API input, through the tenant resolver's validation, and tenant ids from configuration, which are validated when the host starts.",
+      "why": "An invalid tenant id from any source would produce an issuer or route that the serving strategy cannot handle.",
+      "check": "Look for new configuration options or API inputs that hold a tenant id but are not validated at startup or before use.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Caller-chosen identifiers are only for tenants. Every other resource (servers, clients, resource servers, secrets, principals) keeps server-generated, opaque identifiers.",
+      "why": "Opaque identifiers are meaningless anchors for foreign keys and audit records. Tenants are the only exception because their identifier is a public part of the issuer.",
+      "check": "Look for create requests for non-tenant resources that accept a caller-supplied id.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

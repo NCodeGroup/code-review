@@ -1,0 +1,146 @@
+{
+  "hash": "7f4ce8e782c9f9f7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0135",
+  "rules": [
+    {
+      "statement": "Write infrastructure resource tag keys in lowercase snake_case and tag values in lowercase, keeping a value's natural form such as kebab-case names, emails or paths.",
+      "why": "One key style across vendors makes resources queryable from one place, and lowercase values stop vendors that normalize tag case on read from showing permanent drift.",
+      "check": "Look for new tag or label keys in kebab-case, camelCase or with a namespace prefix such as `ncode:`, and for tag values with uppercase characters. Kubernetes standard `app.kubernetes.io/*` labels are the exception.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set resource tag values only from static inputs, never from timestamps, commit SHAs, run IDs, release versions, or IDs and ARNs that are known only after apply.",
+      "why": "Tags must be stable, so a plan with no code change shows no tag change. Versions and commits belong on deployment objects such as image digests or annotations.",
+      "check": "Look for tag values built from `timestamp()`, git SHA or CI run variables, version variables, or attributes of other resources such as `.id` or `.arn`.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put an owner tag value of a routed role mailbox, never a person's name or personal email address.",
+      "why": "Infrastructure code and its tags are public, so a role mailbox keeps personal data out of them, and it still works when people change.",
+      "check": "Look for owner or contact tags and annotations whose value is a person's name or a personal email address.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.hcl",
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On AWS, apply the shared tags only through the provider's `default_tags`, have components set only their own component-specific keys, and use the provider's `ignore_tags` to exclude tags written by other systems.",
+      "why": "Shared tags then reach every resource, so nothing is created untagged and no key is set twice, which would cause drift.",
+      "check": "Look for resource-level `tags` blocks that repeat shared keys such as application, environment, owner_email, account, managed_by or source, for an AWS provider without `default_tags`, and for drift from externally written tags that isn't handled with `ignore_tags`.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce the shared tag set in one tags module that validates it, and have components merge their own keys into that set so callers can add keys but never remove or override required ones.",
+      "why": "A single producer gives every vendor the same keys, and required keys can't go missing.",
+      "check": "Look for components that build their own copy of the shared tags or drop keys from the shared map, and for merges where caller input can replace or remove required keys.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sort tags that are rendered as a `key:value` string list (for example for Akamai) in a deterministic order.",
+      "why": "If the order changed between plans, the plan would show tag drift with no code change.",
+      "check": "Look for `key:value` tag lists built from a map without `sort()` or another stable ordering.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every taggable component resource `component`, `role`, `data_classification` (public, internal, confidential or restricted) and `deletion_protection` tags, with `deletion_protection` taking its value from the component's deletion_protection input.",
+      "why": "From any resource alone you can then tell what created it, its purpose, how sensitive it is and whether it may be deleted.",
+      "check": "Look for new components or resources missing any of these keys, `data_classification` values outside the allowed set, or a hardcoded `deletion_protection` tag that doesn't come from the input.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use an environment tag value of exactly `shared`, `lab`, `production` or `ci`, never a tenant-style word such as `dev`, `test` or `staging`.",
+      "why": "A fixed vocabulary keeps platform environments distinct from customer tenant words and makes environment queries reliable.",
+      "check": "Look for environment tags or labels with any value other than shared, lab, production or ci.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.hcl",
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Kubernetes, use the standard `app.kubernetes.io/*` labels exactly as defined, put custom labels under an organization domain prefix, and store values that contain `@` or `/` (such as owner email or source path) as annotations rather than labels.",
+      "why": "Kubernetes label values can't contain `@` or `/`, custom labels need a prefix, and the recommended labels have standard meanings.",
+      "check": "Look for unprefixed custom labels, renamed or misused `app.kubernetes.io/*` labels, and labels whose values are emails or paths.",
+      "scope": "domain",
+      "domain": "kubernetes",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Where a vendor resource doesn't support tags (for example Cloudflare Free-plan DNS records), put a stable comment on it that names `managed_by` and `source`, within the vendor's comment length limit (100 characters on Cloudflare).",
+      "why": "This keeps the resource traceable to the code that manages it even without tag support.",
+      "check": "Look for Cloudflare DNS records with no comment, a comment missing managed_by or source, a comment with values that change between plans, or a comment longer than 100 characters.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

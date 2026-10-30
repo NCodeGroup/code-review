@@ -1,0 +1,91 @@
+{
+  "hash": "ab7a9dc7879a2638",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0085",
+  "rules": [
+    {
+      "statement": "A token-endpoint grant that polls a pending authorization request must enforce the polling interval with `slow_down` (recording the last poll time), return `authorization_pending` while pending, `access_denied` when denied, and `expired_token` past expiry, and must claim an approved request atomically exactly once before issuing tokens.",
+      "why": "Poll handling for decoupled flows (device code, CIBA) has to match the spec, and a single atomic consume stops an approved request from being redeemed twice.",
+      "check": "Look for a polling grant handler that issues tokens without an atomic consume-once on the approved request, skips the interval/slow_down check, or returns the wrong error code for the pending, denied or expired states.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A CIBA backchannel authentication request must be rejected unless it carries exactly one of `login_hint`, `login_hint_token` or `id_token_hint`, and a non-poll delivery mode must require a `client_notification_token`.",
+      "why": "The CIBA spec requires exactly one hint to identify the user, and ping and push delivery need the client notification token to authenticate the callback.",
+      "check": "Look for backchannel request validation that accepts zero or several hints, or accepts ping/push mode without a client_notification_token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deployment-specific concerns such as mapping an opaque login hint to a local subject or the transport that notifies an out-of-band authentication device must be injectable seams with safe defaults (an unresolvable-hint error such as `unknown_user_id`, or a no-op notifier), not built-in assumptions.",
+      "why": "Building in something like a username lookup would assume what the hint means or which channel reaches the device. Safe defaults keep the core protocol-correct and secure until a deployment plugs in its own implementation.",
+      "check": "Look for hard-coded hint interpretation (for example, treating login_hint as a username or email lookup) or a hard-wired device notification transport, and for default implementations that resolve or approve instead of failing safely.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A protocol endpoint should only authenticate the client, load a strongly-typed request message, and run replaceable mediator commands for validation and processing, with no ad-hoc form parsing or business logic in the endpoint itself.",
+      "why": "Keeping all logic in replaceable handlers lets deployments override behavior and keeps endpoints consistent with each other.",
+      "check": "Look for endpoints that read raw form fields directly or contain validation or persistence logic inline instead of going through typed messages and command handlers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The token endpoint must reject a CIBA `auth_req_id` poll from a client registered for push delivery with `unauthorized_client`.",
+      "why": "Push clients get their tokens inside the notification and never poll, so a poll from one should not be honored.",
+      "check": "Look for a CIBA grant handler that issues tokens or pending responses without checking whether the request's delivery mode is push.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A signed backchannel authentication request object must be validated against the client's keys with issuer equal to the client id, audience equal to the OP issuer, and a valid lifetime, its `alg` must be in the advertised signing algorithms, and its claims must be used as the authoritative request.",
+      "why": "This follows the JAR validation shape. It ensures the request really comes from the client and that the signed parameters cannot be overridden by unsigned ones.",
+      "check": "Look for request-object handling that skips the issuer, audience, lifetime or alg-allowlist checks, or that merges unsigned form parameters over the JWT claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same grant can deliver tokens over several delivery modes (for example, poll/ping versus push), build the token response with one shared service so every mode issues identical tokens from the grant payload.",
+      "why": "Separate token-building paths drift apart, so different delivery modes would end up issuing different tokens.",
+      "check": "Look for a second, duplicated token-response construction for a delivery path instead of calling the shared composer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "hash": "b8da5fa7c29202ba",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0084",
+  "rules": [
+    {
+      "statement": "Every spec-coverage catalog entry must carry its authoritative reference (RFC or OIDC section), its exercise channel (browser, probe-runner, or external-suite), and its tracking issue number when one is known.",
+      "why": "The catalog is the single source of truth for the published spec surface. The channel field makes the browser's limits visible and gives the probe runner a seam to plug into without changing the model.",
+      "check": "Look for new or changed catalog rows that lack a reference or a channel tag, or that are tagged browser when the feature needs a client secret, a client certificate, or a server-to-server call.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/coverage.ts",
+        "**/conformance-core/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the coverage classifier a pure, UI-free function of the discovery document, and cover each status it can return (implemented, partial, missing, non-conformant) with unit tests.",
+      "why": "The matrix also detects regressions, so a status change has to be a real signal rather than noise.",
+      "check": "Look for classifier changes that bring in UI code, network calls, or other state besides the discovery document, or that ship without matching unit tests.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/conformance-core/**/*.ts",
+        "**/coverage.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add support for a newly published spec as a catalog row plus a classifier, not as special-case code in the UI or a hardcoded gap list in the docs.",
+      "why": "A static list drifts away from the running OP. A computed, catalog-driven matrix stays accurate and shows newly implemented capabilities automatically.",
+      "check": "Look for hardcoded feature or gap lists in UI components or docs that duplicate catalog data.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "apps/conformance/**",
+        "**/conformance-core/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The conformance probe runner CLI must exit with a non-zero code when any probe ends in the failed status.",
+      "why": "This lets the runner act as a CI pre-flight check.",
+      "check": "Look for runner changes that swallow failed probes or always exit with code 0.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/conformance-runner/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "hash": "89fe74d45da40fda",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0203",
+  "rules": [
+    {
+      "statement": "Match a requested redirect URI against the registered ones by ordinal string comparison of the raw value, without parsing or normalizing it first and without comparing parsed `Uri` instances.",
+      "why": "RFC 9700 §4.1.3, OAuth 2.1 and FAPI require simple string comparison; `Uri` equality ignores host and user-info case and normalization adds trailing slashes, so values that are not identical would be accepted.",
+      "check": "Look for redirect URI checks using `Uri.Equals`, `==` on `Uri`, case-insensitive comparison, `Uri.Compare`, or matching after normalization, or that skip the query component.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a request carrying more than one `redirect_uri` value instead of joining the values into one string.",
+      "why": "Joined multi-values produce a string that may match nothing intended and weakens the exact-match check.",
+      "check": "Look for parameter reading that concatenates or takes the first of several `redirect_uri` values instead of rejecting them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse an unregistered or impermissible redirect URI with an HTTP 400 error response rather than redirecting to it.",
+      "why": "Redirecting to an unvalidated URI would send codes, tokens or errors to an attacker.",
+      "check": "Look for error paths in redirect URI validation that redirect to the requested URI instead of returning a 400 directly.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow only the port to vary for a registered loopback IP redirect URI (`http://127.0.0.1` or `http://[::1]`), requiring the rest including path and query to match ordinally, and never accept an unregistered loopback URI or grant port flexibility to `localhost`.",
+      "why": "RFC 8252 §7.3 permits any port for native-app loopback IP redirects only, and §8.3 recommends the IP literal over `localhost`.",
+      "check": "Look for loopback handling that accepts any loopback URI, ignores path/query differences, or treats `localhost` like an IP literal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When building an authorization response, keep the registered redirect URI's query pairs as written, let a response parameter replace a same-named registered parameter, and add the response parameters to it.",
+      "why": "RFC 6749 §3.1.2 requires retaining the registered query; request-supplied query parameters must not reach the client.",
+      "check": "Look for response writers that discard the registered query, duplicate same-named parameters, or reorder/re-encode existing pairs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Carry an accepted redirect URI as the original string everywhere it is stored, compared or serialized, parsing a `Uri` only to inspect a part of it.",
+      "why": "Storing a parsed `Uri` normalizes the value (lower-cased host, trailing slash), so the response and token-endpoint comparison no longer use the value as written, as RFC 6749 §4.1.3 requires.",
+      "check": "Look for redirect URI properties, persisted fields or DTOs typed as `Uri`, or serialization via `Uri.ToString()`/`AbsoluteUri` instead of the original string.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the token endpoint, compare the `redirect_uri` to the one bound to the authorization code ordinally and treat an empty value as missing.",
+      "why": "RFC 6749 §4.1.3 requires the values to be identical; a case-insensitive or `Uri` comparison accepts differing values.",
+      "check": "Look for token-request redirect URI checks using `Uri` equality, case-insensitive comparison, or treating empty string as a supplied value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When writing a redirect URI into a `Location` header, percent-encode only characters a header value cannot carry (non-ASCII, ASCII control characters, space) and otherwise leave the string as written, keeping any fragment such as `#_=_`.",
+      "why": "The client must receive the response at its redirect URI exactly as sent; wider re-encoding alters the value.",
+      "check": "Look for `Uri`/`UriBuilder` round-trips or general URL encoding of the whole redirect URI before setting `Location`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never permit a redirect URI that is not absolute or whose scheme is not a recognized kind (https, loopback IP http, other http, or a reverse-domain private-use scheme containing a period), such as `javascript:`, `data:`, `file:` or a scheme without a period.",
+      "why": "Script or data URIs could run in the server's origin, and OAuth 2.1 §2.3.1 and RFC 8252 §7.1 reject private-use schemes without a period.",
+      "check": "Look for redirect or post-logout redirect validation that accepts relative URIs or arbitrary schemes without classification.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate redirect URI kinds both at client registration (including `post_logout_redirect_uris`) and when processing the authorization or PAR request, and refuse settings changes that would leave a stored URI unpermitted.",
+      "why": "Checking at both points ensures no stored client keeps a URI its effective settings disallow, and that requests are checked too.",
+      "check": "Look for new registration, management or request paths that accept redirect URIs without the kind check, or settings updates that skip revalidating stored clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate `post_logout_redirect_uri` by ordinal comparison to registered values and by kind, and do not redirect to a value that fails either check.",
+      "why": "Post-logout redirects carry the same open-redirect risk as authorization redirects.",
+      "check": "Look for end-session code that redirects to `post_logout_redirect_uri` after a looser comparison or without a kind check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under FAPI 1.0 Advanced permit only `https` redirect URIs with no loopback port exception, and under FAPI 2.0 refuse `http` redirect URIs except loopback IP literals.",
+      "why": "FAPI 1.0 Part 1 §5.2.2-20 and §7.5 require https and refuse private-use and loopback; FAPI 2.0 §5.3.2.2-8 refuses http except native loopback.",
+      "check": "Look for FAPI profile definitions or checks that allow http, private-use or loopback redirect URIs contrary to these limits.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

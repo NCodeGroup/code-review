@@ -1,0 +1,45 @@
+{
+  "hash": "752114c8c6573af3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0255",
+  "rules": [
+    {
+      "statement": "In a single-page frontend whose URL is its navigation state, give every tabbed view its own route path instead of keeping the selected tab in component state, and make a tab change navigate so that it adds a history entry.",
+      "why": "Tabs held in component state can't be linked, reloaded or reached with back and forward. That breaks the contract that the address bar is the navigation state.",
+      "check": "Look for new or changed tab components whose active tab is held in React state (useState or similar) instead of coming from the route, and for tab-change handlers that set local state rather than calling the router's navigate function.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass the selected view into a page component as a prop derived from the route, so the page holds no state of its own for which view is selected.",
+      "why": "Because the address selects the surface, the page shows what the URL says, and a deep link or a reload opens the same view.",
+      "check": "Look for page or container components that keep their own selected-tab or selected-view state, or that fall back to a default tab even when the route already names one.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep peer views of one entity as flat sibling routes at a single depth, rather than nesting a second level of tab routes beneath one of them.",
+      "why": "Nesting adds a second row of tabs for what is a flat set of peers, and gives the route grammar a depth that no other surface has.",
+      "check": "Look for new routes shaped like /entity/{id}/section/{tab} where the tabs are peers of the existing /entity/{id}/{surface} routes.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

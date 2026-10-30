@@ -1,0 +1,103 @@
+{
+  "hash": "d361acdc38ac421a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0086",
+  "rules": [
+    {
+      "statement": "Keep a protocol endpoint's route handler a thin orchestrator: guard the verb and content-type, authenticate the client, load the typed request, dispatch to the mediator, and render the result, with no protocol logic inline.",
+      "why": "Fat endpoints drift from the canonical shape, and their processing and persistence logic can't be unit-tested without the HTTP pipeline.",
+      "check": "Look for a new or changed endpoint handler that contains validation branches, persistence, token or grant issuance, or other protocol work inline instead of dispatching mediator commands.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Endpoints/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model each protocol endpoint's request as a strongly-typed message with known-parameter-backed properties, loaded through the message's static Load method and registered as a message factory, and never read request parameters with hand-rolled form.TryGetValue calls.",
+      "why": "\"Simple\" endpoints gain parameters over time, and a typed message gives typed access, consistent parsing and serialization, extensibility, and OpenAPI metadata.",
+      "check": "Look for direct form/query reads (form.TryGetValue, Request.Form[...]) in an endpoint, or a new request type that is not a typed message with known parameters and a registered message factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put request validation for a protocol endpoint in a mediator command handler with high mediator priority that throws an OpenID error exception on any violation, not in inline if-checks in the endpoint.",
+      "why": "This keeps validation replaceable and composable (several validators via TryAddEnumerable), and the exception filter renders the error the same way everywhere.",
+      "check": "Look for inline parameter validation or error responses built in the endpoint handler, instead of a Validate*Command handler that throws the error factory's exception.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make each replaceable protocol decision or processing step a mediator command that returns a disposition, handled by a default response handler, rather than code inlined in the endpoint.",
+      "why": "Each step can then be unit-tested and replaced on its own.",
+      "check": "Look for protocol steps such as issuance, persistence, or subject resolution coded in the endpoint instead of in an ICommand<TDisposition> handled by an ICommandResponseHandler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For a capability seam that a deployment must supply (such as subject resolution, grant issuance, or notification delivery), ship a default handler that reports unsupported or undecided, reusing an existing disposition where one fits, and register it with TryAddSingleton so a capability package can replace it.",
+      "why": "The core then ships protocol-correct behavior, and deployment-specific behavior plugs in the same way for every seam.",
+      "check": "Look for a capability seam with no default handler, a default that pretends to succeed, a newly invented disposition where an existing one fits, or registration with AddSingleton that blocks replacement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model side-effecting transports (such as back-channel logout delivery or notification sending) as injectable service interfaces called from a mediator handler, not as mediator commands.",
+      "why": "The decision stays in the pipeline and the delivery stays in a replaceable service. The mediator is only for genuine pipeline seams.",
+      "check": "Look for a new mediator command whose only job is sending or delivering something over a transport, or a transport called directly from the endpoint instead of from a handler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a protocol endpoint depend on as few services as possible, ideally only the client authentication service, and reach everything else through the context's mediator.",
+      "why": "A thin endpoint with minimal dependencies holds no protocol logic, and its steps stay replaceable.",
+      "check": "Look for an endpoint provider whose constructor injects stores, issuers, or other protocol services beyond client authentication.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/Endpoints/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a protocol endpoint route with a name, tags, produced response types, antiforgery disabled, and OpenID discovery metadata (.WithName/.WithTags/.Produces/.DisableAntiforgery()/.WithOpenIdDiscoverable()).",
+      "why": "This is the canonical endpoint wiring, so every endpoint gets OpenAPI metadata and is advertised in discovery.",
+      "check": "Look for a new endpoint Map call that is missing any of these calls.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/Endpoints/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "hash": "f9a2e5c1dbef7844",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity .claude/commands/review-code.md",
+  "rules": [
+    {
+      "statement": "Do not break backward compatibility of public APIs or stored data formats; when a breaking change is unavoidable, include an explicit migration for stored data.",
+      "why": "The review process treats backward compatibility of public APIs and stored data, and migrations, as a risk check. Breaking either one silently breaks consumers or existing persisted data.",
+      "check": "Look for removed or renamed public members, changed signatures or semantics on public types, and changes to persisted entities, schemas or serialized formats that have no accompanying migration or compatibility shim.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reuse existing helpers, utilities and patterns in the codebase instead of reimplementing functionality that already exists.",
+      "why": "The review process checks whether a change duplicates something that already exists and whether it follows the codebase's existing patterns, naming and error handling.",
+      "check": "Look for new methods or classes in the diff that do the same job as an existing helper, extension or shared NCode.* library API, or that handle errors differently from how the surrounding code does.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

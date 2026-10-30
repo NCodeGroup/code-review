@@ -1,0 +1,51 @@
+{
+  "hash": "311094f827cb7597",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0214",
+  "rules": [
+    {
+      "statement": "Answer a lost optimistic-concurrency race on a resource-management write with `412 Precondition Failed` and a problem response telling the caller to read the resource again and retry. Do not let it fall through as `500`, and do not answer it with `409 Conflict`.",
+      "why": "A lost race is the same condition a stale `If-Match` reports, and the caller recovers by re-reading. `409` means a state the caller must change, and `500` hides a condition the caller can recover from.",
+      "check": "Look for management/CRUD endpoints where a store concurrency exception goes unhandled (so it becomes 500), or is mapped to 409 or some other status instead of a 412 problem.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a store concurrency exception to an HTTP response in one endpoint filter on the root route group, so every endpoint inherits it, including endpoints that packages add. Do not catch it in individual handlers.",
+      "why": "A catch in each handler gets repeated everywhere, and any handler that forgets it answers `500`.",
+      "check": "Look for endpoint handlers with their own try/catch for the concurrency exception, or a new route group or endpoint registered outside the root group that carries the filter.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not retry a management write in the server after it loses a concurrency race. Send the failure back to the caller, who decides whether the write still applies.",
+      "why": "The write was computed from a stale read, so only the caller can decide whether it should still happen.",
+      "check": "Look for retry loops or re-read-and-resave logic around management write saves that catch concurrency exceptions (revocation, which retries under a separate decision, is the only exception).",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an expected client-recoverable concurrency conflict is turned into a 412 response, log it at Debug level with a dedicated event id, not at Warning or Error.",
+      "why": "The source logs the handled lost race at Debug with its own event id, because it is an expected condition the caller can recover from.",
+      "check": "Look for concurrency-conflict handling that logs at Warning/Error or logs without an event id.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

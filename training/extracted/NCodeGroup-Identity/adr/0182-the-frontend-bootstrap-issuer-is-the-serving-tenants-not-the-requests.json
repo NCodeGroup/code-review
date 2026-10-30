@@ -1,0 +1,54 @@
+{
+  "hash": "be26cd8f176618af",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0182",
+  "rules": [
+    {
+      "statement": "Never derive an OAuth/OIDC issuer (or the authority a client is told to discover) from the request's scheme and Host; use the serving tenant's stored, validated issuer, or an explicit configured override.",
+      "why": "A forged or proxied Host, or a shared cache that stored one host's response under another, would send users to sign in at an authority the operator never configured. The request origin can also belong to the wrong tenant.",
+      "check": "Look for code that builds an issuer, authority or discovery URL from HttpContext.Request.Scheme/Host, Request.GetDisplayUrl, or similar request-origin values, rather than from the tenant's stored issuer or a configured setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no issuer is configured or stored, fail loudly with an error (such as a 500 problem response that names the setting to configure) instead of falling back to the request origin or another unvalidated value.",
+      "why": "A tenant without an issuer is a configuration error. A silent fallback brings back the unvalidated second source of the issuer.",
+      "check": "Look for null-coalescing or fallback branches that substitute the request origin, or some other derived default, when the issuer is missing. Check that the error response names the missing setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark responses whose content depends on the request host or tenant, such as frontend bootstrap/config documents, with `Cache-Control: no-store`.",
+      "why": "Without it, a shared cache could serve one host's document for another host, so a client would trust the wrong authority or API.",
+      "check": "Look at endpoints that return host- or tenant-dependent configuration and check that they set Cache-Control: no-store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't branch with a closed switch on the code values of an open, extensible vocabulary (such as registered strategy names). Get the answer from behavior that the abstraction already implements, so newly registered implementations are covered.",
+      "why": "A closed switch over an open vocabulary silently mishandles strategies registered later. A test against what the interface already exposes covers every strategy.",
+      "check": "Look for switch/if chains over strategy, kind or type code strings or enums that come from an extensible registry, where an interface method could answer the question.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

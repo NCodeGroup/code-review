@@ -1,0 +1,119 @@
+{
+  "hash": "95035dfd1fc40408",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0133",
+  "rules": [
+    {
+      "statement": "A reusable OpenTofu/Terraform module declares `required_providers` but never contains `provider` configuration blocks or a `backend` block; the calling root module configures those.",
+      "why": "Components must be composable by any caller; provider and backend configuration belongs to the composition root.",
+      "check": "Look for `provider \"...\" {}` blocks or `terraform { backend ... }` inside a reusable module directory rather than a root/live configuration.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A reusable infrastructure module takes its dependencies as explicit input variables and exposes what others need as outputs, rather than using data source lookups to discover resources owned by other components.",
+      "why": "Cross-component data lookups create hidden coupling; explicit inputs and outputs keep each component a single concern with a clear interface.",
+      "check": "Flag `data` blocks in a module that look up resources (zones, clusters, buckets, VPCs) created by another component instead of receiving their IDs as variables.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every reusable infrastructure module ships a README, a usage example, and `tofu test` tests that use mocked providers.",
+      "why": "Each published component is a supported product that must be documented and tested.",
+      "check": "A new or changed module directory lacking a README, an example, or `*.tftest.hcl` tests with `mock_provider`.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "testing",
+      "applies_to": [
+        "**/modules/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a module's variables and outputs as its public API: removing or renaming a variable or output, adding a required input, or a change that forces a resource to be replaced or destroyed is a breaking change and must be listed with migration steps in the release notes.",
+      "why": "Consumers must act on such changes, so they have to be versioned and documented as breaking even if the interface looks unchanged.",
+      "check": "Diffs that remove or rename variables or outputs, add variables with no default, or change resource addresses or force-new attributes, with no breaking-change or migration note.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When refactoring infrastructure code changes resource addresses, add `moved` (or `removed`) blocks so existing resources are not destroyed and recreated.",
+      "why": "Forced replacement of resources is a breaking change for consumers; `moved` and `removed` blocks avoid it.",
+      "check": "Renamed resources, resources moved into or out of modules, or changed `count`/`for_each` keys with no matching `moved` or `removed` block.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reusable modules declare provider version ranges, not exact versions; exact provider versions are pinned only in root/live configurations through the lock file.",
+      "why": "Exact pins in shared components cause conflicts for callers; the deployed instance pins versions through its lock file.",
+      "check": "A reusable module's `required_providers` with an exact `version = \"x.y.z\"` pin, or a lock file committed inside a reusable module.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reusable components and stacks must not hard-code or default environment-specific values such as domains, hostnames, account IDs or secret-store paths; take them as inputs and set them only in the live/environment configuration.",
+      "why": "Components must be generic so self-hosters can use the same artifacts the platform runs.",
+      "check": "Variable defaults or literals in modules, stacks or Kustomize bases containing the platform's own domain, hostnames, account IDs or SSM paths.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/modules/**",
+        "**/stacks/**",
+        "**/kubernetes/components/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deployed environment configurations reference modules, stacks and GitOps sources only by a pinned released version (by digest where supported), never by a local relative path.",
+      "why": "Running the same released artifacts that self-hosters consume keeps the self-hosted path exercised and tested.",
+      "check": "A `source = \"../...\"` or an unpinned branch ref in live/cluster environment configuration.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/live/**",
+        "**/clusters/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Keep a service's Helm chart in the same repository as the service and its Dockerfile, and change the chart in the same change as any change to the service's configuration surface (settings, ports, probes).",
+      "why": "The chart encodes the host's configuration surface and must change atomically with it.",
+      "check": "Changes to host settings, ports or health endpoints without the matching chart values or template updates.",
+      "scope": "domain",
+      "domain": "kubernetes-deployment",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

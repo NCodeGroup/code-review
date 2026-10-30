@@ -1,0 +1,100 @@
+{
+  "hash": "0fad33e7125e2bf0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0117",
+  "rules": [
+    {
+      "statement": "Do not add a third-party cryptographic library dependency to shipping code; build cryptographic algorithms from BCL `System.Security.Cryptography` primitives, and write any missing math yourself from the RFCs.",
+      "why": "Third-party crypto packages create audit/SBOM findings (for example builds against EOL target frameworks) or add unmanaged native dependencies. A clean-room implementation over BCL primitives avoids both.",
+      "check": "Look for new PackageReference entries in non-test projects that point to crypto libraries (BouncyCastle, NSec, Chaos.NaCl, libsodium wrappers and similar), and for usings of their namespaces in shipping code.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep cryptographic code that handles secret data constant-time: no branches, early exits, loop counts or memory indexes that depend on secret values, and use masked conditional selects instead of if/ternary on secret bits.",
+      "why": "Execution that depends on secrets leaks key material through timing side channels. The ADR says constant-time behavior overrides speed.",
+      "check": "In scalar multiplication, field or scalar decode/reduce, and key handling, flag `if`/`?:`/`switch`/`break` conditioned on secret bits or limbs, table lookups indexed by secret values, and short-circuit comparisons such as SequenceEqual on secrets (use CryptographicOperations.FixedTimeEquals).",
+      "scope": "domain",
+      "domain": "cryptography",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero buffers that hold secret material (private keys, seeds, intermediate scalars) with `CryptographicOperations.ZeroMemory` once you are done with them, including on error paths.",
+      "why": "Secret buffers left in memory can leak key material.",
+      "check": "Look for stackalloc'd, rented or allocated buffers that hold private or secret data and are not cleared with CryptographicOperations.ZeroMemory in a finally block or before they are returned to a pool.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin self-implemented cryptographic algorithms with differential tests that compare the output byte-for-byte against an independent implementation, and reference that implementation only from test projects as an oracle.",
+      "why": "Correctness of clean-room crypto has to be proven against a known-good implementation, but that implementation must never become a shipping dependency.",
+      "check": "New or changed self-implemented crypto code with no byte-for-byte cross-check or RFC test vector tests, or an oracle library referenced from a non-test project.",
+      "scope": "domain",
+      "domain": "cryptography",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship optional, additive features (such as an extra algorithm family) as a separate opt-in package that a host enables with a single `IServiceCollection` extension method, which registers its services with `TryAddEnumerable`.",
+      "why": "This keeps the core library free of new dependencies and always-on features. Hosts that don't opt in are unaffected.",
+      "check": "Look for optional algorithm or feature implementations added straight into a core package and registered by default, or registrations in the opt-in extension that use Add/AddSingleton instead of TryAddEnumerable for collection services.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implementation packages must reference only abstractions packages and foundational utilities, never a concrete sibling implementation package.",
+      "why": "Depending on concrete siblings couples packages together and breaks the abstractions-only layering.",
+      "check": "Look for ProjectReference or PackageReference entries in an implementation package that point to another non-Abstractions implementation package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make catalogs or sets that a specification closes (for example the curves RFC 8032 defines) `internal` rather than exposing them as public extensibility seams; expose public extensible catalogs only when the set is open by nature.",
+      "why": "Adding a member to a closed set would be a different algorithm, so a public extension point there is meaningless surface area.",
+      "check": "Look for new public types, interfaces or registries that let consumers extend a set the spec fixes, and check that consumers select a member by its standard identifier string (for example the JWK `crv`).",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep private key material data-protected in memory and expose it only through an explicit export method, never through a plain property or field.",
+      "why": "Plaintext private keys held in memory or reachable through casual accessors widen the exposure of secrets.",
+      "check": "Look for secret key types that store raw private bytes unprotected, or that expose private material through properties, ToString or serialization instead of an explicit ExportPrivateKey-style method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

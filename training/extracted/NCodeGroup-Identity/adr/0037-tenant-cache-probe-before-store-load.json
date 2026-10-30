@@ -1,0 +1,41 @@
+{
+  "hash": "1240174d768fd53a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0037",
+  "rules": [
+    {
+      "statement": "On a per-request hot path, when the cache key can be derived from the request alone (configuration, route value), probe the cache with that key before doing any store or database read, and read the store only on a cache miss.",
+      "why": "Reading the store just to get the cache key makes every request pay a database round-trip even when the materialized object is already cached, so the cache saves only the materialization and never the read.",
+      "check": "Look for request-path code that awaits a store/repository load and then uses the loaded entity's identifier to look up a cache. When the identifier could have come from the request, the cache lookup should come first.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `TryGet…(…, out …)` identity probe used before a cache lookup must not throw and must not do a store round-trip. It returns `false` when the identifier can't be worked out cheaply, and authoritative validation (missing or disabled entity → 404) stays in the full load path.",
+      "why": "The probe exists to avoid the store read on the hot path. Throwing from it or doing I/O inside it would defeat that purpose and blur where validation happens.",
+      "check": "Look for Try-pattern probe methods that call a store, await I/O, or throw validation exceptions, and for validation logic that moved out of the full resolve/load method into the probe.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an entity's existence and enabled/disabled state on the cache-miss load path before you put the materialized object in the cache, so the cache never holds an invalid or disabled entity. Don't re-read the store on cache hits to re-validate it.",
+      "why": "A disabled tenant must never be cached in the first place. Re-validating on every hit would bring back the per-request store read, so staleness is bounded by the cache lifetime and by eviction announcements instead.",
+      "check": "Look for code that inserts into the cache before the existence/disabled checks run, or that adds a store read on the cache-hit path just to re-check the disabled flag.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

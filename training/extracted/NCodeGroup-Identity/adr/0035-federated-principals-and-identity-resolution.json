@@ -1,0 +1,103 @@
+{
+  "hash": "80f951250e064eb9",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0035",
+  "rules": [
+    {
+      "statement": "Make role assignments, ownership, grants and activity/usage records reference the server-generated opaque principal id, never an external identity value such as an upstream `sub` or `(issuer, subject)` pair.",
+      "why": "Using an external value as the relationship key ties authority to upstream identity churn (issuer migration, re-provisioning) and breaks the rule that identifiers are server-generated and opaque.",
+      "check": "Look for foreign keys, columns or lookups in authorization, grant or metering code that store or join on the raw `sub` claim or upstream subject instead of the resolved principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the upstream `(issuer, subject)` pair only as a lookup key for a federated identity, enforce uniqueness on the pair (within the tenant) rather than on `subject` alone, and never use it as the identifier of an entity the system owns.",
+      "why": "A `sub` is unique only per issuer, so only the pair is a durable natural key; it exists to find an identity, not to identify system-owned data.",
+      "check": "Flag unique indexes or lookups on subject without issuer, indexes on the pair that are global when data is tenant-scoped, and code that exposes or persists the pair as an entity's id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit the server-owned stable principal id as the `sub` claim in issued tokens, grants and introspection, resolving the principal before the grant is created, never passing through the raw upstream subject.",
+      "why": "Relying parties then get one durable subject per human no matter which connection authenticated the session.",
+      "check": "Look for token, grant or introspection code that copies the incoming external `sub` claim into the issued `sub` instead of the resolved principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hard-code the `sub` claim as the only source of caller identity; read the identity source claim from configuration (keyed by issuer, defaulting to `sub`) and send it through the principal-resolver abstraction.",
+      "why": "Other token profiles carry the subject in other places, and non-human actors have no `sub`, so one hard-coded claim is not a durable principal identity.",
+      "check": "Flag authorization or session code that calls `FindFirst(\"sub\")` or a similar claim lookup directly to identify the principal instead of using the resolver.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make account-linking deterministic and audited, with no fuzzy heuristics: auto-attach only a new identity whose verified email comes from a connection marked trusted for linking, and never automatically merge two principals that already exist.",
+      "why": "Linking identities is a trust decision, and merging established principals is where account-takeover risk concentrates, so it needs explicit administrative or end-user action.",
+      "check": "Look for linking logic that matches on unverified email, ignores the connection's link-trust flag, uses fuzzy matching (names, similarity), skips audit, or merges existing principals automatically.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model one human as a single principal that owns many connection identities, with organization stored as an attribute of a connection identity rather than as a container that holds users.",
+      "why": "Treating each connection identity as an actor, or nesting users under organizations, gives a human more than one record, which causes double counting and double billing.",
+      "check": "Flag new user entities scoped under an organization, and code that creates a separate principal for each login connection instead of attaching an identity to the existing principal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write authorization logic against the abstract principal id and resolver abstraction, not against identifiers or types specific to human principals.",
+      "why": "Service principals can then be added later without reworking the authorization handlers.",
+      "check": "Flag authorization handlers or assignment stores that take or reference a human-specific principal type or id instead of the abstract principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not name system entities or system identifiers \"Subject\"; keep that term for the upstream external `sub` value and the emitted `sub` claim, and call the actor a principal.",
+      "why": "Using \"subject\" for the aggregate actor overloads the OpenID term and blurs the line between external and system-owned identity.",
+      "check": "Look for new types, properties or ids named `Subject`/`SubjectId` that refer to a system-owned actor instead of the upstream claim value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-identity",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

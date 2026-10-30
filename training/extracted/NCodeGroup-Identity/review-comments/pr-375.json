@@ -1,0 +1,18 @@
+{
+  "hash": "b656258573d2ad44",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #375",
+  "rules": [
+    {
+      "statement": "When a public API writes encoded or decoded bytes into a caller-supplied Span<byte> destination, also give it an overload that writes to an IBufferWriter<byte>, along with the method that tells the caller how big the destination must be.",
+      "why": "The maintainer asked for a buffer-writer overload alongside the span-only Decode method, so callers can write output without first sizing and allocating a destination buffer.",
+      "check": "Look for new public encode, decode or serialize methods that take only a Span<byte> destination and have no IBufferWriter<byte> overload, for example a generic `ref TWriter destination` where `TWriter : IBufferWriter<byte>, allows ref struct`.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

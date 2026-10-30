@@ -1,0 +1,76 @@
+{
+  "hash": "1775461a6697d1b6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0148",
+  "rules": [
+    {
+      "statement": "A setting that carries a security baseline down a hierarchical settings cascade (server → tenant → client) must merge with a lattice operation (Min, Max, And, Or, Intersect, Union) so that a child scope can tighten or add to the baseline but never clear, replace or loosen it.",
+      "why": "With a projection merge (Replace/Keep), a child that cleared or replaced a parent's selection silently lost the parent's requirements while keeping its ceilings. A lattice merge makes the guarantee follow from the merge's algebra, which is commutative, associative and idempotent, so the result doesn't depend on order.",
+      "check": "Look for security floors, ceilings or profile selections in a scoped settings cascade that use Replace/Keep or custom precedence logic (for example special-casing one profile name in the merge) instead of a lattice merge.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several security constraints apply together, compose them by conjunction and fail closed: contradictory allow-lists produce an empty set that permits nothing, and only an absent list means unrestricted.",
+      "why": "Selecting several profiles has to be at least as strict as each one alone. Treating an empty intersection as unrestricted would turn a contradiction into a bypass.",
+      "check": "Look for code that treats an empty allowed-values list the same as null or absent, or that lets one constraint's value replace another's instead of intersecting them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an operation's behavior depends on a context that its input cannot reliably convey, require that context as an explicit parameter and reject unknown values with ArgumentException, rather than inferring it or offering an overload that omits it.",
+      "why": "The input doesn't say which context it belongs to (an empty client document looks like an empty tenant document), so inference guesses wrong exactly where it matters. An overload without the parameter also lets a caller leave out the one fact the logic needs.",
+      "check": "Look for new methods that guess a scope or context from data shape, or overloads that default or omit a context parameter the behavior depends on. Check that unrecognized context values throw ArgumentException.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When applying several registered extensions or providers whose results can interact, visit them in a deterministic order, such as the ordinal order of their names, and build each one's contribution separately so that one cannot overwrite another's.",
+      "why": "Otherwise the order of registration or application decides the outcome, and one profile's value can replace another's.",
+      "check": "Look for iteration over registered plugins or profiles in registration or hash order where the order affects results, or for several contributors writing into one shared mutable collection.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a classification from the behavior it describes (for example, whether a descriptor's merge function is a lattice operation) instead of declaring it as separate metadata that restates that behavior.",
+      "why": "Separate metadata restates the function and can drift from it. Reading the kind from the function actually in use cannot disagree with what it does.",
+      "check": "Look for new flags or enum properties that duplicate information already determined by a function or strategy object on the same type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Renaming or reshaping a persisted setting must ship with a data migration that rewrites the stored values. Its Down must restore what the old shape can express, and any value the migration cannot translate must be left to fail closed, not dropped silently.",
+      "why": "Stored documents would otherwise carry names or shapes the closed vocabulary rejects, or would quietly lose a security selection.",
+      "check": "Look for a diff that renames or changes the type of a stored setting key without a migration, or a migration that silently discards untranslatable values or has no meaningful Down.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

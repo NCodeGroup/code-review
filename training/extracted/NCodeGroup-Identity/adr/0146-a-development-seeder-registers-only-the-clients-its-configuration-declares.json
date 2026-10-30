@@ -1,0 +1,53 @@
+{
+  "hash": "e0f4151a255e3bb8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0146",
+  "rules": [
+    {
+      "statement": "Initialize a configuration-bound collection option as empty, and apply any default entries only when configuration supplies none, never as initial list contents.",
+      "why": "The configuration binder appends configured entries to a list that already holds some, so built-in entries can be extended by configuration but never removed or replaced.",
+      "check": "Look for options classes whose List/collection properties are initialized with entries (e.g. `= [\"a\", \"b\"]` or `new() { ... }`) and that are bound from IConfiguration.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not ship one host's identifiers, such as client ids, redirect URIs or dev-server ports, as defaults in a reusable library's options; have the host's environment configuration overlay declare them.",
+      "why": "Hard-coding a host's identifiers in a published library splits each setting across two layers, so a rename means editing both and the library carries details that belong to one host.",
+      "check": "Look for library options or seeders that default to hard-coded application-specific ids, URLs, localhost ports or redirect URIs instead of leaving them empty for host configuration.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a development-time seeder or convenience do nothing when its configuration section is absent, so it persists only the entities configuration explicitly declares.",
+      "why": "Seeded data is stored in the database and outlives the process. Built-in seeds leaked unwanted clients into every non-Production host, including environments that use a completely different set of clients.",
+      "check": "Look for seed handlers or development features that register or persist entities by default when no configuration is present, or that fill in entries when the configured list is empty.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a host publishes client ids to a frontend and also seeds the matching client registrations from configuration, add an integration test that checks every published client id is seeded and that every seeded redirect URI resolves at the authorization endpoint.",
+      "why": "The two halves of a surface's sign-in coordinates are configured separately, and the test stops them drifting apart.",
+      "check": "Look for changes that add or rename published frontend client ids or seeded SPA clients without a test that checks the two agree.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "hash": "f132bfe592e5ce4b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0031",
+  "rules": [
+    {
+      "statement": "Never seed or grant control-plane management scopes (server, server-settings, server-secrets and tenant-provisioning families) to a workload tenant; seed them only into the root tenant, and seed tenant-plane resource servers into every tenant.",
+      "why": "Control-plane scopes must not leak into workload tenants. Only the root tenant, which is the control plane, administers servers and tenants.",
+      "check": "Look for seeding or provisioning code that adds control-plane scope families to every tenant without checking whether the tenant is the root tenant, or for new control-plane scopes added to a tenant-plane provider.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read the root tenant identifier from configuration options with a named default constant, not from a hard-coded string literal.",
+      "why": "The root tenant id defaults to \"root\", but each deployment can override it, so a hard-coded value breaks deployments that configure a different id.",
+      "check": "Look for comparisons against or uses of a literal like \"root\" for the root tenant id, instead of reading the configured options value.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

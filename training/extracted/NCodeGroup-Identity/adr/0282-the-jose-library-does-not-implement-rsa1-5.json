@@ -1,0 +1,66 @@
+{
+  "hash": "1bf8394b6e30ba19",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0282",
+  "rules": [
+    {
+      "statement": "Do not implement, register or offer an opt-in registration method for RSA1_5 (RSAES-PKCS1-v1_5) key encryption; register RSA key management only as RSA-OAEP, RSA-OAEP-256, RSA-OAEP-384 and RSA-OAEP-512.",
+      "why": "RFC 8725 §3.2 and draft-ietf-jose-deprecate-none-rsa15 say to avoid PKCS#1 v1.5 encryption, and having it in a default registry exposes every direct consumer to a Bleichenbacher padding oracle. A registration method would also be a global switch, which the draft does not allow.",
+      "check": "Look for RSA1_5 being added to a default algorithm data source or registration extension, or for a new opt-in method that enables it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build RSA key-management padding with RSAEncryptionPadding.CreateOaep(hashAlgorithmName) only, and give the RSA key-management class no code path that can select RSAEncryptionPadding.Pkcs1.",
+      "why": "If the class cannot express PKCS#1 v1.5 padding, nobody can configure the padding oracle back in by accident.",
+      "check": "Look for RSAEncryptionPadding.Pkcs1, or for a padding parameter or branch, in JOSE key wrap/unwrap code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Policies that choose which algorithms to advertise or accept for decryption must refuse RSA1_5 by its algorithm code as well as applying their allow-lists, so an RSA1_5 implementation a host registers itself is never advertised or used.",
+      "why": "The vocabulary is open, so a consumer can register its own RSA1_5. Defaults derived from registered algorithms must still never pick it up.",
+      "check": "Look for algorithm-selection or decryption-policy code that lists registered key management algorithms without excluding RSA1_5 by name, or for changes that remove the name-based exclusion.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test of a name-based deny rule must register a working implementation of the denied item and pair it with a permitted control item, so the test passes only because of the name rule.",
+      "why": "Without a working denied implementation and a control, the test could pass just because the item is unregistered or not usable, and would not prove the rule.",
+      "check": "Look for deny-by-name tests that never register the denied algorithm, or that have no allowed control alongside it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a JWE that names an unimplemented or deprecated algorithm such as RSA1_5 fail exactly like any other unregistered algorithm, with the generic JoseInvalidAlgorithmException, not with a special error or message.",
+      "why": "No special message is needed for a removed algorithm, and treating all unsupported algorithms the same way keeps error handling uniform.",
+      "check": "Look for special-case exception types or messages for RSA1_5 or other deprecated algorithm names in JOSE deserialization code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

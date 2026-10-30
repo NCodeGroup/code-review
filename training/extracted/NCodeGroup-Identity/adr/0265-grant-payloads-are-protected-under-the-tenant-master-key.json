@@ -1,0 +1,74 @@
+{
+  "hash": "3f3c83f3e0749b0d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0265",
+  "rules": [
+    {
+      "statement": "Persist grant or token payloads only as encrypted envelopes under the owning tenant's key, never as plaintext JSON in the database.",
+      "why": "A database dump or backup would otherwise expose issued tokens, personal data and request parameters.",
+      "check": "Look for new or changed persisted entities or columns that store grant, token, session or request payloads as plaintext JSON or strings instead of an encrypted envelope protected with the tenant's owner key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encrypting a stored record, bind the ciphertext to the lookup key the reader holds (for example the hashed lookup key as the protection context item id), not to an unrelated identifier.",
+      "why": "Binding the envelope to its lookup row means a payload copied to another row does not decrypt.",
+      "check": "Look for protection contexts whose purpose or item id leaves out the row's lookup key, or uses a different id such as a surrogate grant id, so an envelope could be moved between rows and still decrypt.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write and read decrypted sensitive plaintext through sensitive pooled buffers (e.g. `BufferFactory.CreatePooledBufferWriter(isSensitive: true)`) and never turn it into a `string`; only the encrypted envelope may be a `string`.",
+      "why": "Strings cannot be cleared from memory. Sensitive pooled buffers keep the plaintext out of managed strings.",
+      "check": "Look for plaintext secrets or payloads that are decoded to `string`, go through `Encoding.GetString`, or use non-sensitive buffers, before encryption or after decryption.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a stored payload that fails to decrypt (a `CryptographicException`) as absent and log a Warning event. Do not throw a 500, and do not fall back to reading it as plaintext.",
+      "why": "This fails closed, so an altered, forged or foreign row never authorizes anything. A lost or replaced key leads to re-authentication, not a server error.",
+      "check": "Look for decryption of stored records that lets a `CryptographicException` propagate, that returns partial data, or that has a legacy plaintext fallback path. Check that a Warning is logged when a record is unreadable.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In consume-once operations, check that a stored payload decrypts before marking the record consumed.",
+      "why": "An unreadable record must read as absent and must not be consumed as a side effect.",
+      "check": "Look for consume or redeem logic that updates the consumed state before it unprotects or validates the payload.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep at-rest encryption in its own async protector layer above the schema-versioning serializer, not inside the serializer or the persistence store, and send every reader of the payload through that layer.",
+      "why": "Getting a tenant's key is asynchronous and tenant-aware, the store knows no keys, and schema versioning is a separate concern from encryption.",
+      "check": "Look for encryption added inside serializers or EF stores, or for code paths that read stored payloads directly without the protector.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

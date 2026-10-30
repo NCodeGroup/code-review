@@ -1,0 +1,78 @@
+{
+  "hash": "28841272180280ef",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0211",
+  "rules": [
+    {
+      "statement": "When rotating a refresh token, revoke the presented grant and store its successor in a single unit of work, conditional on the presented grant still being active.",
+      "why": "If the spend and the successor store happen in separate units of work, concurrent refreshes can both get tokens, or a lineage revocation can run between the two steps and leave the successor active.",
+      "check": "Look for refresh-token rotation code that revokes the old grant and saves the new grant in separate SaveChanges/unit-of-work calls, or uses an idempotent revoke that succeeds even when the grant is already revoked.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a refresh request that loses the race to spend a rotated refresh token (grant missing, not active, or the save hit a concurrency conflict) as a reuse: return invalid_grant (400), emit the replay audit event, and apply the configured reuse policy such as revoking the lineage.",
+      "why": "The server can't tell the attacker from the client, so RFC 9700 §4.14.2 requires the losing request to be treated as reuse, not answered with a 500 or allowed to succeed.",
+      "check": "Look for a failed or lost spend of a refresh token that throws a 500, gets ignored, or still issues tokens instead of taking the reuse/replay path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a refresh-token grant handler, spend the presented refresh token only after every validation (token, binding, request) and before minting or auditing any access token, ID token, or successor token.",
+      "why": "If tokens are minted before the spend and the spend is then lost, the server has minted and audited tokens that are never delivered.",
+      "check": "Look for access/ID token creation or issuance auditing that happens before the refresh token is spent, or a spend that runs before validation finishes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Spend a rotated refresh token by revoking it, not just marking it consumed, so it is unusable to introspection, revocation, and listing.",
+      "why": "A consumed grant still reads as active to introspection, revocation, and listing, while a revoked grant is unusable everywhere.",
+      "check": "Look for rotation that sets only a consumed timestamp on the presented grant and does not revoke it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a revocation of a set of related grants (such as a refresh-token lineage) loses an optimistic-concurrency race, read the set again and retry a bounded number of times rather than failing or skipping.",
+      "why": "A rotation that committed in between may have added a grant to the set, and a revocation that doesn't retry would leave that grant active.",
+      "check": "Look for a lineage or bulk revocation that catches a concurrency exception and gives up, rethrows, or retries without re-reading the set, or that retries without a limit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A non-critical update such as a sliding-expiration extension must tolerate losing an optimistic-concurrency race by keeping the other request's change instead of throwing.",
+      "why": "Another concurrent request already updated the row, so throwing would only turn a harmless race into an error.",
+      "check": "Look for sliding-expiration or similar best-effort updates whose concurrency conflict propagates as an exception.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

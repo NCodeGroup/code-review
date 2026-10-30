@@ -1,0 +1,64 @@
+{
+  "hash": "346e0e8d741df550",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0126",
+  "rules": [
+    {
+      "statement": "Use SHA-256 as the Concat KDF digest for ECDH-ES key agreement (ECDH-ES, ECDH-ES+A128KW/A192KW/A256KW) no matter which curve is used; never pick the digest from the curve or key size.",
+      "why": "RFC 7518 §4.6.2 says the digest method is SHA-256. A digest that depends on the curve produces keys on P-384/P-521 that no conforming JOSE implementation can reproduce, and the failure is silent.",
+      "check": "Look for ECDH-ES key derivation code that picks SHA-384/SHA-512 from the curve, key size or crv value, or that passes the curve size into the KDF or its reps computation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use Windows CNG NCryptDeriveKey with SP800_56A_CONCAT and no explicit KDF hash algorithm for JWE ECDH-ES key derivation; use the managed, RFC-conforming derivation.",
+      "why": "The CNG path derives a key on P-384 and P-521 that does not conform to RFC 7518.",
+      "check": "Look for CngKey or NCryptDeriveKey-based ECDH derivation in JOSE code or tests, especially without an explicit hash.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test checks cryptographic output against a third-party implementation, use an oracle known to conform to the specification (prefer the spec's own test vectors), and when a library offers both a platform-native and a managed path, use the managed, conforming path.",
+      "why": "Two implementations agreeing only proves something if one is known to conform. A non-conforming oracle hid a defect behind a green test suite.",
+      "check": "Look for cross-check tests whose oracle is a platform-native crypto path (for example CNG or jose-jwt EcdhKeyManagementWin with CngKey), or that rely only on another implementation's output when spec test vectors exist.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a conformance test's expected value depend on the host platform; the same assertions must hold on every OS.",
+      "why": "A test whose expected value changes with the platform can't express a conformance requirement, and it keeps asserting known-broken behavior on some platforms.",
+      "check": "Look for OperatingSystem.IsWindows() or similar branches that pick different expected crypto results or different oracles, and for assertions limited to a subset of inputs (for example P-256 only) to avoid known failures.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Target portable TFMs (for example net10.0) in projects, including test projects, rather than platform-specific TFMs such as net10.0-windows chosen just to reach platform-native cryptographic types.",
+      "why": "A platform-specific TFM stops the solution from building on Linux CI and tends to bring the platform's non-conforming behavior into the assertions.",
+      "check": "Look in .csproj diffs for TargetFramework(s) values with an OS suffix such as -windows.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

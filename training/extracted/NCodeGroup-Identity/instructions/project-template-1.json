@@ -1,0 +1,106 @@
+{
+  "hash": "79629ad9cfbe64d6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity project-template.instructions.md",
+  "rules": [
+    {
+      "statement": "Never commit `PLAN.md`. It is a local, gitignored handoff file between the planner and the executor.",
+      "why": "PLAN.md is local working state for the plan-then-execute workflow and must never be committed, staged or pushed.",
+      "check": "Flag any diff or commit that adds or changes `PLAN.md`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/PLAN.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit secrets, including `.env` files or the contents of the repository-root `secrets/` folder.",
+      "why": "Secrets must never enter the repository or a prompt. Those paths are gitignored for that reason.",
+      "check": "Look for added `.env` files, files under the root `secrets/` folder, or hard-coded credentials, keys or tokens in the diff.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Save text files as UTF-8 without a BOM, with LF line endings, and follow `.editorconfig`.",
+      "why": "This is the repository-wide encoding and formatting convention.",
+      "check": "Flag files that start with a UTF-8 BOM, files with CRLF line endings, or formatting that goes against `.editorconfig`.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a `Co-authored-by:` trailer naming an AI agent, a `Claude-Session:` trailer, or a \"Generated with\" line to commits or pull requests.",
+      "why": "Commits and pull requests record the people who wrote them. A commit-msg hook and a CI check enforce this.",
+      "check": "Look in commit messages and PR descriptions for AI co-author trailers, session trailers or generated-with lines.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Do not edit files owned by the project template (`.template/`, `.template-version`, `.githooks/commit-msg`, `CLAUDE.md`, `build/ProjectTemplate.props`, `.github/instructions/csharp.instructions.md`, `.claude/rules/csharp.md`, the generated commands, prompts, skills and agents, and `.copier-answers.yml`). Override rules in `AGENTS.md` or in project instruction files instead.",
+      "why": "Template updates replace these files and throw away any local edits.",
+      "check": "Flag diffs that change template-owned files, unless the change comes from a template update.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".template/**",
+        "build/ProjectTemplate.props",
+        ".githooks/commit-msg",
+        "CLAUDE.md",
+        ".template-version",
+        ".github/instructions/csharp.instructions.md",
+        ".claude/rules/csharp.md",
+        ".copier-answers.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change build settings in `Directory.Build.props` after its import of `build/ProjectTemplate.props`, not in the template props file and not before the import.",
+      "why": "Settings placed after the import override the template's shared defaults and survive template updates.",
+      "check": "Flag new MSBuild properties added to `build/ProjectTemplate.props`, or placed before its import in `Directory.Build.props`, when they are meant to override a shared setting.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.props",
+        "build/ProjectTemplate.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put package versions in `<PackageVersion>` items in `Directory.Packages.props`. `<PackageReference>` items in project files must not have a `Version`.",
+      "why": "The repository uses central package management, and a version on a PackageReference fails the build with NU1008.",
+      "check": "Flag `<PackageReference ... Version=...>` in .csproj files, and new packages that have no matching `<PackageVersion>` entry.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Packages.props"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Add every new project to the solution at the repository root.",
+      "why": "Then `dotnet build` and `dotnet test` at the root cover every project.",
+      "check": "When a diff adds a new .csproj, check that the root solution file is updated to include it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "*.sln",
+        "*.slnx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

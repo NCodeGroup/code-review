@@ -1,0 +1,209 @@
+{
+  "hash": "fb309c369aaec1d6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0270",
+  "rules": [
+    {
+      "statement": "Accept an authority or endpoint URL only if it uses `https`, or `http` on a loopback host (`Uri.IsLoopback`). Check the raw string as well as the parsed `Uri`: it must start with its scheme, contain no whitespace and have no fragment, and an authority must also have no query.",
+      "why": "Plain http may only reach the same machine, which still lets tests run against an in-process OP. Checking the raw string closes the gaps that lenient `Uri` parsing leaves open.",
+      "check": "Look for code that accepts an authority, discovery endpoint or jwks_uri without the https-or-loopback-http check, or that validates only `Uri.Scheme` and skips the whitespace, fragment and query checks on the raw string.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When fetching OpenID Provider discovery metadata, require the returned `issuer` to equal the configured authority string by ordinal comparison. Require `token_endpoint` and `jwks_uri`, and apply the endpoint URL rule to every endpoint member that is present.",
+      "why": "OIDC Discovery §4.3 requires an exact issuer match. Endpoints taken from metadata must meet the same transport rules as configured ones.",
+      "check": "Look for an issuer comparison that ignores case, trims, normalizes or is missing, and for endpoint members of discovery metadata used without validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A cache of remote protocol metadata or keys may serve its last good value after a failed refresh, within a bounded stale lifetime. It must never relax validation to do so. It must collapse concurrent misses into one fetch, rate-limit forced refreshes, and throw when the first fetch fails.",
+      "why": "This keeps the client available when the OP fails briefly, without weakening security and without hammering the OP.",
+      "check": "Look for cache code that skips validation for stale or fallback values, lets concurrent misses each start a fetch, puts no limit on forced refreshes (for example on an unknown `kid`), or invents a value when the first fetch fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When importing a remote JWKS for signature verification: skip each key that cannot be used (not an object, not a parseable JWK, `use` other than `sig`, `key_ops` without `verify`, a non-asymmetric or unknown key type, or material that fails to import). Refuse the whole set if it carries private or symmetric material, has two usable keys with the same `kid`, or has no usable key.",
+      "why": "RFC 7517 §5 says unusable keys are ignored. A set that exposes secrets or has an ambiguous `kid` cannot be trusted at all.",
+      "check": "Look for JWKS import that accepts private or `oct` keys, ignores `use` or `key_ops`, silently keeps the first or last key of a duplicate `kid`, or returns an empty key set instead of failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a protocol client's credentials (client secrets, signing keys) from a named, keyed secret-key provider (key ring), never from configuration values.",
+      "why": "Credentials in configuration cannot rotate and put secrets in configuration. A key ring supports rotation and keys held in a KMS.",
+      "check": "Look for client secrets or private keys bound from `IConfiguration` or options properties instead of resolved from a keyed key-ring provider.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the family's own JOSE/JWT stack (`NCode.Identity.Jose`/`Jwt` abstractions) for OpenID/OAuth client work, not `Microsoft.IdentityModel` or the ASP.NET Core OpenID Connect handler.",
+      "why": "Those libraries bring a second JOSE stack, with a second key and algorithm policy.",
+      "check": "Look for new references to `Microsoft.IdentityModel.*` or `Microsoft.AspNetCore.Authentication.OpenIdConnect` in protocol client code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a `private_key_jwt` client assertion, set `aud` to the OP's issuer as a single string, not the token endpoint URL and not an array. Set `iss` and `sub` to the client id, `jti` to 16 random bytes in base64url, `iat`/`nbf` to now, and `exp` to a fixed short lifetime (60 seconds).",
+      "why": "RFC 7523bis and FAPI 2.0 require the issuer as the audience.",
+      "check": "Look for assertions whose `aud` is the token endpoint or an array, whose `jti` is not random, or whose lifetime is long or configurable.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign client assertions only with asymmetric keys. Never pick `none`, and validate configured algorithm lists (no blank entry, no `none`, no duplicate).",
+      "why": "A MAC or `none` must never be used to sign an assertion.",
+      "check": "Look for algorithm selection that can choose a symmetric key, an HS* algorithm or `none`, or a configured algorithm list that is not validated.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In `client_secret_basic`, form-urlencode the client id and the secret before joining them with ':' and base64-encoding the result.",
+      "why": "RFC 6749 §2.3.1 requires the encoding.",
+      "check": "Look for Basic authorization headers built from raw client_id:secret without form-urlencoding.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an OAuth error response (a JSON object with a string `error`, at any status) to the caller as a value. Throw a provider exception, with the cause as the inner exception, for transport failures, timeouts, oversized bodies, invalid JSON, non-error non-2xx responses or incomplete success responses. Let caller cancellation propagate as `OperationCanceledException`.",
+      "why": "Callers need errors such as `invalid_grant` as values, not as exceptions. Other failures must keep their cause.",
+      "check": "Look for code that throws on OAuth error responses, wraps caller cancellation, drops the inner exception, or treats a non-JSON failure as an OAuth error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw `InvalidOperationException` for configuration errors found at call time, such as a missing key ring, an unknown authentication method, or an operation the provider's metadata does not support.",
+      "why": "These are misconfigurations, not protocol failures, so they must stay distinct from provider exceptions.",
+      "check": "Look for configuration errors reported as protocol/provider exceptions or returned as error values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make outbound HTTP to an identity provider through a named client whose primary handler disables automatic redirects and cookies. Bound each request with a timeout and each response with a maximum body size.",
+      "why": "Then a hostile or misconfigured provider cannot redirect the client or exhaust its memory.",
+      "check": "Look for `HttpClient` usage against an OP with `AllowAutoRedirect` left on, cookies enabled, no timeout, or a response body read without a size cap.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never parse an empty HTTP response body as JSON, whatever its media type. Parse JSON only for the expected JSON media types.",
+      "why": "Some valid responses, such as a successful RFC 7009 revocation, have an empty body.",
+      "check": "Look for JSON deserialization of response content without a check for an empty body or for the media type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register pluggable strategy implementations (such as client authentication methods) with `TryAddEnumerable`, select them by name, and throw when two registrations share a name.",
+      "why": "Vocabularies are open: a new method is a registration with no library change, and a duplicate name must fail fast instead of being ambiguous.",
+      "check": "Look for a closed switch over strategy names, registration with `AddSingleton` that allows duplicates, or name collisions resolved silently.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An authorization-code token request must include a PKCE `code_verifier`.",
+      "why": "The decision requires PKCE on every authorization-code request the client sends.",
+      "check": "Look for authorization-code request types or calls where `code_verifier` is optional or missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add metrics for outbound HTTP calls that `System.Net.Http` already measures.",
+      "why": "Each signal has one owner.",
+      "check": "Look for new counters or histograms around HttpClient calls that duplicate the built-in HTTP client metrics.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An implementation package references only abstraction packages of other components, not their implementation packages.",
+      "why": "Implementation packages depend only on abstractions.",
+      "check": "Look for a ProjectReference or PackageReference from an implementation project to another component's non-Abstractions package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

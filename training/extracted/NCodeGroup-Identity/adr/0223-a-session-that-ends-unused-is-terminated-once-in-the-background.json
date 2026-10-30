@@ -1,0 +1,108 @@
+{
+  "hash": "58af5e27fcb77922",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0223",
+  "rules": [
+    {
+      "statement": "Gate a side effect that must happen only once (a notification, an audit entry, a log event) on an atomic claim that returns true only when this call made the state transition, and perform the side effect only when the claim returns true.",
+      "why": "Without this, a request and a background pass that find the same item both act on it, and relying parties get notified twice. A claim makes concurrent or duplicate runs harmless.",
+      "check": "Look for code that reads state, then sends a command, notification or audit/log event, without first calling an atomic once-only operation that returns bool and branching on it. Also flag a once-only method that returns true when the item was already in the target state, was unknown, or lost a race.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a session is terminated, revoke it and every grant issued under it in the same unit of work as the claim, before any notification is dispatched. Don't defer revoking the dependent grants to the dispatch that follows.",
+      "why": "If the dispatch fails or is cancelled after the claim, nothing leaves the session's refresh tokens active. No later pass would find the already-revoked session to finish the job.",
+      "check": "Flag code that marks a session revoked in one call and revokes its tokens or grants later in a handler or notification, outside the claim's transaction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A periodic hosted service ticks a PeriodicTimer driven by the injected TimeProvider. It never throws when stopping, and it logs a pass that fails and runs it again at the next tick instead of letting the exception end the loop.",
+      "why": "The background pass has to keep running across transient failures and shut down cleanly with the host.",
+      "check": "Look in BackgroundService/IHostedService loops for Task.Delay or System.Threading.Timer without TimeProvider, for exceptions (including OperationCanceledException on stop) escaping ExecuteAsync, and for a pass whose failure isn't caught and logged inside the loop.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background service doesn't read the store or depend on server state while the host is starting. It first awaits a readiness signal that says the server has been built.",
+      "why": "The pass must not run against the store before the server is ready.",
+      "check": "Flag hosted services that query persistence at the start of ExecuteAsync/StartAsync without first awaiting the readiness accessor.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several replicas run the same periodic background pass, have each one take a lease for the time window: atomically add an expiring key derived from the window (UTC ticks divided by interval ticks) that expires when the window ends, and skip the pass when the add fails. The work itself must still be safe to run twice.",
+      "why": "Without a lease every replica reads the same pages and claims the same items, which wastes work. The once-only claim keeps an accidental double run harmless.",
+      "check": "Flag new periodic background jobs in multi-replica services that have no shared lease or lock per interval, and lease keys that don't expire with the window.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background pass that works across tenants creates a separate AsyncServiceScope and context for each tenant, disposes the context before the scope, and catches and logs a failure for one tenant so the remaining tenants are still processed.",
+      "why": "A failure for one tenant must not stop the work for the others, and scoped services must not leak across tenants.",
+      "check": "Look for multi-tenant loops that share one scope across tenants, dispose in the wrong order, or let one tenant's exception abort the loop.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background pass that scans a table reads it in fixed-size pages ordered by Id with a keyset cursor until the next cursor is null, and adds an index that serves the query's filter columns in a migration.",
+      "why": "Keyset paging over an indexed filter keeps a periodic scan of the grants table cheap and stable.",
+      "check": "Flag unbounded queries or offset/Skip-based paging in background scans, and new filter queries that have no supporting index migration.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an options class for a background interval public sealed with a SectionName constant. Validate it with an options validator when the host starts (e.g. that the interval is a period a timer accepts), bind it strictly from configuration, and read it when it's used rather than in the consuming service's constructor.",
+      "why": "A wrong value or misspelled key then stops the host at startup instead of failing later, and reading on use picks up the current value.",
+      "check": "Flag new options with no validator, no ValidateOnStart, or non-strict binding, and services that read IOptions*.Value in their constructor.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A retention prune doesn't remove an entity that ends only when it is revoked until it has been revoked and its retention has passed after that revocation, even if it has already expired.",
+      "why": "Otherwise a session can be deleted after its retention without ever being terminated, and its grants and logout notifications are lost.",
+      "check": "Flag prune queries that delete sessions or similar revocation-ended grants based only on expiry, without requiring RevokedWhen < cutoff.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

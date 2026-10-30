@@ -1,0 +1,214 @@
+{
+  "hash": "7f4b35b02e7b2f8a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0283",
+  "rules": [
+    {
+      "statement": "Never write a secret, token, authorization code or request query string into an audit record; record an identifier or a hash instead.",
+      "why": "Audit records are persisted and indexed, and a query string can carry codes or tokens.",
+      "check": "Look for audit record or details writers that emit token values, secrets, codes, `Request.QueryString`, `Request.Query` or full URLs.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report an audit failure with a required machine-readable error code (for example an OAuth error code), with any prose only as a separate message field, never as a free-text reason alone.",
+      "why": "Investigators need a field to group failures on, such as every failed client authentication for one error.",
+      "check": "Look for audit errors or failure events built without a code, or that put only prose into a reason or message field.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have each event write its event-specific audit details through a typed writer method (e.g. `WriteAuditDetails(Utf8JsonWriter)`), not through an `IDictionary<string, object>` bag or a `[JsonExtensionData]` member.",
+      "why": "A dynamic bag lets any value, including a secret, reach a persisted record, and it invites magic-string keys instead of reviewed typed fields. It also is not trimming- or AOT-safe.",
+      "check": "Look for dictionary or object bags, or `[JsonExtensionData]`, used to carry audit or event details.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare telemetry field names once as constants and use those same names in the audit record, the log state, the span tags and the metric attributes.",
+      "why": "An operator can only pivot from a log entry to its trace or metric when the same event uses the same names in every signal.",
+      "check": "Look for string-literal field or tag names in log, span or metric code that duplicate or differ from the shared field-name constants.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not log a structured record as one serialized JSON string property; emit its fields as separate flattened key/value attributes, with numbers kept as numbers.",
+      "why": "A collector cannot index or filter on fields inside one opaque string without parsing it first.",
+      "check": "Look for logging calls that pass `JsonSerializer.Serialize(...)` output or a raw JSON string as a single log property for data that should be indexed.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use only bounded fields (for example event name, category and outcome) as metric attributes, never identifiers such as tenant, subject, client or trace ids.",
+      "why": "Metric dimensions must stay bounded, so high-cardinality values do not belong on metrics.",
+      "check": "Look for metric tags or attributes that take ids, user agents, IP addresses or other unbounded values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate audit event identifiers with `Guid.CreateVersion7()`, not `Guid.NewGuid()`.",
+      "why": "UUIDv7 identifiers are time-ordered, so they index and paginate well.",
+      "check": "Look for `Guid.NewGuid()` used to create audit or event record ids.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write record timestamps as UTC in RFC 3339 form with a `Z` suffix.",
+      "why": "The record's event time must be an unambiguous UTC instant that operators can index.",
+      "check": "Look for local-time values, offsets other than Z, or custom date formats in audit record timestamps.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write JSON records to buffer writers or pooled buffers and never allocate an intermediate `byte[]`; when the destination is a ref struct writer, stage the record in a pooled buffer and copy it.",
+      "why": "The memory-allocation conventions forbid `byte[]` allocations in writers, and `Utf8JsonWriter` cannot hold a ref struct.",
+      "check": "Look for `ToArray()`, `new byte[]` or `JsonSerializer.SerializeToUtf8Bytes` in record-writing paths.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse a JSON record you read back with `JsonElement.Parse`, not `JsonDocument.Parse`.",
+      "why": "The decision says a record is read back as a `JsonElement`, which avoids a disposable `JsonDocument` with pooled memory.",
+      "check": "Look for `JsonDocument.Parse` used to read back written records.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code calls `ILogger.Log` directly as an approved exception to the `[LoggerMessage]`-only rule, add a `//` comment at the call that cites the decision allowing it.",
+      "why": "The source generator does not check the keys of a direct call, so the exception has to be visible and justified where it is made.",
+      "check": "Look for direct `ILogger.Log`/`LogInformation`-style calls that have no comment citing the decision that permits them.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never reuse a retired or reserved log `EventId` number for a new log message.",
+      "why": "Stable event ids let operators filter logs, and reusing a reserved id would mix unrelated entries.",
+      "check": "Look for new log event ids that collide with ids marked as reserved or retired.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bump the record's single schema minor version when you add a field to a versioned record envelope, and do not give individual event types their own schema versions.",
+      "why": "One version string for the whole record tells consumers which shape they are reading.",
+      "check": "Look for new envelope fields with no change to the schema version constant, or for per-event version properties.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave out record members that have no value, and leave out empty arrays, instead of writing null or `[]`.",
+      "why": "The record format omits a member without a value, and omits empty resources.",
+      "check": "Look for writers that emit null values or empty arrays for optional record members.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Capture HTTP request context for an event when the event is published, not inside a sink that may run in the background after the request has completed.",
+      "why": "Background delivery can run after the request has completed, when `HttpContext` is no longer valid.",
+      "check": "Look for event handlers or sinks that read `HttpContext` or `IHttpContextAccessor` while delivering events.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Truncate untrusted request header values such as User-Agent to a fixed maximum length (512 characters) before recording them in audit records.",
+      "why": "The request context records the User-Agent cut at 512 characters, which bounds what a client can inject into the record.",
+      "check": "Look for User-Agent or other header values copied into records without a length cap.",
+      "scope": "domain",
+      "domain": "audit-logging",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not model an extensible event or record family as a closed polymorphic `[JsonDerivedType]` hierarchy that lists every subtype on the base type.",
+      "why": "Vocabularies are open, so a package that adds an event must not have to edit the base library.",
+      "check": "Look for `[JsonDerivedType]` attributes that enumerate event types on a shared base event or record type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep event and audit abstractions packages free of ASP.NET Core HTTP types, and put HTTP-dependent factories in an HTTP-aware package.",
+      "why": "The events abstractions package has to stay independent of HTTP.",
+      "check": "Look for `HttpContext` or `Microsoft.AspNetCore.Http` references added to events or audit abstraction projects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs",
+        "**/*.Abstractions.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

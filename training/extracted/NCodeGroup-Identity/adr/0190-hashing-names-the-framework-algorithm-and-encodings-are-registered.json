@@ -1,0 +1,73 @@
+{
+  "hash": "e984ea7ece81055d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0190",
+  "rules": [
+    {
+      "statement": "APIs that select a hash algorithm take System.Security.Cryptography.HashAlgorithmName, not a library-defined enum of algorithms.",
+      "why": "HashAlgorithmName is the framework's open vocabulary, already used by RSA, ECDsa and PBKDF2. A closed enum needs a library change for every new algorithm such as SHA-384 or SHA-3.",
+      "check": "Look for new or changed enums listing hash algorithms (Sha1, Sha256, ...) or switch statements over them used to pick a hash.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a digest for an arbitrary HashAlgorithmName with CryptographicOperations.TryHashData (or HashData), and take the digest length from the framework rather than hard-coding it or encoding it in an enum value.",
+      "why": "This way every algorithm the framework implements works without a library change, and the digest length cannot drift.",
+      "check": "Look for a switch from algorithm to SHA256.HashData and similar calls, hard-coded digest sizes tied to algorithm choices, or enum ordinals used as byte lengths.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let the framework's CryptographicException reject an unknown hash algorithm name instead of mapping it to a fallback algorithm or a custom exception.",
+      "why": "The ADR says an unknown name is rejected by the framework's exception, and a deployment that needs an algorithm the framework lacks replaces the service.",
+      "check": "Look for default branches that silently fall back to an algorithm, or code that catches and replaces the exception when the algorithm name is unsupported.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an open set of interchangeable implementations, such as binary-to-text encodings, as a string name plus a strategy interface registered in DI with TryAddEnumerable, not as an enum dispatched through a switch.",
+      "why": "Packages can then add members (for example Base32) by registering another strategy, and a name is something a setting or a stored record can carry.",
+      "check": "Look for new enums with switch-based dispatch over an extensible set, or built-in strategies registered with AddSingleton/AddTransient instead of TryAddEnumerable.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A service that resolves named strategies builds its name-to-strategy map once, at construction. It compares names ordinally, fails on a duplicate name, and rejects an unregistered name with an ArgumentException that includes the name.",
+      "why": "Resolving through the registered collection keeps one place that validates the set, and a duplicate or unknown name fails clearly.",
+      "check": "Look for per-call scans of the strategy collection, case-insensitive or culture-sensitive name comparison, duplicates silently overwritten (dictionary indexer assignment), or unknown-name errors that do not include the name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an API's selection type changes (for example an enum replaced by a name), keep the hashed or encoded output of every existing call site byte-identical, or provide a migration for stored values.",
+      "why": "Persisted values such as grant keys and subject identifiers depend on that output, and the ADR keeps it unchanged so that no migration is needed.",
+      "check": "Look for a refactor that changes the default algorithm, the encoding, or the padding at an existing call site that produces persisted values.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

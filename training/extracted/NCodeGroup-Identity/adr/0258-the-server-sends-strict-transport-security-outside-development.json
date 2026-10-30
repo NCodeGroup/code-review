@@ -1,0 +1,81 @@
+{
+  "hash": "70f24a266d3fe1a7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0258",
+  "rules": [
+    {
+      "statement": "Configure HSTS through a dedicated options type that is bound strictly and validated at startup, with defaults of max-age 365 days (31,536,000 seconds), includeSubDomains on and preload off, rather than calling ASP.NET Core's `AddHsts`/`UseHsts` with framework defaults or binding `HstsOptions` directly from configuration.",
+      "why": "The framework default max-age is only 30 days and its options are neither bound strictly nor validated. Binding `HstsOptions` directly appends configured hosts to its default excluded hosts, and nothing checks the preload requirements.",
+      "check": "Look for `AddHsts`/`UseHsts` calls that take framework defaults, `services.Configure<HstsOptions>(section)` or binding `HstsOptions` straight from configuration, and HSTS defaults other than 365 days with includeSubDomains and no preload.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An HSTS options validator must reject a negative max-age (zero is allowed, so the policy can be withdrawn), and must reject preload unless includeSubDomains is set and max-age is at least 365 days.",
+      "why": "`max-age=0` is how an operator withdraws the policy. The browser preload list requires includeSubDomains and a max-age of at least one year, and getting off that list takes months.",
+      "check": "Check that HSTS option validation fails on a negative MaxAge, on Preload without IncludeSubDomains, and on Preload with MaxAge under 365 days, and that it does not reject MaxAge of zero.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send Strict-Transport-Security only on responses to requests that arrived over HTTPS. Never send it in the Development environment, and always exclude `localhost`, `127.0.0.1` and `[::1]`, in addition to any configured excluded hosts.",
+      "why": "RFC 6797 §7.2 forbids the header over plain HTTP. In Development, a browser would remember the policy for host names that a developer also uses for plain-HTTP servers.",
+      "check": "Look for HSTS headers written by hand or written regardless of scheme, HSTS enabled in Development, and excluded-host lists that replace the loopback defaults instead of adding to them.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate HSTS excluded hosts as a bare DNS name, IPv4 address or bracketed IPv6 address, with no scheme and no port.",
+      "why": "The middleware compares each excluded host with the request's host, so an entry with a scheme or port never matches.",
+      "check": "Look for excluded-host entries or validation that accept values like `http://host`, `host:5000` or an unbracketed IPv6 address.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register the HSTS middleware after the forwarded-headers/reverse-proxy middleware, so that a request a trusted proxy received over HTTPS counts as HTTPS.",
+      "why": "Behind a TLS-terminating proxy, the host learns that a request was HTTPS only from a trusted `X-Forwarded-Proto` header. If HSTS runs before that header is applied, the host never sends the header.",
+      "check": "In the pipeline setup, check that `UseHsts` or its equivalent comes after `UseForwardedHeaders` or the reverse-proxy step, not before.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Program.cs",
+        "**/*ApplicationBuilderExtensions.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send transport-level security headers such as Strict-Transport-Security from one pipeline-wide middleware, not from individual pages or endpoints, and give a way to turn it off when another component (for example, a TLS-terminating proxy) already owns the header.",
+      "why": "The policy protects every request to the host, and endpoints that don't write pages, such as JSON endpoints, would never send a per-page header. Exactly one component should own the header.",
+      "check": "Look for Strict-Transport-Security set in page or endpoint handlers or in per-page security header code, and for HSTS options that have no Enabled switch.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

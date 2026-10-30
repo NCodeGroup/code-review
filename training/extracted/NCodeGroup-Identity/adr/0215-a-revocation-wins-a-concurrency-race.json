@@ -1,0 +1,76 @@
+{
+  "hash": "d2785d645dc33508",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0215",
+  "rules": [
+    {
+      "statement": "When a write whose outcome doesn't depend on the state it read (such as revoking a grant) loses an optimistic concurrency race, open a new unit of work, read again and retry, up to a small fixed number of attempts (3 in total), then let the concurrency exception propagate.",
+      "why": "Without a retry, a lost race leaves the grants active and the endpoint fails (500 instead of RFC 7009's 200). Unbounded retries could livelock, and three attempts are enough because each attempt reads again.",
+      "check": "Look for revocation-style save paths that catch nothing on a store concurrency exception, or that retry in the same unit of work, without re-reading, or in an unbounded loop.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the re-read-and-retry loop for revocations in the central grant service and route every revocation through it, rather than writing the retry in each endpoint or handler.",
+      "why": "If every caller repeats the loop, a caller that forgets it answers 500 or 412 for a correct revocation.",
+      "check": "Look for endpoints or handlers that revoke grants directly through a store or unit of work instead of the shared service, or that add their own retry loops around a revocation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A filter-driven bulk modification or revocation must throw ArgumentException when given an empty filter, and an identifier field added to the filter must be included in its emptiness check.",
+      "why": "Rejecting an empty filter means an unscoped bulk operation can't happen by accident.",
+      "check": "Look for bulk operations that take a filter but never check whether it is empty, and for new filter properties that the IsEmpty logic leaves out.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A state transition that happens only once (for example, revoking a single grant) returns whether this call performed it, returning false when the target is unknown, belongs to another tenant, or was already transitioned, including by a concurrent request.",
+      "why": "Callers need to know whether their own call made the change, so they can react correctly when a concurrent request got there first.",
+      "check": "Look for once-only operations that return void or throw when the item is missing or already transitioned, instead of reporting a boolean result.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record an audit event for a modification only when the operation's returned count or result shows that this call actually changed something.",
+      "why": "If another request revoked the item in between, auditing anyway records the same change twice.",
+      "check": "Look for audit or event emission that happens after reading the entity but isn't gated on the count or success result the write returned.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't blindly retry a spend that requires the grant to still be active (consuming a code, rotating or replacing a token) after it loses a concurrency race. Answer the lost race as a second spend or a reuse.",
+      "why": "A spend's outcome depends on what it read, so retrying could let a grant be spent twice. Only operations whose outcome doesn't depend on the read state can safely retry.",
+      "check": "Look for retry-on-concurrency-exception loops around consume, rotate or replace operations that would retry the spend instead of treating it as a replay or reuse.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

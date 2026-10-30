@@ -1,0 +1,148 @@
+{
+  "hash": "9ed9b6ab06752650",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/audit-records.md",
+  "rules": [
+    {
+      "statement": "When a change adds or renames a field or event in a documented record or wire contract, update the contract document in the same change.",
+      "why": "The document is the reviewed contract that log pipelines, trace backends and runbooks are built against, so the code and the document must not drift apart.",
+      "check": "A diff that adds or renames a record field, a field-name constant or an event name without touching the corresponding contract documentation.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Audit and log records must carry identifiers and metadata only, never a token, an authorization code, a credential, a secret or a query string.",
+      "why": "Audit records are forwarded to log pipelines and trace backends, and secrets must not leak there.",
+      "check": "Audit details, error messages, log state or span tags that include token values, codes, secrets, passwords or the raw request query string or full URL.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When recording a request's path in audit or telemetry data, use PathBase plus Path and never include the query string.",
+      "why": "The query string can carry authorization codes or tokens.",
+      "check": "Use of Request.QueryString, GetDisplayUrl, GetEncodedUrl or a full URI when filling a recorded request path.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model vocabularies such as outcomes, severities, categories, sources and resource types as open sets of lower-case string names, not enumerations, unless the set is provably closed.",
+      "why": "Under ADR-0150, a package that adds an event must be able to add its own names without editing the core library.",
+      "check": "A new enum, or a closed switch that rejects unknown values, used for an extensible vocabulary; vocabulary names that are not lower-case.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Metric attributes must carry only bounded-cardinality values, never identifiers or free-form names.",
+      "why": "Metrics carry only the bounded fields (event name, category, outcome); unbounded values such as IDs or free-form environment names break the counters.",
+      "check": "Metric tags or attributes built from IDs, user names, client IDs, paths or free-form names such as an environment_name.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the same field names for one concept across the structured record, the log state, span tags and metric attributes, changing only a namespace prefix, and declare those names as shared constants.",
+      "why": "An operator can then move between a log entry, its trace and the counters without translating names.",
+      "check": "Hard-coded string literals for record or tag names, or a log, span or metric name that differs from the record's field name apart from its prefix.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a serialized audit record, leave out any member that has no value, and any empty array, instead of writing null or [].",
+      "why": "The record contract says absent members are omitted and never written as null.",
+      "check": "Writer code that calls WriteNull or writes an empty array for an absent audit member.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bump the minor schema version of a versioned record envelope whenever a field is added to it.",
+      "why": "Consumers rely on schema_version to know which fields to expect.",
+      "check": "A diff that adds a field to the record writer without changing the schema version constant.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate audit event identifiers as UUIDv7 and write event timestamps as RFC 3339 in UTC with a 'Z' suffix.",
+      "why": "UUIDv7 identifiers sort by time, which helps indexing and pagination, and a fixed UTC format keeps the contract consistent.",
+      "check": "Use of Guid.NewGuid() for event IDs, or timestamps written with a local offset or in a non-RFC 3339 format.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Truncate caller-supplied header values such as User-Agent to a fixed maximum length (512 characters) before recording them.",
+      "why": "The contract cuts the User-Agent at 512 characters, so untrusted input cannot inflate records.",
+      "check": "A User-Agent or similar header copied into audit or telemetry data without truncation.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each audit error a stable, machine-readable code (the OAuth error code where one applies), and keep secrets out of the human-readable message.",
+      "why": "Operators filter and pivot on the code, and the message is forwarded to log sinks.",
+      "check": "Error codes built from free text or exception messages, or error messages that interpolate secrets or credentials.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive an audit entry's log level from its severity: Information for info and for unknown severities, Warning for warning, Critical for critical. Severity defaults to warning on failure and to info otherwise.",
+      "why": "The contract makes the log level follow the severity, so alerting stays consistent.",
+      "check": "An audit log written at a hard-coded level that ignores severity, or an unknown severity that is not mapped to Information.",
+      "scope": "repository",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

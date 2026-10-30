@@ -1,0 +1,78 @@
+{
+  "hash": "9ad2e1393fbc0a0a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0187",
+  "rules": [
+    {
+      "statement": "When validating a signed request object (JAR `request`/`request_uri` or a CIBA signed authentication request), enforce a maximum lifetime measured from the earlier of `iat` and `nbf` to `exp`, defaulting to no more than 60 minutes, in addition to checking `nbf`, `iat` and `exp`.",
+      "why": "Without a lifetime bound, a pre-generated request object stays usable until whatever `exp` its signer chose; FAPI 1.0 Advanced and FAPI 2.0 Message Signing cap it at 60 minutes.",
+      "check": "Look for request-object validation that checks `exp`/`nbf` but sets no maximum lifetime, or that sets a default above 60 minutes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Merge security-ceiling settings across tenant, profile and client so that a lower layer can only tighten them: use a minimum merge for maximum-lifetime limits and a logical-OR merge for 'required' flags.",
+      "why": "A tenant or security profile has to be able to set a ceiling or a requirement that no client can raise or turn off.",
+      "check": "Look for new security-related settings (max lifetimes, require-* flags) whose merge strategy lets a client override a stricter tenant or profile value, for example a last-wins or replace merge.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always validate the `aud` of a request object against the authorization server's issuer, or against an explicitly configured expected audience, and reject a mismatch with `invalid_request_object`; never skip the audience check because nothing is configured.",
+      "why": "RFC 9101 and FAPI expect the issuer as audience, and an unchecked `aud` lets a request object meant for another authorization server be replayed here.",
+      "check": "Look for request-object or signed-request validation where audience validation is conditional on a configured value, is disabled, or fails with an error code other than `invalid_request_object`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a CIBA signed authentication request by requiring `iat`, `nbf`, `exp` and a non-empty `jti`, applying the request-object maximum lifetime, and using the client's configured clock skew instead of the JWT library's default skew.",
+      "why": "CIBA Core §7.1.1 requires these claims, and the request should be validated the same way as at the authorization endpoint.",
+      "check": "Look for CIBA request validation that does not require `iat`, `nbf` or `jti`, allows an empty `jti`, or leaves the library's default clock skew in place instead of the client's `clock_skew`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not require the `typ` header `oauth-authz-req+jwt` on request objects by default; bind a request object to its purpose with `iss` equal to the client, `aud` equal to the issuer, and the client's signature.",
+      "why": "OpenID Connect Core clients, the OpenID conformance suite and FAPI 2.0 Message Signing do not send this `typ`, so requiring it would break interoperability.",
+      "check": "Look for request-object validation that refuses a token by default when its `typ` is missing or is not `oauth-authz-req+jwt`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When JWT validation fails because a required claim is missing, return an error message that names the missing claim.",
+      "why": "The decision says that a token missing a required `nbf` or `iat` fails with a message that names the claim.",
+      "check": "Look for required-claim checks in JWT validation that fail with a generic message that does not say which claim is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

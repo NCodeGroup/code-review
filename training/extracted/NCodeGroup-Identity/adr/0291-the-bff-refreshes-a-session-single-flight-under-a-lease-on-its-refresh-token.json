@@ -1,0 +1,159 @@
+{
+  "hash": "40fb77482a4d54fd",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0291",
+  "rules": [
+    {
+      "statement": "Present a rotating refresh token to the provider at most once: serialize refreshes of one session locally and, across replicas, admit one refresher through a lease keyed by the session key plus a SHA-256 fingerprint of the refresh token, not by a record version.",
+      "why": "Presenting a rotated refresh token twice counts as reuse and revokes the whole token family (RFC 9700 §4.14.2). A version-keyed lease is unsafe because unrelated writes bump the version and would let a second refresher in with the same token.",
+      "check": "Look for refresh-token grant code with no cross-replica single-flight guard, or with a lease/lock keyed by something other than the refresh token's identity (record version, timestamp, etc.).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A refresher that loses the lease must wait for the winner's result by polling with backoff and give up with a 503 at the lease duration; it must never retry with the old refresh token after a timeout or present a token whose lease another replica holds.",
+      "why": "Retrying with the old token after a timeout is exactly the reuse that revokes the token family.",
+      "check": "Look for wait/timeout paths in refresh logic that fall back to sending the refresh token they originally read, or that skip taking the lease again after the refresh token changes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an optimistic-concurrency write that persists a rotated refresh token loses a version race, merge it onto the newer version and retry; never drop it.",
+      "why": "If the write is dropped, the only copy of the rotated refresh token is lost, and the next refresh presents the old token, which the provider treats as reuse.",
+      "check": "Look for read-modify-write of refreshed tokens where a concurrency conflict is ignored, logged and skipped, or overwritten with stale data instead of being merged and retried.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Once a refresh has won the lease, run the token request and the persistence of its result with CancellationToken.None, bounded only by the client's request timeout, not by the caller's cancellation token.",
+      "why": "If the caller aborts after the provider rotated the token, the session keeps the old refresh token and the next refresh presents it again, which is reuse.",
+      "check": "Look for the caller's request/HttpContext cancellation token passed to the refresh-token request or to the write-back that stores the rotated token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A holder of an expiring distributed lease may release it only when it finished with a safety margin before the lease expires, so it never deletes a lease that expired and another node took.",
+      "why": "Releasing after expiry could delete another replica's live lease and admit a second concurrent holder.",
+      "check": "Look for unconditional lease/lock release in finally blocks without checking remaining lease time or ownership.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a per-key lock that is reference-counted and removed when its last waiter leaves, not striped locks, when a holder may block for a long time.",
+      "why": "A stripe held while waiting out a long operation blocks every unrelated key hashed to the same stripe.",
+      "check": "Look for striped/hashed lock arrays guarding operations that can wait on remote leases or I/O, or for per-key lock dictionaries that never remove entries.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map refresh failures as follows: invalid_grant ends the session and answers 401, any other OAuth error answers 502, and provider exceptions, HttpRequestException or timeouts answer 503. A session that needs a new token but has no refresh token ends with 401.",
+      "why": "Only invalid_grant means the grant is dead. Other failures are provider or transport problems and must not end the user's session.",
+      "check": "Look for refresh error handling that ends the session on transient or transport errors, or that collapses every failure into one status code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a token response without expires_in as already expiring, so the token is refreshed on first use, and refresh a token once it is within the configured margin of its expiry.",
+      "why": "With no known lifetime, the client cannot assume the token is still valid.",
+      "check": "Look for code that assumes a default or infinite lifetime when expires_in is missing, or that refreshes only after the token has already expired.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a token response carries refresh_token_expires_in, cap the session's absolute expiry and the cookie's Max-Age at it. Apply the cap only to shorten, never to extend.",
+      "why": "The session cannot outlive its refresh token, and a provider value must never lengthen a session past its configured absolute lifetime.",
+      "check": "Look for code that sets the session expiry directly from refresh_token_expires_in without taking the minimum with the existing expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin the DPoP key thumbprint (jkt) reported at the code exchange and pass it on every refresh, so a session keeps its key across key-ring rotation.",
+      "why": "Refresh tokens and access tokens are bound to one key, and rotating the key ring must not break existing sessions.",
+      "check": "Look for refresh requests that choose the current key-ring key instead of the session's pinned jkt.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A DPoP resource request must include ath in the proof, record every DPoP-Nonce response header, and retry a use_dpop_nonce challenge only once, buffering the request content before the first send.",
+      "why": "RFC 9449 §7 and §8 require an access-token hash and server-supplied nonces. A request body that is not buffered cannot be resent, and retrying without limit could loop.",
+      "check": "Look for DPoP handlers that omit ath, ignore DPoP-Nonce on successful responses, retry more than once, or resend HttpContent that was not buffered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at startup any option whose safe value depends on another option (such as a lease duration that must cover retried requests under the request timeout), and refuse to start when the combination is unsafe.",
+      "why": "An option combination that is unsafe causes subtle concurrency failures at runtime, while failing at startup surfaces the misconfiguration right away.",
+      "check": "Look for new duration or timeout options that depend on other timeouts but have no startup validation of how they relate.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a name does not resolve to a registered strategy, throw InvalidOperationException because it is a configuration error, and report expected runtime failures through a result type that carries a status and reason.",
+      "why": "It separates programmer or configuration mistakes from runtime conditions that callers need to handle.",
+      "check": "Look for lookups by strategy name that return a failure result for unknown names, or that throw exceptions for expected runtime failures.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "hash": "b6c7721a834a5bae",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0079",
+  "rules": [
+    {
+      "statement": "Compare a computed PKCE code_challenge against the stored challenge in constant time with `CryptographicOperations.FixedTimeEquals`, not with `==` or `string.Equals`.",
+      "why": "The ADR requires the verifier to compare the computed challenge in constant time so that timing differences cannot leak the challenge value.",
+      "check": "Look for PKCE or other secret-derived comparisons that use `==`, `Equals`, `SequenceEqual` or `string.Compare` instead of `CryptographicOperations.FixedTimeEquals`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement pluggable algorithm variants, such as PKCE transformations, as a DI-registered strategy collection keyed by name and registered with `TryAddEnumerable`, not as a hardcoded `switch` over method names.",
+      "why": "A deployment can then add a variant by registering another implementation, which is a non-breaking change that needs no edit to the code that consumes it.",
+      "check": "Look for `switch` or if-chains over protocol method or algorithm names inside handlers, and for default strategy implementations registered with `AddSingleton` or `TryAdd` instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express which protocol capabilities are allowed as a collection setting listing the supported values, not as a special-case boolean flag for one value.",
+      "why": "A boolean such as allow_plain cannot express combinations like \"S256 and a future method but not plain\". An explicit set gives operators finer control.",
+      "check": "Look for new boolean settings that toggle one member of a set of supported methods or algorithms (for example `allow_X_method`) where a `*_supported` collection setting should be used instead.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise every supported-capability setting that has a standard discovery metadata field (for example `code_challenge_methods_supported` from RFC 8414) in the discovery document.",
+      "why": "If the setting is not advertised, relying parties cannot see the server's real capability, which hurts conformance and interoperability.",
+      "check": "Look for new or changed `*_supported` settings that correspond to an RFC 8414 or OpenID Connect Discovery field but are not marked discoverable or not emitted in discovery metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, reject a `code_challenge_method` that is not in the configured supported set; at the token endpoint, reject a verifier whose method has no registered transformation with `invalid_grant`.",
+      "why": "Both endpoints must enforce the advertised PKCE capability rather than silently accepting unknown or disallowed methods.",
+      "check": "Check that PKCE handling validates the method against the supported set at authorization, returns `invalid_grant` at the token endpoint for an unknown transformation, and does not fall back to a default method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not ship or allow configuring the PKCE `plain` code_challenge_method; the default supported set is `S256` alone, and any other registered transformation is offered only once an operator lists it.",
+      "why": "The amendment by ADR-0144 removed `plain` and made `S256` the only default, so additional transformations must be opted into explicitly.",
+      "check": "Look for a `plain` PKCE implementation or registration, `plain` in default supported-method lists, or registered transformations that are enabled by default without being explicitly configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

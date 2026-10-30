@@ -1,0 +1,55 @@
+{
+  "hash": "7a5316b2e35ff045",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0296",
+  "rules": [
+    {
+      "statement": "When decrypting a JWE, report every failure that depends on the encrypted key, the ciphertext or the authentication tag as one exception type with one uniform message and no inner exception.",
+      "why": "RFC 7516 §11.5 forbids distinguishing these causes. Distinct messages, exception types or inner exceptions become an oracle on the key encryption (Bleichenbacher, RFC 3218).",
+      "check": "Look for distinct error messages for CEK unwrap and ciphertext/tag failures, inner exceptions attached to the decryption failure, or CryptographicException/ArgumentException from key management escaping the decode call.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE encrypted key fails to unwrap (the call returns false, produces a CEK of the wrong length, or throws), fill the CEK buffer from RandomNumberGenerator and go on with content decryption so that the failure happens at tag verification.",
+      "why": "Throwing at the unwrap step returns earlier than a tag failure, and that timing difference reveals which step failed, as RFC 7516 §11.5 warns.",
+      "check": "Look for early returns or throws right after a failed key unwrap or a CEK length mismatch, where the code should substitute a random CEK and let the tag check fail.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before unwrapping a JWE key, check that the recipient's key has the algorithm's key type and a legal key size, and report a mismatch as a caller configuration error (ArgumentException) apart from the uniform decryption failure.",
+      "why": "These checks depend only on the caller's key and never on the token, so precise errors here leak nothing and still let a misconfigured recipient be diagnosed.",
+      "check": "Check that key-type and key-size validation runs before the unwrap and does not depend on token contents. Also check that token-dependent failures are not reported as configuration errors.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the uniform JWE decryption-failure handling to the compact serialization and to every recipient of the JSON serialization.",
+      "why": "An oracle on any one recipient path reopens the attack that RFC 7516 §11.5 guards against.",
+      "check": "Look for JSON-serialization recipient loops or alternate decode paths that surface unwrap errors differently from the compact path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "hash": "c330e3ff5e62e7d8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0026",
+  "rules": [
+    {
+      "statement": "Validate every requested scope at both the authorization endpoint and the token endpoint against the client's resolved allowed-scope set, and reject any scope outside it with the `invalid_scope` error.",
+      "why": "A client may only obtain the scopes it is entitled to; the entitlement model does nothing unless the runtime checks it on every request path.",
+      "check": "Look for authorization or token request validators that skip scope validation, validate on only one endpoint, return an error code other than `invalid_scope` for unauthorized scopes, or quietly drop unauthorized scopes instead of rejecting the request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare OAuth scope tokens case-sensitively, using ordinal comparison, never case-insensitive or culture-aware comparison.",
+      "why": "RFC 6749 defines scope tokens as case-sensitive strings.",
+      "check": "Look for scope sets or comparisons that use `StringComparer.OrdinalIgnoreCase`, `ToLower`/`ToUpper` normalization, `InvariantCultureIgnoreCase`, or culture-sensitive equality on scope values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When computing a client's allowed scopes from stored grants, intersect the granted scopes with the scopes the resource currently defines at read time, so a scope that is no longer defined is ignored even if a grant still lists it.",
+      "why": "Without the read-time intersection, a scope removed from an API stays in old grants and keeps being honored until every grant is rewritten. Intersecting at read time keeps the resource server authoritative at all times.",
+      "check": "Look for allowed-scope resolution that returns a grant's stored scope list as-is, without intersecting it with the resource's current scope definitions, or that relies only on validation when the grant is written.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build the discovery document's `scopes_supported` metadata from the authoritative resource and scope catalog (the distinct scopes of enabled resources). Don't add a separately configured setting or a hard-coded list for it.",
+      "why": "A second flat list of allowed scopes is a second source of truth that drifts from the resource/grant model.",
+      "check": "Look for a configurable setting, option, or hard-coded scope list that feeds discovery `scopes_supported` or acts as a ceiling during request validation alongside the resource/grant model.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

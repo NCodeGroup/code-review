@@ -1,0 +1,89 @@
+{
+  "hash": "ad321089f476b6af",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0092",
+  "rules": [
+    {
+      "statement": "When client authentication fails and the client sent its credentials in the HTTP `Authorization` header (e.g. `client_secret_basic`), respond with `401 Unauthorized` and a `WWW-Authenticate` header for the same scheme (e.g. `Basic realm=\"<issuer>\"`); keep `400 invalid_client` for body-based and assertion-based client authentication methods.",
+      "why": "RFC 6749 §5.2 requires the 401 + matching `WWW-Authenticate` challenge in the header case. Returning 400 for every client-authentication failure breaks conformance.",
+      "check": "Look for client-authentication failure paths that return 400 for a Basic/Authorization-header attempt or leave out `WWW-Authenticate`, and for body/assertion methods that wrongly return 401.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Endpoints that apply a default HTTP status to a protocol error should only fill in a status that is unset (e.g. `error.StatusCode ??= 400`), and must not overwrite a status or response headers set by a lower layer.",
+      "why": "A handler's 401 and challenge header only reach the client unchanged through every endpoint if endpoints never overwrite a status that is already set.",
+      "check": "Look for endpoint code that assigns `StatusCode = 400` (or another fixed value) unconditionally to an error from a lower layer, or that clears or replaces its headers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protocol response headers that go with an error (such as `WWW-Authenticate` challenges) should be carried on the error object and written by the shared result-rendering path, not added by individual endpoints.",
+      "why": "Having one rendering funnel means no endpoint re-implements header emission, and the same mechanism works for later challenges such as Bearer/DPoP.",
+      "check": "Look for endpoint or handler code that writes challenge or error headers straight to `HttpResponse.Headers` when it should set them on the error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode HTTP Basic credentials (RFC 7617) with standard padded Base64, not Base64Url.",
+      "why": "RFC 7617 specifies standard Base64. Using Base64Url helpers gives wrong sizes and wrong decoding.",
+      "check": "Look for Base64Url decode or length helpers used when parsing `Authorization: Basic` credentials.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use `Debug.Assert` to validate untrusted input, buffer sizes or decode results; use runtime checks that stay in Release builds.",
+      "why": "`Debug.Assert` is compiled out in Release, so a wrong buffer size or a malformed input is accepted silently.",
+      "check": "Look for `Debug.Assert` that guards decoded lengths, buffer sizes or the success of parsing externally supplied data.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decoding into a buffer, size the buffer to an upper bound and then use the actual decoded byte count the decoder returns, not a precomputed exact length.",
+      "why": "A precomputed length can be wrong for some input lengths (e.g. lengths that are not multiples of three), which gives a mis-sized buffer.",
+      "check": "Look for decode calls whose output length is computed ahead of time and used without checking the `bytesWritten` or decoded length the call returns.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an untrusted credential header fails to decode or parse, treat it as a failed authentication (e.g. an `invalid_client` error), not as an assertion or an unhandled exception.",
+      "why": "Malformed client input is an expected failure and must produce the protocol error response.",
+      "check": "Look for credential parsing that throws, asserts or falls through on malformed input when it should return an authentication-failure result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

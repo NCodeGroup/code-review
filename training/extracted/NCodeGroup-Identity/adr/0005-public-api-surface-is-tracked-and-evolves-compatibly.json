@@ -1,0 +1,100 @@
+{
+  "hash": "cba0125e18e3e819",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0005",
+  "rules": [
+    {
+      "statement": "Every packable project must reference Microsoft.CodeAnalysis.PublicApiAnalyzers and carry a sibling PublicAPI.Shipped.txt / PublicAPI.Unshipped.txt pair.",
+      "why": "Accidental public API changes break every consumer, and reviewers can't be counted on to notice them. The analyzer makes every surface change show up in the diff and fails the build if the files drift from the code.",
+      "check": "Look for a new packable project with no PublicAPI.Shipped.txt/PublicAPI.Unshipped.txt files, or one that opts out of PublicApiAnalyzers.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.csproj",
+        "**/PublicAPI.*.txt",
+        "**/Directory.Build.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Any change to public members must come with a matching edit to PublicAPI.Unshipped.txt (or Shipped.txt), and reviewers must check that file's diff to see whether the change is intended and compatible.",
+      "why": "Keeping the surface visible in the diff makes every public API change impossible to miss in review. RS0016/RS0017 with warnings-as-errors fail the build when the files are out of sync.",
+      "check": "Look at the PublicAPI.*.txt diff for removed or changed lines (including nullability annotations) that show a public symbol was renamed, removed or had its signature changed.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Before the first stable (1.0) release, keep PublicAPI.Shipped.txt empty and list the whole surface in PublicAPI.Unshipped.txt. At the first stable release, move the surface into Shipped.txt.",
+      "why": "This keeps the surface visible in diffs while the library is still free to break it before its first stable release.",
+      "check": "Look for entries added to PublicAPI.Shipped.txt in a pre-1.0 package, or a stable release whose surface is still only in Unshipped.txt.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Once a library has shipped a stable (GA) release, change its public API only by adding to it. Don't remove, rename or change the signature or nullability of a shipped member. A breaking change needs a major version bump.",
+      "why": "Any change to the shipped surface breaks every consumer.",
+      "check": "Look for removed or changed lines in PublicAPI.Shipped.txt in a non-major release.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.Shipped.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To change how a shipped public method is called, add a new overload instead of changing the existing method's parameters.",
+      "why": "Changing a shipped signature breaks consumers. A new overload keeps the change backward-compatible.",
+      "check": "Look for parameters added, removed or retyped on an existing shipped public method, where a new overload should have been added instead.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On shipped public types, take required inputs as constructor parameters and add new optional inputs as `init` properties, never as new constructor parameters.",
+      "why": "Adding a constructor parameter breaks existing callers. An `init` property extends the type without breaking them.",
+      "check": "Look for a new parameter (even one with a default value) added to a shipped public constructor for an optional input.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add new members to a shipped enum that appears on the wire by appending them with new values. Never renumber, reorder or reuse existing values.",
+      "why": "Renumbering changes the serialized meaning of existing values and breaks consumers.",
+      "check": "Look for changed explicit values, or members inserted in the middle so implicit numbering shifts, in public enums that get serialized.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before removing a shipped public member, mark it `[Obsolete]`, and remove it only in a later major version.",
+      "why": "Deprecating first gives consumers warning and a path to migrate before the breaking removal.",
+      "check": "Look for a shipped public member removed without having been marked [Obsolete] earlier, or removed outside a major version bump.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.Shipped.txt"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

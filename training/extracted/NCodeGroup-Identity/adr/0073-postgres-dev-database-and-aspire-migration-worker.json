@@ -1,0 +1,75 @@
+{
+  "hash": "f2fbcfb1baa11696",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0073",
+  "rules": [
+    {
+      "statement": "Do not add host-specific tables such as the Data Protection `DataProtectionKeys` set to a DbContext that ships in a published library; put them in a separate host-owned DbContext.",
+      "why": "A shared library context that carries host concerns forces those tables on every consumer of the library; a host-owned context keeps the library clean.",
+      "check": "Look for `IDataProtectionKeyContext` or `DbSet<DataProtectionKey>` (or other host-only entities) added to a DbContext in a packable library project instead of a host project.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library DI extension methods must not choose where the ASP.NET Core Data Protection key ring is stored (no `PersistKeysToFileSystem`/`PersistKeysTo*` calls); leave Data Protection persistence to the host.",
+      "why": "The host owns Data Protection persistence, so it can keep the key ring in the same store as the data it protects and reset both together.",
+      "check": "Look for `PersistKeysToFileSystem`, `PersistKeysToDbContext` or similar key-ring location calls inside library `Add*` service-registration extensions.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist the Data Protection key ring in the same database as the data it protects (for example with `PersistKeysToDbContext`), not as files on the local filesystem such as `App_Data/`.",
+      "why": "If the key ring and the protected data live in different places, deleting one without the other leaves the stored secrets impossible to decrypt, and a reset takes more than one step.",
+      "check": "Look for `PersistKeysToFileSystem` or new developer state written under `App_Data/` or other filesystem paths when the protected data lives in a database.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several EF Core DbContexts share one database, give each context its own migrations-history table.",
+      "why": "The separate host-owned context has its own migrations history so its migrations do not collide with the main context's migrations in the shared database.",
+      "check": "Look for a second DbContext pointed at the same connection string with no distinct `MigrationsHistoryTable(...)` setting in its provider options.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every EF Core DbContext that has migrations must be added to the build's pending-model-changes drift check (`dotnet ef migrations has-pending-model-changes`).",
+      "why": "The drift gate keeps migrations authoritative, so a context left out of it can pick up model changes that no migration covers.",
+      "check": "A diff that adds a new DbContext with migrations but does not add a matching `has-pending-model-changes` step to the build or definition-of-done script.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Aspire-orchestrated apps, apply database schema migrations in a dedicated migration worker resource that the API waits on with `WaitForCompletion`, not at API startup; keep data seeding in the API as idempotent seed handlers.",
+      "why": "A migration failure then shows up as a failed, isolated dashboard resource that blocks the API, instead of crashing the API process.",
+      "check": "Look for `Database.Migrate`/`MigrateAsync` calls added to the API startup path, AppHost wiring that does not use `WaitForCompletion` on the migration worker, or seed handlers that are not idempotent.",
+      "scope": "domain",
+      "domain": "aspire-hosting",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

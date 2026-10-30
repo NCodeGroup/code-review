@@ -1,0 +1,18 @@
+{
+  "hash": "61660e5f4ed67aa1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #370",
+  "rules": [
+    {
+      "statement": "When the caller can't know the output size ahead of time, an API that writes variable-length output takes an IBufferWriter<byte> destination instead of a fixed Memory<byte>/Span<byte> destination; keep Span plus an `out int` bytes-written only for results whose size is known in advance.",
+      "why": "Callers who can't know the size end up guessing a buffer size, for example renting twice the expected length. That hides real errors as \"destination too small\" or pushes them into later size checks.",
+      "check": "Look for new or changed methods that write to a caller-supplied Memory<byte>/Span<byte> where the output length is only known after the work is done (for example a remote service response or a decryption result). Also look for callers that over-rent buffers to guess the size.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

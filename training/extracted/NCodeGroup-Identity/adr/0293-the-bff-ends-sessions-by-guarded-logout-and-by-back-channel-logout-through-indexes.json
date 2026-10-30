@@ -1,0 +1,138 @@
+{
+  "hash": "48c381b3e057013b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0293",
+  "rules": [
+    {
+      "statement": "Protect a state-changing GET endpoint that cannot carry an anti-forgery header, such as RP-initiated logout, with a per-session random guard value that only the server hands out, and answer 400 and leave the session intact when the guard is missing or wrong.",
+      "why": "Logout is a top-level navigation that cannot carry the anti-forgery header, so without a guard any cross-site page could log the user out (logout CSRF).",
+      "check": "Look for GET logout or other state-changing GET handlers that end a session without checking a per-session secret parameter, or that still end the session when the check fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare secret values such as guards, tokens or MACs with `CryptographicOperations.FixedTimeEquals`, not with `==`, `string.Equals` or `SequenceEqual`.",
+      "why": "A constant-time comparison stops timing attacks from leaking the secret.",
+      "check": "Look for secret or guard values compared with ordinary equality operators or methods.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a request with 400 when a security-relevant query or form parameter that should have one value (a guard, return URL or logout_token) appears more than once.",
+      "why": "Parameters that repeat are ambiguous and could be used to slip past validation.",
+      "check": "Look for handlers that read such parameters with first-value or joined-value access and never check that the count is exactly one, or at most one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Redirect to a caller-supplied return URL only when it matches a configured allow-list, use a safe default such as `/` when it is absent, and answer 400 when it is not on the list.",
+      "why": "A return URL that is not checked makes the endpoint an open redirect.",
+      "check": "Look for redirects built from a request's returnUrl or similar parameter that is not checked against a configured allow-list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make logout idempotent: when no session exists, redirect to the return URL instead of failing.",
+      "why": "A second click or a stale tab should do no harm.",
+      "check": "Look for logout handlers that return an error when the session is already gone.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When ending a session, remove the local session record and delete its cookie first, using `CancellationToken.None`, before calling any remote service such as token revocation.",
+      "why": "If the client disconnects, it must not be able to leave the session behind by cancelling the request.",
+      "check": "Look for session removal that passes the request's cancellation token (HttpContext.RequestAborted), or that runs after remote calls that could fail or be cancelled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make best-effort cleanup calls during logout, such as RFC 7009 refresh-token revocation, with a bounded timeout, and log any failure (cancellation included) without failing the logout.",
+      "why": "The user asked to leave and the local session is already gone; the refresh token expires at the provider anyway.",
+      "check": "Look for revocation calls with no timeout, or whose exceptions (including OperationCanceledException) propagate and fail the logout.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a back-channel logout receiver, find the affected sessions through `sid`/`sub` indexes rather than by scanning the store, and before ending each candidate check that its issuer, and its `sid` when the token has one, match the logout token.",
+      "why": "Scanning does not scale and needs a store that can list keys, and checking each candidate keeps a token from ending sessions it does not name.",
+      "check": "Look for store enumeration or key scans in logout handling, or for indexed candidates that are ended without checking issuer and sid.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a `sid` claim in back-channel logout tokens by default (matching `backchannel_logout_session_required=true`), and accept `sub`-only tokens only when an explicit option turns this off.",
+      "why": "Otherwise ending one provider session ends every session the user has at the relying party.",
+      "check": "Look for logout-token handling that accepts tokens without sid by default, or a session-required option whose default is false.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a logout token's `jti` as handled only after the sessions it names have ended, and do not record it when the receiver answers with an error.",
+      "why": "Recording it first would turn the provider's retry after a failure into a rejected replay.",
+      "check": "Look for jti/replay recording that happens before session removal, or that also runs on the error path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a back-channel logout receiver answer 200 with `Cache-Control: no-store` on success, and 400 when the request or token is invalid, the provider's keys cannot be read, or a session cannot be ended.",
+      "why": "OpenID Connect Back-Channel Logout expects these responses, and a 400 lets the provider retry.",
+      "check": "Look for success responses without Cache-Control: no-store, or for failures that return 200 or 5xx instead of 400.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

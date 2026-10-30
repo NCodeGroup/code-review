@@ -1,0 +1,45 @@
+{
+  "hash": "d572cd17d593759b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0003",
+  "rules": [
+    {
+      "statement": "Declare every NuGet package version once, as a `<PackageVersion>` in `Directory.Packages.props` (Central Package Management); a project's `<PackageReference>` must not carry a `Version` attribute or use a shared `$(SomeVersion)` property instead.",
+      "why": "Inline or per-project versions drift across projects and turn a dependency bump into an easy-to-miss N-file edit. Central Package Management is NuGet's built-in way to do this and also supports transitive pinning.",
+      "check": "Look for `Version=` or `VersionOverride` on `<PackageReference>` in .csproj/.props files, or new `*Version` MSBuild properties used to set package versions, instead of a `<PackageVersion>` entry in Directory.Packages.props.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Do not hard-code `Version`, `AssemblyVersion`, `FileVersion` or `PackageVersion` in project files; the whole package family gets one version from Nerdbank.GitVersioning's root `version.json`, with `AssemblyVersion` pinned to major precision.",
+      "why": "Lockstep versioning that comes from git height makes every release reproducible from a commit. Keeping one binding identity per major version makes minor and patch upgrades drop-in.",
+      "check": "Look for `<Version>`, `<AssemblyVersion>`, `<FileVersion>`, `<VersionPrefix>` or `<PackageVersion>` properties in .csproj/.props files, nested per-project `version.json` files, or changes to `assemblyVersion.precision` away from `major`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/version.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `cloudBuild.setVersionVariables` set to `false` in `version.json`; a CI workflow that needs the version must ask for it explicitly with `nbgv get-version` instead of turning the environment-variable export back on.",
+      "why": "Nerdbank.GitVersioning writes to GITHUB_ENV from parallel MSBuild nodes without a lock. This tears lines in that file and fails jobs whose work succeeded, and nothing reads the exported variables.",
+      "check": "Look for changes setting `setVersionVariables` to true (or removing it) in version.json, or workflow steps that read `GitBuildVersion` or similar NBGV environment variables without calling `nbgv get-version`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/version.json",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

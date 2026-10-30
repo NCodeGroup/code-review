@@ -1,0 +1,66 @@
+{
+  "hash": "7470995d6c9dfafd",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0077",
+  "rules": [
+    {
+      "statement": "Single-session logout (RP-Initiated or Back-Channel) must revoke only the grants issued under the terminating session, filtered by its `sid`, and fall back to subject-wide revocation only when no session can be resolved.",
+      "why": "Revoking every grant the subject holds over-revokes: signing out on one device would invalidate the refresh tokens of the subject's other concurrent sessions, which is not correct single-logout behavior.",
+      "check": "Look for logout or end-session handlers that call grant revocation filtered only by subject (or subject and client) even when a session id is available, or that skip the session-scoped path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make \"sign out everywhere\" (subject-wide grant revocation) an explicit, separate administrative operation, never a side effect of ending one session.",
+      "why": "Global sign-out is a deliberate action. If it happens as part of single logout, the subject's other sessions are silently killed.",
+      "check": "Look for subject-wide revocation added to session logout flows as the default behavior instead of only as the no-session fallback.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every grant issued under an authenticated interactive session (authorization codes, refresh tokens, per-access-token claims grants, and the session grant itself) must have the session's `sid` stamped on it at issuance, and non-interactive grants must store null.",
+      "why": "Session-scoped revocation can only find grants that carry the sid. A session-bound grant left with null keeps its tokens alive after the session ends.",
+      "check": "In new or changed grant-issuance paths that run under a user session, check that the session id from the authenticated subject is set on the persisted grant. Flag session-bound grant types that leave it null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Revoking a session must revoke the session grant together with every child grant and token minted under it, through one complete revocation path rather than a separate partial one.",
+      "why": "A path that revokes only the session record leaves its child tokens live. A single session-scoped revocation is both complete and the one path to maintain.",
+      "check": "Look for session-revocation methods that delete or revoke only the session entry without revoking the grants carrying its sid, or a second redundant revocation API for the same purpose.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Index and match opaque, case-significant identifiers (such as a Base64Url `sid`) verbatim, without adding a normalized companion column or case-folding them.",
+      "why": "These keys are case-significant and opaque, so normalizing them would be wrong. Direct verbatim indexing is the convention for such keys.",
+      "check": "In EF entity/configuration changes, look for opaque Base64Url or similar case-sensitive keys that get a normalized/upper-cased companion column or are compared case-insensitively.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

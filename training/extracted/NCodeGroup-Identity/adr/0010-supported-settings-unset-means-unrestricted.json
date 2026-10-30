@@ -1,0 +1,54 @@
+{
+  "hash": "3ab0b6626d8cd0c2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0010",
+  "rules": [
+    {
+      "statement": "When enforcing a collection-valued `*_supported` policy setting, treat it as restrict-only-if-present: read it with `TryGetValue` and reject only when it is present and does not contain the item, never with `GetValue`. The exception is an algorithm list that decides what the server accepts from another party: when unset, it permits nothing.",
+      "why": "Absence of a `*_supported` setting means no restriction, so extensions and custom scopes or grants aren't blocked. `GetValue` throws on an unset collection that has no default. ADR-0155 later made inbound algorithm-acceptance lists permit nothing when unset.",
+      "check": "Look for enforcement code that reads a `*_supported` setting with `GetValue`, or that rejects a request when the setting is missing. For an algorithm list governing what is accepted from another party, check instead that a missing list rejects everything.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hardcode policy values for intersect-merged capability-list settings as setting-descriptor defaults; supply them through a replaceable baseline provider applied to the root layer before configuration, so hosts can extend, override or clear them.",
+      "why": "Intersect only narrows, so a hardcoded root default becomes a ceiling nobody can raise and blocks any extension that adds a capability. Capability belongs to the registries, and policy belongs to a layer the host can override.",
+      "check": "Look for new or changed `Default` values on collection settings merged with `Intersect` (for example `*_supported` lists) that are set as literals on the descriptor instead of in the baseline defaults provider.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In generic code constrained with `where T : notnull`, do not detect whether a value is present by testing a `T?` field or parameter against null; track presence with an explicit boolean flag, or constrain to `struct` and use a real `Nullable<T>`.",
+      "why": "Under a `notnull` constraint, `T?` on a value type is just `T`, not `Nullable<T>`, so it is never null. The null check always reports a value, and `default(T)` (for example `TimeSpan.Zero`) gets used by mistake.",
+      "check": "Look for generic types or methods with a `notnull` (or no) constraint that compute presence with `x is not null` or `x != null` on a `T?` and then use that result to decide whether a default or value exists.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A scalar setting with no default, where unset means no constraint, must stay absent when not configured; read it as an optional `Nullable<T>` and apply the constraint only when it has a value.",
+      "why": "Materializing `default(T)` for such a setting turns \"no constraint\" into a constraint of zero. For example, a zero max-age rejected every fresh login and returned `login_required` to `prompt=none` requests.",
+      "check": "Look for reads of optional scalar settings that fall back to `default(T)` or use a throwing getter instead of a try-get or nullable read. Also look for code that adds a default value to the effective settings for a descriptor that has none.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

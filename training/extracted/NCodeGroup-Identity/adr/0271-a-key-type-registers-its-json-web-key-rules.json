@@ -1,0 +1,89 @@
+{
+  "hash": "c09f6de3c6fc4022",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0271",
+  "rules": [
+    {
+      "statement": "Do not hard-code per-key-type JWK rules (RFC 7638 thumbprint members, private member names) in a `switch` on `kty` or a fixed set; take them from registered key-type data that the key object carries, so contributed key types work too.",
+      "why": "Hard-coded tables only know the standard key types, so a contributed `kty` could not be thumbprinted and DPoP validation threw `NotSupportedException` even though the catalog could import and export the key.",
+      "check": "Look for new or changed `switch`/dictionary/set literals keyed on `kty` values (\"RSA\", \"EC\", \"OKP\", \"oct\", \"AKP\") that drive thumbprint, private-material or public-key logic, instead of reading the key's registered descriptor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Attach extensible per-type rules to the object they describe, not to method overloads that make every caller look the rules up again, so an object that crosses a boundary (for example a DPoP proof's public key) keeps its rules.",
+      "why": "With overloads, every caller has to find the descriptor again, and a key handed across a boundary loses its rules.",
+      "check": "Look for new overloads such as `Method(descriptor)` that callers can only use after looking up type data the object could have carried itself.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a static mutable registry for an open vocabulary; register the data through the existing catalog or registry service.",
+      "why": "Global mutable state causes registration-order and test-isolation problems, and it duplicates the registry that already exists.",
+      "check": "Look for static mutable collections or static `Register` methods that hold vocabulary entries such as key types or algorithms.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When detecting JWK private key material, fail closed: always treat every standard private member name (`d`, `p`, `q`, `dp`, `dq`, `qi`, `oth`, `k`, `priv`) as private, in addition to the key type's own private members.",
+      "why": "A contributed key type must not be able to use a standard private name for a public member, and checks such as rejecting an RSA key that carries `k` must still hold.",
+      "check": "Check that private-material detection or public-key stripping does not rely only on the key type's own list and does not drop any of the standard private member names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWK thumbprint's member set must always include `kty` (RFC 7638 §3.2), and its members must be sorted in ordinal (lexicographic) order (RFC 7638 §3.3).",
+      "why": "RFC 7638 requires these, and normalizing them where the member set is built keeps thumbprints correct for every key type.",
+      "check": "Check thumbprint member lists and the canonical JSON built from them: `kty` must be present, and members must be ordered with `StringComparer.Ordinal` rather than culture-sensitive or insertion order.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An AKP key's thumbprint members must be `alg`, `kty` and `pub` (RFC 9964 §6), and AKP keys must always export `alg` and require it on import.",
+      "why": "RFC 9964 §6 defines these members, and the earlier list without `alg` produced non-conforming thumbprints.",
+      "check": "Check AKP thumbprint member lists for a missing `alg`, and AKP import/export code that treats `alg` as optional.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWK constructor that takes an explicit key-type descriptor must throw `ArgumentException` when the descriptor's name differs from the key's `kty`.",
+      "why": "A key must not carry rules for a different key type than its own `kty`.",
+      "check": "Check constructors or factories that pair a JWK with type rules for a missing check that the descriptor name equals `kty`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

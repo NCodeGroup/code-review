@@ -1,0 +1,64 @@
+{
+  "hash": "91f63fad6b4160f8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0119",
+  "rules": [
+    {
+      "statement": "Keep `*.Abstractions` packages to contracts only; put any type with behavior (parsing, hashing, computing values) in a separate implementation or model library that the abstractions package references.",
+      "why": "The family rule is that no abstractions package contains logic; a model library holding the logic can be referenced by abstractions packages without breaking that rule.",
+      "check": "Look for method bodies with real logic, behavior-bearing classes or helper implementations added to a project named `*.Abstractions`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute JWK thumbprints (RFC 7638) and thumbprint URIs (RFC 9278) from a parsed JSON Web Key model's required members, never from a hand-built or string-interpolated canonical JSON string.",
+      "why": "Hand-rolled canonical JSON strings are fragile and duplicate logic that the shared JWK model already implements once.",
+      "check": "Look for interpolated or concatenated JSON literals such as `{\"e\":...,\"kty\":\"RSA\",\"n\":...}` that are hashed to make a `jkt` or thumbprint, or for code that pulls JWK members out of a raw JsonElement by hand to hash them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Represent a JWK or JWKS with one shared JSON Web Key model from start to finish, not as raw `JsonObject`/`JsonElement` values that get converted to a DTO only when serialized.",
+      "why": "Several separate treatments of the same concept caused duplication, and a DTO that only appears at the serialization edges ends up bolted on instead of actually used.",
+      "check": "Look for new code that builds or passes JWK/JWKS data as `JsonObject`, `JsonElement` or ad-hoc result objects where the shared JWK/JWKS model type exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Back an immutable JSON-wrapping model with a detached `JsonElement` (from `JsonElement.Parse`/`JsonElement.ParseValue`) instead of a mutable `JsonObject` that needs defensive `DeepClone` calls.",
+      "why": "A detached JsonElement is immutable and owns no `JsonDocument`, so there is nothing to dispose or clone.",
+      "check": "Look for immutable model types that store a `JsonObject` field and call `DeepClone` defensively, or that keep a `JsonDocument` alive just to hold an element.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use public constructors for model types that adopt an in-memory value (such as a `JsonElement`, a `JsonObject` or a collection), and a static `Parse(string)` method for deserializing text.",
+      "why": "The ADR makes this verb split the rule: a constructor adopts an in-memory value, and `Parse` deserializes text.",
+      "check": "Look for constructors that take raw JSON text, or for `Parse`/`From*` static factories that only wrap an in-memory node or collection.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

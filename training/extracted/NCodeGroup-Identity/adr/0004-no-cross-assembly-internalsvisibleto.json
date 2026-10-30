@@ -1,0 +1,46 @@
+{
+  "hash": "68662c0a2eb9b0b7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0004",
+  "rules": [
+    {
+      "statement": "Do not use InternalsVisibleTo to let one production assembly access another production assembly's internal types; make packages collaborate through deliberately designed public contracts instead.",
+      "why": "Cross-assembly internals access creates hidden coupling that consumers can't see and PublicApiAnalyzers doesn't track, so a refactor that is safe inside one assembly can quietly break another.",
+      "check": "Look for InternalsVisibleTo attributes or <InternalsVisibleTo> items in csproj/AssemblyInfo whose target is a non-test production assembly.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Grant InternalsVisibleTo only to the matching *.Tests assembly and to DynamicProxyGenAssembly2 (so Moq/Castle can proxy internal types and internal virtual members).",
+      "why": "Test projects and mocking proxies are the only consumers allowed to see internals; any other target turns the package boundary into an invisible dependency.",
+      "check": "Every InternalsVisibleTo target must be the assembly's own *.Tests project or DynamicProxyGenAssembly2; flag any other target.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark a type or member that is public only for cross-assembly infrastructure collaboration, and not meant for application code, with [EditorBrowsable(EditorBrowsableState.Never)], and start its <summary> with the standard sentence \"This API supports the ... infrastructure and is not intended to be used directly from your code.\"",
+      "why": "This follows the EF Core / ASP.NET Core pattern: the collaboration surface stays explicit and version-tracked, but it doesn't show up in application developers' IntelliSense.",
+      "check": "A new public type or member that exists only for use by sibling packages but lacks [EditorBrowsable(EditorBrowsableState.Never)] or the standard infrastructure sentence at the start of its <summary>.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

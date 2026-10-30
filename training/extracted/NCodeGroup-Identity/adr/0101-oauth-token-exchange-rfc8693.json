@@ -1,0 +1,103 @@
+{
+  "hash": "1d1e72570c65aab0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0101",
+  "rules": [
+    {
+      "statement": "Validate subject and actor tokens presented for token exchange as self-issued only: check them against the resolved tenant's own signing keys, issuer and lifetime, and reject tokens from any other issuer unless an explicitly registered validator handles them.",
+      "why": "Accepting externally minted tokens requires a separate trusted-issuer and federation subsystem. The default trust boundary is limited to tokens the server issued itself.",
+      "check": "Look for token-exchange validation code that accepts tokens without checking the issuer against the tenant's own issuer, that resolves keys from a foreign issuer or JWKS, or that skips lifetime or signature validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a token exchange, require the requesting client to be confidential, and require each presented subject or actor token to have been issued to that client (`client_id` matches) or to name that client in `aud`.",
+      "why": "Otherwise a client could exchange a token that was never meant for it, which goes against RFC 8693 intent.",
+      "check": "Look for exchange handlers that accept public clients, or that never compare the presented token's `client_id`/`aud` with the authenticated requester, including for the actor token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For delegation token exchange, require the subject token's `may_act` claim to authorize the actor (its `sub` equals the actor's `sub`, and its `client_id`/`iss` match when present), reject an actor that is the same as the subject, and put an `act` claim for the actor in the issued token with any existing `act` nested inside it.",
+      "why": "RFC 8693 §4.1 and §4.4 require pre-authorization of the actor and preservation of the delegation chain, so resource servers can audit and constrain what the actor does.",
+      "check": "Look for delegation code paths that skip the `may_act` check, compare only some of its fields, allow subject == actor, or overwrite or drop an existing `act` claim instead of nesting it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never let a token exchange widen authority: use the requested scopes only after validating them against the client's allowed scopes, and when no scopes are requested, use the subject token's scopes intersected with the client's allowed scopes. Let the `resource`/`audience` parameters only narrow the audience.",
+      "why": "An exchange must never give the requester more authority than it already holds.",
+      "check": "Look for exchange code that copies the subject token's scopes into the new token without intersecting them with the client's allowed scopes, or that lets `audience`/`resource` add audiences beyond what resolves for the client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve the subject of a presented token forward from its validated claims through the principal resolver, and reject the request when the subject cannot be resolved. Never recover a principal by reversing a pairwise-projected `sub`.",
+      "why": "Reversing a projected pairwise subject risks silently resolving the wrong principal. Forward resolution keeps subject identity owned by the server.",
+      "check": "Look for code that treats a presented token's `sub` as a principal id without going through principal resolution, that tries to map pairwise `sub` values back to principals, or that continues after resolution fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep powerful grant types such as token exchange, `client_credentials` and `password` out of the default `grant_types_supported` discovery metadata, and require both operator opt-in and per-client grant enablement before they can be used.",
+      "why": "Secure-by-default: powerful grants must be explicitly opted into.",
+      "check": "Look for a powerful grant type added to the default advertised grant types, or a grant handler that does not check the `grant_types_supported` gate and per-client grant enablement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In token exchange responses, always include `issued_token_type`. When the requested output is an ID token, return it in the `access_token` field with `token_type` set to `N_A`. Only issue a refresh token when a per-client setting allows it.",
+      "why": "RFC 8693 §2.2.1 defines this response shape, and refresh-token issuance from an exchange is gated per client.",
+      "check": "Look for exchange responses that leave out `issued_token_type`, return an ID token under a different field or with `Bearer` as the token type, or issue refresh tokens without checking the per-client setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add new OAuth grant types by registering a grant handler on the token endpoint's extension-grant dispatch, without changing the token endpoint itself.",
+      "why": "The RFC 6749 §4.5 extension-grant seam already routes any `grant_type` to its handler, so grants stay modular and the endpoint stays stable.",
+      "check": "Look for diffs that add grant-specific branches or `grant_type` switches inside the token endpoint instead of adding a separately registered handler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

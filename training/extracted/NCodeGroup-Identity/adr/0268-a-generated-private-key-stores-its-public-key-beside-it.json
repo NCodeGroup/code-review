@@ -1,0 +1,65 @@
+{
+  "hash": "5fc205bdf2e5de20",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0268",
+  "rules": [
+    {
+      "statement": "Code that only returns the public half of a stored asymmetric key must read stored public material and must not unprotect the private key or load master keys.",
+      "why": "Unprotecting a private key just to emit its public half loads the owner's master keys, may call the key management service, and keeps private key material in memory for what is a read of public data.",
+      "check": "Look for public-key or JWKS read paths that take an ISecretProtector, call unprotect/decrypt, or deserialize the private key to export its public key.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When storing the public half of a generated asymmetric key, store it as base64url SubjectPublicKeyInfo (SPKI) DER, not as a JWK or PEM.",
+      "why": "A JWK carries kid, use and alg, which can change after the key is stored, and PEM adds a second format; SPKI is what the key descriptors already deserialize.",
+      "check": "Look for stored public-key fields filled with JWK JSON or PEM text instead of base64url SPKI DER.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store a separate public key only for private asymmetric keys; leave it null for symmetric secrets and for secrets whose stored value is already public (SPKI or X.509).",
+      "why": "For public-only secrets the stored value already is the public material, so a copy duplicates it, and storing the SPKI of an X.509 secret drops its certificate.",
+      "check": "Look for code that fills a separate public-key field for symmetric, SPKI or X.509 secrets, or that reads the public half of a public-only secret from that field instead of from its own value.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a new field is added to a persisted record, every update handler that rebuilds that record must copy the new field over.",
+      "why": "Update handlers that rebuild the persisted record would otherwise silently drop the new stored value.",
+      "check": "In a diff that adds a property to a persisted entity, check that each update path that builds a new instance of that entity sets the new property.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a member that implementers of an extensibility type must supply, declare it `required` so that every implementation, third-party ones included, has to set it on purpose.",
+      "why": "A `required` member makes every descriptor, third-party ones included, decide on a value instead of silently getting a default.",
+      "check": "Look for new members on records or result types that extension points fill in, where the member is optional or defaulted even though each implementation has to choose a value for it.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

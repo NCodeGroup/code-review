@@ -1,0 +1,18 @@
+{
+  "hash": "9ecb2867527505c2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #316",
+  "rules": [
+    {
+      "statement": "Do not allocate short-lived, small, fixed-size scratch buffers with `new byte[...]`; use `stackalloc` into a `Span<byte>`, or a pooled buffer (for example from `NCode.Buffers` or `ArrayPool<byte>`), when the buffer doesn't outlive the method.",
+      "why": "The maintainer flagged a `new byte[]` for a fixed-size temporary key buffer as a violation of the project's ADR that limits heap allocations.",
+      "check": "Look for `new byte[size]` (or other new arrays) inside a method where the size is small or known at compile time and the array is only used temporarily and is not returned or stored. Flag it and suggest `stackalloc` or a pooled/rented buffer.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

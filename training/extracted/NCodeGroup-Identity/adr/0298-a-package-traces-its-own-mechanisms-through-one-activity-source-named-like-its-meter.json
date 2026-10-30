@@ -1,0 +1,85 @@
+{
+  "hash": "13174768984b95ef",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0298",
+  "rules": [
+    {
+      "statement": "A package that emits traces uses a single static ActivitySource whose name equals the package name, exposed as a public constant beside its meter name constant.",
+      "why": "A single source named like the meter lets a host add the whole family with one wildcard AddSource, and ActivitySource has no factory to scope it to a service provider.",
+      "check": "Look for multiple ActivitySource instances in one package, source names that differ from the package/meter name, hard-coded name strings without a public constant, or attempts to create the source per service provider.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not create spans for work that ASP.NET Core or System.Net.Http already traces (inbound requests, outbound HTTP calls); a library span should wrap only its own mechanisms such as waits and store operations.",
+      "why": "The framework already traces the request and the outbound call, so duplicate spans add noise; the package's value is in exposing the waits and operations around them.",
+      "check": "Flag new StartActivity calls that wrap an endpoint handler or just an HttpClient call with nothing else inside.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each span mirrors one of the package's duration histograms: it's named after the histogram without the `.duration` suffix, carries the same bounded attributes, and on failure sets status Error and `error.type` the same way the histogram does.",
+      "why": "One vocabulary then describes both signals, and both can be cataloged together.",
+      "check": "Check that a new span has a matching duration histogram, that its name equals the histogram name minus `.duration`, that its tags match the histogram's tags, and that failures set ActivityStatusCode.Error plus an error.type tag.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put secrets or personal data on a span: no tokens, handles, cookies, keys, subjects, client ids or request paths; rely on the parent span for correlation.",
+      "why": "Traces could hold high-cardinality values, but these values are sensitive, and the parent request span already gives correlation.",
+      "check": "Look at SetTag/AddTag/AddEvent calls on activities for token, cookie, key, handle, subject, client_id, path or similar values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library telemetry registration helpers must not turn on tracing for the host; the host adds the package's activity sources to its own tracing pipeline.",
+      "why": "Tracing is opt-in by the host, and the metrics registration method configures metrics only.",
+      "check": "Flag metrics registration extension methods that also call AddSource or set up a tracer provider.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a span, add or name the histogram it mirrors and document both in the package's telemetry/metrics catalog.",
+      "why": "The catalog describes both signals using one vocabulary.",
+      "check": "A diff that adds a new span name and doesn't update the metrics documentation is a violation.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests that assert on spans from a shared static ActivitySource must use an ActivityListener that only collects activities under a parent activity the test started itself.",
+      "why": "Every test in the process shares the source, so a listener without that filter picks up spans from tests running at the same time.",
+      "check": "Look for test ActivityListeners that collect every activity from the source without filtering by the test's own parent activity or trace id.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

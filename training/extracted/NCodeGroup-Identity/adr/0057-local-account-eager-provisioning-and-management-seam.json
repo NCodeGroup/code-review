@@ -1,0 +1,77 @@
+{
+  "hash": "4fa852f0403b4cf6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0057",
+  "rules": [
+    {
+      "statement": "Persistence write operations that a handler composes with other writes must stage their changes on the caller-supplied store manager / unit of work rather than opening and saving their own, so the calling handler controls the transaction boundary.",
+      "why": "A seam that owns its own unit of work cannot be composed atomically with related writes (e.g. creating related rows or audit/ownership records) in a single transaction.",
+      "check": "Look for store or service write methods that create their own store manager/DbContext and call SaveChanges internally when they are invoked from a handler that performs other related writes; they should accept the caller's unit of work and only stage changes.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When creating an entity that requires companion rows (e.g. a local account with its principal and self-issued identity), stage all of them together in one unit of work instead of creating the companions lazily on a later read path.",
+      "why": "Lazy creation leaves a window where the entity exists without its required companions, forcing special cases and scattering provisioning across read-ish paths.",
+      "check": "Look for create paths that write only the primary row and rely on get-or-create logic in later read/login/metadata paths to materialize required related rows.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A password reset or credential change must rehash the credential and rotate the account's security stamp so outstanding sessions and tokens are invalidated.",
+      "why": "Without rotating the security stamp, sessions and tokens issued under the old credential remain valid after a reset.",
+      "check": "Look for password reset/change code paths that update the password hash without also rotating the security stamp.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep credential hashing, security-stamp rotation and account id generation behind the account store/seam abstraction rather than calling password hashers or mutating credential fields directly from management handlers.",
+      "why": "Leaking hashing and stamping logic into the management layer prevents an alternative account backend (e.g. one over ASP.NET Core Identity) from owning them.",
+      "check": "Look for management/API handlers that call IPasswordHasher or set security stamps or password hashes on account entities directly.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Server/system-only subject metadata must only be writable through administrator-gated endpoints, never through end-user-accessible paths.",
+      "why": "SystemMetadata is a server/admin trust boundary; end-user writes would let subjects tamper with server-asserted data.",
+      "check": "Look for new endpoints or code paths that write system metadata and are reachable by end users or lack administrator authorization.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Management endpoints whose backing service comes from an optional, opt-in package must respond 501 Not Implemented when that service is not registered, rather than throwing or returning 500.",
+      "why": "The feature is opt-in; a missing registration is an unsupported capability, not a server fault.",
+      "check": "Look for endpoints that resolve an optional service and throw or return 500/404 when it is not registered instead of 501.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

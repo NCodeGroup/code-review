@@ -1,0 +1,199 @@
+{
+  "hash": "bdebbeaa051f76f7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0259",
+  "rules": [
+    {
+      "statement": "Model revocation-information providers as a registered collection of named sources asked in registration order, where the first `Good` or `Revoked` answer decides and the result is `Unknown` only when every source answers `Unknown`.",
+      "why": "Where revocation information comes from is an open vocabulary (a deployment may add sources such as a local deny list). Asking every source and letting any `Revoked` win would double the network cost of every check, and a CA's sources all describe one status.",
+      "check": "Look for a revocation checker that hard-codes one mechanism, can't take extra registered sources, queries every source after a definite answer, or turns a definite answer into `Unknown`.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Query OCSP before CRLs, skip OCSP without sending a request when the certificate's authority information access names no http/https responder, and fall back to CRLs when the OCSP query fails or the responder answers `unknown`.",
+      "why": "An OCSP response covers one certificate and is usually fresher than a CRL, which can weigh megabytes. Falling back keeps a PKI that publishes both working while its responder is down.",
+      "check": "Look for CRLs fetched before OCSP, OCSP requests sent with no usable responder URL, or an OCSP failure or `unknown` answer treated as final instead of falling through to CRLs.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build OCSP requests to the RFC 5019 lightweight profile: one CertID with SHA-1 hashes of the issuer's name and key, with no requestor name, signature or nonce, sent by GET when the URL plus the URL-encoded base64 request is at most 255 characters and otherwise by POST as `application/ocsp-request`.",
+      "why": "A responder that serves pre-produced responses can't echo a nonce, and a nonce makes every request unique to HTTP caches, so freshness rests on thisUpdate/nextUpdate instead.",
+      "check": "Look for OCSP requests that add a nonce, signature or requestor name, hold several CertIDs, use a hash other than SHA-1 for the CertID, or ignore the 255-character GET/POST threshold.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use an OCSP response only when its status is `successful`, it is a DER basic response with no critical extension, a single response matches the requested CertID, and it is signed either by the issuer (with the ResponderID, by name or by SHA-1 key hash, identifying the issuer) or by a delegated responder certificate that the ResponderID identifies, that the issuer issued and signed, that carries `id-kp-OCSPSigning`, and that is valid now.",
+      "why": "RFC 6960 §4.2.2.2 lets only the CA or a responder the CA delegated sign responses. Any other response can't be trusted.",
+      "check": "Look for OCSP parsing that skips the response status, critical-extension, CertID-match, ResponderID, EKU, issuer-signature or validity-time checks before trusting a response's status.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check a delegated OCSP responder that lacks `id-pkix-ocsp-nocheck` through the CRL source only (never through OCSP), at an incremented depth, and use its response only when the responder is `Good`.",
+      "why": "RFC 6960 leaves the responder's revocation to local policy. Checking it through OCSP would ask the responder about itself and could loop, while the depth-bounded CRL check always ends.",
+      "check": "Look for a delegated responder accepted without `id-pkix-ocsp-nocheck` and with no CRL check, a responder checked through OCSP, or a nested check with no depth increment or depth bound.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept OCSP revocation data only when `thisUpdate` is no later than five minutes after the current time and `nextUpdate`, when present, is later than now. Accept a response without `nextUpdate` only when its `thisUpdate` is within five minutes of now, and never cache such a response.",
+      "why": "Without a nonce, freshness rests on `thisUpdate` and `nextUpdate`, so stale or future-dated data must be rejected.",
+      "check": "Look for OCSP freshness checks that are missing or lack the five-minute skew, responses without `nextUpdate` accepted regardless of age, or such responses being cached.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a complete CRL for a distribution point only when it is current and in scope: its issuer is the point's `cRLIssuer` and it asserts `indirectCRL`, or its issuer is the certificate's issuer; its issuing distribution point name, when present, shares a location with the point; and `onlyContainsUserCerts`/`onlyContainsCACerts` admit the certificate.",
+      "why": "RFC 5280 §6.3.3 requires these scope checks. A CRL out of scope says nothing about the certificate.",
+      "check": "Look for CRL processing that accepts any downloaded list without checking its issuer against `cRLIssuer`/`indirectCRL`, the issuing distribution point, or the only-contains flags.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer `Good` from CRLs only when the reasons covered across the processed distribution points (each point's `reasons` intersected with the list's `onlySomeReasons`) add up to every reason; answer `Revoked` as soon as any point lists the certificate, and `Unknown` otherwise.",
+      "why": "A CA that partitions its CRL by reason only states non-revocation for the reasons a list covers.",
+      "check": "Look for code that treats a certificate missing from one reason-partitioned CRL as `Good`, or that doesn't track reason coverage across distribution points.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Match a CRL entry on both serial number and certificate issuer. In an indirect CRL, apply `certificateIssuer` to its entry and to every later entry, and treat a `removeFromCRL` entry as not revoking.",
+      "why": "An indirect CRL lists certificates of several CAs, so a serial number alone can match the wrong certificate. `removeFromCRL` lifts a hold.",
+      "check": "Look for revocation matching on serial number only, `certificateIssuer` not carried forward to later entries, or `removeFromCRL` entries counted as revocations.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the certificate or the complete CRL names a `freshestCRL` location, require a usable delta CRL (current, carrying `deltaCRLIndicator`, matching issuer, issuing distribution point and authority key identifier, base CRL number no greater than the complete list's `cRLNumber`, a `cRLNumber` greater than it, and signed by the complete list's signer), and let delta entries decide before complete entries. Without one, leave an unlisted certificate uncovered rather than `Good`.",
+      "why": "A CA publishes delta lists because its complete list lags. Falling back to the complete list alone would hide every recent revocation, for example when an attacker blocks the delta location.",
+      "check": "Look for delta CRLs treated as optional when one is named, delta lists accepted without the CRL-number, issuer or signer checks, or an unlisted certificate reported as `Good` when no usable delta list was found.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trust a CRL signed by a key other than the issuing certificate's key only when the signer is the trust anchor, or when its subject matches the CRL issuer, its key usage includes `cRLSign`, its key verifies the list, `X509Chain` builds its path to the same anchor (custom root trust, no downloads, no platform revocation check, at the current time), and every certificate on that path is `Good` from the CRL source at a bounded depth.",
+      "why": "RFC 5280 §6.3.3 trusts a signer other than the issuer only through a certification path to the trust anchor of the certificate it speaks for, and a depth bound keeps nested checks from running forever.",
+      "check": "Look for alternate CRL signers accepted on subject or key alone, `X509Chain` used with the system trust store or downloads or online revocation enabled, or nested signer checks with no depth limit.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never download missing signer, responder or intermediate certificates from authority information access during revocation checking; use only configured certificates and those the client presented.",
+      "why": "The server downloads no certificate. The PKI administrator configures the needed certificates instead.",
+      "check": "Look for code that fetches caIssuers/AIA URLs, or `X509Chain` policies that allow URL retrieval during revocation or signer validation.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a nested revocation check (of a CRL signer or a delegated responder) isn't `Good`, treat the list or response it would vouch for as unusable, never as `Revoked`.",
+      "why": "The status of the signer says nothing about whether the end certificate was revoked. It only decides whether the evidence can be trusted.",
+      "check": "Look for a nested `Unknown` or `Revoked` result passed up as `Revoked` for the certificate being checked.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Verify a cached CRL's signature per check against that check's signer, rather than storing one verdict in the shared retrieval cache, and memoize the verdict per signer so the list is hashed once per signer.",
+      "why": "A signer other than the issuer is trusted through the checking client's trust anchor. A shared verdict would let one tenant's trust anchors decide for another tenant.",
+      "check": "Look for signature verification or trust decisions done inside a shared fetch/cache layer and reused across checks with different trust anchors.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fetch revocation data (CRLs and OCSP) only from http/https locations, through a guarded named `HttpClient` with a fetch timeout and a maximum response size. Share concurrent retrievals of one key, and remember failed retrievals and failing responder locations for a failure cache duration in the in-replica `IMemoryCache`.",
+      "why": "Checks run inside client authentication, so every retrieval must stay bounded and shared, and an outage should cost one timeout per replica and responder.",
+      "check": "Look for revocation HTTP calls made without the named client, timeout or size limit, schemes other than http/https followed, duplicate concurrent fetches, failures that are not remembered, or caches shared across replicas.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cache a parsed CRL per location and a verified OCSP response per location, issuer and serial number, only while it is current and until the earlier of its `nextUpdate` and the configured maximum cache duration.",
+      "why": "Revocation data must not be served past its `nextUpdate`, and the cap bounds staleness.",
+      "check": "Look for revocation cache entries with no expiry, an expiry past `nextUpdate`, no maximum-duration cap, OCSP cache keys missing the issuer or serial, or data cached before it is parsed/verified and current.",
+      "scope": "domain",
+      "domain": "x509-certificate-revocation",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

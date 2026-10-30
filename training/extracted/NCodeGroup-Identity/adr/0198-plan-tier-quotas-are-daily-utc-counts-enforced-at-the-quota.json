@@ -1,0 +1,102 @@
+{
+  "hash": "da1c592cdaa81605",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0198",
+  "rules": [
+    {
+      "statement": "A request refused for exceeding a rate limit or quota must return 429 Too Many Requests with the `temporarily_unavailable` error code, a `Retry-After` header in whole seconds until the window resets, and `Cache-Control: no-store`, the same shape for every limiter.",
+      "why": "Clients handle per-minute limits and daily quotas the same way only if every refusal has the same response shape.",
+      "check": "Look for quota or limit refusal paths that return a different status code or error code, leave out Retry-After or give it as a date or fractional value, or leave out Cache-Control: no-store.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not meter public, anonymously fetched metadata endpoints such as the OpenID discovery document and the JSON Web Key Set against a tenant's usage quota; opt them out through endpoint metadata, and opt out any new public metadata endpoint the same way.",
+      "why": "Anonymous callers, caches and relying-party libraries fetch these endpoints, so metering them would let anyone spend a tenant's quota and get its real clients refused until the reset.",
+      "check": "Look for a new public metadata endpoint that is registered without opting out of metering, or for metering logic that counts discovery or JWKS requests.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Count per-client limits and per-client quotas only for confidential clients after client authentication succeeds, never for a public client identified only by its client_id.",
+      "why": "Anyone can read a public client's client_id from an authorization URL, so counting it would let any caller exhaust the quota and get every client of the tenant refused.",
+      "check": "Look for quota or limit counters keyed by client_id that are incremented before client authentication, or that are incremented for public clients.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When enforcing a limit across replicas, atomically increment the shared counter before judging the request; do not read the counter and then increment it after the outcome is known.",
+      "why": "A read followed by a later increment is not atomic, so concurrent replicas overshoot the limit under load.",
+      "check": "Look for limit enforcement that reads a shared counter, does work, and then increments the counter only on success.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define daily quota windows as UTC calendar days, starting at midnight UTC and expiring at the next midnight UTC, not as rolling windows or local or tenant time zones.",
+      "why": "Every replica and every tenant agree on a UTC boundary. A tenant cannot reset its count by changing its time zone, and a plan can state the reset time.",
+      "check": "Look for quota window calculations that use local time, a tenant time zone, DateTime.Now, or a rolling 24-hour span.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge daily quotas after the per-minute rate limits, so a request that a limit refuses does not spend the quota.",
+      "why": "This ordering keeps refused requests from consuming quota, and it caps how much of the quota one address can spend at that address's own per-minute limit.",
+      "check": "Look for quota counters that are incremented before the address, tenant, or client per-minute limits are checked.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the counter store for a limit or quota fails, admit the request, log a warning, and record the judgement in the rate-limiting metric under its partition.",
+      "why": "Quotas share the rate limiter's failure mode: an outage of the counter store must not refuse all traffic.",
+      "check": "Look for quota or limit code that throws or refuses when the counter store fails, or that admits without logging a warning or emitting the metric.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a quota setting an integer of at least one with no default, merge it across the settings cascade with Min, and treat unset as unlimited.",
+      "why": "With the Min merge, the server's value is a ceiling that no tenant or tier can raise, and leaving the setting unset means unrestricted.",
+      "check": "Look for quota settings that have a default value, accept zero or negative values, use a merge other than Min, or treat unset as zero.",
+      "scope": "domain",
+      "domain": "rate-limiting",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

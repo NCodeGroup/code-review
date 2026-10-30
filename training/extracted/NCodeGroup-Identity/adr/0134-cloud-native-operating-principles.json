@@ -1,0 +1,109 @@
+{
+  "hash": "43f525559fe6c72e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0134",
+  "rules": [
+    {
+      "statement": "Do not keep state that must outlive a single request in process memory (static fields, singleton dictionaries, in-memory caches used as the source of truth); put durable state in the database and shared ephemeral state in a shared distributed store abstraction such as IDistributedCache.",
+      "why": "Services must be correct with several interchangeable replicas; any replica must be able to serve any request, and a replaced replica must not lose state that matters.",
+      "check": "Look for new static or singleton-held mutable collections, ConcurrentDictionary stores, or IMemoryCache entries that hold sessions, single-use tokens, nonces, or other cross-request state instead of using the database or a distributed store.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not design features that depend on sticky sessions or on a request being routed back to the same replica.",
+      "why": "Any replica serves any request; sticky routing breaks redundancy and replica replacement.",
+      "check": "Flag code that assumes a follow-up request hits the same process (e.g. state stashed locally between authorize and callback steps, session affinity configuration).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not write durable data to the local filesystem; persist it to the database or an object store.",
+      "why": "Nodes and pods are disposable and containers run with read-only root filesystems, so local-disk data is lost on replacement.",
+      "check": "Look for File/Directory write APIs, local file-based key rings, or local SQLite/file stores used for data that must persist.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read configuration from the environment via the configuration system rather than from hard-coded values or files edited in place, and never commit secrets to source control.",
+      "why": "Twelve-factor configuration and secure-by-default principles: secrets live in the secret store or KMS, never in Git.",
+      "check": "Flag connection strings, keys, passwords or tokens committed in appsettings, code, or test fixtures meant for real environments, and hard-coded environment-specific values.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write logs to stdout through the standard logging pipeline rather than to log files managed by the application.",
+      "why": "Twelve-factor: logs go to stdout and are collected by the platform; local files violate read-only filesystems and statelessness.",
+      "check": "Look for file log sinks or custom file-writing loggers added to the host.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit metrics, logs and traces through OpenTelemetry rather than vendor-specific telemetry SDKs.",
+      "why": "Observability must use open standards so vendors can be swapped by replacing a component.",
+      "check": "Flag new dependencies on vendor-specific telemetry/APM SDKs or custom metric exporters bypassing OpenTelemetry.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every outbound call to another service a timeout and, where retried, bounded retries with jitter, and degrade gracefully on failure.",
+      "why": "Design for failure: an unbounded or hanging dependency call takes the service down with it.",
+      "check": "Look for HttpClient or other remote calls without a configured timeout, unbounded retry loops, or fixed-delay retries without jitter.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make database schema changes expand/contract so the previous and new application versions can run side by side against the same schema.",
+      "why": "Rollouts are progressive and rolling, so old and new versions run concurrently.",
+      "check": "Flag migrations that rename or drop columns/tables, or add non-nullable columns without defaults, in the same release that changes the code using them.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Honor the host's shutdown cancellation token so in-flight work drains and the process stops gracefully, and do not rely on in-process background queues for work that must survive replica replacement.",
+      "why": "Processes must start fast and shut down gracefully; in-process job dispatch loses in-flight jobs when a replica is replaced.",
+      "check": "Look for background services ignoring stoppingToken, fire-and-forget tasks, or in-memory job queues used for work that must not be lost.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

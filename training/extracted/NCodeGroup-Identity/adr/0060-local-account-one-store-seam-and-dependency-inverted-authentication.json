@@ -1,0 +1,100 @@
+{
+  "hash": "05cc852ea9e8d000",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0060",
+  "rules": [
+    {
+      "statement": "Do not expose a password or credential hash on a public persisted data contract; give the store first-class credential operations (add with password, set password, verify credential) so the store does the hashing and comparison internally.",
+      "why": "A raw hash field on the contract means hashing is neither encapsulated nor handled the same way across backends, and it blocks backends that own hashing, such as ASP.NET Core Identity.",
+      "check": "Look for public `PasswordHash`-style properties on account models or DTOs, or callers outside the store that hash or compare credentials themselves.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Security stamps and similar credential-rotation values should be generated and rotated by the store (on create and password change) and exposed read-only on the data contract.",
+      "why": "These values are store-managed, so callers should not be able to set them.",
+      "check": "Look for public setters on `SecurityStamp`, or callers that generate or assign stamps instead of leaving it to the store's add or set-password operations.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model one persisted concept with one pluggable backend seam, not several interfaces split by verb (read, verify, write), so a backend author implements and registers a single interface.",
+      "why": "Splitting one row's operations across several seams makes backend authors implement and register several overlapping interfaces that differ only by verb.",
+      "check": "Look for new source, provisioner or store-style interfaces over the same entity that a backend would have to implement together.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A general-purpose package must not reference a feature-specific package just to support a capability specific to that feature; move the capability into a separate opt-in package that depends on both, and enable it through that package's registration.",
+      "why": "Otherwise the layering is inverted, and every host pays for a capability it may not use or may have disabled.",
+      "check": "Look for new project or package references from a base or general package to a feature package, or feature-specific handlers added to the general package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Base the support for an optional protocol capability on whether its handler is registered: the base package registers a default handler that reports the capability as unsupported (for example `unsupported_grant_type`), and the capability package replaces it. Do not use a feature flag for this.",
+      "why": "This keeps 'not supported' separate from 'supported but the credentials were rejected', which must return a failed result rather than an unsupported one.",
+      "check": "Look for boolean options that gate a grant or capability, or code paths where failed authentication returns `unsupported_grant_type` (or where an unconfigured grant returns a plain failure).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Registration methods for an opt-in capability that needs a prerequisite (such as a backing store) should take the prerequisite's `IServiceBuilder<TLibrary>` marker as a required parameter, and the prerequisite's registrations, custom ones included, must create and return that marker builder.",
+      "why": "Then a missing prerequisite is a compile error, not a failure at startup or resolution time.",
+      "check": "Look for capability `Add*` extension methods that assume a prerequisite service is registered without requiring its marker builder parameter, or store registrations that don't return the marker builder.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put shared constants (such as claim-type names) in the package that owns the concept they describe, not in a feature package whose consumers would then need a dependency only to get the constant.",
+      "why": "Principal-level claim types kept in the accounts package were the last tie forcing the authentication package to depend on accounts.",
+      "check": "Look for constants about a cross-cutting concept defined on a feature-specific constants class, or new package references added only to reach a constant.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not model end-user subject accounts as ownable resources with owner sub-resources; authorize their management against the tenant or global administration scope.",
+      "why": "The authority to manage an end-user subject is tenant or global administration. An ownership axis has no real meaning here and only adds surface.",
+      "check": "Look for owner endpoints, ownership authorization handlers or resource-node types added for end-user account management, instead of authorization against a tenant-scope resource.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

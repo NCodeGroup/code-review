@@ -1,0 +1,73 @@
+{
+  "hash": "1799ba4b33f44ff2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0080",
+  "rules": [
+    {
+      "statement": "When a caller needs a filtered subset of a store's entities, add an intent-named query method to the store interface that pushes the filter to the database, instead of paging or listing the whole set and filtering the results in memory.",
+      "why": "Fetch-all-then-filter-in-memory can't use indexes. It transfers every row and its expensive child collections only to throw most of them away, and the waste compounds when several readers re-scan the same set.",
+      "check": "Look for code that calls GetPageAsync or a list/get-all store read and then applies Where/filters or loops over the results by enabled flag, id, ownership or similar predicates.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use generic paging methods on a store (such as GetPageAsync) only for genuinely unfiltered pagination, such as management list endpoints, and never as a way to filter.",
+      "why": "Paging is not a filtering mechanism. Filtered reads should be discrete, index-friendly queries.",
+      "check": "Flag new runtime readers that page through a whole store to find matching entities.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep store and persistence abstractions ORM-agnostic: do not expose IQueryable, Expression<Func<...>> predicates or specification objects on store interfaces. Name methods for what they fetch, not how.",
+      "why": "Leaking an IQueryable/EF shape breaks the abstraction that lets non-IQueryable backends (Dapper, document stores, hand-written SQL) implement the same contract.",
+      "check": "Look for store interface methods that take or return IQueryable or Expression parameters, or that use generic predicate or specification arguments.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a reader needs only a few columns, return a lightweight projection type from the store query (a narrow SELECT) instead of the full entity with its child collections. Fetch the full entity only when the caller really needs it.",
+      "why": "Projections stop the query from joining or materializing unneeded child collections such as settings or secrets.",
+      "check": "Look for store queries that load full entities with Include()s of child collections when the caller only reads identifiers or a few scalar fields.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the domain compares a value case-sensitively but the schema stores only a case-folded normalized column, filter on the normalized column in the database as a widening pre-filter, then re-apply the exact case-sensitive match in memory on the returned rows.",
+      "why": "The normalized filter never drops a true match and stays sargable. The in-memory re-check keeps the case-sensitive semantics the specification requires (for example, RFC 6749 scopes and RFC 8707 resource identifiers).",
+      "check": "Look for queries that filter on a Normalized* column with no follow-up exact case-sensitive comparison, or case-sensitive values compared only by their normalized form.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a stateful per-request cache with invalidation in front of a store just to avoid redundant full-set reads. Push the filters into store queries instead, and add a cache on top of those queries only if profiling shows query count is the bottleneck.",
+      "why": "A cache keeps the fetch-all shape and in-memory filtering, and makes correctness depend on cache freshness and invalidation.",
+      "check": "Look for new cached collection providers that load a whole store set and filter it in memory.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

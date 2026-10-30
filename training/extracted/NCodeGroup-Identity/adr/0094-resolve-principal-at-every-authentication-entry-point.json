@@ -1,0 +1,90 @@
+{
+  "hash": "4daa4ed0439ad05d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0094",
+  "rules": [
+    {
+      "statement": "Every authentication entry point (interactive/cookie, resource-owner password, bearer/UserInfo re-authentication) must resolve the raw authenticated (issuer, subject) to the stable, server-owned principal identifier before building the authentication ticket.",
+      "why": "Resolving at only some entry points let one user's grants, consent and sessions be keyed by different identifiers depending on how they logged in. That broke revoke-everything and consent reuse, and it leaked raw internal account ids as the token `sub`.",
+      "check": "Look for a new or changed authentication handler/entry point that builds a subject ticket, sets the cookie subject, or keys grants/sessions from the raw credential subject (e.g. a local account id or external subject) without going through the principal resolver.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never emit a raw local-account or external-provider identifier as the token `sub` claim, and never key grants, consent, sessions or revocation records by one; always use the resolved opaque principal id (or its pairwise projection).",
+      "why": "The subject must be a stable, opaque, server-owned value, never an external or internal raw value. Mixed keying makes revocation incomplete.",
+      "check": "Look for code that assigns `sub`, a persisted grant/session SubjectId, or a consent key from an account id, upstream subject or raw claim value instead of the resolved principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Construct subject authentication tickets only through the shared factory, which normalizes the raw credential principal's subject claim to the resolved principal id, and never instantiate them directly at an entry point.",
+      "why": "Routing every ticket-construction site through one normalizing factory enforces the invariant that the subject claim equals the principal id, so two sources of truth cannot come back.",
+      "check": "Look for direct construction of the subject-authentication ticket type, or hand-rolled rewriting of the `sub` claim, that bypasses the shared factory and the tenant-aware normalization seam.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a convenience accessor that reads the `sub` claim from the authentication principal next to the resolved principal-id field; consumers must use the single authoritative principal-id field.",
+      "why": "A second getter that reads the claim would bring back the divergence between the claim and the resolved principal.",
+      "check": "Look for new properties, extension methods or helpers that read `sub`/NameIdentifier from the ticket's ClaimsPrincipal to get the subject identity, or for consumers that read that claim instead of the principal-id field.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In interactive login, resolve the principal and re-stamp the cookie's subject claim after all pluggable credential verifiers have run and before the server-side session is created and the cookie is issued.",
+      "why": "Doing it at that point means external/LDAP verifiers inherit resolution, and the session and every later authorization request key on the same principal id, with one resolution per login.",
+      "check": "Look for interactive login changes that resolve before the pluggable verifiers run, after the session or cookie is created, or more than once per login.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep persistence types out of the method signatures of service interfaces that persistence-free packages must call; the implementation should manage its own unit of work instead.",
+      "why": "This lets leaf packages without persistence call the service without taking a persistence dependency, and it removes duplicated open-unit-of-work/resolve/save helpers.",
+      "check": "Look for public interface methods meant for non-persistence packages that take or return store, unit-of-work or entity types, or for callers that copy the open/resolve/save boilerplate.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests of authentication flows must assert that the issued subject is stable and opaque (equal to the resolved principal id), not that it equals the raw account identifier.",
+      "why": "The subject is now always the resolved opaque principal id, so asserting the raw id would encode the old leaking behavior.",
+      "check": "Look for test assertions that expect `sub` or SubjectId to equal a local account id or other raw credential identifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

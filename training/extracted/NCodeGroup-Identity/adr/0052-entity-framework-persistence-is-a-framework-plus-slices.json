@@ -1,0 +1,90 @@
+{
+  "hash": "10383e59e541c992",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0052",
+  "rules": [
+    {
+      "statement": "Add a lowercased `Normalized<Name>` companion column with an index only for externally supplied or caller-addressable identifiers that should match case-insensitively, and look them up through that column.",
+      "why": "The companion column exists only to make case-insensitive lookups index-usable on database engines that lack case-insensitive collations.",
+      "check": "Look for new string identifier columns that callers supply or address (tenant, client or subject ids, public resource handles) and that are queried case-insensitively without a normalized indexed companion, or that are compared with ToLower in the query instead of through the companion.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not normalize or lowercase opaque, case-significant keys such as Base64Url hashes, session ids or protocol literals. Index the stored value as-is and match it on exact bytes.",
+      "why": "Base64Url is case-significant, so lowercasing lets distinct values collide and means a lowercased lookup never matches the stored mixed-case key. Exact matching is also the safer choice for bearer-grade secrets.",
+      "check": "Look for normalized companion columns, ToLowerInvariant calls or case-insensitive comparisons applied to hashed keys, session or bearer ids, or other opaque Base64Url values.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a shared, extensible DbContext schema-agnostic. Do not add typed `DbSet<TEntity>` properties for domain entities to it. Register entities through model contributors and reach tables with `context.Set<TEntity>()`. A domain package that wants typed access declares extension `DbSet` accessors itself.",
+      "why": "A typed DbSet on the shared context type would couple the framework back to a particular schema, which defeats the split between the framework and its domain packages.",
+      "check": "Look for new `DbSet<...>` properties on the shared framework DbContext, or domain entities configured directly in its OnModelCreating.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put schema-specific model configuration, such as entity-specific indexes, in the owning domain package's model contributor. Keep only schema-agnostic passes, such as foreign-key delete behavior and global tenant filters, in the shared context's OnModelCreating.",
+      "why": "The framework owns no schema, so entity-specific configuration belongs with the package that owns the entity.",
+      "check": "Look for configuration of a specific entity type added to the shared context's OnModelCreating instead of to the owning package's contributor.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persistence packages that plug domain entities into a shared framework depend only on that framework and never reference each other.",
+      "why": "If one domain package depended on another, consumers would pull in stores they never use and the framework/domain split would break. Cross-package writes stay atomic through the shared context, not through references between packages.",
+      "check": "Look for project or package references, or namespace imports, from one persistence domain package to another.",
+      "scope": "domain",
+      "domain": "ef-core-persistence",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the tenant-scope global query filter compare a denormalized, indexed tenant-id column on the entity. Do not navigate to the tenant entity in the filter.",
+      "why": "A filter without navigation keeps the shared tenant interface decoupled from the concrete tenant entity and avoids a join on every query.",
+      "check": "Look for tenant query filters or tenant-scoped entity contracts that use a navigation property to the tenant entity instead of a tenant-id column on the entity itself.",
+      "scope": "domain",
+      "domain": "multi-tenant-ef-core",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a package's root namespace match its package id, and place its types under that root, for example in `.Entities` and `.Stores` sub-namespaces.",
+      "why": "A type's namespace then names the package that owns it, so references across packages cannot be made by accident.",
+      "check": "Look for types in a package whose namespace does not start with the package id, or types placed in another package's namespace.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "hash": "ff2abb0f18ee062d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/conformance-testing.md",
+  "rules": [
+    {
+      "statement": "Advertise in the OpenID discovery document only the response types, grant types, auth methods, scopes, claims, signing algorithms and PKCE methods that the provider actually implements and honours end to end.",
+      "why": "Conformance testing of the configuration fails on, or warns about, anything advertised that the OP can't honour. Over-advertising claims also triggers warnings.",
+      "check": "Look for a discovery metadata change that adds a value (for example a response_type such as `id_token` or `code id_token`, a grant type, an auth method or a claim) without the matching flow or handler being implemented and verified.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not offer the `plain` PKCE code challenge method; advertise and accept only `S256` in `code_challenge_methods_supported`.",
+      "why": "The provider supports only S256 for PKCE, and `plain` is deliberately not offered.",
+      "check": "Look for `plain` added to code_challenge_methods_supported, or accepted as a code_challenge_method during authorize or token validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the advertised `issuer` byte-for-byte equal to the origin clients use to fetch the discovery document, and build the endpoint URLs from that same issuer.",
+      "why": "Relying parties, including the conformance suite, reject discovery metadata when the issuer doesn't exactly match the discovery host.",
+      "check": "Look for an issuer or endpoint URL built from a hard-coded or different host, or with a different scheme, port or trailing slash than the request or public origin used for discovery.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add an entry to a conformance expected-failures or expected-skips baseline only for a documented, intentional deviation, and give it a comment explaining why, linked to an issue or ADR.",
+      "why": "The baseline keeps the gate green only for known non-support. Unexplained entries would hide real regressions.",
+      "check": "Look for a new baseline JSON entry that has no `comment`, a vague comment, or no issue or ADR link, or that was added to silence a failure that should be fixed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/expected-failures.json",
+        "**/expected-skips.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

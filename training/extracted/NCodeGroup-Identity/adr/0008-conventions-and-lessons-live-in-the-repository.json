@@ -1,0 +1,18 @@
+{
+  "hash": "ef9ad7cec43d5733",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0008",
+  "rules": [
+    {
+      "statement": "When a change introduces or relies on a new convention, a non-obvious design decision, or a recurring tooling gotcha, record it in the repository's versioned docs (scoped instruction files for conventions, an ADR for the reasoning, the agent/contributor guide for build or orientation knowledge) in the same change, not only in chat, a wiki, personal notes, or agent memory.",
+      "why": "Knowledge kept only in volatile memory or external docs is unversioned and unreviewable, so it drifts from the code and gets re-learned over and over. Repository files are reviewed and versioned together with the code they describe.",
+      "check": "Look for diffs that set up a new pattern or rule, or work around a quirk in a non-obvious way, without updating the instruction files, ADRs, or AGENTS/CONTRIBUTING docs. Also flag PR descriptions or comments that point to a rule existing only in chat history, a wiki, or someone's memory.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

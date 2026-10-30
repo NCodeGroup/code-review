@@ -1,0 +1,86 @@
+{
+  "hash": "94c6fe355b75d67b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0289",
+  "rules": [
+    {
+      "statement": "When a setting is missing or undeclared, its default must be the most restrictive, guarded value, so that forgetting to set it keeps safety controls on.",
+      "why": "Defaulting to a permissive value fails open: a forgotten declaration silently drops guardrails.",
+      "check": "Look for new settings or options that gate security or safety behavior and default to the permissive or non-production value, or for code that treats an absent value as permissive.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not key behavior, guardrails or metric/telemetry dimensions off free-form, user-supplied text; use a registered, bounded vocabulary, and keep free-form names for display only.",
+      "why": "Arbitrary text is unbounded and has no fixed meaning, so it cannot safely select behavior or label telemetry. Only registered names are bounded.",
+      "check": "Look for branches on display or free-text names, and for metric tags, log dimensions or audit fields filled from free-form strings instead of registered constants or type names.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an extensible vocabulary a DI strategy collection resolved through a catalog, so packages add entries by registering a class, and have the catalog reject duplicate names, empty names and references to unregistered entries when it is composed.",
+      "why": "Vocabularies stay open without editing the library, and composition-time validation fails at startup instead of when data is read.",
+      "check": "Look for hard-coded switch or enum lists of vocabulary entries that packages cannot extend, and for catalogs that skip duplicate, empty or dangling-reference checks, or defer them to lookup time.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a field is added to a versioned persisted or exported record format, keep the change additive and bump the format's schema version.",
+      "why": "Older readers keep working with an additive change, and the version bump tells consumers the shape has changed.",
+      "check": "Look for new fields added to an audit or exported record writer without a schema-version bump, or for changes that rename or remove existing fields.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a cross-cutting value that every event or record must carry in the one central recorder or writer, not at each caller.",
+      "why": "If dozens of call sites must each remember to pass the value, some will forget. Resolving it centrally stamps every event.",
+      "check": "Look for diffs that add a new parameter or property that every handler must fill in for a shared audit or telemetry stamp when the recorder could resolve it itself.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a management list or read response, omit a best-effort derived field when the stored data behind it cannot be honored, rather than failing the whole response, and compute derived resource details only after the caller is authorized.",
+      "why": "The operator needs the list to find and repair the broken resource, and derived details must not leak to callers who are not authorized.",
+      "check": "Look for list endpoints that return an error such as 409 because a derived, informational field failed to resolve, and for derived data computed before the authorization check.",
+      "scope": "domain",
+      "domain": "management-api",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In the Production host environment, refuse to start when configuration declares a server-wide default that would turn off production guardrails, and decide this from the registered type's own flag rather than a hard-coded name list.",
+      "why": "A development overlay copied into a Production deployment would otherwise silently drop guardrails for every tenant that inherits the default.",
+      "check": "Look for startup safety checks that miss a server-wide non-production setting, or that compare against hard-coded names instead of the registered entry's IsProduction-style flag.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity-server",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

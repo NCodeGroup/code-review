@@ -1,0 +1,70 @@
+{
+  "hash": "d785b618663daeac",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0185",
+  "rules": [
+    {
+      "statement": "Exclude generated code from coverage where coverage is collected (coverlet runsettings `ExcludeByFile`/`ExcludeByAttribute`), not through separate filter lists in ReportGenerator or `codecov.yml` `ignore`.",
+      "why": "When exclusion happens at collection, every presenter reads the same input from one list. Two filter lists in two syntaxes have to be kept equal, and they drift.",
+      "check": "Look for diffs that add coverage exclusions to ReportGenerator `-filefilters`/`-classfilters` or to a `codecov.yml` `ignore` section instead of to the coverlet runsettings file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.runsettings",
+        "**/codecov.yml",
+        "build/**",
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not exclude `[CompilerGenerated]` members from code coverage.",
+      "why": "The compiler puts that attribute on async state machines, lambdas and iterator classes, so excluding it drops the bodies of hand-written async methods and lambdas from coverage.",
+      "check": "Look for `CompilerGeneratedAttribute` in a coverlet `ExcludeByAttribute` setting or any other coverage exclusion list.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.runsettings",
+        "**/*.csproj",
+        "**/Directory.Build.props",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep hand-written shipped code in coverage scope, including host and deployment projects, and do not exclude assemblies just to raise the coverage figure.",
+      "why": "Host code ships in the deployed artifact, so a low figure there shows a real gap. Excluding it would hide that gap.",
+      "check": "Look for new coverage exclusions (assembly filters, `[ExcludeFromCodeCoverage]`, file globs) aimed at hand-written production code rather than generated or scaffolded code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.runsettings",
+        "**/codecov.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a project that holds scaffolded EF Core migrations, put hand-written code outside the `Migrations/` folder.",
+      "why": "Coverage collection excludes files under `Migrations/` as scaffolded code, so hand-written code there would quietly drop out of coverage.",
+      "check": "Look for new hand-written classes (helpers, extensions, custom operations) added under a `Migrations/` directory that are not `dotnet ef` scaffolded migrations or model snapshots.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure Codecov to count a partially covered line as a hit (`parsers.cobertura.partials_as_hits: true`) so its line coverage matches ReportGenerator's.",
+      "why": "By default Codecov counts partially covered lines as misses while ReportGenerator counts them as covered, so the two reported figures disagree.",
+      "check": "Look for a `codecov.yml` change that removes or disables `parsers.cobertura.partials_as_hits`, or a new `codecov.yml` that leaves it out.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/codecov.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

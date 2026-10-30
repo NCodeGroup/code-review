@@ -1,10 +1,12 @@
 // Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, maxFindings, maxTurns, reviewerTiers, type ModelTier } from './config.ts';
-import { batchRules, type ChangedFile, type Gathered } from './gather.ts';
+import { budgets, maxFindings, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
+import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
+import type { ChangedFile, Gathered } from './gather.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -32,9 +34,12 @@ export interface ReviewerOutcome {
   error?: string;
 }
 
+export type Verdict = 'approve' | 'request-changes' | 'comment';
+
 export interface Review {
   reviewers: ReviewerOutcome[];
   summary: string;
+  verdict: Verdict;
   findings: ReviewedFinding[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
@@ -70,6 +75,7 @@ const synthesisSchema = {
   type: 'object',
   properties: {
     summary: { type: 'string' },
+    verdict: { type: 'string', enum: ['approve', 'request-changes', 'comment'] },
     findings: {
       type: 'array',
       items: {
@@ -80,7 +86,7 @@ const synthesisSchema = {
       },
     },
   },
-  required: ['summary', 'findings'],
+  required: ['summary', 'verdict', 'findings'],
   additionalProperties: false,
 };
 
@@ -125,14 +131,22 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   if (/(^|\/)Migrations\/|\.sql$/i.test(reviewed.map((f) => f.path).join('\n'))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
   if (hasReviewRules) floor.add('conventions');
+  // Duct tape and unfinished capabilities build up in changes big enough to have a design; a one-line fix rarely does.
+  if (code.reduce((lines, f) => lines + f.additions + f.deletions, 0) >= architectureMinLines) {
+    floor.add('architecture');
+    floor.add('completeness');
+  }
   return [...floor];
 }
+
+export const architectureMinLines = 60;
 
 function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
+  const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
   const commits = gathered.commits.length ? `\nCommits:\n${gathered.commits.map((c) => `- ${c}`).join('\n')}` : '';
-  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${commits}\n</pull_request>`;
+  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
 function fileList(gathered: Gathered): string {
@@ -149,28 +163,23 @@ function changeContext(gathered: Gathered, diff: string): string {
   ].join('\n\n');
 }
 
+function rulesBlock(rules: IndexedRule[] | undefined): string {
+  if (!rules?.length) return '';
+  return `\n\nReview rules for your charter that bear on this change, picked from NCodeGroup's guidance (learned from the organization's decisions, conventions and past reviews) and this repository's own conventions. Check the change against each one, and name the rule you apply in \`evidence\`.\n<review_rules>\n${rules.map((r) => r.text).join('\n')}\n</review_rules>`;
+}
+
+function decisionsBlock(decisions: Decision[]): string {
+  if (!decisions.length) return '';
+  const text = decisions.map((d) => `${d.id}: ${d.title}\n${d.decision}`).join('\n\n');
+  return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts; do report code that breaks one, citing it.\n<decisions>\n${text}\n</decisions>`;
+}
+
 // The part every specialist shares, so the provider can cache it; each charter comes after it.
-function sharedContext(gathered: Gathered): string {
-  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>\n\n${changeContext(gathered, gathered.diff)}`;
+function sharedContext(gathered: Gathered, decisions: Decision[]): string {
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, gathered.diff)}`;
 }
 
-// Haiku 5.5 costs five times as much once a prompt passes 100K tokens. Identity's rules, full of code, markdown and
-// emoji, measured about 2.1 characters a token, and the agent's own system prompt and tool definitions add a few
-// thousand more, so a conventions call stays under about 180,000 characters: rules first, then as much of the diff as
-// fits. The agent reads the rest of the changed files from the checkout.
-const conventionsPromptChars = 180_000;
-export const conventionsRuleChars = 140_000;
-
-export function conventionsPrompt(gathered: Gathered, checkout: string, charter: string, rules: string, limit = conventionsPromptChars): string {
-  const rulesBlock = `The repository's review rules for the changed files, from its default branch. Rules the build already enforces have been left out.\n<review_rules>\n${rules}\n</review_rules>`;
-  const tail = `\n\nThe checkout is at: ${checkout}\n\nYour charter:\n${charter}`;
-  const note = '\n[diff cut to fit; read the remaining changed files from the checkout]';
-  const room = limit - rulesBlock.length - tail.length - changeContext(gathered, '').length - 2;
-  const diff = gathered.diff.length <= room ? gathered.diff : `${gathered.diff.slice(0, Math.max(0, room - note.length))}${note}`;
-  return `${changeContext(gathered, diff)}\n\n${rulesBlock}${tail}`;
-}
-
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -203,11 +212,21 @@ export function changedLines(diff: string): Map<string, Set<number>> {
 
 export async function review(run: AgentRun, gathered: Gathered, charters: Charters, log: (line: string) => void): Promise<Review> {
   const calls: CallRecord[] = [];
-  const shared = sharedContext(gathered);
   const roster = [...charters.reviewers.keys()];
 
+  // Context: the rules and decisions that bear on this change.
+  const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
+  const { context, result: contextResult } = await selectContext(run, gathered, catalog, gathered.decisions, (g) =>
+    `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
+  );
+  if (contextResult) calls.push(contextResult.record);
+  const picked = [...new Set([...context.rulesFor.values()].flat())].length;
+  log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
+  const shared = sharedContext(gathered, context.decisions);
+
   // Selection only routes, so Sonnet is enough, at about half Opus's cost.
-  const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), gathered.reviewRules.length > 0 && charters.reviewers.has('conventions'));
+  const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
+  const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
   const selection = await runAgent<{ add: { reviewer: string; reason: string }[] }>(
     { provider: run.provider, proxyUrl: run.proxyUrl },
@@ -228,54 +247,46 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
   log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
-  // Specialists, in parallel. On Haiku, the conventions reviewer runs once per batch of rule files, to stay under its
-  // long-prompt premium; on Sonnet, which has none, it gets every rule and the whole diff in one call.
+  // Specialists, each with the picked rules for its charter. The part they share is the first block of every prompt;
+  // one reviewer per model goes first and caches it, and the rest of that model's reviewers read the cache instead of
+  // each writing it again.
   const tiers = reviewerTiers();
-  const jobs: { name: string; tier: ModelTier; prompt: string }[] = [];
-  for (const reviewer of selected) {
-    const charter = charters.reviewers.get(reviewer)!;
-    const tier = tiers[reviewer] ?? 'haiku';
-    if (reviewer !== 'conventions') {
-      jobs.push({ name: reviewer, tier, prompt: `${shared}\n\nThe checkout is at: ${run.checkout}\n\nYour charter:\n${charter}` });
-      continue;
-    }
-    if (tier !== 'haiku') {
-      const rules = gathered.reviewRules.map((r) => r.text).join('\n\n');
-      jobs.push({ name: reviewer, tier, prompt: conventionsPrompt(gathered, run.checkout ?? '', charter, rules, Number.MAX_SAFE_INTEGER) });
-      continue;
-    }
-    const batches = batchRules(gathered.reviewRules, conventionsRuleChars);
-    batches.forEach((rules, i) => {
-      jobs.push({
-        name: batches.length > 1 ? `conventions-${i + 1}` : 'conventions',
-        tier,
-        prompt: conventionsPrompt(gathered, run.checkout ?? '', charter, rules),
-      });
-    });
-  }
-  const outcomes = await mapWithConcurrency(jobs, 4, async ({ name, tier, prompt }): Promise<ReviewerOutcome> => {
-    const result = await runAgent<{ findings: Finding[] }>(run, {
+  const sharedBlock = `${shared}\n\nThe checkout is at: ${run.checkout}`;
+  const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
+  const jobs = [...selected].map((reviewer) => ({
+    name: reviewer,
+    tier: tiers[reviewer] ?? ('haiku' as ModelTier),
+    prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
+  }));
+  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier) === i);
+  const reviewOne = async ({ name, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
+    const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
       role: `reviewer:${name}`,
       tier,
       systemPrompt: charters.specialistPrompt,
       prompt,
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
-      budgetUsd: budgets.specialist,
+      budgetUsd: budgets.specialist[tier],
     });
     calls.push(result.record);
     const reported = result.output?.findings ?? [];
-    const kept = reported.filter((f) => f.confidence >= 0.5);
-    log(`  ${name}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below 0.5 confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    const kept = reported.filter((f) => f.confidence >= minConfidence);
+    log(`  ${name}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
-  });
+  };
+  const outcomes = [
+    ...(await mapWithConcurrency(first, 4, reviewOne)),
+    ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), 4, reviewOne)),
+  ];
 
   // Synthesis.
   const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f })));
   let summary = '';
+  let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
   if (raw.length) {
-    const synthesis = await runAgent<{ summary: string; findings: (Finding & { reviewers: string[] })[] }>(
+    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { reviewers: string[] })[] }>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
       {
         role: 'synthesis',
@@ -291,6 +302,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(synthesis.record);
     if (synthesis.output) {
       summary = synthesis.output.summary;
+      verdict = synthesis.output.verdict;
       findings = synthesis.output.findings.slice(0, maxFindings).map((f, i) => ({ ...f, id: `F${i + 1}` }));
     } else {
       // Without synthesis, fall back to the reviewers' own findings, most severe first.
@@ -306,5 +318,6 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
 
   const skipped = roster.filter((name) => !selected.has(name));
-  return { reviewers: outcomes, summary, findings, calls, skipped };
+  verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
 }

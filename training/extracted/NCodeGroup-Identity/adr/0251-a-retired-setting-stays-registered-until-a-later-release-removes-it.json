@@ -1,0 +1,80 @@
+{
+  "hash": "06dc340be83b5ed3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0251",
+  "rules": [
+    {
+      "statement": "A migration that moves a value out of a stored document or column must copy the value and leave the original key in place, so the previous release keeps working. Its `Down` must write the value back.",
+      "why": "The previous release still reads the original key during the rollout and after a rollback. Deleting the key in the same migration lost the data for that release, and `Down` did not restore it.",
+      "check": "Look for a migration that copies a value to a new location and also deletes the source key or column, or whose `Down` drops the new location without first writing the value back to the original key.",
+      "scope": "domain",
+      "domain": "database-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove a retired stored key in a separate contract migration in a later release, and delete the key's descriptor or registration in that same change. Do not remove the key in the release that moves its value.",
+      "why": "Retiring a setting is an expansion followed by a contraction. Only after the release that stopped using the key has fully rolled out can the key be removed without breaking the previous release.",
+      "check": "Look for a diff that both moves a setting's value to a new home and removes the key from stored data. Also look for a descriptor that is deleted while stored documents can still carry the key.",
+      "scope": "domain",
+      "domain": "database-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a rename of a stored setting or key, where the previous release rejects unknown names, as a contract-only change. Do not ship it as an expandable migration.",
+      "why": "The previous release fails closed on a name it has no descriptor for, so writing the new name during the rollout would break it.",
+      "check": "Look for a migration marked as an expansion (or run before the rollout) that renames a stored setting key that the previous release validates against a closed vocabulary.",
+      "scope": "domain",
+      "domain": "database-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a retired setting registered as retired until it is removed. Reading skips it, and writing refuses it. An update may keep the stored value unchanged (compared with `JsonElement.DeepEquals`) or remove the setting, but may not add the setting or change its value.",
+      "why": "Stored documents that still carry the retired key must keep loading. Accepting new values that nothing reads would be a silent failure.",
+      "check": "Look for: a retired setting deleted from the registry while stored data still holds it; a deserializer that fails on a retired key; an update path that accepts a new or changed retired value; or an update path that validates without comparing against the stored document.",
+      "scope": "domain",
+      "domain": "settings-configuration",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an update to a stored settings document must allow retired values to be kept, validate the update against the stored document, and give that check a reason-bearing error message such as `The setting '{name}' is retired. {reason}`.",
+      "why": "Without comparing against the stored document, validation cannot tell an owner keeping a retired value apart from an owner adding or changing it. Create paths have no stored document to compare against, so they keep the plain validation.",
+      "check": "Look for a management update endpoint that validates only the incoming document while retired settings exist, or a refusal of a retired setting that does not state the reason.",
+      "scope": "domain",
+      "domain": "settings-configuration",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A migration that changes a row's data outside the ORM's normal update path must give each changed row a fresh concurrency token.",
+      "why": "The migration gives each copied tenant a fresh concurrency token so that clients holding the old token cannot overwrite the changed row without noticing the change.",
+      "check": "Look for a migration whose UPDATE statements modify rows of an entity that has a concurrency token but do not regenerate the token.",
+      "scope": "domain",
+      "domain": "database-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

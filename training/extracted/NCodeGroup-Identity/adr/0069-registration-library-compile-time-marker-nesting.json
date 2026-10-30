@@ -1,0 +1,118 @@
+{
+  "hash": "7d58505e1e373360",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0069",
+  "rules": [
+    {
+      "statement": "Make a DI registration method that replaces, hooks, or consumes another library's services an extension on that library's `IServiceBuilder<TMarker>` (from `NCode.Registration`), not on a naked `IServiceCollection`.",
+      "why": "The receiver marker proves at compile time that the prerequisite library is registered. On a naked collection, a bolt-on added without its library is a silent misconfiguration that only shows up much later as a missing handler, a null, or an 'unsupported' response.",
+      "check": "Look for new or changed `AddX(this IServiceCollection ...)` / `extension(IServiceCollection ...)` registration methods that register services depending on, replacing, or decorating another NCode library's services. Apply the litmus test: would it work correctly if it were the only thing registered?",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a registration's second prerequisite as a required `IServiceBuilder<TPrereq>` parameter (the builder that prerequisite's own registration returned). Do not use a runtime registration check, a marker value parameter, a custom proof type, or a composite multi-marker builder.",
+      "why": "A required builder parameter makes a missing prerequisite a compile error and keeps the call site simple (`a.AddX(b)`). A marker struct can be created with `default`/`new`, so it proves nothing. Runtime checks push the mistake to startup and depend on registration order.",
+      "check": "Flag registration code that calls runtime checks such as `IsRegistered`/`VerifyIsRegistered` to assert prerequisites, takes a marker struct or a bespoke ticket type as proof, or adds composite `IServiceBuilder<T1,T2>`/`And(...)` combinators.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have every registration that other registrations depend on, including every implementation of a dependency-inverted seam and any custom implementation, return the `IServiceBuilder<TMarker>` for its library or seam instead of `void` or a bare `IServiceCollection`.",
+      "why": "Dependents need the returned builder as unforgeable compile-time proof that the prerequisite is present.",
+      "check": "Look for prerequisite or seam-implementation registration methods that return `void` or `IServiceCollection`, or that do not mint the seam's marker builder.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define each registration marker as an empty `readonly struct` that implements `IRegistrationMarker<TMarker>` and has no members.",
+      "why": "The marker's type identity is the whole signal. Extra members such as display names or configure-method data only add per-marker data that has to be kept in sync.",
+      "check": "Flag marker types that are classes, are not readonly structs, or declare properties, fields, or methods.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a library's public registration marker in that library's `.Abstractions` package, not its implementation package. Make finer sub-scope markers `internal` unless outside consumers really need to target them.",
+      "why": "Implementation packages may reference only abstractions, so a dependent bolt-on must be able to name `IServiceBuilder<ThatLibrary>` without taking a forbidden implementation reference.",
+      "check": "Look for public `IRegistrationMarker<>` structs declared in non-`.Abstractions` projects, and for public sub-folder markers that nothing outside the package uses.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name each folder's registration class `DefaultRegistration` (one per folder, never named after a feature), and move a second extension receiver shape into a sibling `…Registration` class in the same folder.",
+      "why": "This keeps one registration vocabulary across packages and folders, and a static class can hold only one `extension(...)` receiver block without tripping CA1708.",
+      "check": "Flag registration classes with feature-specific names such as `FooRegistration` when the folder has only one receiver shape, multiple `DefaultRegistration` classes in one folder, or two receiver blocks in one class.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the package-root registration `AddXLibrary()`, which creates and returns a new builder through `builder.NewBuilder<XLibrary>()`, and name folder-level registrations `AddYServices()`, which extend the library's builder and return that same receiver builder.",
+      "why": "This naming nests registration per package and per folder and shows at each call site whether a new marker scope is introduced.",
+      "check": "Check that root registrations return a new-marker builder and are named `Add…Library`, and that folder-level ones return their receiver and are named `Add…Services`. Bolt-ons return the receiver library builder and do not create a new library marker.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a naked `IServiceCollection` receiver only for chain roots that mint a marker and have no prerequisite, for standalone single-service utility helpers, and for cross-cutting infrastructure that mints no marker.",
+      "why": "Only registrations that really work on their own have no framework prerequisite to prove. Anything else on a bare collection gives up the compile-time guarantee.",
+      "check": "For each bare-collection registration in a diff, check that it is one of these kinds. Development or convenience helpers that `Replace` services or add command handlers for a composed library must gate on that library's builder.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give registration helpers that are called from more than one library's builder the non-generic `IServiceBuilder` receiver, neither pinned to one marker nor dropped to a naked `IServiceCollection`.",
+      "why": "Pinning the helper to one marker breaks the other callers. A naked collection loses the guarantee that the helper runs inside a library-builder scope.",
+      "check": "Look for shared helpers used from several builders whose receiver is a specific `IServiceBuilder<T>` or `IServiceCollection` instead of `IServiceBuilder`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compose hosts by chaining registrations off the builders returned by the composition root and library registrations, not by calling capability methods on the bare `IServiceCollection`.",
+      "why": "Chaining enforces prerequisites at compile time and shows the dependency order at the call site.",
+      "check": "Look in host startup code for capability or bolt-on registrations called directly on `services` instead of on a returned builder.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/Program.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "hash": "b345da72ab7b404e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0154",
+  "rules": [
+    {
+      "statement": "Reject any JWT whose `alg` is `none` (an unsecured JWS) wherever a token is validated, at every nesting level, and never add a parameter or flag that opts into accepting unsecured tokens.",
+      "why": "RFC 8725 §3.2 says an unsecured JWS must never be accepted where a signed one is expected. A forged `alg:none` token validated against any key, and an opt-in would be one mistaken flag away from accepting forged tokens.",
+      "check": "Look for validation paths that accept `alg` `none` or an empty signature, and for new options such as AllowUnsecured or AllowNone on validation parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept an encrypted JWT only when it is a Nested JWT: a JWE whose `cty` is `JWT` (compared as a media type) enclosing a signed JWS. Reject a JWE that encloses anything else, and support only one level of nesting.",
+      "why": "Anyone holding the recipient's public key can produce a JWE, so encryption authenticates nothing about the sender. Unbounded nesting means unbounded work on unauthenticated input.",
+      "check": "Look for decoders that treat a decrypted JWE payload as an authenticated claims set without verifying an inner signature, that compare `cty` by plain string equality, or that recurse into nested tokens without a depth limit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a token that is both signed and encrypted, set the JWE's `cty` header to `JWT` around the inner JWS.",
+      "why": "RFC 7519 §5.2 requires the marker so a recipient can tell a Nested JWT from an encrypted claims set.",
+      "check": "Look for encoders that wrap a signed JWT in a JWE without setting `cty` to `JWT`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept JWTs only in compact serialization; reject the JWS and JWE JSON serializations.",
+      "why": "RFC 7519 §1 defines a JWT only in the compact serializations. The JSON serializations carry several signatures or recipients, each with its own algorithms.",
+      "check": "Look for JWT validation code that parses or accepts JSON-serialized JWS/JWE input.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the keys that verify signatures and the keys that decrypt as separate collections. Reject an encrypted token when no decryption keys are named, and never fall back to the verification keys.",
+      "why": "The signer and the recipient are different parties, so a fallback either decrypts with the wrong party's key or hides a missing decryption policy. Failing closed makes the missing policy visible.",
+      "check": "Look for code that decrypts with the signature-validation keys, or that infers decryption keys when none are configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When selecting a JWK, honor its metadata: a key that declares `use` serves only that use, a key that declares `alg` serves only that algorithm, and a key that declares neither may serve any.",
+      "why": "RFC 7517 §4.2 and §4.4 say a key must not be used for a role or algorithm its metadata does not declare.",
+      "check": "Look for key-selection code that ignores a key's `use` or `alg` when choosing a key to verify or decrypt with.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check every JOSE header's algorithms (signature, key management, content encryption, compression), in both the outer JWE and the inner JWS, against caller-supplied allow-lists before selecting a key or doing any cryptographic operation. Do not check them by hand after validation.",
+      "why": "RFC 8725 §3.1 and §3.3 require the check to come before any cryptographic use. Checks done after decoding come too late, and every caller that forgets one reopens the gap.",
+      "check": "Look for algorithm checks done after decryption or signature verification, callers that inspect `alg` by hand after validating, and headers that skip the allow-list check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In algorithm allow-list parameters, treat `null` as unrestricted and an empty list as accepting no algorithm; never treat an empty list as unrestricted.",
+      "why": "Library defaults may stay permissive when they can't know the caller's policy, but they must never be unsafe, and an empty list states that nothing is accepted.",
+      "check": "Look for code that treats an empty allowed-algorithms collection as 'allow all'.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that validates JWTs at a trust boundary must pass explicit algorithm allow-lists and name its decryption keys, rather than relying on the validator's permissive defaults.",
+      "why": "Each OpenID caller has to state its own policy so the validator can enforce it the same way everywhere.",
+      "check": "Look for new JWT validation call sites at a trust boundary that set no algorithm lists or decryption keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

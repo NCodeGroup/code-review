@@ -1,0 +1,112 @@
+{
+  "hash": "12cc19ade422dd4c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0192",
+  "rules": [
+    {
+      "statement": "Spend a single-use credential only after every other validation check has passed and immediately before the result is persisted, so that a request refused by an earlier check leaves the credential unspent, and a storage failure after the spend fails closed and leaves it spent.",
+      "why": "Spending early would burn the credential on a correctable request. Persisting before the spend would let a race register twice.",
+      "check": "Look for a consume/spend call placed before metadata or authorization checks, or after the store call, or for code that restores a spent credential when the later store fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check again at use time the authorization preconditions that were verified when a credential was minted, such as whether the target resource still exists and still qualifies, and refuse the credential when they no longer hold.",
+      "why": "The target can be deleted or replaced between minting and use, and the authority the credential carried must be withdrawn when that happens.",
+      "check": "Look for code that redeems a scoped token or grant and trusts its bound target without reloading and revalidating it.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a credential whenever the request presents one, even on an endpoint that allows anonymous access, and refuse an invalid credential instead of falling back to anonymous handling.",
+      "why": "If a presented credential were ignored, a scoped token would silently produce an unscoped result and nobody would be told.",
+      "check": "Look for branches that skip credential validation when anonymous access is enabled, or that treat a failed validation as anonymous.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take the authority to bind or scope an operation from the credential the server issued, not from a request member the caller sets.",
+      "why": "A request member carries no proof that its sender may act for the named resource. It can only agree or conflict with the authority the credential already carries.",
+      "check": "Look for request fields that name a resource the caller acts for, used to grant access without being derived from a server-issued token.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a credential that already has a durable store row single-use through that row's consumed marker and optimistic concurrency token, not through a second record in a separate expiring key set, and answer the loser of a concurrent spend as a spent credential.",
+      "why": "A second record would have to agree with the row. The row's concurrency token already makes the spend atomic across replicas without a shared-state adapter.",
+      "check": "Look for new single-use tracking added to an expiring key set for an entity that is already persisted with a concurrency token, or for a concurrency failure on spend that surfaces as anything other than the spent-credential error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every minted access-granting token a bounded expiry, with a default lifetime and a maximum lifetime that rejects longer requests with 400, and treat a stored grant that has no expiry or is already consumed as authorizing nothing.",
+      "why": "A token that never expires keeps its authority forever. Grants minted without a lifetime by earlier releases must not stay valid.",
+      "check": "Look for a nullable expiry on minted tokens, a lifetime parameter with no upper bound, or validators that accept grants whose expiry is null or whose consumed timestamp is set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration and update requests, ignore server-set or unrecognized metadata members instead of rejecting them, as RFC 7591 §2 requires.",
+      "why": "A client that echoes its read response back in an update must not fail.",
+      "check": "Look for registration or update handlers that return an error when a request contains read-only or unknown members such as server-assigned identifiers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate client metadata for signed or encrypted responses consistently: an `*_enc` value requires its `*_alg`, an encrypted response requires the client's `jwks` or `jwks_uri`, each value must be among the matching `*_values_supported`, and a client that is not eligible for that response type is refused with `invalid_client_metadata`.",
+      "why": "The registration endpoint must refuse response protection the server cannot honor or would refuse at the endpoint itself.",
+      "check": "Look for new response-protection metadata (introspection, userinfo and similar) accepted without the enc-needs-alg, keys-present and supported-values checks, or accepted from clients that cannot receive that response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse with `invalid_client_metadata` any registration or RFC 7592 update that would make a client public (`token_endpoint_auth_method` `none`) when that client is bound to read other parties' tokens, such as a resource-server introspection client.",
+      "why": "A bound client reads every token issued for its resource server, so it must authenticate. Registration must not create a client that introspection would refuse anyway.",
+      "check": "Look for registration or update paths for bound or privileged clients that accept auth method `none`, or that check this only on create and not on update.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

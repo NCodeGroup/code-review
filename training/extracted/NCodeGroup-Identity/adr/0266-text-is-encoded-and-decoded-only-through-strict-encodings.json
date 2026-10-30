@@ -1,0 +1,62 @@
+{
+  "hash": "12fc88edf206c2f1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0266",
+  "rules": [
+    {
+      "statement": "Convert text to bytes and bytes to text only through `NCode.Buffers.SecureEncoding.UTF8`/`.ASCII` or an encoding constructed with `throwOnInvalidBytes: true`, never through lenient `Encoding.UTF8`/`Encoding.ASCII`.",
+      "why": "Lenient encodings silently replace unencodable characters with `?` or U+FFFD. Distinct inputs can then collide in signatures, hashes, derived keys and AAD.",
+      "check": "Look for `Encoding.UTF8`, `Encoding.ASCII`, `new UTF8Encoding()` without throwOnInvalidBytes, or similar lenient encodings used for GetBytes/GetString/GetByteCount.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Do not call overloads that pick an encoding implicitly. Call the overload that takes an explicit `SecureEncoding.UTF8` instead.",
+      "why": "An implicit default encoding is lenient and hides the same character-substitution defects.",
+      "check": "Look for stream writer/reader, File.ReadAllText/WriteAllText or similar text APIs called without an encoding argument.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Pass `contentEncoding: SecureEncoding.UTF8` explicitly on every `TypedResults.Text` and `TypedResults.Content` call. For a media type that has no charset parameter (such as `application/jwt`), write strict UTF-8 bytes yourself instead of passing an encoding.",
+      "why": "The analyzer cannot tell calls with an encoding from calls without one, so review must enforce it. Explicit strict UTF-8 keeps responses correct and correctly labeled.",
+      "check": "Look for `TypedResults.Text`/`TypedResults.Content` calls that have no contentEncoding argument or that pass a non-strict encoding, and for charset-less media types that get a charset added.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let invalid or unrepresentable text throw from the strict encoding, and on inbound paths map that exception to the protocol's error response rather than substituting or stripping characters.",
+      "why": "Substituting characters turns malformed input into different, valid-looking input, for example a non-ASCII DPoP access token hashing like an ASCII one.",
+      "check": "Look for catch blocks that swallow encoding exceptions and continue with substituted text, and for inbound parsing that does not turn encoding failures into a protocol error. Values that must be ASCII (such as tokens) should be validated, e.g. with `Ascii.IsValid`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use strict encodings in test code too. When a test needs UTF-16 or a byte-order mark, build a strict encoding explicitly instead of using a lenient one.",
+      "why": "Tests that encode leniently pass on input the product rejects, which hides regressions.",
+      "check": "Look for lenient Encoding.* usage or `new UnicodeEncoding()` without throwOnInvalidBytes in test projects.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

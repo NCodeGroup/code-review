@@ -1,0 +1,102 @@
+{
+  "hash": "87725108fe4e2dfc",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0229",
+  "rules": [
+    {
+      "statement": "Validate the end user's standing (blocked principal, disabled account) after resolving the principal in an interactive sign-in and before creating any session or authentication cookie; a refusal must create neither.",
+      "why": "Applying standing checks only to token-issuing validations let a blocked principal obtain an interactive session.",
+      "check": "Look for sign-in flows that call SignInAsync or create a session without first sending the subject standing validation, or that still issue a cookie after a refusal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every subject authentication validation include the end-user standing check through a shared handler that forwards to it, not through per-grant code, so grants added by other packages also refuse blocked or disabled subjects.",
+      "why": "Every grant and CIBA approval must keep refusing a refused subject, including grants from other packages.",
+      "check": "Look for new grants or subject validation paths that check blocked/disabled state inline or bypass the common subject validation that includes the standing check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an end user is refused at sign-in or denies consent for a pending authorization request, answer the client at its redirect URI with error=access_denied and the request's state, and fall back to a local page or redirect only when no pending authorization request is named.",
+      "why": "OpenID Connect Core 1.0 §3.1.2.6 and RFC 6749 §4.1.2.1 require that the client receives an error response instead of being left unanswered.",
+      "check": "Look for consent-denial or sign-in-refusal code that redirects to '/' or shows an error page even though the ReturnUrl names a pending authorization request, or that omits state from the error response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, answer a refusal that fresh authentication cannot cure (a blocked or disabled end user) with its error to the client for every prompt value, and challenge again (or answer login_required for prompt=none) only for refusals that re-authentication can cure.",
+      "why": "Challenging a subject that re-authentication cannot cure creates a login loop, especially when the host's sign-in is another scheme.",
+      "check": "Look for authorize handlers that respond to every subject refusal with a challenge, or that tell refusals apart by their error code (e.g. access_denied) instead of re-checking standing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Audit a standing refusal at the authorization endpoint as an authorization denial.",
+      "why": "The ADR requires a refused standing to be audited as an authorization denial.",
+      "check": "Look for standing-refusal paths in the authorize handler that return the error without raising the authorization-denial audit event.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not treat a disabled account as invalid credentials: return the account for a valid credential so the standing check refuses it with its reason, unless the disabled state is a lockout against guessing, in which case refuse without verifying the password.",
+      "why": "An end user who gives the correct password should learn why they are refused, while a lockout must keep refusing without acting as a password oracle.",
+      "check": "Look for credential verification that returns null/failure for a disabled account before or after checking the password, or for lockout stores that verify the password before refusing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make interactive self-service endpoints authenticate through a check that requires a sid claim and validates (and touches) the server-side session, and sign the cookie out when the session is no longer active.",
+      "why": "Self-service pages were serving a cookie whose session had already ended.",
+      "check": "Look for interactive endpoints that trust the authentication cookie alone without requiring sid and validating the session, or that don't sign out when the session is invalid.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a member to an existing service would create a constructor-dependency cycle, put it on a separate interface instead of adding it to that service.",
+      "why": "Adding the refusal member to the continue service would have created a dependency cycle, because that service is part of the authorization provider's constructor graph.",
+      "check": "Look for new members on services that take a dependency that, directly or indirectly, depends back on the service itself.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

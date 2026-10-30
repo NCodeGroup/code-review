@@ -1,0 +1,103 @@
+{
+  "hash": "426d294af7d1b7ea",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0297",
+  "rules": [
+    {
+      "statement": "When a refresh token is rotated or retried, carry the presented token's family start time forward to the successor, and never give the successor an expiry later than the family's fixed horizon (family start plus the configured refresh token lifetime).",
+      "why": "Giving each rotated token a new full lifetime made an 'absolute' policy behave like 'sliding' and let a family live forever, which contradicts RFC 9700 §4.14.2's expectation that refresh tokens expire.",
+      "check": "Look for rotation, retry or reissue code that computes the new token's expiry from 'now + lifetime' without capping it at the family horizon, or that sets the lineage start time to the current time instead of copying it from the presented token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under a sliding refresh token expiration policy, expire a token at its sliding lifetime after issue or last use, and cap that at the family's absolute horizon.",
+      "why": "Sliding promises an extension only up to an absolute maximum. Without the cap, an idle bound exists but no maximum does.",
+      "check": "Look for sliding expiry calculations that do not take the minimum of the sliding expiry and the family horizon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist a refresh token family's start time rather than its computed horizon, and work out the horizon at validation time from the client's current lifetime setting.",
+      "why": "A stored horizon would ignore later changes to the lifetime, so shortening the lifetime would not end existing families.",
+      "check": "Look for code that stores a precomputed family expiry or horizon, or that checks a stored horizon instead of computing it from the start time and the current configuration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a stored refresh token grant is missing its family start time, refuse it with invalid_grant by treating the start as DateTimeOffset.MinValue, and refuse a token whose family horizon has passed even if the store still marks it active.",
+      "why": "The horizon check must fail closed, and the store's active flag alone does not reflect the horizon.",
+      "check": "Look for refresh grant validation that relies only on the stored active or expiry state, or that skips the horizon check (or treats it as unlimited) when the family start is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make token introspection report a refresh token as inactive once its family has passed its horizon, matching what the refresh grant would do, even if the store still holds the token as active.",
+      "why": "Introspection must agree with the refresh grant, which refuses such tokens with invalid_grant.",
+      "check": "Look for introspection paths for refresh tokens that return active based only on store state, without the family horizon check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Include refresh_token_expires_in in every token response that carries a refresh token, whether it was issued, kept, rotated or retried, and in push deliveries such as CIBA. Set it to the whole seconds left until the family's fixed horizon, not the individual token's own expiry.",
+      "why": "Clients such as a BFF cap sessions by this value, which is sound only if it is a fixed horizon that never moves later within a family. A sliding token's own expiry moves later with use.",
+      "check": "Look for token response paths that return a refresh token without refresh_token_expires_in, or that fill it from the token's own expiry instead of the family horizon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a protocol client reads the advisory refresh_token_expires_in member from a token response, read it leniently: ignore any value that is not a positive whole number instead of failing the response.",
+      "why": "The member is advisory and non-standard, so an odd value from a provider must not fail a token response.",
+      "check": "Look for parsing of refresh_token_expires_in that throws, or that fails the token response on a malformed, zero, negative or fractional value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When token exchange issues a refresh token, start its family at the subject token's auth_time, and refuse the exchange with invalid_grant if auth_time is missing or the horizon counted from it has already passed.",
+      "why": "Otherwise token exchange could be used to renew a refresh token family beyond its horizon.",
+      "check": "Look for token exchange code that issues refresh tokens with the family start set to the exchange time, or that does not reject a missing auth_time or an expired horizon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "hash": "24bd5ad3f9a3dfef",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0200",
+  "rules": [
+    {
+      "statement": "A setting whose value permits a billable charge (such as an overage allowance) must treat an unset value as zero/none, not as unrestricted, and must have a finite hard ceiling.",
+      "why": "An allowance creates a charge, and a missing setting must never bill a customer without limit; unbounded overage risks a denial-of-wallet from a runaway or compromised client.",
+      "check": "Look for new billing or overage settings whose unset/null default is interpreted as unlimited, or that admit chargeable usage without an upper bound.",
+      "scope": "domain",
+      "domain": "multi-tenant-rate-limiting-and-billing",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge overage against the same shared counter that enforces the quota (quota, then quota plus allowance) rather than adding a second counter or deriving overage later from a lagging ledger.",
+      "why": "The shared counter is exact across replicas, while the ledger lags by a flush interval and is written per replica; recording overage at admission keeps the bill equal to what was served past the quota.",
+      "check": "Look for overage computed from ledger totals minus quota, or a separate overage counter, instead of comparing the quota's own counter at admission time.",
+      "scope": "domain",
+      "domain": "multi-tenant-rate-limiting-and-billing",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record billable usage only for requests actually served, so that a request admitted by one limiter stage but refused by a later stage is not recorded or billed.",
+      "why": "The overage meters must be exactly what is billable; billing a refused request charges the customer for service not delivered.",
+      "check": "Check that usage/overage meters are recorded after all limiter stages admit the request, not when an earlier stage admits it.",
+      "scope": "domain",
+      "domain": "multi-tenant-rate-limiting-and-billing",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Anonymous public metadata endpoints (such as OpenID discovery and the JWKS) must not spend a tenant's billable request quota.",
+      "why": "Otherwise anonymous callers could run up a tenant's billable overage.",
+      "check": "Look for discovery/JWKS or other anonymous metadata endpoints passing through the quota or usage-billing path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

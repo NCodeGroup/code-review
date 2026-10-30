@@ -1,0 +1,140 @@
+{
+  "hash": "e240e61183825b7b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0074",
+  "rules": [
+    {
+      "statement": "Emit the OP session identifier (`sid`) only in ID tokens and back-channel logout tokens, never in access tokens.",
+      "why": "A resource server must never receive the OP's session identifier.",
+      "check": "Look for code that adds `sid` (e.g. `JoseClaimNames.Payload.Sid`) to access-token claims or to token types other than ID and logout tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no end-user session exists (for example, non-interactive issuance), leave the `sid` claim out entirely instead of emitting an empty or placeholder value.",
+      "why": "`sid` has to come from a real session, so a token without a session simply has no session claim.",
+      "check": "Look for `sid` written unconditionally, or set to an empty string, null or a made-up value when the subject has no session.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate end-user session identifiers as opaque, cryptographically random values of at least 256 bits, and look them up by hash when stored.",
+      "why": "The session id is a bearer-like handle used for revocation and logout, so it must be impossible to guess or derive.",
+      "check": "Look for session ids built from subject ids, timestamps, counters or GUIDs, or random values shorter than 256 bits, or stored in plain text as the lookup key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before an RP-Initiated Logout endpoint redirects, validate `id_token_hint` to identify the client and session, and check `post_logout_redirect_uri` against that client's registered `post_logout_redirect_uris`. Redirect only to a URI that passes this check, echoing `state`; otherwise show a confirmation page.",
+      "why": "An unvalidated post-logout redirect is an open redirect, and the spec requires the URI to be pre-registered.",
+      "check": "Look for end-session code that redirects to a caller-supplied URI without comparing it to the client's registered list, skips `id_token_hint` validation, or drops `state`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Logout must invalidate state on the server: revoke the persisted session and the grants it issued, and send back-channel notifications. Clearing the OP cookie with `SignOutAsync` alone is not enough.",
+      "why": "Clearing only the cookie leaves the session and its tokens valid, and relying parties are never told about the logout.",
+      "check": "Look for logout handlers or entry points that only call `SignOutAsync` and do not revoke the session and grants, or that skip the shared end-session pipeline.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On logout, revoke only the grants that belong to the session being ended, not every grant the subject holds.",
+      "why": "ADR-0077 refines the scope: logout revokes the terminating session's grants, not the whole subject's.",
+      "check": "Look for logout code that bulk-revokes by subject id alone (for example `RevokeWhereAsync(subjectId, ...)`) without limiting it to the session.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every entry point that ends a session (the spec `end_session_endpoint`, the first-party account sign-out) must run the same end-session pipeline instead of having its own termination logic.",
+      "why": "With one pipeline, every sign-out revokes the session and grants and notifies relying parties the same way.",
+      "check": "Look for a new logout path that has its own cookie-clearing or revocation code instead of sending the shared end-session command.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "State-changing actions in the interactive UI, such as sign-out, must accept only POST with antiforgery validation, never GET.",
+      "why": "Logout changes state, and accepting GET makes it open to cross-site request forgery. This matches login and consent.",
+      "check": "Look for interactive logout or other state-changing actions mapped to GET, or POST handlers that do not validate antiforgery.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.cshtml",
+        "**/*.razor"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel `logout_token` must be a signed JWT containing `iss`, `aud`, `iat`, `jti`, `sid` and/or `sub`, and an `events` claim with the `http://schemas.openid.net/event/backchannel-logout` member.",
+      "why": "Back-Channel Logout 1.0 defines this as the required token content.",
+      "check": "Look for logout tokens that are unsigned or that lack `jti`, `events`, or both `sid` and `sub`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Back-channel logout delivery must follow the tenant's discovery settings: send nothing when `backchannel_logout_supported` is false, and leave out `sid` when `backchannel_logout_session_supported` is false.",
+      "why": "What the OP actually sends must match what it advertises in discovery.",
+      "check": "Look for notifier code that sends logout tokens, or includes `sid`, without checking the matching tenant capability flags.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deliver back-channel logout notifications through an injectable notifier abstraction that hands delivery to an out-of-band, retryable job, instead of POSTing to each relying party inline in the logout request.",
+      "why": "Delivery policy (retries, fan-out, queuing) depends on the deployment, and a failed delivery must be retried.",
+      "check": "Look for logout code that calls `HttpClient` directly or POSTs to `backchannel_logout_uri` inline, rather than going through the notifier or a delivery job.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

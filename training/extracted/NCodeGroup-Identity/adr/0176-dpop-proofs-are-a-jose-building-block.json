@@ -1,0 +1,127 @@
+{
+  "hash": "ed8859613dac9b7d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0176",
+  "rules": [
+    {
+      "statement": "Verify JWS signatures through the JOSE library's registered signature algorithms, never through a hand-built path using raw RSA/ECDsa primitives or manual compact-JWS splitting.",
+      "why": "A second cryptographic code path duplicates the JOSE library and supports only the key types it spells out, so for example Ed25519 proofs failed even though EdDSA was registered.",
+      "check": "Look for code that splits a compact JWS by '.' itself, or builds RSA/ECDsa/other key objects from JWK parameters to call VerifyData/VerifyHash, outside the JOSE library.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating a DPoP proof or other self-signed JWS, accept `alg` only if it is in the caller's allow-list and resolves to an asymmetric signature algorithm; reject MAC algorithms and `none` whatever the allow-list says.",
+      "why": "A proof is signed with the key embedded in it, so a symmetric or unsigned algorithm proves nothing about key possession.",
+      "check": "Check that alg validation tests both allow-list membership and that the algorithm's key type is asymmetric, and that `none`/HS* cannot pass even when configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a JWS whose protected header contains `crit` when the validator understands no JWS extensions.",
+      "why": "RFC 7515 requires rejecting critical extensions that are not understood.",
+      "check": "Look for JWS/DPoP header validation that ignores or passes through a `crit` header.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an embedded `jwk` that carries private key material, import it through the registered key-type descriptor for its `kty`, and require that the algorithm's key type and legal key sizes both fit the imported key.",
+      "why": "A proof must embed only a public key, and a key mismatched with the algorithm must not be accepted.",
+      "check": "Check that embedded-jwk handling rejects private parameters (e.g. `d`, `p`, `q`, `k`) and validates key type and key size against the algorithm before verifying.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check that a decoded signature has exactly the algorithm's expected size before calling the algorithm's verify operation.",
+      "why": "The ADR makes an exact signature-size check a required step before signature verification.",
+      "check": "Look for signature verification paths that call Verify without first comparing the signature length to the expected size.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare a DPoP `htu` to the request URI only after removing query and fragment from both and confirming both are absolute `http`/`https` URIs.",
+      "why": "RFC 9449 compares without query and fragment, and on Unix a rooted path such as `/token` would otherwise parse as a `file:` URI.",
+      "check": "Look for htu/URI comparisons that use raw strings, keep query or fragment, or accept a Uri without checking IsAbsoluteUri and an http/https scheme.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every stateless claim of a DPoP proof: `htm` equals the request method, `ath` matches when an access token is present, `jti` is present, and `iat` is within ±lifetime of the current time taken from `TimeProvider`.",
+      "why": "These are the checks one proof proves on its own under RFC 9449.",
+      "check": "Check that DPoP validation leaves none of htm, ath, jti or the iat window out, and that it reads time from TimeProvider instead of DateTime.UtcNow.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create DPoP proofs with header `typ: dpop+jwt`, `alg`, and the exported public `jwk` and no `kid`, and with a random 128-bit `jti`, `iat` from `TimeProvider`, and `htu` stripped of query and fragment.",
+      "why": "These are the proof contents the ADR defines, so that proofs are created by the same service that validates them.",
+      "check": "Look for DPoP proof creation that includes `kid`, uses a non-random or short jti, uses DateTime.Now/UtcNow, or keeps the query or fragment in htu.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare each JOSE protocol name (token types, claim names such as `htm`, `htu`, `ath`) once in the JOSE constants, and keep only transport-specific names such as HTTP header names in higher-level packages.",
+      "why": "Declaring the DPoP vocabulary in two places duplicated it, and the ADR keeps one vocabulary.",
+      "check": "Look for new string constants that redefine JOSE claim names or token types (e.g. \"dpop+jwt\", \"htm\") outside the JOSE constants classes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep stateless DPoP proof validation separate from stateful checks: replay detection and server-nonce challenges belong in the calling HTTP layer, not in the JOSE proof service.",
+      "why": "Replay and nonce checks need state (a replay cache, a nonce service) and an HTTP response, which the stateless JOSE building block does not have.",
+      "check": "Look for replay caches, nonce services or HTTP response handling added inside JOSE-level proof validation, or for a caller that skips replay and nonce checks after stateless validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

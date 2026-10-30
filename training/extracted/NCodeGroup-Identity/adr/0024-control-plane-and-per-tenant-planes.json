@@ -1,0 +1,19 @@
+{
+  "hash": "2c1e7778a193fe3e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0024",
+  "rules": [
+    {
+      "statement": "Isolate tenants logically inside the single shared database, using the ambient-tenant query filter and ordinary foreign keys; do not add per-tenant databases, per-tenant connection routing, or a control-plane/tenant-plane connection split.",
+      "why": "Physical isolation is handled by deploying a separate server instance. Putting database-level isolation inside one deployment would need a bootstrap/registry split, cross-database reads and a routing seam, which is a lot of complexity for no gain.",
+      "check": "Look for code that picks a connection string or DbContext per tenant, adds a tenant-to-database registry or a second control-plane context, or swaps tenant-related foreign keys for loose cross-database identifiers.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

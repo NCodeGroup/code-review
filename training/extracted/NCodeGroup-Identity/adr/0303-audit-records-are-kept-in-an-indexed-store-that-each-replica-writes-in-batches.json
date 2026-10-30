@@ -1,0 +1,118 @@
+{
+  "hash": "5a5b226c3dcb60b0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0303",
+  "rules": [
+    {
+      "statement": "Do not write audit or telemetry records to a database inline on the request path; add them to a bounded in-memory queue and have a hosted background service write the queue in batches.",
+      "why": "An inline write adds a database round trip to every audited operation, and a failed audit write would fail the operation.",
+      "check": "Look for an event or audit handler that calls a store, DbContext or SaveChanges directly while the request is being handled, rather than enqueuing the record for a background flush.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a bounded in-memory queue drops items because it is full, count the drops and log the count once per flush interval, not once per dropped item.",
+      "why": "Dropped records have to be visible to operators, and logging each drop would flood the log just when the system is overloaded.",
+      "check": "Look for a bounded queue or channel whose full-queue path drops items silently, or logs on every dropped item instead of reporting an aggregated count during the periodic flush.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background batch writer keeps a failed batch and writes it first on the next flush, and the store makes the write idempotent with a unique index on the record's identifier, skipping identifiers it already holds.",
+      "why": "If a save commits but still reports a failure, the retried batch must not insert the same records twice.",
+      "check": "Look for a batch flush that discards a batch when the write fails, or that retries it without a unique key and a skip of existing ids, which would create duplicates.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted service that flushes buffered data when the host stops must run that final flush exactly once, with concurrent or repeated StopAsync calls sharing the same flush.",
+      "why": "The host may stop a service twice, and the held records should be written only once.",
+      "check": "Look for StopAsync implementations whose final flush runs again on every call, or that race with each other, instead of sharing one cached task or flush guarded by a once-only check.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each lookup index starts with the column the query filters on and then the time column the query sorts by.",
+      "why": "Lookups filter on one field over a time range and sort by time, so the index has to match that access pattern.",
+      "check": "Look for new indexes on time-ordered records that leave out the time column or put it before the filter column.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an indexed column is denormalized from a full JSON document and the value is longer than the column, store null for an optional field and the leading characters for a required one, and keep the full value in the JSON document.",
+      "why": "A value that is too long must not fail the write, and the full JSON stays the authoritative record.",
+      "check": "Look for writes into length-limited indexed columns that can throw or lose the only copy of a value that is too long, or that cut off optional values instead of storing null.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use keyset paging ordered by the sort key plus a unique surrogate identifier as tie-breaker, backed by an index on those columns, and have the opaque cursor carry the last item's sort key and identifier.",
+      "why": "Several records can share the same timestamp, so the identifier is needed for a stable order with no duplicates or gaps across pages.",
+      "check": "Look for paged queries that sort only by a timestamp that is not unique, use offset paging, or have cursors that leave out the tie-breaking identifier.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "API time-range filters treat the start time as inclusive and the end time as exclusive.",
+      "why": "Half-open ranges match the convention the API follows, and adjacent ranges then neither overlap nor leave gaps.",
+      "check": "Look for range filters that use <= on the end time, or > on the start time.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When querying records that are not tenant-scoped but carry a tenant column, put the addressed tenant in the query explicitly every time, and never list records that have no tenant.",
+      "why": "These records are not covered by automatic tenant scoping, so leaving out the tenant criterion would expose other tenants' records.",
+      "check": "Look for tenant-addressed endpoints that query non-tenant-scoped tables without an explicit TenantId == tenantId predicate.",
+      "scope": "domain",
+      "domain": "multi-tenant",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind options for intervals, capacities and retentions strictly from configuration and validate them when the host starts, including an Enabled switch where the feature can be turned off.",
+      "why": "Bad intervals or retention values should fail at startup, not at runtime.",
+      "check": "Look for new options classes that are not registered with ValidateOnStart and validation, or that are bound without strict binding.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

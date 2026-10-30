@@ -1,0 +1,123 @@
+{
+  "hash": "d4d01e36a80aa9ba",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0178",
+  "rules": [
+    {
+      "statement": "Base the final runtime stage of a production .NET container image on a chiseled ASP.NET Core image (the `-chiseled-extra` variant when ICU or time zone data is needed), not on a full image with a shell and package manager.",
+      "why": "Chiseled images are distroless, which shrinks the attack surface. The `extra` variant keeps culture-sensitive formatting and time zone conversion working the same as on a full image.",
+      "check": "Look for a final-stage `FROM` in a production Dockerfile that uses a non-chiseled `aspnet`/`runtime` image, or a chiseled non-extra variant when the app relies on ICU or time zones.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run the production container image as the non-root `app` user by numeric id (`USER $APP_UID`), not as root or by user name.",
+      "why": "With a numeric non-root user, Kubernetes can enforce `runAsNonRoot`.",
+      "check": "Look for a final stage with no `USER` instruction, with `USER root`, or with a user given by name instead of `$APP_UID`.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the ASP.NET Core container listen on 8080 over plain HTTP and leave TLS to the ingress; don't expose ports 80/443 or configure TLS inside the image.",
+      "why": ".NET container images listen on 8080 by default, and TLS terminates at the ingress. Exposing 80/443 doesn't match what the app actually listens on.",
+      "check": "Look for `EXPOSE 80`/`EXPOSE 443`, HTTPS URLs or certificate settings in the production image stage.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make multi-arch images build without emulation: run build stages (SDK, Node) with `FROM --platform=$BUILDPLATFORM`, publish framework-dependent for `$TARGETARCH` with no app host, and keep the per-target stage to file copies with no `RUN` steps.",
+      "why": "Then `linux/amd64` and `linux/arm64` both build on an amd64 runner without QEMU, and both architectures share the build stages.",
+      "check": "Look for SDK/Node build stages that lack `--platform=$BUILDPLATFORM`, a publish that ignores `$TARGETARCH` or builds an app host, or `RUN` instructions in the target-architecture final stage.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write `.dockerignore` as an allow-list: exclude everything (`*`), then re-admit only the build files and source folders the build needs, minus build outputs, `node_modules` and local settings.",
+      "why": "This keeps tests, docs, `.git` and secrets from ever reaching the builder.",
+      "check": "Look for a `.dockerignore` that doesn't start by excluding everything, or a change that re-admits tests, docs, `.git`, local settings or secret files.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.dockerignore"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write base-image `FROM` lines as a literal tag pinned by digest (`image:<tag>@sha256:…`), not as a tag built from an `ARG`.",
+      "why": "Dependabot can't update a `FROM` built from an `ARG`, and digest pinning makes builds reproducible.",
+      "check": "Look for `FROM` lines that interpolate an `ARG` into the image tag, or that have no `@sha256:` digest.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build any frontend bundle the app needs at runtime inside the image build, and set its path through configuration (environment variable) in the image, not only in `launchSettings.json`.",
+      "why": "Settings that exist only in `launchSettings.json` never reach the container, so the container couldn't render login or consent pages.",
+      "check": "Look for runtime-required settings or assets that are configured only in `launchSettings.json` and missing from the Dockerfile's final stage.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/launchSettings.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a Dockerfile `HEALTHCHECK` or other step that needs a shell or tools like `curl` to a chiseled image; expose HTTP health endpoints for Kubernetes probes instead.",
+      "why": "Chiseled images have no shell, so shell-based health checks can't run.",
+      "check": "Look for `HEALTHCHECK`, `RUN` or `CMD` shell-form instructions in a stage based on a chiseled image.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a container build context excludes `.git`, set `NBGV_GitEngine=Disabled` so Nerdbank.GitVersioning takes its version from `version.json` alone, and let the release workflow put the full version in the image tag.",
+      "why": "The build has no git history, and image publishing is a release concern.",
+      "check": "Look for a Dockerfile that runs `dotnet publish` with NBGV but without a `.git` in the context and doesn't set `NBGV_GitEngine=Disabled`.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

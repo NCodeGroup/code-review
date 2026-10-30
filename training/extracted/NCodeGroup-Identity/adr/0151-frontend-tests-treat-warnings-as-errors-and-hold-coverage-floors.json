@@ -1,0 +1,124 @@
+{
+  "hash": "266eccb9139c4004",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0151",
+  "rules": [
+    {
+      "statement": "Do not let a frontend test pass while it logs console.error or console.warn; fix the cause (for example an unsettled async update producing a React act(...) warning), and when logging is the behavior under test, mock the method with vi.spyOn(console, ...).mockImplementation(...) and assert on the spy.",
+      "why": "Console warnings during tests show a test asserting before async work has settled, so it can pass for the wrong reason, and new warnings get lost among old ones.",
+      "check": "Look for tests that are expected to trigger console output without a local spy and an assertion on it, and for changes that silence or filter console output globally instead of fixing it.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/vitest.setup.ts"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Add a message to the fail-on-console exemption list only when it is a timing diagnostic that depends on machine load, never a warning that reflects a code defect.",
+      "why": "Exemptions exist only for messages whose firing depends on load and not on code (such as Redux Toolkit's slow-check notice); exempting real warnings brings back the noise the guard removes.",
+      "check": "Look for new entries in the console-guard ignore list and ask whether each is purely a timing diagnostic.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/test-support/**",
+        "**/vitest.setup.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every frontend workspace's lint script must pass --max-warnings 0, and the ESLint config must report unused disable directives and unused inline configs as errors.",
+      "why": "Without this, lint warnings and stale eslint-disable comments pile up unnoticed.",
+      "check": "In a package.json lint script or eslint config, look for a missing or nonzero --max-warnings, or for reportUnusedDisableDirectives being relaxed.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/package.json",
+        "**/eslint.config.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every Vitest configuration must set expect.requireAssertions so a test that makes no assertion fails.",
+      "why": "A test shouldn't be able to pass just by running code without checking anything.",
+      "check": "Look for a new or changed Vitest config or preset that omits or disables expect.requireAssertions.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Frontend tsconfig files must not exclude test files (*.test.*) or Storybook stories (*.stories.*), and must include the Vitest setup file, so they are all type-checked.",
+      "why": "Vitest strips types without checking them, so a type error in an excluded test or story never fails anything.",
+      "check": "Look for tsconfig exclude patterns that match test or story files, or include lists that leave out vitest.setup.ts.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/tsconfig*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Coverage include patterns must cover all .ts and .tsx sources, excluding only the app entry point (main.ts/main.tsx) and the re-export barrel (index.ts), and test globs must match both .test.ts and .test.tsx.",
+      "why": "Narrow patterns left whole files out of coverage, and a narrow test glob meant some test files would never run.",
+      "check": "Look for coverage include/exclude or test include globs that leave out a source extension, a test extension, or source files other than the entry point and barrel.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each frontend workspace must set coverage.thresholds for statements, branches, functions and lines at its achieved level rounded down; a change that raises coverage raises the floor in the same change, and a change that lowers a floor must state why.",
+      "why": "Floors stop coverage regressions in CI instead of leaving them to be noticed later in Codecov.",
+      "check": "Look for coverage gains without a matching threshold bump, threshold reductions without a stated reason, or workspaces with no thresholds.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not raise a build warning limit (such as Vite's chunk size warning) to silence a warning; fix the underlying cause instead.",
+      "why": "Raising the limit only hides the problem the warning reports.",
+      "check": "Look for config changes that increase chunkSizeWarningLimit or similar thresholds just to make a warning go away.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "performance",
+      "applies_to": [
+        "**/vite.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Client code must treat an access token as opaque and must never parse it to get user identity or claims; get user information from the ID token or the userinfo endpoint instead.",
+      "why": "Parsing the access token broke sign-in and renewal when the token was opaque.",
+      "check": "Look for client code that decodes or splits an access token (for example base64-decoding its payload) to read claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

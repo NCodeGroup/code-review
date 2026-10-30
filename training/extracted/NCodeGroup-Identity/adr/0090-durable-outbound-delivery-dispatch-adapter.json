@@ -1,0 +1,119 @@
+{
+  "hash": "afcc26b80d1c3b55",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0090",
+  "rules": [
+    {
+      "statement": "Perform an outbound side effect that must happen after a request returns (webhook, client notification, logout notification, audit delivery) by dispatching a job through a job-dispatch abstraction, not with an inline, single-attempt HTTP call whose failure is logged and dropped.",
+      "why": "Inline best-effort delivery loses data by design: a failed push can't be recovered. It also fixes the execution strategy in place, so a deployment can't make delivery durable without editing the flow.",
+      "check": "Look for request-handling code that POSTs to a client or external endpoint inline after a state change, catches and logs the failure, and does not retry. It should hand a job to the dispatcher instead.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A dispatched background job type must be a plain, serializable data object with no behaviour, captured delegates, or service references.",
+      "why": "A durable or distributed adapter (outbox, broker, scheduler) has to persist, transport and rebuild the job. A captured delegate can't be serialized, which rules out every such adapter.",
+      "check": "Check job/work-item types for Func/Action fields, lambdas, service instances, or non-serializable state such as HttpContext, DbContext or streams. Behaviour belongs in a separate handler keyed by the job type.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make background job handlers idempotent, keyed on the stable dispatch identifier, because dispatch is at-least-once and a job may be redelivered.",
+      "why": "Retries and durable or distributed adapters can run the same job more than once.",
+      "check": "Look for handlers whose side effects (issuing, sending, writing) would duplicate harmfully on redelivery, or that ignore the stable dispatch id.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background job handler must signal failure by throwing, for example on a non-success HTTP status, and must not swallow the error and return normally.",
+      "why": "A normal return marks the attempt successful. Only a thrown failure makes the dispatcher schedule a retry with back-off.",
+      "check": "Look for handlers that catch exceptions or ignore a non-success response status (no EnsureSuccessStatusCode or equivalent) and then return without rethrowing.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted BackgroundService that runs work items must resolve each item's handler in a fresh DI scope, not from the root provider or a scope that lives for the whole service.",
+      "why": "The in-process worker resolves each job's handler in a fresh scope, so scoped dependencies are not shared across items or captured by the singleton.",
+      "check": "Look for background workers that inject scoped services directly into a singleton or hosted service, or reuse one IServiceScope across many work items.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Back an in-memory background work queue with a bounded channel, and log when a full queue drops an item.",
+      "why": "Bounded, best-effort back-pressure keeps memory in check, and logging the shed item lets the operator see the loss.",
+      "check": "Look for Channel.CreateUnbounded or unbounded queues in background delivery code, or a drop/overflow path that sheds items without logging.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make concrete dispatch job and handler types internal to the producing package. Only the generic dispatch contracts are public.",
+      "why": "The dispatcher is generic over the job marker interface, so concrete job types are implementation detail and should not grow the public surface.",
+      "check": "Look for new public job or job-handler classes in a producing package that only that package dispatches.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a persisted or transported background job carries credentials or issued tokens, the durable adapter must protect the payload at rest.",
+      "why": "Push-delivery jobs carry issued tokens. Persisting them in plaintext would expose the tokens.",
+      "check": "Look for durable job stores, outbox tables or broker publishes that write job payloads containing tokens or bearer credentials without encryption or data protection.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a JWE's key-management `alg` against the allowed encryption algorithm set, and a JWS's `alg` against the allowed signing set. Tell the two apart by the presence of the `enc` header.",
+      "why": "A latent bug checked a JWE's key-management alg against the signing set, which validated it against the wrong algorithms.",
+      "check": "Look for JOSE validation code that checks the `alg` header against signing algorithms without first checking for `enc`, or that skips the `enc`/`zip` allow-lists for JWEs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not advertise discovery metadata parameters that the governing OpenID/OAuth specification does not define. Mark such settings non-discoverable even when they are still enforced.",
+      "why": "Non-standard server metadata parameters are flagged by the OpenID Foundation Conformance Suite (CheckForUnexpectedParametersInServerMetadata).",
+      "check": "Look for new settings marked discoverable, or emitted in the discovery document, whose names are not defined by the relevant spec.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

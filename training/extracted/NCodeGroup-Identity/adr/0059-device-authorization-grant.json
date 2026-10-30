@@ -1,0 +1,103 @@
+{
+  "hash": "523620fff1abc7f8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0059",
+  "rules": [
+    {
+      "statement": "Redeem an approved device_code for tokens through an atomic consume-once operation so that each device_code yields tokens exactly once, and a later poll fails with invalid_grant.",
+      "why": "RFC 8628 secrets must not be replayable. A second poll after success must see the code as consumed.",
+      "check": "In a device_code grant handler, look for an approved request that issues tokens without an atomic consume or claim step, or that leaves the grant active after issuing tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Revoke or invalidate the user_code lookup record when the user approves or denies a device authorization request, so the same user_code cannot be entered twice.",
+      "why": "A user_code should be usable once. Leaving it active lets the same code be entered again.",
+      "check": "Look for a device verification approval path that updates the request state but leaves the user_code record or pointer active.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Normalize a device-flow user_code (case-fold it and strip separators and whitespace) before hashing it or looking it up, and format it with separators only for display.",
+      "why": "Users may type the code in any case or spacing, and lookup has to match the canonical form that was hashed.",
+      "check": "Look for a user_code that is hashed or looked up as raw input with no normalization, or that is stored or hashed in its display-formatted form with the separator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate device-flow user_codes from a transcription-resistant alphabet (consonants only, no vowels or digits that can be mistaken for letters), with a length taken from settings, and generate device_codes as high-entropy opaque identifiers.",
+      "why": "The user_code has to be short and easy for a person to type without errors. The device_code is the machine secret, so it needs full entropy.",
+      "check": "Look for user_code generation that uses alphanumeric or vowel-bearing alphabets or a hard-coded length, and for device_code values that are derived from the user_code or have low entropy.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a device_code token request arrives sooner than the polling interval after the last poll, return slow_down without advancing any request state. Otherwise return authorization_pending while the request is pending, access_denied when denied, expired_token when past expiry, and tokens when approved.",
+      "why": "RFC 8628 §3.5 defines these polling responses, and a too-early poll must not change state.",
+      "check": "In device_code grant handling, look for missing interval enforcement, a slow_down path that updates the last-polled timestamp or other state, or a wrong mapping from status to error code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return the device-flow polling errors (authorization_pending, slow_down, expired_token, access_denied) as HTTP 400 OAuth error responses from the token endpoint.",
+      "why": "This follows the RFC 8628 token-endpoint error format that clients expect.",
+      "check": "Look for device polling errors returned with a status code other than 400, or outside the standard OAuth error response shape.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Redeem a device_code only for the client it was issued to, and only for a subject that passes subject validation. The device verification endpoint must check that the session behind its authentication cookie is still valid.",
+      "why": "The amending ADR-0225 says every grant that issues tokens for a subject must validate that subject and its binding to the client.",
+      "check": "Look for a device_code redemption that does not compare the requesting client id with the stored client id or skips subject validation, and for a verification endpoint that trusts the cookie without checking its session.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the device verification endpoint reuse the same subject-authentication and consent mechanism as the authorization endpoint, rather than a separate authentication stack.",
+      "why": "Approving a device request is the same operation as authenticating a user and capturing consent, only looked up by user_code instead of by an authorization request.",
+      "check": "Look for device verification code that authenticates users or records consent with custom logic that duplicates the authorization endpoint's interaction path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

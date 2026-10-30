@@ -1,0 +1,118 @@
+{
+  "hash": "f445276db6156974",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0164",
+  "rules": [
+    {
+      "statement": "Implement single-use (replay) checks as one atomic add-if-absent operation, never as a read followed by a write.",
+      "why": "If you read and then write, two concurrent presentations of the same proof or assertion can both be accepted. That breaks the promise of atomic recording.",
+      "check": "Look for replay or nonce checks that call Get/Contains and then Set on a store such as IDistributedCache, instead of a single atomic TryAdd or SET NX operation.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use IDistributedCache for single-use or replay state, because it has no atomic add-if-absent operation.",
+      "why": "IDistributedCache only offers get and set, so it cannot express an atomic single-use check.",
+      "check": "Look for replay caches, nonce stores or single-use records built on IDistributedCache.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library must not register host-wide infrastructure services such as IDistributedCache. The host's composition root chooses them.",
+      "why": "When a library registers a shared host service, it makes that choice for the host and for every other consumer of the service.",
+      "check": "Look for library DI extension methods that call AddDistributedMemoryCache or register other host-wide infrastructure services.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "State that must hold across replicas must not rely on per-process defaults without a swappable shared adapter. Any request may reach any replica.",
+      "why": "With a per-replica default, a nonce issued by one replica was rejected by another, and a replay sent to a different replica was accepted.",
+      "check": "Look for nonce, replay or freshness state kept in process memory with no adapter port that a multi-replica deployment can replace.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build keys for a shared store as a purpose prefix, the tenant, and a digest (for example base64url SHA-256) of the length-prefixed UTF-8 components. Do not join request-supplied values with a delimiter.",
+      "why": "Joining with a delimiter is ambiguous (\"a:b\",\"c\" collides with \"a\",\"b:c\") and has no length limit. Without the tenant in the key, one tenant's records collide with another's.",
+      "check": "Look for store keys built by string concatenation or interpolation of request-supplied values with ':' or another separator, unhashed values of unbounded length, or keys with no tenant.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Single-use and freshness checks must fail closed: if the store is unreachable or the requested expiry is not in the future, reject the request.",
+      "why": "Accepting a request the server cannot check would let replays through.",
+      "check": "Look for catch blocks around shared-state calls that treat an error as success, or that record or accept keys whose expiry is already in the past.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the server computes a time-to-live for a shared store, compute it from the local clock (preferably the injected TimeProvider) and round it up to whole units. Do not depend on the store server's clock.",
+      "why": "Expiry should not depend on the server's clock. Rounding up keeps the key from expiring early.",
+      "check": "Look for TTL calculations that round down or truncate, or that use absolute expiry timestamps interpreted by the remote server.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Startup validation errors about connection strings must never echo the connection string.",
+      "why": "A connection string may contain a password.",
+      "check": "Look for exception messages or log calls that include the raw connection string value.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put optional backend adapters that bring heavy client dependencies (such as a Redis client) in separate opt-in packages, not in the core or turnkey package.",
+      "why": "Otherwise every consumer, including single-replica self-hosters, would carry the dependency.",
+      "check": "Look for backend client package references (for example StackExchange.Redis) added to a core or turnkey server project.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An adapter that connects to an external store should not abort host startup when the store is unreachable. It should reconnect in the background and expose a readiness-tagged health check.",
+      "why": "This keeps startup resilient while still reporting outages through readiness.",
+      "check": "Look for store connections that use AbortOnConnectFail=true or block startup, and for a missing health check tagged 'ready'.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

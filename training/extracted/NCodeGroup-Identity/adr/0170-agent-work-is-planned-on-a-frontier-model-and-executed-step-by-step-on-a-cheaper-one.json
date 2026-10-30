@@ -1,0 +1,63 @@
+{
+  "hash": "37c6d9b53f2ea3f0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0170",
+  "rules": [
+    {
+      "statement": "Never commit an agent plan file (`PLAN.md`) or any other transient plan working file; it stays gitignored, and each step's checkpoint commit stages only the files that step lists.",
+      "why": "GitHub issues track pending work and ADRs carry the reasoning, so a plan must never outlive its change.",
+      "check": "Flag a diff that adds or modifies `PLAN.md` or removes it from `.gitignore`, and flag a plan-step commit that touches files the step doesn't name.",
+      "scope": "domain",
+      "domain": "agent-plan-and-execute-workflow",
+      "topic": "code-organization",
+      "applies_to": [
+        "PLAN.md",
+        ".gitignore"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hand-edit files owned by project-template (generated agents, prompt files, skills, Claude commands, hooks, `.template/`). Make the workflow change in the template, tag it there and pull it in, and put repository-specific rules in the repository's instruction files.",
+      "why": "A hand edit to a generated or template-owned copy drifts from its source and breaks the next clean template update.",
+      "check": "Look for direct edits to `.github/agents/`, `.github/prompts/`, `.github/skills/`, `.claude/commands/`, `.claude/agents/`, `.githooks/` or `.template/` that don't come with a template version bump in `.copier-answers.yml`.",
+      "scope": "domain",
+      "domain": "project-template-adopting-repositories",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/agents/**",
+        ".github/prompts/**",
+        ".github/skills/**",
+        ".claude/commands/**",
+        ".claude/agents/**",
+        ".githooks/**",
+        ".template/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep every agent prompt file and its matching skill in step: the name, description and ordered workflow body stay identical, and a skill never sets `disable-model-invocation` or `user-invocable`.",
+      "why": "The prompt and the skill are two runtime adapters for one workflow and must not drift apart. The invocation flags also break explicit skill invocation, and automatic skill selection is intended behaviour.",
+      "check": "Flag a change to a `.prompt.md` without the same change to its `SKILL.md` (or the reverse), and flag either invocation-control flag in skill frontmatter.",
+      "scope": "domain",
+      "domain": "agent-plan-and-execute-workflow",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/prompts/**/*.prompt.md",
+        ".github/skills/**/SKILL.md"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "A pull request for a plan uses the plan's title as a conventional commit subject, and its description ends with a `Closes #<number>` line for each issue the plan implements.",
+      "why": "The merge queue's squash merge takes its commit subject from the pull request title, and the `Closes` line ties the plan to the issue that tracks its work.",
+      "check": "Flag a plan pull request whose title isn't a conventional commit subject, or whose description has no `Closes #<number>` line for each issue it covers.",
+      "scope": "domain",
+      "domain": "agent-plan-and-execute-workflow",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "hash": "c0f1a4f9345ef93e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0281",
+  "rules": [
+    {
+      "statement": "When a DI-free library meets an open vocabulary, ship the registered members as built-in data and take any other member from the caller as a method or constructor argument; do not add a static mutable registry or a DI service for it.",
+      "why": "A static mutable registry brings global state with registration-order and test-isolation problems, and a DI service breaks the package's DI-free design.",
+      "check": "Look in DI-free packages for new static mutable collections or static Register methods used to extend a vocabulary, or for DI service dependencies. The extension point should be an overload or constructor parameter.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map framework algorithm identifiers to registry names with an explicit table that lists each registry name, and throw NotSupportedException for unmapped values with a message that names the overload that accepts a caller-supplied name; never derive the registry name by rewriting the framework name.",
+      "why": "Don't infer a trait from a name. An explicit map states each registry name, and an unknown value fails instead of being guessed.",
+      "check": "Look for string manipulation (ToLower, Replace, etc.) on HashAlgorithmName.Name or similar identifiers to produce protocol names. Also look for a default case that guesses instead of throwing NotSupportedException.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key lookup tables by HashAlgorithmName with string literals of its Name values, not with `HashAlgorithmName.X.Name`, because `Name` is `string?`.",
+      "why": "`HashAlgorithmName.Name` is nullable, so using it as a dictionary key brings in nullability problems.",
+      "check": "Look for dictionary or switch keys written as `HashAlgorithmName.SHA256.Name` or similar.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a caller supplies a hash name for a JWK Thumbprint URI, require it to match RFC 6920 §3 `1*unreserved` (ASCII letters, digits, `-`, `.`, `_`, `~`), and for a hash the built-in map knows, require the mapped name.",
+      "why": "This keeps the URN unambiguous, and a known hash can never be mislabeled.",
+      "check": "Look for overloads that accept a hash or algorithm name and build a URI without validating its characters. Also look for ones that accept a different name for a hash that has a known registry name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never produce or map truncated hash registry names (such as `sha-256-128`) for JWK thumbprints; a thumbprint is always the whole digest, and only names of hashes the framework's IncrementalHash computes go in the built-in map.",
+      "why": "An RFC 7638 thumbprint is the whole digest, and a truncated key identifier weakens the binding.",
+      "check": "Look for truncated digests, truncated registry names, or map entries for algorithms the framework cannot compute (sha3-224, blake2, k12) in thumbprint code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a caller-supplied collection of named descriptors as a whole, throwing ArgumentException for a null entry or for two entries with the same name, and match the names with ordinal comparison.",
+      "why": "The descriptor set is validated as a whole, the same way existing catalogs are, so ambiguous or broken input fails up front.",
+      "check": "Look for constructors or methods that take descriptor collections without checking for null entries and duplicate names, or that match names with non-ordinal or case-insensitive comparison.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading a JWK Set, skip a key whose `kty` is missing, not a string, or empty, using the same test the single-key type applies, so that one malformed key does not make the whole set fail.",
+      "why": "Otherwise the key reaches a constructor that throws, and the whole set fails, against the intent that one malformed key cannot poison a set.",
+      "check": "Look for set-parsing loops that construct each key without first applying the key's own validity test, so that one bad member throws and the whole set fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Supply type information to a collection when it is constructed or parsed, through constructor and Parse overloads, instead of adding a method that re-types the items after the fact.",
+      "why": "Re-typing builds each item twice, and a caller can hold an untyped instance by mistake.",
+      "check": "Look for new methods like `WithKeyTypes(...)` that rebuild an already-parsed collection to attach descriptors.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}
