@@ -28,6 +28,8 @@ export interface Results {
   costUsd: number;
   durationMs: number;
   notShown: string[];
+  // Added lines per file, for the files findings are in.
+  changedLines: Record<string, number[]>;
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -76,7 +78,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   }
   const provider = results.provider === 'anthropic' ? 'Claude API' : 'Amazon Bedrock';
   lines.push(
-    `<sub>Trial: findings appear in the check run, not as review comments yet. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
+    `<sub>Trial: findings are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
 }
