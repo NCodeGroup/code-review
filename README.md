@@ -77,8 +77,13 @@ Comment on a pull request, as a top-level comment, not a reply in a review threa
 
 To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
 
-Each review posts a neutral "Code review" check run with the findings and annotations, and creates or updates one
-summary comment from `ncode-review[bot]`: who reviewed, with which model, how many findings, and the worst severity.
+Each review, all from `ncode-review[bot]`:
+
+- posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
+  with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
+  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
+- creates or updates one summary comment: who reviewed, with which model, how many findings, and the worst severity;
+- posts a neutral "Code review" check run with all the findings and annotations.
 
 ## Opting a repository in
 

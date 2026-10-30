@@ -220,3 +220,26 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
 });
+
+test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
+  const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
+  const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
+  const f = (id: string, file: string, line: number, severity: 'blocker' | 'should-fix' | 'nit' = 'should-fix', title = base.title) =>
+    ({ ...base, id, file, line, severity, title });
+  const changed = { 'src/A.cs': [10, 11, 12, 40], 'src/B.cs': [] };
+  const findings = [f('F1', 'src/A.cs', 11), f('F2', 'src/A.cs', 14, 'nit', 'Other'), f('F3', 'src/A.cs', 30, 'blocker', 'Far away'), f('F4', 'src/B.cs', 5, 'nit', 'Unchanged file'), f('F5', 'src/C.cs', 1, 'nit', 'Seen')];
+  const posted = parsePosted([{ path: 'src/C.cs', line: 9, body: threadBody(findings[4]!) }]);
+  assert.equal(posted[0]!.fingerprint, fingerprint(findings[4]!));
+  const placement = placeFindings(findings, changed, posted);
+  assert.deepEqual(placement.inline.map((p) => [p.finding.id, p.line]), [['F1', 11], ['F2', 12]]);
+  assert.deepEqual(placement.inBody.map((f) => f.id), ['F3', 'F4']);
+  assert.deepEqual(placement.alreadyPosted.map((f) => f.id), ['F5']);
+  assert.equal(fingerprint(f('X', 'a', 1, 'nit', 'Missing  null-check!')), fingerprint(f('Y', 'a', 99, 'nit', 'missing null check')));
+});
+
+test('threadBody escapes HTML and carries the finding marker', async () => {
+  const { threadBody } = await import('../src/threads.ts');
+  const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
+  assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
+  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker -->$/);
+});
