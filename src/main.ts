@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { commandFromEvent } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
-import { gather, readPullRequest } from './gather.ts';
+import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
@@ -32,6 +32,22 @@ function take(name: string): string | undefined {
 function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
   const all = changedLines(diff);
   return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
+}
+
+// The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
+// text could steer the review.
+async function readClosedIssues(repository: string, numbers: number[], token: string | undefined) {
+  const issues: { number: number; title: string; body: string }[] = [];
+  for (const number of numbers) {
+    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}`, {
+      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) continue;
+    const issue = (await response.json()) as { title?: string; body?: string; author_association?: string; pull_request?: unknown };
+    if (issue.pull_request || !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(issue.author_association ?? '')) continue;
+    issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
+  }
+  return issues;
 }
 
 async function main(): Promise<void> {
@@ -82,7 +98,8 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
-  const gathered = gather(pullRequest, prPath, basePath);
+  pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
+  const gathered = gather(pullRequest, prPath, basePath, root);
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
@@ -101,6 +118,7 @@ async function main(): Promise<void> {
       provider: choice.provider,
       providerReason: choice.reason,
       summary: outcome.summary,
+      verdict: outcome.verdict,
       findings: outcome.findings,
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => ({
         name,

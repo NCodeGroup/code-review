@@ -21,6 +21,8 @@ export const defaultReviewerTiers: Record<string, ModelTier> = {
   correctness: 'sonnet',
   security: 'sonnet',
   conventions: 'sonnet',
+  architecture: 'sonnet',
+  completeness: 'sonnet',
 };
 
 export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? ''): Record<string, ModelTier> {
@@ -35,7 +37,9 @@ export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? '')
 // Per-run cost caps in USD, checked by the Agent SDK against its own estimate, which can overshoot a little.
 export const budgets = {
   selection: 0.25,
-  specialist: 0.6,
+  // Per reviewer, by model: Opus costs twice what Sonnet does for the same work, and a reviewer cut off at its cap
+  // loses its findings.
+  specialist: { haiku: 0.4, sonnet: 1, opus: 2 } as Record<ModelTier, number>,
   synthesis: 0.75,
   run: 4,
 };
@@ -46,6 +50,9 @@ export const maxTurns = { specialist: 30 };
 export const maxDiffChars = 240_000;
 export const maxConventionChars = 40_000;
 export const maxPullRequestTextChars = 8_000;
+export const maxIssueChars = 8_000;
 
 // Inline findings worth showing on one pull request.
-export const maxFindings = 15;
+// The maintainer prefers a noisy review to a quiet one: extra findings get an answer, missed ones get merged.
+export const maxFindings = 40;
+export const minConfidence = 0.3;

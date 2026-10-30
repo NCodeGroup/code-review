@@ -4,6 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxConventionChars, maxDiffChars, maxPullRequestTextChars } from './config.ts';
+import { readDecisions, type Decision } from './context.ts';
+export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
   repository: string;
@@ -11,6 +13,8 @@ export interface PullRequest {
   title: string;
   // Present only when the author has write access; anyone else's text stays out of the prompts.
   body?: string;
+  // Issues the description says it closes, each present only when its author has write access.
+  issues?: { number: number; title: string; body: string }[];
   author: string;
   authorAssociation: string;
   draft: boolean;
@@ -35,6 +39,10 @@ export interface Gathered {
   conventions: string;
   // Only the conventions reviewer gets these: they're large.
   reviewRules: RuleFile[];
+  // NCodeGroup-wide guidance the training learned, one file per topic, for the changed files.
+  guidance: RuleFile[];
+  // The repository's accepted decision records, from the default branch.
+  decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
 }
@@ -204,35 +212,32 @@ export interface RuleFile {
 // .github/instructions/*.instructions.md whose applyTo matches a changed file, without its tool-enforced rules. The
 // most specific files come first; ones that apply to everything (**) come last.
 export function readReviewRules(basePath: string, changed: string[]): RuleFile[] {
-  const folder = path.join(basePath, '.github', 'instructions');
+  return readRuleFolder(path.join(basePath, '.github', 'instructions'), '.instructions.md', changed, '.github/instructions');
+}
+
+// NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes.
+export function readGuidance(engineRoot: string, changed: string[]): RuleFile[] {
+  return readRuleFolder(path.join(engineRoot, 'guidance'), '.md', changed, 'NCodeGroup guidance');
+}
+
+function readRuleFolder(folder: string, suffix: string, changed: string[], label: string): RuleFile[] {
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
-  for (const name of readdirSync(folder).filter((n) => n.endsWith('.instructions.md')).sort()) {
+  for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
     const { fields, body } = frontmatter(readFileSync(path.join(folder, name), 'utf8'));
     const globs = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
     const patterns = globs.map(globToRegExp);
     if (!changed.some((file) => patterns.some((p) => p.test(file)))) continue;
-    files.push({ name, globs, text: `From .github/instructions/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` });
+    files.push({ name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` });
   }
   const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
   return files.sort((a, b) => general(a) - general(b));
 }
 
-// Packs rule files into batches of at most `budget` characters, one conventions call each. A file bigger than the
-// budget gets a batch of its own, cut to fit.
-export function batchRules(files: RuleFile[], budget: number): string[] {
-  const batches: string[][] = [];
-  let size = budget;
-  for (const file of files) {
-    const text = file.text.length > budget ? `${file.text.slice(0, budget - 40)}\n[rules cut to fit]` : file.text;
-    if (size + text.length > budget) {
-      batches.push([]);
-      size = 0;
-    }
-    batches.at(-1)!.push(text);
-    size += text.length + 2;
-  }
-  return batches.map((b) => b.join('\n\n'));
+// The issue numbers a description closes ("Closes #12", "fixes #3", "Resolves #7").
+export function closedIssues(body: string | undefined): number[] {
+  const numbers = [...(body ?? '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => Number(m[1]));
+  return [...new Set(numbers)].slice(0, 5);
 }
 
 export function readPullRequest(event: any, repository: string): PullRequest {
@@ -254,7 +259,8 @@ export function readPullRequest(event: any, repository: string): PullRequest {
   };
 }
 
-export function gather(pullRequest: PullRequest, prPath: string, basePath: string): Gathered {
+// engineRoot, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
+export function gather(pullRequest: PullRequest, prPath: string, basePath: string, engineRoot?: string): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
   // the checkout, and the check run belongs on the commit that was reviewed.
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
@@ -267,5 +273,5 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const commits = writers.has(pullRequest.authorAssociation)
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
-  return { pullRequest, mergeBase, files, diff, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), commits };
+  return { pullRequest, mergeBase, files, diff, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: engineRoot ? readGuidance(engineRoot, reviewed) : [], decisions: readDecisions(basePath), commits };
 }

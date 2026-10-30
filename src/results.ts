@@ -2,7 +2,7 @@
 
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import type { Finding, ReviewedFinding, Severity } from './review.ts';
+import type { Finding, ReviewedFinding, Severity, Verdict } from './review.ts';
 
 export interface ReviewerResult {
   name: string;
@@ -20,6 +20,7 @@ export interface Results {
   provider: Provider;
   providerReason: string;
   summary: string;
+  verdict: Verdict;
   findings: ReviewedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];
@@ -35,6 +36,7 @@ export interface Results {
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
 const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
+export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', 'request-changes': '⛔ Request changes', comment: '💬 Comment' };
 
 export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | undefined {
   return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
@@ -54,6 +56,8 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   const lines = [
     summaryMarker,
     '### 🤖 Review complete',
+    '',
+    `**Verdict: ${verdictLabel[results.verdict]}** — ${results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' ')}`,
     '',
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
     '',
@@ -99,6 +103,8 @@ export function checkTitle(results: Results): string {
 export function checkSummary(results: Results): string {
   const cost = `$${results.costUsd.toFixed(2)}`;
   const lines = [
+    `**Verdict: ${verdictLabel[results.verdict]}**`,
+    '',
     results.summary.replace(/</g, '&lt;'),
     '',
     `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,

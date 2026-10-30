@@ -2,7 +2,7 @@
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { HookCallback, Options, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, Options, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,9 @@ export interface AgentRun {
   proxyUrl: string;
   // The pull request's checkout. Tools may read only inside it; without it the agent gets no tools.
   checkout?: string;
+  // The working folder, outside the checkout. Reviewers of one review share it: Claude Code names its working folder in
+  // the system prompt, so a folder of their own would give each reviewer a different prompt prefix and no shared cache.
+  workdir?: string;
 }
 
 export interface CallRecord {
@@ -114,12 +117,34 @@ export interface AgentRequest {
   role: string;
   tier: ModelTier;
   systemPrompt: string;
-  prompt: string;
+  // Separate blocks let a later call reuse the cache of a block it shares with an earlier one: a cached prefix is found
+  // only at a block boundary, so the part several reviewers share goes in its own first block.
+  prompt: string | string[];
   schema: Record<string, unknown>;
   maxTurns: number;
   budgetUsd: number;
   // False for a call whose prompt nothing else will reuse.
   cache?: boolean;
+}
+
+function promptInput(prompt: string | string[]): string | AsyncIterable<SDKUserMessage> {
+  if (typeof prompt === 'string') return prompt;
+  const message: SDKUserMessage = {
+    type: 'user',
+    // A cache entry exists only where a request marks a breakpoint, so every block but the last gets one.
+    message: {
+      role: 'user',
+      content: prompt.filter(Boolean).map((text, i, blocks) => ({
+        type: 'text' as const,
+        text,
+        ...(i < blocks.length - 1 ? { cache_control: { type: 'ephemeral' as const } } : {}),
+      })),
+    },
+    parent_tool_use_id: null,
+  };
+  return (async function* () {
+    yield message;
+  })();
 }
 
 export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> {
@@ -130,7 +155,7 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
     model,
     systemPrompt: request.systemPrompt,
     // Outside the checkout, so nothing in it is treated as project configuration.
-    cwd: home,
+    cwd: run.workdir ?? home,
     ...(run.checkout ? { additionalDirectories: [run.checkout] } : {}),
     settingSources: [],
     mcpServers: {},
@@ -149,7 +174,7 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
   let result: SDKResultMessage | undefined;
   let error: string | undefined;
   try {
-    for await (const message of query({ prompt: request.prompt, options })) {
+    for await (const message of query({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
     }
   } catch (e) {
