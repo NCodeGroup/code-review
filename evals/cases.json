@@ -1,0 +1,484 @@
+[
+  {
+    "id": "heap-allocation-key-export",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 316,
+    "title": "feat(secrets): store the public half of generated private keys",
+    "body": "Every generated private asymmetric key now stores its SubjectPublicKeyInfo (SPKI) in the new `PersistedSecret.PublicKey`, so the management `GET …/secrets/{secretId}/public-key` endpoints (servers, tenants, resource servers, clients) and the RFC 7591/7592 registration `jwks` read only public data and no longer unprotect the private key under the owner's master key.\r\n\r\n- The key-type descriptor that generates a key produces its SPKI (`GeneratedSecretKeyMaterial.PublicKey`, `required`); `PersistedSecret.HasPublicKey()` and `DeserializePublicSecret` read it, and `ISecretPublicKeyConverter.Convert(PersistedSecret)` replaces the protector overload.\r\n- The `AddSecretPublicKey` migration only adds a nullable column (expand-only).\r\n- A key generated before this change has no stored public key: its endpoint answers `404` and the registration `jwks` omits it until the key is rotated. No backfill (pre-release, ADR-0025).\r\n- Recorded as ADR-0268, amending ADR-0058.\r\n\r\nCloses #176\r\n\r\n",
+    "base": "c6b7bde010c09ea7b2fc260e739f9513a33459ca",
+    "head": "4c21421d6a3c176f2e5345a42a625b6bd947ca7a",
+    "expect": [
+      {
+        "concern": "The public key is exported through heap arrays (new byte[] / ArrayBufferWriter), which the allocation ADR (ADR-0116) and the production conventions reserve for APIs that demand an array; use stackalloc or a pooled buffer writer. The same allocation in the sibling key-type descriptors (Okp, Akp and the base SecretKeyTypeDescriptor), which fix #317 also changed, counts."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/316#discussion_r4384614033: Doesn't this violate one of our ADRs about heap allocations?\n"
+  },
+  {
+    "id": "jsondocument-parse",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 382,
+    "title": "refactor: give audit records a CloudTrail-shaped JSON envelope",
+    "body": "Audit events keep their ingestion path (recorders, `IEventPublisher`, `IEventHandler<IAuditEvent>`), but their final shape changes from a flat envelope logged as a text template to one CloudTrail/Auth0-style JSON record: `schema_version`, `event_id` (UUIDv7), `event_time`, `event_name`, `event_category`, `event_source`, `outcome`, `severity`, the lookup keys `tenant_id`/`subject_id`/`client_id`, and `actor`, `request`, `resources`, `error`, `details`. `AuditRecordWriter` produces it, and the log entry (category `NCode.Identity.Audit`, EventId 14005), the span event and the metric attributes all use the same `audit.*` keys, so records can be indexed and pivoted during an incident. Which operations are audited, and their outcomes, do not change; refresh-token replay now logs at Critical.\n\nSteps: new types for actor, resource, error, request, severity, category and source; `ISupportAuditDetails` for event-specific `details`; `AuditRequestFactory` captures the request context; both recorders and every event type migrated; log, trace and metric projections rewritten; old members and bridges removed. Docs: `docs/audit-records.md` (schema, event catalog, indexing, lookups, incident runbook), ADR-0282 and a changelog entry. Breaking public API and log/metric names, acceptable while pre-release (ADR-0025).\n\nA persisted audit store and a management lookup API are follow-ups, not part of this change.\n",
+    "base": "4838623ad0ed266cd865eebbfa95a31b70419f1f",
+    "head": "80cc4fc535025cd319ea084bd1bb7de96280b1f0",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Events/Audit/AuditRecordAttributes.cs",
+        "line": 56,
+        "concern": "JsonDocument.Parse is used where JsonElement.Parse should be, allocating and requiring disposal for no reason."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/382#discussion_r4406631793: You keep introducing JsonDocuemnt.Parse when JsonElement.Parse should be used instead. I think we should ban those older json parsing mechanisms."
+  },
+  {
+    "id": "protocol-field-constants",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 350,
+    "title": "feat(openid-client): push authorization requests (PAR)",
+    "body": "Phase 1b of the BFF (PAR part): `IAuthorizationRequestClient.CreateAuthorizationUriAsync` in `NCode.Identity.OpenId.Client` turns an authorization-code + PKCE `S256` request into the URL the browser is sent to. It pushes the request (RFC 9126) whenever the provider advertises `pushed_authorization_request_endpoint`, so only `client_id` and `request_uri` reach the front channel.\nPAR is required, and the front channel refused, when the provider advertises `require_pushed_authorization_requests` or the new `ClientRegistration.RequirePushedAuthorizationRequests` is set. A PAR endpoint's OAuth error is returned as data; every other failure throws `OpenIdProviderException`.\nThe client derives the `S256` challenge from the caller's verifier, validates the authorization endpoint before pushing, and takes open extension parameters while rejecting the names it writes itself. `ClientRequestSender` gains an overload that adds `client_id` to the push body exactly once, whatever the client-authentication method.\nRecorded in ADR-0275, with the changelog and BFF design doc updated. DPoP, mTLS and phases 2–4 remain, so this does not close the issue.\n\nRefs #123\n",
+    "base": "ac90bfb2d462c2832e6f4e45c4911be7e164dcbf",
+    "head": "93ddda855b3f6ac9f8e1ecc86ceb6fb662ac958d",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Authorization/DefaultAuthorizationRequestClient.cs",
+        "line": 153,
+        "concern": "Protocol field names are hard-coded string literals instead of the shared protocol constants."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/350#discussion_r4396216585: Here and a lot of places including other files, why arent we using constants for protocol fields?"
+  },
+  {
+    "id": "http-status-constants",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 320,
+    "title": "feat(openid-client): add the OpenID protocol client core (BFF phase 1a)",
+    "body": "Phase 1a of the backend-for-frontend ([#123](https://github.com/NCodeGroup/Identity/issues/123)): the reusable server-side OpenID protocol client, `NCode.Identity.OpenId.Client` and `.Abstractions`. The BFF itself is not delivered yet.\n\n- Cached discovery (the issuer must equal the authority) and JWKS, with single-flight refresh and a bounded stale window.\n- An open `IClientAuthenticator` collection: `client_secret_basic`, `client_secret_post` and `private_key_jwt` (audience is the issuer, 60 s lifetime, asymmetric keys only).\n- Authorization-code, refresh, client-credentials and token-exchange requests, and token revocation; OAuth errors come back as data.\n- Credentials come from a named key ring (a keyed `ISecretKeyCollectionProvider`), not from configuration.\n- Endpoints must be `https` (or `http` on loopback); redirects are not followed; responses are size- and time-bounded.\n- Decisions are recorded in ADR-0270. PAR, DPoP, mTLS client authentication and ID-token and logout-token validation are phase 1b.\n\nVerified with 92 unit tests, 4 end-to-end tests against the NCode OP in process, and `./build/dod.ps1 -Fast -Affected` (6,650 tests).\n\nAn end-to-end probe also found an existing OP bug (`client_secret_basic` rejects secrets containing `%` or `+`), filed as #319. It is not part of this change.\n\nRefs #123 (phases 1b to 4 remain, so this does not close it).",
+    "base": "d42eb23c5c5359ebc4caa4c25741004666b88536",
+    "head": "bbc0f45e071cbe5ebfb72ceff482d7bf8831ca09",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Discovery/DefaultProviderMetadataResolver.cs",
+        "line": 100,
+        "concern": "Raw HTTP status code numbers are used instead of the framework's StatusCodes constants."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/320#discussion_r4385248709: There is a better constants class with all the int32s for all the HTTP status codes from microsoft."
+  },
+  {
+    "id": "span-split",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 420,
+    "title": "feat(bff): add the NCode.Identity.Bff core (BFF phase 2)",
+    "body": "BFF phase 2 (`NCode.Identity.Bff`) plus the follow-up backlog: signed and encrypted UserInfo, refresh-token horizon, intermediate CA chains for mutual TLS, a persisted audit store with a management lookup API, backport and prerelease-publishing workflows, and a ban on `JsonDocument` parsing. ADRs 0289–0303 record the decisions.\n\nAlso fixes two critical defects: ECDH-ES leaked its ephemeral private key in the `epk` header, and URI checks accepted relative paths as `file:` URIs on Linux.\n\nRefs #324 (the nuget.org and environment setup remain). Follow-ups: #418, #419.\n\nCloses #394\nCloses #371\nCloses #385\nCloses #410\nCloses #409\nCloses #411\nCloses #398\nCloses #399\nCloses #379\nCloses #377\nCloses #380\nCloses #333\nCloses #334\nCloses #412\nCloses #417\nCloses #416\nCloses #413\nCloses #414\nCloses #415\nCloses #407\nCloses #421\nCloses #386\nCloses #185\nCloses #383\nCloses #384",
+    "base": "da11dfa39d2a8a83b2781b3f84adbd6d9151e601",
+    "head": "a8b922997dbf42786ed3a0c03ace09ea294ec18e",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Bff/Navigation/BffReturnUrls.cs",
+        "line": 54,
+        "concern": "String splitting allocates where the span-based split API (MemoryExtensions.Split / SplitAny with ranges) would avoid it."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/420#discussion_r4414820138: Shouldnt this be using the new modern span based split api?"
+  },
+  {
+    "id": "repeated-hash-buffer",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 341,
+    "title": "feat(openid-client): validate ID tokens in the protocol client",
+    "body": "The protocol client gains `IIdTokenValidator`, the ID-token validation of BFF phase 1b (#123). It verifies the signature against the provider's JWKS under an asymmetric-only algorithm policy, checks `iss`, `aud`, `exp`, `iat`, `typ`, `sub`, `azp`, `nonce` and `max_age`, and checks `at_hash`, `c_hash` and `s_hash` through `SignatureAlgorithm.GetTokenHashFunction` in constant time, so Ed25519 (SHA-512) and Ed448 (SHAKE256, 114 bytes) tokens verify with the hash their algorithm defines.\nA shared `TokenHash` helper in `NCode.Identity.Jose.Abstractions` computes and verifies the left-most-half value; the server's ID-token payload handler now issues its hashes through it, so issuer and checker agree. A hash claim that is present must match, and an absent one is accepted (optional in the code flow).\nAn unknown `kid` triggers one rate-limited JWKS refresh, encrypted ID tokens are rejected, an invalid token comes back as an `IdTokenValidationResult` rather than an exception, and no failure reason contains token text. `OpenIdClientOptions.IdTokenSigningAlgorithms` narrows the permitted algorithms.\nThe decisions are recorded in ADR-0273, with the changelog and BFF design updated.\n\nCloses #335\n",
+    "base": "fd7cd8e378656c7cfd5d28006f2be5ad66f1c1e2",
+    "head": "b0fa155333372a64d08df6ee79b301a96e17e8e6",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Tokens/DefaultIdTokenValidator.cs",
+        "line": 196,
+        "concern": "The hash function is called repeatedly, each call allocating its own buffer; allocate one stack buffer of the hash size once and reuse it."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/341#discussion_r4394731738: There is a bunch of consecutive calls to the hash function occurring here. Is it worth it as an optimization to allocate the stack buffer once that the inside of the function does? I think I used that optimization somewhere else for repeated hashing of the same size?"
+  },
+  {
+    "id": "ibufferwriter-output",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 370,
+    "title": "refactor: make key wrapping a shared secrets abstraction",
+    "body": "Key wrapping becomes one shared secrets abstraction. `IKeyWrapper`, `WrappedKey` and `KeyWrapperNames` replace `IRootKeyProvider`, `RootWrappedKey` and `RootKeyProviderNames`. They move from `NCode.Identity.Secrets.Persistence.Abstractions` to `NCode.Identity.Secrets.Abstractions` (namespace `NCode.Identity.Secrets.KeyWrapping`).\nThe in-process, AWS KMS, Azure Key Vault, Google Cloud KMS and offline recovery wrappers all implement the contract. The recovery wrapper is wrap-only and is never registered as a root candidate, so `SecretProtection:RootKeyProvider` cannot select it.\nThe adapter packages are renamed to `NCode.Identity.Secrets.KeyWrapping.AwsKms`, `.AzureKeyVault` and `.GoogleCloudKms`, with matching `<Vendor>KeyWrapper`, `<Vendor>KeyWrapperOptions` and `Add<Vendor>KeyWrapper` names. JOSE key management stays separate: it is a synchronous algorithm with RFC-fixed formats, not a storable async wrapper.\nBehavior is unchanged: wrapped-key formats, key ids, wrapper names, configuration keys and sections, `MasterKeys` columns, messages and DI lifetimes are the same, and a characterization test pins the AES-GCM root wrap layout. Recorded in ADR-0278, which amends ADR-0235 and ADR-0260; the breaking renames are listed in `CHANGELOG.md`.\n",
+    "base": "6ec9df7631e8bf21814d1f81d0a30bf51058294d",
+    "head": "eae13a2348641a766f34626425a3f446b86d6462",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Secrets.Abstractions/KeyWrapping/IKeyWrapper.cs",
+        "line": 85,
+        "concern": "The API writes to a caller-sized destination although callers can't know the output size in advance; it should write to an IBufferWriter<byte>."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/Identity/pull/370#discussion_r4404214724: Will consumers always know the correct size? if not, shouldnt we use IBufferWriter?"
+  },
+  {
+    "id": "secret-buffer-length",
+    "repository": "NCodeGroup/Identity",
+    "title": "Use secure memory",
+    "body": "",
+    "base": "6945c6ed5cc8b5fdbebf8ad07f5daf89f6932e0c",
+    "head": "536de7da77ebde2b0158e7f5403dfd7c2bee01e3",
+    "expect": [
+      {
+        "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+        "line": 73,
+        "concern": "The rented pool memory can be longer than requested, and the secret is replaced and unescaped over the whole block, so the decoded secret carries the unused remainder; a client_secret_basic secret containing % or + then never matches (401). Slice the memory to the encoded length."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Fixed by #323 (93544fca)."
+  },
+  {
+    "id": "lenient-ascii-encoding",
+    "repository": "NCodeGroup/Identity",
+    "title": "feat(jose)!: JWS/JWE JSON serialization (F36) + explicit typ validation (F35)",
+    "body": "Add the RFC 7515 7.2 / RFC 7516 7.2 General and Flattened JSON serializations (multiple signatures/recipients, unprotected headers, JWE aad) by unifying the encode options around a JoseSerializationFormat property; compact becomes the degenerate one-element case. Decode auto-detects the JSON serialization on the existing Decode/Deserialize surface and matches each signature/recipient against the supplied key.\n\nBREAKING CHANGE: removes JoseEncodingOptions and the single-credential ExtraHeaders option shapes; shared enc/zip move to the operation level, per-recipient key management uses the new JoseKeyManagementCredentials, and KeyManagementAlgorithm.SupportsKeyWrapping gates multi-recipient encodes.\n\nAlso lands the already-complete explicit typ/media-type validation hardening (RFC 8725 + RFC 9068 at+jwt): ValidateJwtParameters.ValidateTokenType, JoseTokenTypes.Normalize/AreSame, and the at+jwt default.\n\nCloses F36 and F35.",
+    "base": "d2c4d981c8c2c0857a2bc3ec98579aafa6bb93e7",
+    "head": "b4e4d668f99529a7dcac45adc02aa171b1c12df7",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Jose/JoseSerializer.Jwe.Json.cs",
+        "line": 289,
+        "concern": "Encoding.ASCII silently replaces non-ASCII characters with \"?\" instead of failing, so the JWE associated data (and the signed or authenticated input) is not the real input; use a strict encoding that throws on invalid input."
+      },
+      {
+        "file": "src/NCode.Identity.Jose/JoseSerializer.Json.Decode.cs",
+        "line": 426,
+        "concern": "Encoding.ASCII silently replaces non-ASCII characters with \"?\" instead of failing; use a strict encoding that throws on invalid input."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Fixed by #309 (163ad04c); ADR-0266."
+  },
+  {
+    "id": "accepted-no-backfill",
+    "repository": "NCodeGroup/Identity",
+    "title": "F70: never reissue a retired tenant identifier or issuer",
+    "body": "",
+    "base": "4df7842905f7b26b58e6b1248ac7bdcb64180b4e",
+    "head": "06b102493cfe52574c3222c01ed0a03c19a95366",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "src/NCode.Identity.OpenId.Host.Database/Migrations/OpenId/20261020201802_RetireTenantIdentifiersAndIssuers.cs",
+        "concern": "The migration creates the RetiredIssuers and RetiredTenants tables without backfilling already-deleted tenants or retired issuers. ADR-0189 accepts this."
+      }
+    ],
+    "source": "BRANCH-REVIEW.md finding #12; ADR-0189 accepts the behavior."
+  },
+  {
+    "id": "comments-320-ba9c52b8b",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 320,
+    "title": "feat(openid-client): add the OpenID protocol client core (BFF phase 1a)",
+    "body": "Phase 1a of the backend-for-frontend ([#123](https://github.com/NCodeGroup/Identity/issues/123)): the reusable server-side OpenID protocol client, `NCode.Identity.OpenId.Client` and `.Abstractions`. The BFF itself is not delivered yet.\n\n- Cached discovery (the issuer must equal the authority) and JWKS, with single-flight refresh and a bounded stale window.\n- An open `IClientAuthenticator` collection: `client_secret_basic`, `client_secret_post` and `private_key_jwt` (audience is the issuer, 60 s lifetime, asymmetric keys only).\n- Authorization-code, refresh, client-credentials and token-exchange requests, and token revocation; OAuth errors come back as data.\n- Credentials come from a named key ring (a keyed `ISecretKeyCollectionProvider`), not from configuration.\n- Endpoints must be `https` (or `http` on loopback); redirects are not followed; responses are size- and time-bounded.\n- Decisions are recorded in ADR-0270. PAR, DPoP, mTLS client authentication and ID-token and logout-token validation are phase 1b.\n\nVerified with 92 unit tests, 4 end-to-end tests against the NCode OP in process, and `./build/dod.ps1 -Fast -Affected` (6,650 tests).\n\nAn end-to-end probe also found an existing OP bug (`client_secret_basic` rejects secrets containing `%` or `+`), filed as #319. It is not part of this change.\n\nRefs #123 (phases 1b to 4 remain, so this does not close it).",
+    "base": "d42eb23c5c5359ebc4caa4c25741004666b88536",
+    "head": "ba9c52b8b7fcfdd3fbf5539d5592cf22182d559a",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.OpenId.Client.Abstractions/ProtocolError.cs",
+        "line": 39,
+        "concern": "The maintainer's review comment: I thought it was better to use `int` vs the enum which might be too restrictive?\nWhat the author changed or answered: Check other places that the enum is used as well."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Authentication/PrivateKeyJwtClientAuthenticator.cs",
+        "line": 57,
+        "concern": "The maintainer's review comment: You sure its best to hard code these?\nWhat the author changed or answered: Good catch, no: fixed in 34bcfbe5. The preference order is policy, so it is now `OpenIdClientOptions.ClientAssertionSigningAlgorithms` (most preferred first, as JOSE `alg` names). Empty keeps the previous default order, which is now built from the `AlgorithmCodes.DigitalSignature` constants rather than string literals. The list is still filtered to what the provider advertises and to the asymmetri"
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 2 review comments on #320 at ba9c52b8b that led to a change."
+  },
+  {
+    "id": "comments-341-b0fa15533",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 341,
+    "title": "feat(openid-client): validate ID tokens in the protocol client",
+    "body": "The protocol client gains `IIdTokenValidator`, the ID-token validation of BFF phase 1b (#123). It verifies the signature against the provider's JWKS under an asymmetric-only algorithm policy, checks `iss`, `aud`, `exp`, `iat`, `typ`, `sub`, `azp`, `nonce` and `max_age`, and checks `at_hash`, `c_hash` and `s_hash` through `SignatureAlgorithm.GetTokenHashFunction` in constant time, so Ed25519 (SHA-512) and Ed448 (SHAKE256, 114 bytes) tokens verify with the hash their algorithm defines.\nA shared `TokenHash` helper in `NCode.Identity.Jose.Abstractions` computes and verifies the left-most-half value; the server's ID-token payload handler now issues its hashes through it, so issuer and checker agree. A hash claim that is present must match, and an absent one is accepted (optional in the code flow).\nAn unknown `kid` triggers one rate-limited JWKS refresh, encrypted ID tokens are rejected, an invalid token comes back as an `IdTokenValidationResult` rather than an exception, and no failure reason contains token text. `OpenIdClientOptions.IdTokenSigningAlgorithms` narrows the permitted algorithms.\nThe decisions are recorded in ADR-0273, with the changelog and BFF design updated.\n\nCloses #335\n",
+    "base": "fd7cd8e378656c7cfd5d28006f2be5ad66f1c1e2",
+    "head": "b0fa155333372a64d08df6ee79b301a96e17e8e6",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Jose.Abstractions/Algorithms/TokenHash.cs",
+        "line": 52,
+        "concern": "The maintainer's review comment: here and everywhere else we use `string`: doesn't string support automatic conversions to ReadonlySpan<char>? and if so, wouldnt that be a better data type?\nWhat the author changed or answered: Yes, a `string` converts implicitly to `ReadOnlySpan<char>`, so a span parameter accepts every existing caller and also lets a caller pass a slice without allocating. Done: `TokenHash.Compute` and `TokenHash.Verify` now take `ReadOnlySpan<char>` for the value and the claim, and the old `int`/`string` overloads are removed (fa165b57, ef6be324). The request properties on `IdTokenValidationRequest` s"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Options/OpenIdClientOptions.cs",
+        "line": 73,
+        "concern": "The maintainer's review comment: You sure this should be a .NET configuration option vs an OpenIdClient setting?\nWhat the author changed or answered: Agreed, it shouldn't be a global option: OIDC registers the ID-token signing algorithm per client (`id_token_signed_response_alg`), and ADR-0270 says the protocol client binds no process-wide configuration. Moved to `ClientRegistration.IdTokenSigningAlgorithms` (`init`, default `null`; the accessor rejects a blank entry, `none` and duplicates), which the validator reads (2fce4bb2, 2f7c2d25). `Open"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Tokens/DefaultIdTokenValidator.cs",
+        "line": 43,
+        "concern": "The maintainer's review comment: Dont we have a public constant for this somewhere?\nWhat the author changed or answered: Yes: `AlgorithmCodes.DigitalSignature.None`, which `DefaultJwtValidator` already uses. The validator now compares with it and the private constant is gone (2f7c2d25). `PrivateKeyJwtClientAuthenticator` still has its own private `\"none\"` constant from phase 1a; I left it because it is outside this change, and it is a one-line swap if you want it in a separate pull request."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 3 review comments on #341 at b0fa15533 that led to a change."
+  },
+  {
+    "id": "comments-375-fc44a88f7",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 375,
+    "title": "refactor: share wrapped-key ciphertext decoding across key wrappers",
+    "body": "Adds `WrappedKeyCiphertext` beside `WrappedKey` in `NCode.Identity.Secrets.KeyWrapping`. It has `GetByteCount` plus two `Decode` overloads, one writing into a caller-supplied span and one into an `IBufferWriter<byte>`, all using one strict base64url decoder (`NCode.Base64Url`), with tests.\nThe AES-GCM, AWS KMS, Azure Key Vault and Google Cloud KMS wrappers now decode through the span overload, because each needs one contiguous buffer. As a result every wrapper throws `CryptographicException` with the same messages, and empty ciphertext reports \"The wrapped key is empty.\" everywhere.\nFormat-specific checks, such as AES-GCM's minimum length, and encoding stay in each wrapper. ADR-0279 has a new decision item for the helper, and the changelog records it. The branch merges `main` to resolve a `CHANGELOG.md` conflict with #372.\n\nCloses #373\n",
+    "base": "691316173d650e409e2a81c2f0b17d92c4f9dad1",
+    "head": "fc44a88f730bf52e8cba78c3e3d2759a4a473c69",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Secrets.Abstractions/KeyWrapping/WrappedKeyCiphertext.cs",
+        "line": 60,
+        "concern": "The maintainer's review comment: Shouldnt we either:\n1. Have an additional overload for IBufferWriter\n2. Or only have the IBufferWriter variant?\nWhat the author changed or answered: Autopilot: Going with option 1, an additional overload, rather than making the writer the only form.\n\n- **Added** `WrappedKeyCiphertext.Decode<TWriter>(ReadOnlySpan<char> ciphertext, ref TWriter destination) where TWriter : IBufferWriter<byte>, allows ref struct`. This is the ADR-0116 writer shape, with `GetByteCount` as its sizing method. It validates the whole text before it touches the writer, "
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 1 review comments on #375 at fc44a88f7 that led to a change."
+  },
+  {
+    "id": "comments-382-6cc9369cb",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 382,
+    "title": "refactor: give audit records a CloudTrail-shaped JSON envelope",
+    "body": "Audit events keep their ingestion path (recorders, `IEventPublisher`, `IEventHandler<IAuditEvent>`), but their final shape changes from a flat envelope logged as a text template to one CloudTrail/Auth0-style JSON record: `schema_version`, `event_id` (UUIDv7), `event_time`, `event_name`, `event_category`, `event_source`, `outcome`, `severity`, the lookup keys `tenant_id`/`subject_id`/`client_id`, and `actor`, `request`, `resources`, `error`, `details`. `AuditRecordWriter` produces it, and the log entry (category `NCode.Identity.Audit`, EventId 14005), the span event and the metric attributes all use the same `audit.*` keys, so records can be indexed and pivoted during an incident. Which operations are audited, and their outcomes, do not change; refresh-token replay now logs at Critical.\n\nSteps: new types for actor, resource, error, request, severity, category and source; `ISupportAuditDetails` for event-specific `details`; `AuditRequestFactory` captures the request context; both recorders and every event type migrated; log, trace and metric projections rewritten; old members and bridges removed. Docs: `docs/audit-records.md` (schema, event catalog, indexing, lookups, incident runbook), ADR-0282 and a changelog entry. Breaking public API and log/metric names, acceptable while pre-release (ADR-0025).\n\nA persisted audit store and a management lookup API are follow-ups, not part of this change.\n",
+    "base": "4838623ad0ed266cd865eebbfa95a31b70419f1f",
+    "head": "6cc9369cb492a99b651749f5d241466f72ba3620",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Events.Abstractions/Audit/AuditRecordWriter.cs",
+        "line": 100,
+        "concern": "The maintainer's review comment: Should we instead use `IBufferWriter` ?\nWhat the author changed or answered: Yes. Returning a `byte[]` went against our own buffer convention (ADR-0116), so it's gone:\n\n- `SerializeToUtf8Bytes` is removed. `AuditRecordWriter.Write(IBufferWriter<byte> output, IAuditEvent auditEvent)` sits beside the `Utf8JsonWriter` overload (9c41c41d, c608c86e).\n- `AuditRecordAttributes` rents `BufferFactory.CreatePooledBufferWriter(isSensitive: false)` and parses the record from its `Read"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication.Abstractions/Auditing/AuditRequestFactory.cs",
+        "line": 48,
+        "concern": "The maintainer's review comment: I thought endpoint can be determined from HttpContext via extension methods? I could be wrong.\nWhat the author changed or answered: You're right. `DefaultOpenIdContext.EndpointName` is itself read from `HttpContext.GetEndpoint()`'s `IEndpointNameMetadata`, and the management recorder read the same metadata, so passing it in was redundant.\n\n- `AuditRequestFactory.Create(HttpContext)` derives the endpoint itself: the endpoint's `IEndpointNameMetadata.EndpointName`, else its `DisplayName`. That is the rule the management recorder"
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 2 review comments on #382 at 6cc9369cb that led to a change."
+  },
+  {
+    "id": "comments-382-8cfeb868e",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 382,
+    "title": "refactor: give audit records a CloudTrail-shaped JSON envelope",
+    "body": "Audit events keep their ingestion path (recorders, `IEventPublisher`, `IEventHandler<IAuditEvent>`), but their final shape changes from a flat envelope logged as a text template to one CloudTrail/Auth0-style JSON record: `schema_version`, `event_id` (UUIDv7), `event_time`, `event_name`, `event_category`, `event_source`, `outcome`, `severity`, the lookup keys `tenant_id`/`subject_id`/`client_id`, and `actor`, `request`, `resources`, `error`, `details`. `AuditRecordWriter` produces it, and the log entry (category `NCode.Identity.Audit`, EventId 14005), the span event and the metric attributes all use the same `audit.*` keys, so records can be indexed and pivoted during an incident. Which operations are audited, and their outcomes, do not change; refresh-token replay now logs at Critical.\n\nSteps: new types for actor, resource, error, request, severity, category and source; `ISupportAuditDetails` for event-specific `details`; `AuditRequestFactory` captures the request context; both recorders and every event type migrated; log, trace and metric projections rewritten; old members and bridges removed. Docs: `docs/audit-records.md` (schema, event catalog, indexing, lookups, incident runbook), ADR-0282 and a changelog entry. Breaking public API and log/metric names, acceptable while pre-release (ADR-0025).\n\nA persisted audit store and a management lookup API are follow-ups, not part of this change.\n",
+    "base": "4838623ad0ed266cd865eebbfa95a31b70419f1f",
+    "head": "8cfeb868e87df321704e01069e3868bc990b3674",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Events.Abstractions/Audit/AuditRecordWriter.cs",
+        "line": 48,
+        "concern": "The maintainer's review comment: For consistency, should the writer be the last argument?\nWhat the author changed or answered: Yes. It's event first, destination last, as `WrappedKeyCiphertext.Decode(ciphertext, ref destination)` and the key wrappers' `CopyPlaintext(source, destination)` already do. The overload is `Write(IAuditEvent auditEvent, Utf8JsonWriter writer)` (849a729c), and the writer-first overloads are removed (6c17409c)."
+      },
+      {
+        "file": "src/NCode.Identity.Events.Abstractions/Audit/AuditRecordWriter.cs",
+        "line": 100,
+        "concern": "The maintainer's review comment: For consistency, should the writer be the last argument? and support byref struct?\nWhat the author changed or answered: Yes to both. The buffer overload is `Write<TWriter>(IAuditEvent auditEvent, ref TWriter destination) where TWriter : IBufferWriter<byte>, allows ref struct`, following the ADR-0116 producer shape (849a729c).\n\nOne trade-off: `Utf8JsonWriter` can't hold a ref struct, so this overload writes the record into a pooled `BufferFactory.CreatePooledBufferWriter(isSensitive: false)` buffer, then copies the "
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 2 review comments on #382 at 8cfeb868e that led to a change."
+  },
+  {
+    "id": "comments-420-a8b922997",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 420,
+    "title": "feat(bff): add the NCode.Identity.Bff core (BFF phase 2)",
+    "body": "BFF phase 2 (`NCode.Identity.Bff`) plus the follow-up backlog: signed and encrypted UserInfo, refresh-token horizon, intermediate CA chains for mutual TLS, a persisted audit store with a management lookup API, backport and prerelease-publishing workflows, and a ban on `JsonDocument` parsing. ADRs 0289–0303 record the decisions.\n\nAlso fixes two critical defects: ECDH-ES leaked its ephemeral private key in the `epk` header, and URI checks accepted relative paths as `file:` URIs on Linux.\n\nRefs #324 (the nuget.org and environment setup remain). Follow-ups: #418, #419.\n\nCloses #394\nCloses #371\nCloses #385\nCloses #410\nCloses #409\nCloses #411\nCloses #398\nCloses #399\nCloses #379\nCloses #377\nCloses #380\nCloses #333\nCloses #334\nCloses #412\nCloses #417\nCloses #416\nCloses #413\nCloses #414\nCloses #415\nCloses #407\nCloses #421\nCloses #386\nCloses #185\nCloses #383\nCloses #384",
+    "base": "da11dfa39d2a8a83b2781b3f84adbd6d9151e601",
+    "head": "a8b922997dbf42786ed3a0c03ace09ea294ec18e",
+    "expect": [
+      {
+        "file": "src/NCode.Identity.Bff/Login/BffLoginTransactionService.cs",
+        "line": 123,
+        "concern": "The maintainer's review comment: Any reason we are not using the new and modern span api?\nWhat the author changed or answered: Yes. Fixed in 92f14e76: the key is encoded into a `stackalloc` span with `SecureEncoding.UTF8.GetBytes(key, keyBytes)` instead of `GetBytes(key)`. The decrypted payload is read through a sensitive span lease instead of `ArrayBufferWriter.WrittenSpan`."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Logout/BffLogoutHandler.cs",
+        "line": 164,
+        "concern": "The maintainer's review comment: Same question. Any reason we are not using the new span api?\nWhat the author changed or answered: Fixed in c88b7faf. `IsGuardMatch` now compares the two strings' UTF-16 bytes in fixed time, with no encoding and no allocation: `CryptographicOperations.FixedTimeEquals(MemoryMarshal.AsBytes(sid.AsSpan()), MemoryMarshal.AsBytes(guard.AsSpan()))`."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Navigation/BffReturnUrls.cs",
+        "line": 101,
+        "concern": "The maintainer's review comment: Should we be using span ranges here?\nWhat the author changed or answered: Yes. Fixed in bece64c9: `GetPath` returns a `ReadOnlySpan<char>` slice, and `IsAllowed` compares with span `StartsWith`/`Equals`, so no substring is allocated."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffKeyDerivation.cs",
+        "line": 132,
+        "concern": "The maintainer's review comment: Shouldnt this use the new span api?\nWhat the author changed or answered: It should. Fixed in 78ea3a4f. The four HKDF purposes are now `ReadOnlySpan<byte>` UTF-8 literal properties (`\"ncode.bff.session.id\"u8`, and so on), passed straight to `HKDF.DeriveKey(…, info: purpose)`. A new test pins the derived key to the HKDF of the same label, so existing keys don't change. The production instructions now carry the rule too (47674998): a fixed protocol label is a `u8` propert"
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffKeyDerivation.cs",
+        "line": 182,
+        "concern": "The maintainer's review comment: Same question about span api?\nWhat the author changed or answered: Fixed in 78ea3a4f. `Fingerprint` encodes into a sensitive rented buffer (the value is a refresh token), hashes into a `stackalloc` span, then base64url-encodes it. A test pins the result to base64url(SHA-256(UTF-8))."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffPayloadProtector.cs",
+        "line": 55,
+        "concern": "The maintainer's review comment: Same question about span api?\nWhat the author changed or answered: Fixed in 05217163. `Protect` now writes into a `Span<byte>` the caller supplies, sized by the new `GetProtectedLength`. The login transaction protects into a rented buffer (92f14e76). The session codec still allocates one exactly sized array, on purpose: `BffSessionRecord.ProtectedPayload` belongs to the record and outlives the call."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffSessionCodec.cs",
+        "line": 117,
+        "concern": "The maintainer's review comment: Same question about span api?\nWhat the author changed or answered: Fixed in 1060d303. `WriteAssociatedData<TWriter>` writes three things straight into a pooled writer: the store key (UTF-8), the big-endian version, and the metadata JSON. `Encode` and `TryDecode` pass its span lease. The method is generic over `TWriter : IBufferWriter<byte>` because CA1859 rejects an interface parameter here. The bytes are the same as before, so stored sessions still decrypt."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffSessionRecordSerializer.cs",
+        "line": 58,
+        "concern": "The maintainer's review comment: Same question about span api?\nWhat the author changed or answered: Fixed in 2d08d1a4. `Serialize` writes the metadata into a pooled writer and the envelope into a rented `Memory<byte>`, and returns the rental (`using var lease = Serialize(…, out var value)`). `IExpiringValueSet` now documents that a write copies the value before its task completes; both the in-process set and the Valkey set do. So the store returns the rental right after the call."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffSessionRecordSerializer.cs",
+        "line": 66,
+        "concern": "The maintainer's review comment: Shouldnt this be using IBufferWriter?\nWhat the author changed or answered: Not for this one, because `TryDeserialize` produces no bytes. It parses the metadata from a slice of the stored value, and returns the protected payload as a `ReadOnlyMemory<byte>` slice of the same buffer, so nothing is copied. The write side was the one that needed `IBufferWriter`: `WriteMetadata(metadata, IBufferWriter<byte>)` and the pooled `Serialize` in 2d08d1a4."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Sessions/BffStoreKeys.cs",
+        "line": 65,
+        "concern": "The maintainer's review comment: Same question about span api?\nWhat the author changed or answered: Fixed in c88b7faf. `Digest` rents one buffer of the exact size, writes both length prefixes and both UTF-8 encodings in place, and hashes into a `stackalloc` span. A new test pins the digest to the length-prefixed layout, so the index keys don't change."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication/Endpoints/Registration/DefaultSectorIdentifierValidator.cs",
+        "line": 174,
+        "concern": "The maintainer's review comment: This is not a json document.\nWhat the author changed or answered: Right. Renamed to `jsonElement` in 389f28a6. My #386 migration script introduced this naming, so I fixed it everywhere:\n\n- the five production locals (389f28a6)\n- the `IPersistedPayloadSerializer.Deserialize` parameter (75d01874)\n- about 50 test files (277f5380)\n\nThe production instructions now say to name a parsed `JsonElement` for what it holds, or `jsonElement`, never `document` (47674998)."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Http/ProviderHttpClient.cs",
+        "line": 125,
+        "concern": "The maintainer's review comment: this is not a josn document\nWhat the author changed or answered: Renamed to `jsonElement` in 389f28a6; the sector-validator thread lists the full sweep. This method also got a fix from the review: an `application/jwt` body that isn't valid UTF-8 now surfaces as `OpenIdProviderException` (2381d45b)."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.LocalDev/Frontend/FrontendPins.cs",
+        "line": 69,
+        "concern": "The maintainer's review comment: this is not a json document\nWhat the author changed or answered: Renamed to `jsonElement` in 389f28a6, along with the rest of the sweep."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.LocalDev/Frontend/WorkspaceInstall.cs",
+        "line": 108,
+        "concern": "The maintainer's review comment: this is not a json document\nWhat the author changed or answered: Renamed to `jsonElement` in 389f28a6, along with the rest of the sweep."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Persistence.Abstractions/DataContracts/PersistedAuditRecord.cs",
+        "line": 120,
+        "concern": "The maintainer's review comment: Why isnt this JsonElement?\nWhat the author changed or answered: It should be. Fixed in 5fb670c0: `PersistedAuditRecord.Record` and `AuditRecordEntity.Record` are now `JsonElement`. They're stored as `text` through the context's existing `JsonElementConverter`, like every other JSON column. The mapper parses the writer's output from a pooled buffer, and the management endpoint now passes the element straight through instead of re-parsing a string. I regenerated"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Entities/AuditRecordEntity.cs",
+        "line": 137,
+        "concern": "The maintainer's review comment: Why isnt this JsonElement?\nWhat the author changed or answered: Same fix, 5fb670c0. The entity also gained the (`TenantId`, `EventTime`, `Id`) index for keyset paging by event time (fe0f4f3e)."
+      },
+      {
+        "file": "src/NCode.Identity.Secrets/KeyTypes/AkpSecretKeyTypeDescriptor.cs",
+        "line": 272,
+        "concern": "The maintainer's review comment: this is not a json element?\nWhat the author changed or answered: Right. Fixed in 8dcf742e: it's now `root = JsonElement.Parse(keyMaterial);`."
+      },
+      {
+        "file": "src/NCode.Identity.Server/ConformanceEnvironment/ConformanceSeedHandler.cs",
+        "line": 194,
+        "concern": "The maintainer's review comment: `jsonElement`\nWhat the author changed or answered: Done: `jsonElement` in 389f28a6. I used that name for the whole sweep."
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Tokens/DefaultBffUserTokenService.cs",
+        "line": 419,
+        "concern": "The maintainer's review comment: **blocker**: once the refresh lease is won, this token request and the write-back at line 504 still run under the caller's token (`HttpContext.RequestAborted` or the outbound `HttpClient` call). If the browser aborts after the provider has rotated the refresh token, the `OperationCanceledException` escapes, because `ProviderHttpClient` and `BffProviderFailures` both let a caller cancel through. The `finally` at line 337 then releases the lease, and the session still holds the old refresh token. The next request takes the same lease key and presents the old token again, which counts as reuse: rotation revokes the whole family and the user is logged out. ADR-0291 §4 says the write-back is never dropped.\n\nSuggested fix: once the lease is held, call `RequestTokenAsync` and `UpdateAsync` with `CancellationToken.None`; `OpenIdClientOptions.RequestTimeout` already bounds them. Add a test that cancels during the token call and asserts the rotated token is written. Every test in `DefaultBffUserTokenServiceTests` passes `CancellationToken.None` today.\nWhat the author changed or answered: Fixed in 2ee2ea8a. Once the lease is won, the token request, the provider-failure check and the write-back all use `CancellationToken.None`. The protocol client's `RequestTimeout` still bounds the request. A new test cancels the caller's token mid-request and asserts that the rotated refresh token is still written. ADR-0291 records this as decision 11 (cacfcc35), and the production instructions ca"
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Logout/BffLogoutService.cs",
+        "line": 59,
+        "concern": "The maintainer's review comment: **blocker**: revocation runs under the request's `RequestAborted` token before `EndAsync`, and the `catch` at line 95 lets `OperationCanceledException` escape. If the user clicks Logout and closes the tab while revocation is in flight, `EndAsync` never runs and the cookie isn't deleted, so the session stays valid. This matters on a shared machine. ADR-0293 §4 says revocation never blocks the logout and removal can't be left behind by a disconnect. `BffAuthenticationHandler.SignOutAsync` goes through the same path.\n\nSuggested fix: end the session and delete the cookie first, then revoke with `CancellationToken.None`, bounded by the client timeout. Or catch every exception from revocation. Add a cancellation test to `BffLogoutServiceTests`.\nWhat the author changed or answered: Fixed in 14804090. `EndSessionAsync` now ends the session and deletes the cookie first, with `CancellationToken.None`. Only then does it revoke the refresh token, also with `CancellationToken.None`. Every revocation failure, a cancellation included, is logged and swallowed, and the method no longer takes a token. Tests cover the end-then-revoke order and a cancelled revocation. ADR-0293 decision 4"
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Options/BffOptionsValidator.cs",
+        "line": 322,
+        "concern": "The maintainer's review comment: **should-fix**: this accepts a 10 s `RefreshLeaseDuration` and never compares it with `OpenIdClientOptions.RequestTimeout`. That timeout defaults to 15 s and can be up to 5 min. ADR-0291 §2 requires the lease to be at least twice the request timeout, because a `use_dpop_nonce` retry makes two sequential requests. If the lease runs out while the winner's request is still in flight, another request wins the expired lease and presents the same refresh token. Separately, the fixed 5 s release margin in `DefaultBffUserTokenService` (line ~335) means a short lease is almost never released.\n\nSuggested fix: inject `IOptions<OpenIdClientOptions>` and require `RefreshLeaseDuration >= 2 × RequestTimeout + margin`. Scale the release margin with the lease.\nWhat the author changed or answered: Fixed in ae7ef68f. The BFF library doesn't reference the protocol client's implementation package, so the check lives in the composition root, `NCode.Identity.Bff.Server`. At startup, `BffRefreshLeaseValidator` refuses a `RefreshLeaseDuration` shorter than `2 × OpenIdClientOptions.RequestTimeout + 10 s`; the defaults (40 s and 15 s) pass exactly. The release stays time-based because `IExpiringValu"
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Authentication/BffAuthenticationHandler.cs",
+        "line": 55,
+        "concern": "The maintainer's review comment: **should-fix**: `Bff` is the default scheme (`DefaultRegistration.cs:111`), and `HandleAuthenticateAsync` returns a ticket for any request with a valid cookie. It never checks that the endpoint carries `BffApiAttribute` or `BffUserEndpointMetadata`, or that `feature.CheckedEndpoint` is the current endpoint. So any `RequireAuthorization()`, `[Authorize]` or fallback-policy endpoint not marked `.AsBffApi()` accepts the bare cookie with no `X-CSRF` and no Fetch Metadata check. `SameSite=Strict` doesn't stop same-site sibling subdomains; with `Lax`, cross-site top-level GETs also carry the cookie. ADR-0292 says the cookie authenticates only endpoints the BFF guards.\n\nSuggested fix: return `NoResult` unless the endpoint is guarded, with an explicit opt-in marker for pages. Or stop making `Bff` the default authenticate scheme and correct ADR-0292 to say unmarked endpoints get no CSRF protection.\nWhat the author changed or answered: Fixed in c101b64a, ab9047ac, c800499f, 76e3c95e and e99351b9. The cookie now authenticates only the endpoints the BFF guards:\n\n- **APIs** (`[BffApi]`/`AsBffApi()`) and `/bff/user` keep the anti-forgery header and Fetch Metadata checks.\n- **Pages** use the new `[BffPage]`/`AsBffPage()` marker. A page accepts only GET and HEAD; any other method gets a `405` `unsafe_method` problem with `Allow: GET, "
+      },
+      {
+        "file": "src/NCode.Identity.Bff/Tokens/DefaultBffUserTokenService.cs",
+        "line": 194,
+        "concern": "The maintainer's review comment: **should-fix**: the refresh holds one of the 64 shared lock stripes for the whole of `RefreshLockedAsync`. That includes `WaitForRefreshAsync`, which can poll up to `RefreshLeaseDuration` for another replica's lease. If that replica dies or the provider is slow, other sessions on this replica that hash to the same stripe wait in `gate.WaitAsync` and fail with `refresh_wait_timeout`, even though nothing blocks their own refresh.\n\nSuggested fix: release the stripe during the cross-replica wait and take it again before `AcquireAndRefreshAsync`. Or use per-store-key locks with reference counting.\nWhat the author changed or answered: Fixed in b5805104. `BffRefreshLocks` is now a reference-counted lock per session store key, dropped when its last waiter leaves. Waiting out another replica's lease now blocks only that session. ADR-0291 records the change and the rejected striped option (cacfcc35)."
+      },
+      {
+        "file": "CHANGELOG.md",
+        "line": 956,
+        "concern": "The maintainer's review comment: **should-fix**: this entry is in all five `### Changed` sections under `[Unreleased]`, at lines 956, 3474, 3956, 4959 and 5365. So is the #417 entry below it (lines 962, 3480, 3962, 4965, 5371). The text they were inserted before matched every `### Changed` heading.\n\nSuggested fix: keep one copy of each entry, in the first `### Changed` section.\nWhat the author changed or answered: Fixed in ebf1b92c. It was worse than these two: five entries from this branch appeared in all five `### Changed` sections. The fix keeps the first copy of each, removing 184 lines and touching nothing else. Then fb0ba295 amends the surviving unreleased entries to describe the final behavior of this round."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Stores/AuditRecordStore.cs",
+        "line": 140,
+        "concern": "The maintainer's review comment: **should-fix**: the lookup pages with `Id < cursor ORDER BY Id DESC`, but every index on `AuditRecords` leads with a filter column followed by `EventTime`. No index returns a tenant's rows in `Id` order, so each page either sorts every matching row in the tenant's time range or walks the primary key backwards. Paging through N pages costs about N times the tenant's matching rows. Ordering by `Id` is also write order, not event time, and #384 asked for paging on the UUIDv7 `event_id`.\n\nSuggested fix: page on (`EventTime` DESC, `Id` DESC) with a composite cursor, and change the tenant index to (`TenantId`, `EventTime`, `Id`). Or at least add (`TenantId`, `Id`).\nWhat the author changed or answered: Fixed in fe0f4f3e. The lookup now pages newest first on (`EventTime` DESC, `Id` DESC), with a 16-byte cursor (UTC ticks, then id), over the index (`TenantId`, `EventTime`, `Id`). I regenerated the unreleased `AddAuditRecords` migration in 540e79f2 rather than adding a second one. I paged on event time rather than the UUIDv7 `event_id` so that the time-range filters and the paging share one index. "
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/Http/ProviderHttpClient.cs",
+        "line": 103,
+        "concern": "The maintainer's review comment: **should-fix**: `SecureEncoding.UTF8` is strict, so an `application/jwt` body that isn't valid UTF-8 throws `DecoderFallbackException`, an `ArgumentException`. `SendAsync` catches only `OperationCanceledException`, `HttpRequestException` and `JsonException`, so it escapes. That breaks `IUserInfoClient`'s `OpenIdProviderException` contract, and the BFF callback answers 500 instead of failing the login with `provider_unavailable`.\n\nSuggested fix: catch `DecoderFallbackException` (or `ArgumentException`) around the decode and rethrow `OpenIdProviderException(\"The response from '…' is not valid UTF-8.\")`.\nWhat the author changed or answered: Fixed in 2381d45b. A `DecoderFallbackException` is now rethrown as `OpenIdProviderException(\"… is not valid UTF-8.\")`, and a test covers it."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication.Interactive/InteractiveAuthenticationEndpointHandler.cs",
+        "line": 1198,
+        "concern": "The maintainer's review comment: **should-fix (pre-existing, outside this diff)**: `isLocalPath` (lines 1191–1194) rejects only `//` and `/\\`, so `\"/\\t/evil.example\"` passes and is returned unchanged into `TypedResults.Redirect`. Kestrel allows HTAB in header values, and browsers strip tabs and newlines from URLs before resolving them, so the redirect becomes `//evil.example` after sign-in: an open redirect. This PR only changed the absolute-URI branch below, but the check sits in the same method.\n\nSuggested fix: reject any control character or whitespace, as `IsLocalUrl` does, and add `\"/\\t/evil.example\"` and `\"/\\t\\\\evil.example\"` to `ResolveSafeReturnUrl_WhenNonLocalOrCrossOrigin_ReturnsRoot`.\nWhat the author changed or answered: Fixed in 7f263cd7 and 29695fc1. The new public `LocalUrl.IsLocal`, in `NCode.Identity.OpenId.Protocol.Abstractions` next to `AbsoluteUri`, is now the one local-path rule: exactly one leading `/`, and no `\\`, whitespace or control character anywhere. `ResolveSafeReturnUrl` uses it, and the theory now includes the tab and CR/LF cases. The BFF's return-URL rules build on it too (bece64c9). The CHANGE"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/MutualTls/ClientCertificateProvider.cs",
+        "line": 100,
+        "concern": "The maintainer's review comment: **nit**: the certificate is published to `Certificates` at line 94 before its issuers reach `IssuerCertificates` here. A concurrent first use can find the certificate already cached, skip this block, and build the handler with `additionalCertificates: null`. `IHttpClientFactory` keeps that handler for about 2 minutes, and its handshakes fail against a server that trusts only the root.\n\nSuggested fix: add the issuers before publishing the certificate, or keep both in one dictionary entry.\nWhat the author changed or answered: Fixed in 138c76b6. The certificate, its issuers and one `SslStreamCertificateContext` are now cached as a single entry, so a handler can never see the certificate without its chain. Every handler shares that context, and the unused `GetIssuerCertificates` is gone. If building the entry fails, the materialized certificates are disposed."
+      },
+      {
+        "file": "src/NCode.Json/JsonElements.cs",
+        "line": 61,
+        "concern": "The maintainer's review comment: **nit**: only `AllowTrailingCommas`, `CommentHandling` and `MaxDepth` are copied into the reader options. `JsonDocumentOptions.AllowDuplicateProperties = false` is silently ignored, so duplicate members are accepted and the last one wins, although the doc says this behaves like `JsonElement.Parse`. No caller passes options yet.\n\nSuggested fix: delegate to `JsonElement.Parse(sequence.IsSingleSegment ? sequence.FirstSpan : sequence.ToArray(), options)`, or throw `NotSupportedException` when that option is set.\nWhat the author changed or answered: Fixed in 701d5c17. It now delegates to `JsonElement.Parse(ReadOnlySpan<byte>, options)`: a single segment is parsed from `FirstSpan`, and several are copied into a sensitive rented buffer first. Every option, `AllowDuplicateProperties` included, is honored, and a test covers both shapes."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Client/UserInfo/DefaultUserInfoClient.cs",
+        "line": 267,
+        "concern": "The maintainer's review comment: **nit**: on the unsigned JSON path, an `iss` member in the claims is never compared with `metadata.Issuer`. `IClaimsIdentityFactory` prefers it over the issuer argument, so a provider can label every UserInfo claim with another issuer's identifier. The BFF isn't affected (it treats `iss` as reserved), but other consumers of `IUserInfoClient` who rely on `Claim.Issuer` would be.\n\nSuggested fix: refuse a JSON response whose `iss` differs from `metadata.Issuer`.\nWhat the author changed or answered: Fixed in 133214e1. A response with an `iss` member that isn't the provider's issuer, or isn't a string, now fails with the new `UserInfoFailureCodes.InvalidIssuer`."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication/Tokens/DefaultTokenService.cs",
+        "line": 598,
+        "concern": "The maintainer's review comment: **nit**: with `token_exchange_allow_refresh_token` on, a client can exchange its own access token for a refresh token. That token starts a new family (`?? createdWhen`), so the fixed horizon from ADR-0297 can be renewed indefinitely without a new sign-in.\n\nSuggested fix: start the new family at the subject token's `auth_time` (`ReadAuthTime` already exists), or record this exception in ADR-0297.\nWhat the author changed or answered: Fixed in e1d2263c. A refresh token issued by exchange now starts its family at the subject token's `auth_time`. The exchange is refused with `invalid_grant` when the subject token has no `auth_time`, or when that horizon has already passed, so exchange can no longer renew a family.\n\nThis also fixed a related bug. Exchanged tokens used to start their lifetime at `auth_time`, so a token exchanged la"
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication/Auditing/AuditRecordFlushService.cs",
+        "line": 92,
+        "concern": "The maintainer's review comment: **nit**: `StopAsync` isn't run once only, unlike `TenantUsageFlushService` with its `StopGate`/`StopTask`. Two overlapping stops can race: one reads `Batch.Count` while the other's flush owns the batch, and the stop that returns first lets the host dispose services under the other's write.\n\nSuggested fix: run the stop once under a `Lock`, and count held records through an `Interlocked` field, as `TenantUsageFlushService` does.\nWhat the author changed or answered: Fixed in b099210b, mirroring `TenantUsageFlushService`. `StopGate`/`StopTask` run the final flush once for every caller, and held records are counted through an `Interlocked` field. A stop token that ends the wait logs what's left without touching the batch."
+      },
+      {
+        "file": "tests/NCode.Identity.OpenId.Core.Tests/Servers/DefaultOpenIdServerProviderTests.cs",
+        "line": 111,
+        "concern": "The maintainer's review comment: **nit**: this test can't fail. `DefaultOpenIdServerProvider.EvictTenants` catches every exception, Moq's `MockException` included, and logs it to a loose logger mock. So the test passes even if dispose leaves the registration alive.\n\nSuggested fix: set up `ClearAsync` with `.Verifiable(Times.Never())`, or assert the logger was never called.\nWhat the author changed or answered: Fixed in 86a7d611. `ClearAsync` is now set up with `.Verifiable(Times.Never())`. A fresh `CancellationTokenSource` also stands in before the old one fires. Without that, a leaked registration would recurse on the already-cancelled token instead of failing; now it fails cleanly with the `Times.Never` message."
+      },
+      {
+        "file": "build/backport.ps1",
+        "line": 115,
+        "concern": "The maintainer's review comment: **nit**: the pull request title, which the PR author controls, goes unescaped into a shell command the comment tells maintainers to copy and run. A crafted title becomes a copy-paste injection.\n\nSuggested fix: leave `--title` out of the suggested command, or quote the title for the shell.\nWhat the author changed or answered: Fixed in 215b0149. The suggested command is now `gh pr create --base … --head … --fill`, which contains no author-controlled text."
+      },
+      {
+        "file": "build/backport.ps1",
+        "line": 94,
+        "concern": "The maintainer's review comment: **nit**: any fetch failure, including a network error, is reported on the pull request as \"the release line does not exist\".\n\nSuggested fix: check for the branch with `git ls-remote --exit-code --heads origin $base` first, and let a fetch failure fail the job.\nWhat the author changed or answered: Fixed in 215b0149. The script now runs `git ls-remote --exit-code --heads origin $base` first. Exit code 2 posts the \"does not exist\" comment, and any other failure throws. The fetch now goes through `Invoke-Git`, so a network error fails the job instead of being reported as a missing release line."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "The maintainer's 35 review comments on #420 at a8b922997 that led to a change."
+  }
+]
