@@ -1,0 +1,68 @@
+# Checks the Anthropic workload identity federation rule `github-code-review` end to end.
+# Comment `/wif-test` on any issue in this repository. Both jobs pass when:
+#   - a job in the `code-review` environment gets an Anthropic token, and
+#   - the same exchange without the environment is refused.
+# Getting a token needs no API credits; nothing here calls a model.
+name: WIF smoke test
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+env:
+  ANTHROPIC_FEDERATION_RULE_ID: fdrl_019dXaBRa2Zo1UazugiQwWZ3
+  ANTHROPIC_ORGANIZATION_ID: e9301a37-092f-47c8-9b24-188808b1d576
+  ANTHROPIC_SERVICE_ACCOUNT_ID: svac_012yav3w3rfhH5i9bAgoWLHe
+  ANTHROPIC_WORKSPACE_ID: wrkspc_019f5RLk5SG4XWE8XKwWFHZh
+
+jobs:
+  with-environment:
+    if: >-
+      github.event.comment.body == '/wif-test' &&
+      contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    environment: code-review
+    permissions:
+      id-token: write
+    steps:
+      - name: Exchange the GitHub token for an Anthropic token (expect success)
+        env:
+          EXPECT: success
+        run: &exchange |
+          set -euo pipefail
+          jwt=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value)
+          echo "::add-mask::$jwt"
+          jq -n --arg jwt "$jwt" '{
+              grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+              assertion: $jwt,
+              federation_rule_id: env.ANTHROPIC_FEDERATION_RULE_ID,
+              organization_id: env.ANTHROPIC_ORGANIZATION_ID,
+              service_account_id: env.ANTHROPIC_SERVICE_ACCOUNT_ID,
+              workspace_id: env.ANTHROPIC_WORKSPACE_ID
+            }' > request.json
+          status=$(curl -sS -o response.json -w '%{http_code}' https://api.anthropic.com/v1/oauth/token \
+            -H 'content-type: application/json' --data @request.json)
+          token=$(jq -r '.access_token // empty' response.json)
+          if [ -n "$token" ]; then echo "::add-mask::$token"; fi
+          echo "HTTP $status"
+          jq 'with_entries(if (.key | test("token$")) then .value = "<redacted>" else . end)' response.json
+          rm -f request.json response.json
+          if [ "$EXPECT" = success ] && [ "$status" != 200 ]; then echo "::error::Expected a token, got HTTP $status"; exit 1; fi
+          if [ "$EXPECT" = refused ] && [ "$status" = 200 ]; then echo "::error::The rule accepted a job outside the code-review environment"; exit 1; fi
+          echo "As expected: $EXPECT"
+
+  without-environment:
+    if: >-
+      github.event.comment.body == '/wif-test' &&
+      contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Exchange the GitHub token for an Anthropic token (expect refusal)
+        env:
+          EXPECT: refused
+        run: *exchange
