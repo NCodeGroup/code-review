@@ -3,8 +3,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { maxConventionChars, maxDiffChars, maxPullRequestTextChars } from './config.ts';
-import { readDecisions, type Decision } from './context.ts';
+import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
+import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -35,13 +35,16 @@ export interface Gathered {
   pullRequest: PullRequest;
   mergeBase: string;
   files: ChangedFile[];
+  // Every part of the diff, joined.
   diff: string;
+  // The diff in the parts the reviewers get, one set of reviewers per part.
+  chunks: string[];
   conventions: string;
   // Only the conventions reviewer gets these: they're large.
   reviewRules: RuleFile[];
   // NCodeGroup-wide guidance the training learned, one file per topic, for the changed files.
   guidance: RuleFile[];
-  // The repository's accepted decision records, from the default branch.
+  // The repository's accepted decision records from the default branch, after the ones the pull request adds or changes.
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
@@ -96,24 +99,34 @@ export function splitDiff(diff: string): Map<string, string> {
   return sections;
 }
 
-export function budgetDiff(files: ChangedFile[], sections: Map<string, string>, budget: number): string {
-  let used = 0;
-  const out: string[] = [];
+// Packs the per-file sections into parts of at most chunkChars, in review order so neighbouring files share a part.
+// Generated files get a one-line stub in the first part. A file too big for any part, or past the last part, is left out.
+export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, chunkChars: number, maxChunks: number): string[] {
+  const chunks: string[][] = [[]];
+  const used = [0];
   const ordered = [...files].sort((a, b) => reviewOrder(a.path) - reviewOrder(b.path) || a.path.localeCompare(b.path));
   for (const file of ordered) {
     const section = sections.get(file.path);
     if (file.generated) {
-      out.push(`diff --git a/${file.path} b/${file.path}\n[generated file: ${file.additions + file.deletions} changed lines not shown]\n`);
+      chunks[0]!.push(`diff --git a/${file.path} b/${file.path}\n[generated file: ${file.additions + file.deletions} changed lines not shown]\n`);
       file.shown = true;
       continue;
     }
-    if (!section) continue;
-    if (used + section.length > budget) continue;
-    out.push(section);
-    used += section.length;
+    if (!section || section.length > chunkChars) continue;
+    let index = used[used.length - 1]! + section.length <= chunkChars ? used.length - 1 : -1;
+    if (index === -1 && chunks.length < maxChunks) {
+      chunks.push([]);
+      used.push(0);
+      index = chunks.length - 1;
+    }
+    // Every part is full: fit the file into any part with room left.
+    if (index === -1) index = used.findIndex((u) => u + section.length <= chunkChars);
+    if (index === -1) continue;
+    chunks[index]!.push(section);
+    used[index]! += section.length;
     file.shown = true;
   }
-  return out.join('');
+  return chunks.map((chunk) => chunk.join(''));
 }
 
 function parseNumstat(numstat: string): ChangedFile[] {
@@ -268,10 +281,13 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const range = [mergeBase, pullRequest.headSha];
   const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
-  const diff = budgetDiff(files, splitDiff(fullDiff), maxDiffChars);
+  const chunks = chunkDiff(files, splitDiff(fullDiff), maxChunkChars, maxChunks);
   const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
+  // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
+  const proposed = readProposedDecisions(prPath, reviewed);
+  const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
   const commits = writers.has(pullRequest.authorAssociation)
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
-  return { pullRequest, mergeBase, files, diff, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: engineRoot ? readGuidance(engineRoot, reviewed) : [], decisions: readDecisions(basePath), commits };
+  return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: engineRoot ? readGuidance(engineRoot, reviewed) : [], decisions, commits };
 }
