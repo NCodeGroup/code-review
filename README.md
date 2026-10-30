@@ -21,22 +21,31 @@ name: Code review
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 permissions: {}
 jobs:
   review:
+    # A pull request when it opens or is marked ready, or a top-level `/review` comment on one from someone with write
+    # access. The engine checks the comment again and skips anything else.
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.sender.type != 'Bot' &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-review')
+      github.event.sender.type != 'Bot' && (
+        (github.event_name == 'pull_request_target' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
+        (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+          startsWith(github.event.comment.body, '/review') &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)))
     runs-on: ubuntu-latest
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number }}
+      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,7 +53,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || format('refs/pull/{0}/head', github.event.issue.number) }}
           path: pr
           fetch-depth: 0
           persist-credentials: false
@@ -54,8 +63,9 @@ jobs:
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 ```
 
-`pull_request_target` runs this file from the default branch, so a pull request can't change its own review, and the
-pull request's code is only read, never built or run.
+`pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
+its own review, and the pull request's code is only read, never built or run. Pushes start nothing; comment `/review`
+to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
 ## Opting a repository in
 

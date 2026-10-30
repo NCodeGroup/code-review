@@ -255,6 +255,9 @@ export function readPullRequest(event: any, repository: string): PullRequest {
 }
 
 export function gather(pullRequest: PullRequest, prPath: string, basePath: string): Gathered {
+  // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
+  // the checkout, and the check run belongs on the commit that was reviewed.
+  pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
   const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, pullRequest.headSha]).trim();
   const range = [mergeBase, pullRequest.headSha];
   const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
