@@ -1,0 +1,22 @@
+{
+  "hash": "517f2f944735e7b9",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0269",
+  "rules": [
+    {
+      "statement": "Agent instructions, scripts and workflows that open pull requests must create them as drafts and must not mark them ready for review or enable auto-merge; only the human author does those after reviewing.",
+      "why": "GitHub checks the required review-thread resolution only when a pull request enters the merge queue, so opening ready with auto-merge let a pull request merge over an unresolved review comment.",
+      "check": "Look for `gh pr create` without `--draft`, `gh pr ready`, `gh pr merge --auto`, or equivalent API calls in agent push protocols, scripts or workflows that run on the agent's behalf.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.md",
+        "**/*.sh",
+        "**/*.ps1",
+        "**/.github/workflows/*.yml",
+        "**/.github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

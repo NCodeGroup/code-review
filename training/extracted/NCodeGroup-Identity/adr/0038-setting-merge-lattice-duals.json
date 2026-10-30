@@ -1,0 +1,54 @@
+{
+  "hash": "6ce4f6c591ec4729",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0038",
+  "rules": [
+    {
+      "statement": "When a security-relevant setting merges down a parent-to-child scope cascade (server → tenant → client), choose a restricting merge that matches the value's polarity rather than child-wins `Replace`: lifetimes and other caps use `Min`, requirement flags use `Or`, permission or capability toggles use `And`, and supported-value lists use `Intersect`.",
+      "why": "With `Replace`, a more specific scope can loosen a broader scope's policy, for example by disabling required PKCE or issuing a longer token lifetime. A restricting merge is defense-in-depth against misconfiguration.",
+      "check": "Look for new or changed setting descriptors whose merge function is `Replace` (or any child-wins merge) on a lifetime, a require_* flag, an allow_*/*_supported toggle or a *_supported list. Also look for a ceiling/floor that uses the wrong polarity, such as `Max` on a lifetime or `And` on a requirement flag.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce hierarchical setting restrictions (ceiling, floor or override) in the setting's merge definition, not in ad-hoc checks inside endpoint or handler code.",
+      "why": "Putting policy in handlers spreads it across the codebase with no single source of truth, and misconfiguration can silently get around the broader scope's intent.",
+      "check": "Look for endpoint or handler code that compares a client or tenant setting with a server or parent value to clamp or reject it, where the setting's merge function should do that instead.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put merge or combinator helpers that extension authors need to build their own descriptors in the public abstractions package, not as static helpers on an internal implementation type, and keep the default implementations that use them internal.",
+      "why": "Helpers on an internal type can't be reused by external authors, so extensions couldn't take part in the same policy model.",
+      "check": "Look for new `public static` helper methods that extension or host code would need but that are declared on an `internal` class or live in an implementation package instead of the abstractions package.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read an optional restriction list (an allow-list with no default) as \"restrict only if present\": an unset value means unrestricted, while an explicit list, including one narrowed to empty by intersection, denies everything not in it.",
+      "why": "Unset means unrestricted, but an explicit or intersected list must fail closed, so an empty result must not be treated as \"no restriction\".",
+      "check": "Look for consumers of optional allow-list settings that treat an empty list the same as unset, or that give such a list a default value so it is never unset.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

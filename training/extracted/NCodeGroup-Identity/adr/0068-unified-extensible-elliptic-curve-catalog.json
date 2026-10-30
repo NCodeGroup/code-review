@@ -1,0 +1,43 @@
+{
+  "hash": "6ef9f53fea6a5524",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0068",
+  "rules": [
+    {
+      "statement": "Select or identify an elliptic curve by its identity (curve name or named-curve OID), never by inferring it from the key size in bits.",
+      "why": "Distinct curves can share a size (e.g. secp256k1 and P-256 are both 256-bit), so a size-keyed lookup can't generate a chosen same-size curve and will mis-identify non-NIST keys.",
+      "check": "Look for switches or dictionaries that map a bit length (256/384/521) to an ECCurve or curve name, used as the only way to pick or name a curve, with no lookup by name or OID.",
+      "scope": "domain",
+      "domain": "cryptography-ecc",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When exporting an EC key as a JWK, set the `crv` value from the key's actual ECCurve (named-curve OID) and fall back to its size only when the curve can't be resolved.",
+      "why": "Naming `crv` from the actual curve is unambiguous. Guessing it from the size mis-names keys on curves that share a size with a NIST curve.",
+      "check": "Look for JWK/JWKS export code that sets `crv` from KeySize or ECParameters size alone, instead of from ECParameters.Curve.Oid or the curve's friendly name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a single shared source of elliptic-curve definitions for key generation, validation and JWK publication, so that no layer keeps its own separate curve table.",
+      "why": "When generation and publication keep separate curve registries they can drift apart. With one catalog, a newly registered curve is available everywhere at once.",
+      "check": "Look for a new hard-coded curve list or curve registry in generation, validation or JWKS code that duplicates the existing shared curve catalog instead of reading from it.",
+      "scope": "domain",
+      "domain": "cryptography-ecc",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

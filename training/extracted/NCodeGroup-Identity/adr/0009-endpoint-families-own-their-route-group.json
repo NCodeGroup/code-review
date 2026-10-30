@@ -1,0 +1,76 @@
+{
+  "hash": "50626d4add81b702",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0009",
+  "rules": [
+    {
+      "statement": "Apply a cross-cutting endpoint filter or convention for a family of endpoints once, on that family's shared `RouteGroupBuilder` (via `MapGroup`), rather than attaching it to each endpoint individually or installing process-wide middleware.",
+      "why": "Attaching it to each endpoint repeats the same wiring and is easy to forget on a new endpoint. Global middleware would also wrap endpoints outside the family.",
+      "check": "Look for the same `AddEndpointFilter`/convention call repeated on individual endpoints of one family, or for new app-wide middleware that only one endpoint family needs.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register endpoints that are mapped by a family's route group only under that group's registration, so each endpoint is mapped exactly once and none is also mapped through the flat root-level endpoint collection.",
+      "why": "If an endpoint is registered in both places it gets mapped twice, and the copy mapped outside the group misses the group's filters and conventions.",
+      "check": "Check that a new endpoint in a grouped family is not also added to the root/flat endpoint provider registrations.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make sure exceptions thrown by OAuth/OpenID endpoints are caught and returned as a standard OAuth error response (an `error` JSON body with the error's own status code), with a `500 server_error` fallback for unknown exceptions. Never let them escape to the framework.",
+      "why": "Exceptions that nothing handles surface as framework 500s or the developer exception page instead of protocol-compliant error responses.",
+      "check": "Look for new OpenID/OAuth endpoints mapped outside the group that has the exception filter, or for an exception handler that is registered but never called.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an exception handler can be set per endpoint, resolve it per request with this precedence: the endpoint's own metadata first, then the DI-registered default handler.",
+      "why": "This lets individual endpoints customize error rendering while every other endpoint keeps the shared default.",
+      "check": "Check that filter/handler resolution reads endpoint metadata before falling back to the DI service, and does not ignore the metadata or reverse the order.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add new extensibility as an extra opt-in tier alongside the existing public registration API, not by replacing or breaking it, and record every new public type and member in `PublicAPI.Unshipped.txt`.",
+      "why": "Replacing the existing surface causes needless churn and breaking changes for consumers that don't need the new capability. Tracking new APIs keeps the public surface under control.",
+      "check": "Look for public registration methods or interfaces that were removed or changed incompatibly, and for new public API that is missing from `PublicAPI.Unshipped.txt`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.Unshipped.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not let a composition-root or core assembly reference types specific to one feature family. Let the family plug its own behavior in through an abstraction that the core defines.",
+      "why": "Layering: the core must not know about family-specific concerns, so those concerns don't leak into the composition root.",
+      "check": "Look for new `using` directives or project references from a core/composition-root project to a feature-family project.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

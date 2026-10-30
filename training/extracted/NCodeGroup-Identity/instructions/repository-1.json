@@ -1,0 +1,152 @@
+{
+  "hash": "437c4352b1ed2497",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity repository.instructions.md",
+  "rules": [
+    {
+      "statement": "In pre-release code with no shipped consumers, make the change as a clean cutover (rename, move, remove or change signatures directly) instead of adding compatibility shims, obsolete aliases or duplicate settings that keep the old shape.",
+      "why": "Nothing has shipped, so there is no backward compatibility to keep. The best long-term, cohesive design is preferred over a minimal patch that preserves compatibility, and PublicAPI churn is expected.",
+      "check": "Look for [Obsolete] forwarding members, old-name setting aliases, adapter overloads or 'kept for compatibility' comments added in a pre-release package.",
+      "scope": "repository",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an extensible vocabulary (settings, scopes, profiles, grant types, client-authentication methods, claims, stores, endpoints and similar) as string names plus registered descriptors or strategies, and use an enum, a switch over its members or a hard-coded relationship between them only when the set is provably closed.",
+      "why": "Consumers and sibling packages must be able to add a member by registering it, without editing the library. A closed construct blocks that.",
+      "check": "Look for a new enum, a switch/if-chain over vocabulary values, or hard-coded member relationships where another package could plausibly need an extra member, with no justification that the set is closed.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use authorization code with PKCE `S256` for interactive clients, and do not add or enable the implicit flow, hybrid flows that return tokens in the front channel, or the resource-owner password flow.",
+      "why": "Current guidance (the OAuth 2.1 direction, RFC 9700 Security BCP) treats these as the modern secure defaults. The repository should follow them without asking.",
+      "check": "Look for implicit/hybrid/password grant support, PKCE made optional, or the `plain` code challenge method being allowed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign tokens with asymmetric algorithms such as `PS256` or `ES256`, and never use `HS256` or other shared-secret signing for tokens that cross a trust boundary.",
+      "why": "Modern recommended practice requires asymmetric signing across trust boundaries.",
+      "check": "Look for HS256/HMAC signing defaults or configuration for issued ID/access tokens consumed by other parties.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate redirect URIs by exact match against registered values, never by prefix, wildcard or pattern matching.",
+      "why": "Exact-match redirect URIs are required by the Security BCP and OAuth 2.1.",
+      "check": "Look for StartsWith, Contains, regex, wildcard or case-insensitive comparisons of redirect URIs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default issued tokens to short lifetimes and sender-constraining where applicable, grant least-privilege scopes, and ship secure-by-default headers and CORS settings.",
+      "why": "These are the modern recommended identity-platform defaults the repository adopts without asking.",
+      "check": "Look for long default token lifetimes, broad default scopes, permissive CORS (any origin with credentials) or missing security headers in defaults.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change fixes an insecure or outdated design, update the surrounding code comments, docs and decision records in the same change so that none of them still describe the old shape.",
+      "why": "Existing code and docs are point-in-time artifacts. The repository, not chat history, must carry the correction.",
+      "check": "Look for a design change whose diff leaves comments, XML docs, markdown docs or ADRs that still describe the previous behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When pinning a tool, package, provider or action version, pin the latest release from its upstream release feed or registry, not a locally installed or remembered version.",
+      "why": "A locally installed or remembered version says nothing about what is current upstream.",
+      "check": "Look for newly added or bumped version pins that are older than the current upstream release.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Packages.props",
+        "**/*.props",
+        "**/.github/workflows/*.yml",
+        "**/global.json",
+        "**/.config/dotnet-tools.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put agent attribution in a commit message: no `Co-authored-by:` trailer naming an agent or bot identity, no `Claude-Session:` trailer and no 'Generated with' line.",
+      "why": "A commit records the people who wrote it. The host lists the agent in the contributor graph, and undoing that means rewriting published history.",
+      "check": "Look in commit messages and PR descriptions for agent co-author trailers, session trailers or generated-with lines.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Add an entry to `CHANGELOG.md` in the same pull request for every consumer-visible change.",
+      "why": "Durable knowledge, including consumer-visible changes, must live in versioned repository content.",
+      "check": "Look for public API, behavior or configuration changes with no matching CHANGELOG.md update in the diff.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Track deferred work and follow-ups as GitHub issues and reference them by issue number, not as untracked TODO notes or 'remaining' bullets left in docs, and close completed issues from the pull request with `Closes #<number>`.",
+      "why": "GitHub issues are the single source of truth for pending work, and an item must never be both done and still framed as pending.",
+      "check": "Look for new TODO/remaining/follow-up notes with no issue reference, or a PR that completes work but leaves 'still open' bullets or lacks a Closes reference.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a file that a root build file imports, also re-admit it in `.dockerignore` so the container image build can see it.",
+      "why": "The local gate does not build the host image, so only the Host image check on the PR catches the missing file.",
+      "check": "Look for a new file imported by Directory.Build.props/targets or similar root build files with no matching `.dockerignore` re-admit entry.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        ".dockerignore",
+        "Directory.Build.*",
+        "**/*.props",
+        "**/*.targets"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

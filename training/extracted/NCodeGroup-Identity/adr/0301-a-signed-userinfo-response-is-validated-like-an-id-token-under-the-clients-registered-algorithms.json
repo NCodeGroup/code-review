@@ -1,0 +1,90 @@
+{
+  "hash": "cf8b46b6189e6b0a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0301",
+  "rules": [
+    {
+      "statement": "A client that registered UserInfo signing (userinfo_signed_response_alg) must accept only a JWT UserInfo response, and a client that registered none must accept only JSON; a response in the other format is rejected as unsupported_response.",
+      "why": "Accepting JSON when signing was registered lets an attacker strip the signature, and a JWT to a client that registered none has no algorithm the client chose.",
+      "check": "Look for UserInfo response handling that falls back to JSON when signing is registered, or validates a JWT when no UserInfo signing was registered (e.g. using ID-token algorithms instead).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never accept a JWE whose content is not a signed JWT; treat a configuration with encryption but no signing (or content encryption without key management algorithms) as a configuration error that throws before any request is sent.",
+      "why": "Anyone holding the client's public key can produce a JWE, so encryption alone proves nothing about the issuer.",
+      "check": "Look for decryption paths that accept unsigned plaintext claims, or configuration validation that permits encryption algorithms without signing algorithms or enc without alg.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every provider-issued JWT signature algorithm as registered by the client for that token kind, asymmetric (never `none` or HMAC), and advertised by the provider when the provider publishes its supported list.",
+      "why": "Algorithm verification per RFC 8725 §3.1/§3.2 prevents algorithm-substitution attacks.",
+      "check": "Look for JWT validation that accepts `none` or symmetric algorithms, skips the registered-algorithm check, or ignores the provider's advertised *_alg_values_supported metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decrypt nested JWTs only with registered asymmetric key management algorithms (RSA-OAEP or ECDH-ES, never RSA1_5), and require any `iss` replicated in the JWE header to match the inner token's issuer.",
+      "why": "RSA1_5 is vulnerable to padding-oracle attacks, and a mismatched replicated header claim indicates tampering.",
+      "check": "Look for key management allow-lists that include RSA1_5, or nested-JWT decryption that ignores a header `iss` mismatch.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A signed UserInfo response must have `iss` equal to the provider issuer, `aud` naming the client, `typ` equal to `JWT` when present, and a `sub` equal to the ID token's `sub`; `exp`, `nbf` and `iat` are checked when present but not required.",
+      "why": "OpenID Connect Core §5.3.2 requires iss and aud for signed UserInfo and the sub match, but requires none of the lifetime claims.",
+      "check": "Look for signed UserInfo validation missing iss/aud/sub checks, or that rejects a response for lacking exp/iat/nbf.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate all JWTs a provider issues to a client through one shared validation core parameterized by a per-token-kind profile, with each token kind adding only its specific claim checks, rather than copying security checks between validators.",
+      "why": "Copies of the same security checks drift apart.",
+      "check": "Look for a new JWT validator that duplicates signature, algorithm, key-selection, decryption, issuer or audience logic already in the shared validator.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the host refuse to start when JOSE algorithm options contain a blank entry, `none`, a duplicate, encryption without signing, content encryption without key management, or encryption without a configured decryption key ring.",
+      "why": "Invalid algorithm configuration should fail at startup, not at the first token.",
+      "check": "Look for algorithm-list options without startup validation covering these cases.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

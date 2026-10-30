@@ -1,0 +1,91 @@
+{
+  "hash": "8ecab845a7e28fc2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0078",
+  "rules": [
+    {
+      "statement": "When an RFC 8707 `resource` parameter is present, narrow the access token's `aud` to the requested resources that are also owned by the token's effective scopes; never let `resource` add an audience the granted scopes don't already authorize.",
+      "why": "Resource indicators exist for least-privilege audience binding. The scope model stays the authority, so `resource` can only narrow access and can never grant it.",
+      "check": "Look for audience computation that adds requested resources directly to `aud`, or that replaces the scope-derived audience set instead of intersecting with it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject with the `invalid_target` error code any requested `resource` that is not a known, enabled resource server, or that does not own one of the token's effective scopes. Don't silently drop it.",
+      "why": "RFC 8707 requires the authorization server to validate requested resources and to reject invalid ones with `invalid_target`.",
+      "check": "Look for resource-validation code that ignores or filters out unknown, disabled or out-of-scope resources without returning an error, or that returns a different error code such as invalid_request or invalid_scope.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the token endpoint for the authorization-code grant, reject with `invalid_target` any requested `resource` that was not among the resources authorized at the authorization endpoint.",
+      "why": "A token request must not widen the resources the user and client authorized during the authorization request.",
+      "check": "Look for authorization-code token handling that accepts `resource` values without checking them against the resources stored with the authorization code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce resource-indicator narrowing and validation at the single audience/credential-resolution step that every access-token path goes through, not separately in each grant handler.",
+      "why": "A single choke point makes enforcement uniform across all grants (authorization code, refresh, client credentials, password, device code) and avoids duplicated or missing checks.",
+      "check": "Look for `resource` validation or audience narrowing added inside an individual grant handler, or for a new token path that skips the shared resolver.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request has no `resource` parameter, keep the default audience: every enabled resource server that owns one of the effective scopes.",
+      "why": "Resource indicators are optional. If none are sent, behavior must match the scope-derived audience model exactly.",
+      "check": "Look for changes that leave `aud` empty, restrict it, or change it when the requested-resources collection is empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat `resource` as a multi-valued (repeated) parameter, and match its values against resource-server identifiers with an ordinal string comparison.",
+      "why": "RFC 8707 allows several `resource` values. Resource identifiers are the authority, so matching must be exact and not culture-sensitive or case-insensitive.",
+      "check": "Look for code that reads only the first `resource` value, or that compares resource identifiers with culture-aware, case-insensitive or URI-normalizing comparisons.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a discovery-metadata field for resource-indicator support, because RFC 8707 and RFC 8414 don't define one.",
+      "why": "Advertising non-standard discovery metadata misleads clients. The specs define no such field.",
+      "check": "Look for new discovery-document entries that claim support for resource indicators.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

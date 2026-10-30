@@ -1,0 +1,118 @@
+{
+  "hash": "a8bbb966fd5a61dc",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/metrics.md",
+  "rules": [
+    {
+      "statement": "Never put a tenant, client, subject, user identifier, network address, or any other unbounded or caller-supplied value on a metric attribute; record those on traces and logs instead.",
+      "why": "Every distinct attribute value creates a new time series, so unbounded dimensions make metrics expensive. Traces and logs carry them at no per-series cost.",
+      "check": "Look for TagList/KeyValuePair tags on Counter/Histogram.Add/Record calls whose value comes from a tenant/client/subject id, IP address, host, free-form name, or raw request input.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map any metric attribute value outside a known registered set to a fixed sentinel such as `_OTHER`, so the attribute keeps a bounded set of values.",
+      "why": "An unregistered value (such as an unknown grant type) would otherwise add an unbounded dimension.",
+      "check": "Look for metric tags set straight from a request parameter (grant type, method, and so on) without first checking it against the registered set and falling back to `_OTHER`.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds or renames a meter, instrument, attribute, or attribute value, update the metrics instrument catalog documentation in the same change.",
+      "why": "The catalog is the reviewed contract that dashboards and alerts are built against.",
+      "check": "Look for diffs that add or change Meter/Create* calls or metric tag names or values without a matching edit to the metrics catalog doc.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/docs/metrics.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't create a custom request-duration instrument for HTTP endpoints; add attributes to ASP.NET Core's `http.server.request.duration` through `IHttpMetricsTagsFeature`.",
+      "why": "Each signal has one owner, so the built-in request metric stays the single source for request counts and latency.",
+      "check": "Look for new Histogram/Counter instruments that time or count HTTP requests in endpoint or middleware code, instead of adding tags through IHttpMetricsTagsFeature.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a package's meter name, activity source name, and metric attribute names as public constants instead of repeating string literals.",
+      "why": "Hosts and dashboards subscribe and filter by these names, so a public constant keeps the contract in one discoverable place.",
+      "check": "Look for meter, ActivitySource, or tag names written as inline string literals at the call site instead of public const fields.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each package one Meter named after the package, and if the package traces its own mechanisms, use one ActivitySource with the same name as that meter.",
+      "why": "With matching names, a host can subscribe to a package's metrics and traces with one prefix or wildcard.",
+      "check": "Look for meters or activity sources whose names differ from the package name, or for several ActivitySources or Meters inside one package.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the `error.type` attribute on an operation metric only when the operation fails, using a bounded failure-reason constant or the full type name of the exception.",
+      "why": "This follows OpenTelemetry semantic conventions and keeps the attribute bounded. Exception messages are not bounded.",
+      "check": "Look for error.type set on success paths, or set from exception messages or ex.ToString(), instead of GetType().FullName or a reason constant.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record durations with a Histogram in seconds (unit `s`), and give counters an annotated unit such as `{request}` or `{event}`, following OpenTelemetry semantic conventions.",
+      "why": "Consistent units let dashboards and alerts compare instruments without conversion.",
+      "check": "Look for duration histograms in milliseconds or with no unit, and for counters created without a curly-brace unit annotation.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library packages record only through `System.Diagnostics.Metrics` and `ActivitySource` and leave subscription and exporters to the host, which opts in explicitly.",
+      "why": "Instruments cost nothing until a listener subscribes, and the host keeps control of its telemetry pipeline.",
+      "check": "Look for library code that configures OpenTelemetry exporters, MeterListeners, or pipelines itself instead of only emitting through Meter and ActivitySource.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a host collects `System.Net.Http` metrics, add a view that removes the unbounded `server.address` and `server.port` attributes when those can name hosts from user- or client-supplied URIs.",
+      "why": "Those attributes name the hosts of client-registered URIs, which makes them high-cardinality and identifying.",
+      "check": "Look for AddMeter(\"System.Net.Http\") without a view that limits the attributes kept on its instruments.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

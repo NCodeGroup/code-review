@@ -1,0 +1,78 @@
+{
+  "hash": "3c6b2219e91fc622",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0081",
+  "rules": [
+    {
+      "statement": "Persist consent as two separate scope sets: the scopes the subject was asked to decide on, and the subset they granted. Do not store only the granted scopes.",
+      "why": "Storing only granted scopes cannot tell 'never asked' apart from 'asked and denied', so the server cannot avoid re-prompting for scopes the subject already declined.",
+      "check": "Look for consent persistence or models that record only granted scopes, or consent checks that treat any non-granted scope as needing a new prompt instead of checking it against the decided set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, show the consent prompt only when the request includes a scope the subject has not decided on yet. Otherwise, issue the requested scopes intersected with the granted subset, in the order they were requested.",
+      "why": "Granular consent requires OIDC down-scoping: a client that keeps asking for a declined scope must not re-prompt the subject, and a genuinely new scope must prompt.",
+      "check": "Look for authorize logic that prompts whenever any requested scope is not granted, or that issues the full requested scope set even though only a subset was granted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When updating consent, grow the decided set monotonically and replace granted scopes only within the current request's scopes. Never accept a granted scope that was not part of the requested set.",
+      "why": "Re-consenting must be able to revoke a previously granted scope while keeping decisions about scopes outside the current request, and a grant for a scope that was never requested cannot be trusted.",
+      "check": "Look for consent-update code that overwrites the whole granted or decided set, or that adds granted scopes without checking that they were requested.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply prompt=consent to force a new consent decision only on the initial authorization request, not on the request resumed after the consent screen.",
+      "why": "The resumed continuation still carries prompt=consent, so honoring it again sends the subject back to the consent screen in a loop.",
+      "check": "Look for prompt=consent handling that does not check whether the request is a resumed continuation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store the narrowed, consented scope set in the authorization code, and have the token endpoint, introspection and claims use only that set rather than the originally requested scopes.",
+      "why": "This enforces down-scoping end to end, so a client cannot get a denied scope back at token exchange.",
+      "check": "Look for the authorization code or token issuance reading the original requested scopes instead of the consented scopes, or for the token endpoint adding scopes beyond what the code holds.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protect state-changing self-service endpoints, such as revoking an application's consent, with ASP.NET Core antiforgery validation.",
+      "why": "The decision requires the revoke POST on the end-user authorized-applications surface to be antiforgery-protected.",
+      "check": "Look for new POST endpoints that revoke or change user grants and have no antiforgery validation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

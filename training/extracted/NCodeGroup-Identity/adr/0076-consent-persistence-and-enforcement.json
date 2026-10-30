@@ -1,0 +1,91 @@
+{
+  "hash": "02a7ad073ef0e7af",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0076",
+  "rules": [
+    {
+      "statement": "Persist durable, cross-session authorization records such as end-user consent in their own store keyed by their natural (tenant, client, subject) key, not as payloads in the ephemeral, consume-once grant store that logout bulk-revokes.",
+      "why": "The grant store holds ephemeral, single-use or expiring artifacts that end-session revokes in bulk, so consent stored there would be wiped on logout or would need special-casing and re-activation semantics.",
+      "check": "Look for consent or other long-lived, user-manageable authorizations written as PersistedGrant/grant-store entries, or for grant-type exclusions added to the logout revoke sweep to keep such records alive.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When recording a consent decision, re-resolve the pending authorization request on the server and use its client and requested scopes, never scopes or client identifiers posted by the consent form.",
+      "why": "Posted values can be tampered with. The server-side pending request is the authoritative source for what is being consented to.",
+      "check": "Look for consent POST handlers that read scopes or client id from the request body or form and pass them into the grant/persist call.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve a pending authorization request for display (for example, a consent details endpoint) without consuming its continuation, so the request can still be resumed after the user decides.",
+      "why": "The details lookup must leave the parked continuation intact for the later decision and resume, the same way IdentityServer's GetAuthorizationContextAsync works.",
+      "check": "Look for read-only or details endpoints that call a consume/single-use retrieval on the continuation instead of a non-consuming lookup.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When consent is required but the authorization request has prompt=none, return the OIDC consent_required error (and audit the denial) instead of redirecting to an interactive consent surface.",
+      "why": "prompt=none forbids interaction, so OpenID Connect requires the consent_required error.",
+      "check": "Look for consent-required branches in authorize logic that redirect or challenge without first checking for prompt=none.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat existing consent as sufficient only when the recorded granted scopes cover every requested scope, and when granting, union-merge the new scopes into the existing record (an in-place upsert) instead of replacing it.",
+      "why": "Partial coverage must prompt the user again, and widening consent in place keeps one durable record per (tenant, client, subject).",
+      "check": "Look for consent checks that pass on any overlap or on record existence alone, or grant code that overwrites scopes or inserts duplicate records.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an end user denies consent, answer the parked authorization request with an access_denied error at the client's redirect URI instead of just redirecting away.",
+      "why": "Per the amending ADR-0229, the client must be told the request was refused.",
+      "check": "Look for consent deny paths that redirect to a generic page or return locally without sending access_denied to the validated redirect URI.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the core sends an interaction command (such as a consent challenge) that no interactive module handles, degrade to the interaction_required error instead of failing hard.",
+      "why": "A deployment that turns on enforcement without an interactive surface should still give the client a valid protocol response.",
+      "check": "Look for authorize code that throws or returns a 500 when the interaction command comes back unhandled, instead of returning interaction_required.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

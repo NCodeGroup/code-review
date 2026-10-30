@@ -1,0 +1,62 @@
+{
+  "hash": "072329aaf408a3b0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0006",
+  "rules": [
+    {
+      "statement": "Name the single canonical implementation of an interface `IFoo`, the one consumers resolve through DI and never name directly, `DefaultFoo`: drop the `I` and prepend `Default`.",
+      "why": "This follows the ASP.NET Core idiom. It keeps the bare concept name free for a consumer's own type, separates interface from implementation at a glance, and signals a replaceable default.",
+      "check": "Look for a new sole DI-registered implementation of an interface that is named `FooImpl`, `FooService`, `ConcreteFoo`, or just the interface name without the `I`, when it should be `DefaultFoo`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the canonical `Default*` implementation of an interface `internal` so it is reached only through the interface, whether the interface is public or internal.",
+      "why": "A `Default*` type is an internal swap-in default that consumers reach through the interface. They never name it directly.",
+      "check": "Look for a `public` class named `Default*` that is the DI-resolved implementation of an interface.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use the `Default*` prefix for an implementation that is one of several runtime-selected variants of an interface. Name each variant for what makes it specific or how it works.",
+      "why": "A `Default*` name claims to be the one canonical DI implementation. Using it on a variant misleads readers.",
+      "check": "Look for several implementations of the same interface where one is named `Default<Interface>` even though all are selected at runtime, or for a variant named only generically.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an implementation of a framework interface by that framework's own naming pattern, not with `Default*`. For example, an `IValidateOptions<TOptions>` implementation is named `<TOptions>Validator`.",
+      "why": "Framework adapters are not the one canonical implementation of the family's own contracts, so they follow the platform's conventions.",
+      "check": "Look for classes implementing framework interfaces such as `IValidateOptions<T>` that are named `Default*` instead of following the framework's pattern.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a public data, message, model or result type that consumers construct and name directly the bare concept name, without a `Default*` prefix, even when it implements an interface.",
+      "why": "`Default*` signals an internal swap-in reached through an interface. Putting it on a type that consumers name by hand would mislead them and take the clean concept name.",
+      "check": "Look for a public model, request or result type that consumers instantiate directly but that is named `Default*`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "hash": "68668099f84c3b4a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0123",
+  "rules": [
+    {
+      "statement": "Convert RFC 7519 NumericDate values (JWT exp/nbf/iat, auth_time, DPoP iat, Unix-seconds parameters) through the non-throwing `NCode.Json` `DateCoercion.TryFromNumericDate`/`TryParseNumericDate` helpers, never with `DateTimeOffset.FromUnixTimeSeconds`/`FromUnixTimeMilliseconds`.",
+      "why": "The DateTimeOffset conversions throw ArgumentOutOfRangeException outside the representable range, so attacker-supplied values like `iat: 99999999999999` turn a protocol rejection into an unhandled server error.",
+      "check": "Look for new calls to DateTimeOffset.FromUnixTimeSeconds/FromUnixTimeMilliseconds, or ad hoc try/catch of ArgumentOutOfRangeException around Unix-time conversion.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Read NumericDate time claims as JSON numbers that may be fractional (e.g. via `JsonElement.TryGetNumericDate`/`TryGetPropertyNumericDate`), not as `long`/integer-only values.",
+      "why": "RFC 7519 allows non-integer NumericDate values and real clients send fractional `iat`, so integer-only reads reject valid input.",
+      "check": "Look for time claims read with TryGetInt64/GetInt64 or parsed as long instead of through the NumericDate accessors.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not read NumericDate time claims through lenient date accessors that accept date strings (such as `TryGetPropertyValue<DateTimeOffset>`); accept only a JSON number.",
+      "why": "A date string is not a NumericDate, and lenient parsing compares an offset-bearing string's local ticks against a UTC clock.",
+      "check": "Look for exp/nbf/iat/auth_time read with generic TryGetValue<DateTimeOffset> or DateTimeOffset string parsing instead of the strict NumericDate accessor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a time claim that is present but not a valid NumericDate as a validation failure, never as if the claim were absent.",
+      "why": "Ignoring an unreadable nbf lets a token be used early, and ignoring an unreadable exp means it never expires when expiry is optional, so the validator fails open.",
+      "check": "Look for validation code where a failed TryGet on nbf/exp/iat falls through to the 'claim not present' path instead of rejecting with the endpoint's error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a margin or skew to an externally supplied instant, use saturating arithmetic that clamps at `DateTimeOffset.MaxValue`/`MinValue` instead of plain addition that can overflow.",
+      "why": "A validated instant near the top of the range overflows when a retention margin is added, which throws a server error.",
+      "check": "Look for DateTimeOffset.Add/+ TimeSpan on token- or request-derived times with no clamping against MaxValue.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

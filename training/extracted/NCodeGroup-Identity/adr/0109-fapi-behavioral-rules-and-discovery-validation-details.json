@@ -1,0 +1,114 @@
+{
+  "hash": "c33c2820e9e8e349",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0109",
+  "rules": [
+    {
+      "statement": "Implement a security profile's request-time behavioral rules as self-contained requirement objects that the profile composes and that each enforcement point runs through a single catalog call, rather than inline `if (securityProfile == \"...\")` checks in endpoint handlers.",
+      "why": "A registry of typed requirements keeps all of a profile's logic in its definition and makes new profiles or requirement kinds purely additive, with no edits to the catalog, existing profiles or enforcement sites; a closed set of flags or checks scattered through handlers cannot be extended by third parties.",
+      "check": "Look for handlers or endpoints that branch on a security profile name (e.g. comparing to \"fapi2\") or new hard-coded profile flags, instead of adding a requirement class to the profile and calling the catalog's evaluate method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under FAPI 2.0, reject a `client_assertion` whose `aud` is anything other than the exact issuer identifier; do not also accept the token-endpoint URL.",
+      "why": "FAPI 2.0 §5.3.2.1 requires issuer-only audiences so an assertion cannot be replayed against a differently named endpoint of the same OP.",
+      "check": "Look for FAPI client-assertion audience validation that accepts a list containing the token endpoint URL or any value besides the issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When building JWT validation parameters for client assertions, request objects or other signed JWTs, set the clock skew from the effective configured `clock_skew` setting instead of leaving the validator's default.",
+      "why": "Leaving ClockSkew unset silently applied a 5-minute default, ignored the operator's setting and prevented FAPI's 60-second ceiling from taking effect.",
+      "check": "Look for construction of JWT validation parameters (e.g. ValidateJwtParameters) that does not assign ClockSkew from the configured setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send the authorization response redirect back to the client as `303 See Other` with an explicit `Location` header for every client, never 302 or 307; leave the interactive login challenge redirect as the framework's 302.",
+      "why": "303 forces the user agent to GET the redirect_uri regardless of the original method, as FAPI 2.0 §5.2.2 and OAuth 2.1 require, and it is correct for all clients, not only FAPI ones.",
+      "check": "Look for authorization-response or error-to-client redirects using Redirect()/302, any 307 status, or 303 gated on a FAPI profile; tests about the authorization response should assert 303.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep authorization codes single-use through an atomic consume operation, and require `redirect_uri` and match it exactly against the registered set.",
+      "why": "FAPI 2.0 requires single-use codes and a required, exact-matched redirect_uri.",
+      "check": "Look for code redemption that reads and then deletes in separate non-atomic steps, makes redirect_uri optional, or uses prefix/case-insensitive/pattern redirect_uri matching.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under FAPI 2.0, reject a public client (one registered with `token_endpoint_auth_method` `none`) at the authorization endpoint with `unauthorized_client`, not only at the token endpoint.",
+      "why": "Rejecting it on the front channel too makes it consistent with the token endpoint's permitted-method enforcement.",
+      "check": "Look for FAPI authorization-request handling that lets `none`-auth clients through, or that treats an unset auth method as public (an unset method means client_secret_basic).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise `authorization_response_iss_parameter_supported` in discovery whenever the OP emits the RFC 9207 `iss` parameter in authorization responses.",
+      "why": "A relying party can only rely on validating `iss` if the OP advertises the behavior it already performs.",
+      "check": "Look for changes that emit `iss` in authorization responses without the discovery flag, or that make the flag conditional when the behavior is not.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not apply CORS to OAuth front-channel endpoints (authorize, continue, end_session, interactive UI); exclude them with dedicated endpoint metadata that every CORS middleware branch respects, and refuse preflights on them yourself with 405 and an `Allow` header.",
+      "why": "FAPI 2.0 §5.3.2.1 forbids CORS on front-channel endpoints, and routing would otherwise send a preflight to a 405 endpoint with no metadata, which the CORS middleware would answer.",
+      "check": "Look for CORS policies or middleware applied to front-channel endpoints, newly mapped front-channel endpoints that lack the front-channel metadata, or preflight handling that returns CORS headers for them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not mark endpoints with `DisableCorsAttribute` (or other CORS metadata) to opt them out of CORS in a host that may not register CORS middleware; use custom endpoint metadata the CORS branch checks instead.",
+      "why": "ASP.NET Core endpoint middleware throws for an endpoint carrying CORS metadata when no CORS middleware ran, so every request would fail in a production host that adds none.",
+      "check": "Look for `DisableCors()`/`[DisableCors]` added to endpoints in library code or in hosts where CORS middleware is only registered conditionally.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

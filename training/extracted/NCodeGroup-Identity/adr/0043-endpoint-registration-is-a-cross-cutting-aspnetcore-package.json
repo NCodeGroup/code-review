@@ -1,0 +1,53 @@
+{
+  "hash": "95e20c7f155cda4a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0043",
+  "rules": [
+    {
+      "statement": "A builder type that lets callers register services (such as an endpoint-group builder) should inherit `IServiceBuilder` from `NCode.Registration`, not expose a bare `IServiceCollection`, so you don't end up with a second registration surface running alongside it.",
+      "why": "A bare `IServiceCollection` can't reach builder-level helpers such as `AddMessageFactory<T>()`, and it splits registration into two parallel vocabularies.",
+      "check": "Look for new or changed builder/context interfaces that expose an `IServiceCollection Services` property for registration where they could inherit `IServiceBuilder`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each endpoint family through one extension on the endpoint-group builder. That extension registers the family's endpoint provider and the services it depends on, and nothing else registers the same endpoints a second time.",
+      "why": "Keeping the registration next to the endpoint gives one place to register everything. A separate per-family registration chain made the same endpoints appear twice.",
+      "check": "Look for endpoints or endpoint providers registered in more than one place, or for an endpoint's dependent services (including message factories) registered in a separate chain instead of with the endpoint group.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put generic, domain-agnostic infrastructure (routing plumbing, generic operation/result types) in a cross-cutting package whose namespace matches its purpose, not in a domain-specific package or namespace.",
+      "why": "Generic plumbing tied to a domain package can't be reused, and the domain namespace misdescribes what it does.",
+      "check": "Look for new types in a domain package (for example `*.Identity.*`) that contain no domain-specific logic, or generic types given domain-specific names such as `MapIdentityEndpoints`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep core DI/registration packages free of ASP.NET Core dependencies. Put ASP.NET Core-specific extensions in a separate `*.AspNetCore` package that depends on the core package.",
+      "why": "Keeping the core package pure DI means any consumer can adopt it, and only consumers that need the ASP.NET Core concern take on that dependency.",
+      "check": "Look for `FrameworkReference Microsoft.AspNetCore.App`, ASP.NET Core package references, or `Microsoft.AspNetCore.*` usings added to a core registration or abstractions package that has no `.AspNetCore` suffix.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

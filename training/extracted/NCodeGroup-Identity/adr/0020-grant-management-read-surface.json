@@ -1,0 +1,76 @@
+{
+  "hash": "a2a6433b1e15d794",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0020",
+  "rules": [
+    {
+      "statement": "Never accept or return a secret-derived natural key (such as a hashed token key) on an administrative API; address such resources by a separate server-generated opaque id instead.",
+      "why": "A token-derived key in URLs, logs or responses leaks a token identifier; an opaque id keeps the admin identity separate from the runtime secret.",
+      "check": "Look for admin endpoint routes, request parameters or response DTOs that include a hashed key, token handle or other secret-derived lookup value instead of an opaque resource id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Administrative projections of persisted grants or tokens must expose only metadata (ids, type, tenant, client, subject, lifecycle timestamps) and never the serialized payload or key material.",
+      "why": "The payload holds claims, tokens and subject material, and an admin needs none of it to triage or revoke. Exposing only metadata grants the least privilege.",
+      "check": "Check grant/token management DTOs and mappings for payload JSON, raw or hashed keys, or token values being copied into the response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement revocation of a grant or token through a DELETE endpoint as an idempotent soft-revoke: set a revoked timestamp, keep the row, and return 204 even when the item is already revoked.",
+      "why": "Revocation must leave an audit trail, and a soft-revoke makes DELETE idempotent and safe to retry. Physical purging is a separate retention job.",
+      "check": "Look for revoke/DELETE handlers that physically remove grant rows, overwrite an existing revoked timestamp, or return an error for an already-revoked grant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate opaque resource ids (including ids for runtime-minted artifacts) with the shared CSPRNG-based resource-id generator, assign them at creation, and store them in a unique-indexed normalized column.",
+      "why": "Every resource id should use the same 128-bit CSPRNG/base64url scheme, and admin lookup by id needs a unique, normalized column.",
+      "check": "Look for new resource ids made with Guid.NewGuid, counters or custom randomness instead of the shared generator, or for id columns that lack a unique index on the normalized value.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make tenant query filters on entities with an optional tenant null-safe, so that tenant-scoped requests see only rows from their own tenant and never rows that have no tenant.",
+      "why": "Grants may have no tenant. The null-safe filter means global rows are not loaded in tenant-scoped requests.",
+      "check": "Check global query filters on entities with a nullable tenant navigation or FK and confirm they guard against null (e.g. `Tenant != null && ...`) and do not match null-tenant rows.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an entity has no non-secret natural key, order keyset pagination on its chronological surrogate id, never on a secret-derived key.",
+      "why": "Ordering or making cursors from a secret key would put that key in cursors. The surrogate id gives a stable order that leaks nothing.",
+      "check": "Look for paged queries or continuation cursors built from hashed keys or other secret columns.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

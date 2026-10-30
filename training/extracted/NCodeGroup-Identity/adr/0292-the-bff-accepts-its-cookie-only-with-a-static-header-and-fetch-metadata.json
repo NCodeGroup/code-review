@@ -1,0 +1,173 @@
+{
+  "hash": "8fa32182ce5620ce",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0292",
+  "rules": [
+    {
+      "statement": "Authenticate a cookie-authenticated API call only when the request carries the configured static anti-forgery header exactly once with the configured value, compared ordinally, whatever the HTTP method.",
+      "why": "A custom header forces a CORS preflight that deny-by-default CORS refuses, and a form or navigation cannot set it, so this blocks cross-site request forgery without per-session token state.",
+      "check": "Look for cookie-authenticated API paths that skip the header check, accept the header when repeated, compare with a culture-aware or case-insensitive comparison, or check it only for unsafe methods.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an anti-forgery header name at startup if it is a CORS-safelisted header (Accept, Accept-Language, Content-Language, Content-Type, Range) or one that carries credentials (Cookie, Authorization, DPoP).",
+      "why": "A safelisted header skips the CORS preflight, and a credential header mixes up anti-forgery with authentication, so either would defeat the protection.",
+      "check": "Look at options validation for a configurable anti-forgery header name and confirm it refuses safelisted and credential-bearing header names.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply Fetch Metadata on cookie-authenticated endpoints: allow an absent `Sec-Fetch-Site`, `same-origin` or `none`; allow `same-site` only when `Origin` ordinally matches an explicit trusted-origin allow-list; refuse every other value and a repeated header.",
+      "why": "A sibling subdomain counts as same-site, and the component cannot read the application's CORS decision, so it needs its own explicit allow-list.",
+      "check": "Look for Fetch Metadata checks that accept `same-site` or `cross-site` without an origin allow-list, ignore repeated headers, or compare origins case-insensitively.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at startup that each configured trusted origin is a bare origin (scheme, host, port with no path) and uses `https` outside Development.",
+      "why": "Trusted origins are compared exactly against `Origin`, and plain http would weaken the trust boundary in production.",
+      "check": "Look for trusted-origin options that are missing validation of the bare-origin form or of the https requirement outside Development.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Endpoints reached by top-level navigation that have no anti-forgery header must accept only `GET` and `HEAD`, and answer any other method with `405` and `Allow: GET, HEAD`.",
+      "why": "A cross-site page cannot change anything through safe methods, and navigations cannot carry the anti-forgery header.",
+      "check": "Look for page or navigation endpoints authenticated by a session cookie that accept POST or other unsafe methods, or that return 405 without an `Allow` header.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a cookie authentication handler return no result on endpoints that are not explicitly marked as guarded, and have token accessors throw there.",
+      "why": "Limiting the cookie to guarded endpoints means no unguarded endpoint can be forged into acting with the user's session.",
+      "check": "Look for a session cookie handler or token accessor that authenticates or hands out tokens without first checking for the guard endpoint metadata.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return every security refusal as RFC 9457 `application/problem+json` with a stable URN `type`, a `title` and a `status`, plus `Cache-Control: no-store`.",
+      "why": "Clients get consistent, machine-readable errors, and caches never store a refusal.",
+      "check": "Look for refusal responses written as plain text, without a problem type URN, or without `Cache-Control: no-store`.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Audit anti-forgery and unsafe-method rejections as security events.",
+      "why": "The ADR requires that a missing header, a cross-site request and an unsafe method on a page each be audited as a rejection.",
+      "check": "Look for anti-forgery or Fetch Metadata rejection paths that return a refusal without emitting an audit event.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On an unguarded endpoint, throw `InvalidOperationException` naming the required markers instead of redirecting a challenge to login.",
+      "why": "That endpoint never sees the session, so a redirect would send the user from login straight back to the same challenge in a loop.",
+      "check": "Look for challenge handlers that redirect to login without checking that the endpoint is guarded.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Replace a login return URL with `/` unless it is on an allow-list.",
+      "why": "An unchecked return URL is an open redirect.",
+      "check": "Look for return URLs built from the request and passed to a redirect without allow-list validation.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow cookie-session sign-out only through an endpoint protected by the anti-forgery header and Fetch Metadata checks.",
+      "why": "Otherwise another site could end the user's session.",
+      "check": "Look for sign-out endpoints for the session scheme that are reachable by navigation or a form post without the anti-forgery checks.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a session-store outage to `503` and never to `401`.",
+      "why": "An outage must not log users out or send a frontend into a login loop.",
+      "check": "Look for store or backend-availability exceptions that are caught and turned into 401, a challenge, or a cleared session.",
+      "scope": "domain",
+      "domain": "browser-session-bff",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register an authentication scheme as the default only when no default scheme is already set.",
+      "why": "A library must not override the host application's chosen default scheme.",
+      "check": "Look for library code that sets `DefaultScheme` or `DefaultAuthenticateScheme` without first checking whether it is null.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce middleware ordering with per-request checks that fail closed, and not with a startup guess: throw when the middleware runs after `UseAuthentication()` (an `IAuthenticationFeature` is already set) or when routing ran after it, and cover this with an end-to-end test.",
+      "why": "An ASP.NET Core host cannot inspect the built pipeline, and per-request checks are exact and ensure a misordered pipeline answers 500 and never serves a guarded endpoint unprotected.",
+      "check": "Look for security middleware that silently does nothing when it is misordered, or that depends on a startup pipeline-order check, and for the absence of an end-to-end test of the misordered case.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

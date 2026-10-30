@@ -1,0 +1,112 @@
+{
+  "hash": "1209ac972f925bed",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0044",
+  "rules": [
+    {
+      "statement": "Never write a secret, client secret, or token to a log; log only a non-sensitive outcome identifier such as the client id.",
+      "why": "A secret in logs has to be scraped back out, and it is a worse security posture than a credential the operator supplies out of band.",
+      "check": "Look for logger calls, log message templates, or exception messages that include secret, password, token, or credential values instead of just an identifier.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protect a credential secret with ASP.NET Core Data Protection before persisting it, and never store it in plaintext.",
+      "why": "The bootstrap credential has to be protected at rest, and it only round-trips when a persistent Data Protection key ring is available.",
+      "check": "Look for code that persists a client secret or similar credential without passing it through an IDataProtector (or the established protection service) first.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take bootstrap or administrator credentials from operator-supplied configuration as an explicit opt-in: when the configuration is absent, create nothing, and never generate a credential and print or log it at startup.",
+      "why": "A credential from configuration is deterministic, rotatable, and never logged. A token generated and logged at boot expires quickly, cannot be revoked, and would have to be scraped from logs. Default registrations must never create a credential.",
+      "check": "Look for default service registrations or startup code that create admin credentials unconditionally, or that generate a token or secret and emit it at startup.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When signing keys and issuer are per-tenant and the tenant is resolved inside endpoint execution, validate bearer tokens in a step that runs after tenant resolution (such as an endpoint filter ordered after the tenant-resolving filter), not in pre-routing authentication middleware or `.RequireAuthorization()`.",
+      "why": "Middleware that runs before routing cannot know which tenant's keys or issuer to validate against, and it would run before the context it depends on exists.",
+      "check": "Look for multi-tenant token validation added as a pre-routing JwtBearer default scheme or `.RequireAuthorization()` on endpoints whose tenant context is only available after an endpoint filter runs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a self-issued access token's issuer against the resolved tenant's issuer, require the expected audience, and verify the signature against the same key collection the server signs with and publishes at JWKS, reusing the existing token validation path instead of adding a separate key configuration.",
+      "why": "Having one issuer that both mints and validates keeps a single source of truth for keys and trust, so no second key or trust configuration has to be kept in sync.",
+      "check": "Look for token validation that skips the issuer or audience check, loads keys from a separate configuration, or duplicates validation logic that the introspection path already provides.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a bearer token is missing or invalid, leave the principal anonymous and let the downstream authorization return 401 or 403; do not short-circuit with a separate rejection path.",
+      "why": "The existing authorization already maps an anonymous caller to 401 and an authenticated but unauthorized caller to 403. Authentication should only populate the principal, not add a second enforcement mechanism.",
+      "check": "Look for authentication steps that write their own error responses or throw on missing or invalid tokens instead of leaving HttpContext.User anonymous.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make data seeders idempotent: create the entity when it is absent, and when it already exists, reconcile its configuration-derived values (for example, re-protect a secret from configuration) instead of skipping or failing.",
+      "why": "Seeding runs on every resolution and across restarts and replicas. Reconciling heals a stale or undecryptable stored secret, for example after a key-ring change, instead of leaving the credential permanently unusable.",
+      "check": "Look for seeders that insert without checking whether the entity exists, or that return early on an existing entity without refreshing the values that come from configuration.",
+      "scope": "domain",
+      "domain": "multi-tenant-seeding",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Seed tenant data through the normal persistence abstractions on the lazy tenant-resolution path, not in a startup hosted service or by writing directly to a specific DbContext.",
+      "why": "Writing through the normal persistence path keeps seeded data independent of any particular DbContext and visible through the management API like any other entity. Startup hosted services were deliberately avoided for seeding.",
+      "check": "Look for new IHostedService-based seeding, or seeding code that depends on a concrete DbContext instead of the store abstractions.",
+      "scope": "domain",
+      "domain": "multi-tenant-seeding",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare the bearer security scheme (and the OAuth2 flow when one applies) in the OpenAPI document, and reference it from authenticated operations.",
+      "why": "Renderers such as Scalar can then show an authentication affordance and attach the token to requests.",
+      "check": "Look for new authenticated endpoints, or OpenAPI configuration, that do not declare or reference a security scheme.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

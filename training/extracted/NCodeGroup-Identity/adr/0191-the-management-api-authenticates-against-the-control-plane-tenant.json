@@ -1,0 +1,31 @@
+{
+  "hash": "a8c22daac644c26e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0191",
+  "rules": [
+    {
+      "statement": "In a multi-tenant identity server, validate a cross-tenant administration API caller's access token against the tenant that issued it (the control-plane tenant), not against the tenant resolved from the request's route value or host.",
+      "why": "The route's tenant identifier only picks which data a call acts on. Validating the token with the addressed tenant means a tenant that never issued the token judges it, and under host- or path-based resolution the API either returns 404 or lets a workload tenant authenticate administrators.",
+      "check": "Look for management/admin endpoints or filters that build the authenticating OpenID/tenant context from per-request tenant resolution (route `tenantId`, host) instead of a dedicated control-plane tenant resolution.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a route's tenant identifier in a cross-tenant administration API only to scope data access, and when an operation must run protocol machinery in the addressed tenant, create that tenant's own context explicitly instead of reusing the authenticating context.",
+      "why": "The security domain that authenticates the caller and the tenant whose data is acted on are different, and mixing them up lets the wrong tenant's keys and policy apply.",
+      "check": "Look for code that uses the authenticating (control-plane) context to issue or validate tokens on behalf of the addressed tenant, or that uses the route tenant to decide authentication.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

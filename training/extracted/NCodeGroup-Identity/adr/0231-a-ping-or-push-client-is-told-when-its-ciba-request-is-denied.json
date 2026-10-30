@@ -1,0 +1,55 @@
+{
+  "hash": "587451b64f23214c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0231",
+  "rules": [
+    {
+      "statement": "When a CIBA request is denied, notify a ping or push client exactly once, and only from the call whose own update of the grant decided the request; a call that finds the request already decided dispatches nothing.",
+      "why": "If every denial call sent a notification, a concurrent decision would notify the client twice. Without any notification, a ping or push client waits until the request expires.",
+      "check": "Look for a CIBA denial path, including the denial of a refused approval, that never dispatches a ping/push notification. Also look for one that dispatches without checking that its own state update decided the request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A CIBA push-mode denial notification carries `auth_req_id` and `error` set to `access_denied`, with no tokens and no `error_description`. A ping-mode denial carries only `auth_req_id`, and the token endpoint answers `access_denied` when the client polls.",
+      "why": "CIBA Core 1.0 §10.2 and §12 define these payloads. `error_description` is optional, and the end user may not be the party that denied the request.",
+      "check": "Look for push denial payloads that include tokens or an error_description, and for ping denial bodies that carry anything beyond auth_req_id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not send a callback notification to a CIBA poll-mode client on denial; it learns the denial from the token endpoint.",
+      "why": "Poll clients have no callback, and the token endpoint reports the denial.",
+      "check": "Look for denial notifications dispatched without first checking that the client uses ping or push delivery mode.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send CIBA denial notifications through the same durable, retrying delivery job that carries approvals, and have the job carry only the error code and no tokens.",
+      "why": "Denials then get the same retries as every delivery, and a durable dispatcher never persists tokens for a denial.",
+      "check": "Look for denial notifications sent by a direct HTTP call that skips the delivery job, and for denial jobs that carry token data.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "hash": "71e3bebd7579756e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0218",
+  "rules": [
+    {
+      "statement": "Remove large or unbounded sets of rows in bounded batches of a fixed size (repeating while a batch is full), each batch in its own unit of work, instead of loading or deleting all matching rows at once.",
+      "why": "An unbounded removal makes one huge unit of work; bounded batches clear a long backlog in many small units of work.",
+      "check": "Look for prune/cleanup code that queries all matching rows without a Take/limit, or that removes everything in a single SaveChanges call.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove rows in Entity Framework stores by reading them and removing them through the change tracker, not with set-based deletes such as ExecuteDelete/ExecuteDeleteAsync.",
+      "why": "The EF InMemory provider does not support set-based deletes, and the change tracker gives every provider one code path.",
+      "check": "Flag ExecuteDelete/ExecuteDeleteAsync or raw SQL DELETE statements in store implementations.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A store method that removes a bounded batch takes a limit, orders the candidate rows by a stable key such as Id before applying the limit, returns the count staged, and throws ArgumentOutOfRangeException when the limit is below one.",
+      "why": "A stable order makes batches deterministic, and an invalid limit is a caller error that must fail fast.",
+      "check": "Check batch removal methods for a missing limit guard (e.g. ArgumentOutOfRangeException.ThrowIfLessThan), a missing OrderBy before Take, or no returned count.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run periodic background maintenance as a hosted service that ticks on a PeriodicTimer, logs any failure of a run as a warning with a defined event id, and retries at the next tick rather than stopping the service.",
+      "why": "A transient failure must not stop the maintenance permanently or crash the host; the next tick runs it again.",
+      "check": "Look for background loops using Task.Delay or System.Threading.Timer instead of PeriodicTimer, exceptions that escape the loop, or failures swallowed without logging.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Design background cleanup that runs on every replica to tolerate concurrent runs without leader election: treat a concurrency conflict on saving a batch (another replica already removed the rows) as progress and continue with the next batch instead of failing.",
+      "why": "Leader election needs shared state, and concurrent prunes waste at most one batch.",
+      "check": "Check that DbUpdateConcurrencyException from a removal batch is caught and treated as a full batch, not logged as a failure or allowed to abort the run.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a database index on every timestamp column that a periodic prune query filters on.",
+      "why": "So the removal reads the ended rows through an index instead of scanning the table.",
+      "check": "When a new prune/cleanup query filters on a column (e.g. RevokedWhen, ExpiresWhen), verify the entity configuration and migration add an index on it.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure retention periods and background intervals through a public sealed options type with sensible defaults, bound from configuration and validated when the host starts (retention not negative, interval a value PeriodicTimer accepts).",
+      "why": "Operators set them through configuration, and invalid values must fail at startup rather than at the first tick.",
+      "check": "Look for hardcoded retention/interval constants, options without ValidateOnStart, or missing validation of negative or out-of-range TimeSpans.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not delete revoked or expired grants (refresh tokens, authorization codes, sessions) as soon as they end; keep them for a retention period after they end, and only count a grant as ended when it expired or was revoked (a session-type grant only when revoked).",
+      "why": "Ended grants are still read to detect refresh token reuse and authorization code replay; removing them early turns a reuse into an unknown token.",
+      "check": "Flag cleanup code that deletes grants at revocation/expiry time, prunes without subtracting a retention period, or removes non-expiring unrevoked grants or unrevoked sessions.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

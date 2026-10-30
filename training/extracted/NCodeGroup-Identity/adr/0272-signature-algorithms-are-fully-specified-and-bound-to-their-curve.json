@@ -1,0 +1,115 @@
+{
+  "hash": "07f222ef200619f8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0272",
+  "rules": [
+    {
+      "statement": "Bind ECDSA signature algorithms to their named curve (ES256→P-256, ES384→P-384, ES512→P-521) and reject keys on any other curve; do not judge compatibility by key type and size alone.",
+      "why": "RFC 7518 §3.4 binds each ES* algorithm to a curve, and an open curve catalog can hold a second 256-bit curve that a size-only check would accept as ES256.",
+      "check": "Look for key/algorithm compatibility checks or curve lookups for ECDSA that compare only key size or bit length rather than the named curve.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read an elliptic-curve key's curve from the key material, never infer it from the key size.",
+      "why": "Mapping every 256-bit key to P-256 is wrong once the curve catalog holds more than one curve of a given size.",
+      "check": "Look for code that maps a key size to an ECCurve (e.g. 256 → nistP256) rather than reading the curve parameters/OID from the key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let the algorithm decide whether a key fits it through one overridable compatibility method, and have callers use that method; do not repeat key type, size or curve checks at each call site.",
+      "why": "Call-site checks duplicate the rule and can't know the rules of a contributed algorithm in an open vocabulary.",
+      "check": "Look for credential selection, DPoP or signing code that inspects key type/size/curve directly to decide algorithm fitness instead of calling the algorithm's compatibility check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare elliptic curves with the shared named-curve equality rule (OID first, then friendly name), not ad hoc comparisons.",
+      "why": "One shared comparison keeps curve identity consistent across the JOSE and secrets components.",
+      "check": "Look for curve equality written as direct Oid.Value or FriendlyName string comparisons, or ECCurve reference equality, instead of the shared helper.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign and verify operations must throw ArgumentException when the key's curve does not match the algorithm's curve.",
+      "why": "The curve is part of the algorithm, so a mismatched key must never produce or accept a signature.",
+      "check": "Look for ECDSA/EdDSA TrySign or Verify implementations that go ahead without checking that the key's curve matches the algorithm's.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute OpenID Connect at_hash, c_hash and s_hash with the signing algorithm's token-hash function rather than its HashAlgorithmName: SHA-512 (64 bytes) for Ed25519, SHAKE256 with 114 bytes of output for Ed448, and the key's curve picks the hash for polymorphic EdDSA.",
+      "why": "Ed448 uses SHAKE256, which HashAlgorithmName can't express (OpenID Connect issue #1125).",
+      "check": "Look for token-hash claim computation that derives the hash directly from HashAlgorithmName or assumes SHA-512 for every EdDSA key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the polymorphic EdDSA algorithm registered and accepted next to the fully-specified Ed25519 and Ed448 codes from RFC 9864; do not remove or reject it.",
+      "why": "RFC 9864 deprecates EdDSA but doesn't prohibit it, and dropping it breaks private_key_jwt and DPoP interop with the conformance suite and common libraries.",
+      "check": "Look for changes that unregister, stop advertising or reject the 'EdDSA' alg value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Limit the FAPI 2.0 signing algorithms to PS256, ES256 and Ed25519 for every JWT the profile governs, DPoP proofs included, and leave out polymorphic EdDSA and Ed448.",
+      "why": "FAPI 2.0 §5.4 permits only the Ed25519 variant of EdDSA, and polymorphic EdDSA would also accept an Ed448 key.",
+      "check": "Look for FAPI 2.0 algorithm allow-lists that include EdDSA or Ed448, or that skip DPoP proofs or other JWTs the profile governs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check Shake256.IsSupported before signing or computing token hashes with Ed448.",
+      "why": "Ed448 signing and token hashing depend on SHAKE256, which isn't available on every platform.",
+      "check": "Look for Ed448 code paths that call Shake256 without checking IsSupported first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

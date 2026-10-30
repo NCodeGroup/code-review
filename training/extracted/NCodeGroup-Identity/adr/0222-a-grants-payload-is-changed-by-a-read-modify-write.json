@@ -1,0 +1,51 @@
+{
+  "hash": "72eac75e56f85e61",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0222",
+  "rules": [
+    {
+      "statement": "Change a persisted record that has a concurrency token by applying the change to the record as read in the same unit of work, and on a concurrency exception read it again and reapply the change for a bounded number of attempts, rather than computing the new value from an earlier read and overwriting the stored value.",
+      "why": "If the change is computed from an earlier read, the concurrency token only guards the time between the second read and the save, so a write that lands between the two reads is silently lost (for example, a client added to a session, or an approval landing during a poll).",
+      "check": "Look for code that reads an entity, computes a replacement payload, then calls an update/replace method that re-reads and overwrites. Also look for retry loops copied into each caller, or a concurrency exception that is caught and swallowed without a re-read.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An update function passed to a retrying read-modify-write must decide only from the stored value it receives and must have no side effects, such as sending notifications, mutating captured state or doing I/O.",
+      "why": "The function may run several times, once per attempt, so side effects would repeat and decisions based on captured stale state would be wrong.",
+      "check": "Look at lambdas passed to update/retry helpers that send messages, log business events, mutate outer variables, call services, or branch on values read before the call.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check a state transition's precondition (for example, that a request is still pending) against the stored record inside the concurrency-guarded update, have the operation report whether this call made the change, and perform follow-up effects such as notifications or token delivery only when it did.",
+      "why": "Checking the precondition on an earlier read, or not at all, let two concurrent approvals both succeed and both deliver notifications or tokens.",
+      "check": "Look for approve/deny/add operations that check status before the update call, that return void or always true, or that trigger downstream delivery without checking that this call won the update.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the stored record already reflects the intended change (for example, an item is already in a list or the record was touched recently), the update must write nothing and report that it made no change.",
+      "why": "A change that the stored record does not need should cost no write, and the caller must be able to tell whether this call changed the record.",
+      "check": "Look for update functions that always return a new value and save even when the stored state already satisfies the change, such as adding a duplicate or re-stamping a timestamp within its granularity.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

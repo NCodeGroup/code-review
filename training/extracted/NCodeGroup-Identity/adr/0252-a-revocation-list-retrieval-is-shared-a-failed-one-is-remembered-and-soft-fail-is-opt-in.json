@@ -1,0 +1,131 @@
+{
+  "hash": "47c7b1a9679a1ea3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0252",
+  "rules": [
+    {
+      "statement": "When concurrent callers request the same expensive remote resource, share a single in-flight retrieval (e.g. a ConcurrentDictionary of Lazy<Task<T>> keyed by the resource) instead of starting one per caller, and remove the in-flight entry when the retrieval ends.",
+      "why": "A burst of requests for one resource otherwise repeats the same download once per concurrent check.",
+      "check": "Look for a fetch-then-cache path where the cache miss path downloads directly, so concurrent misses each start their own HTTP request.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a retrieval shared by several callers with CancellationToken.None, bound it only by its own configured timeout, and have each caller wait on it with Task.WaitAsync(cancellationToken).",
+      "why": "One caller cancelling must not break the shared retrieval for the other callers.",
+      "check": "Look for a shared or coalesced task that is started with the first caller's cancellation token, or callers that await the shared task directly with no WaitAsync(cancellationToken).",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a retrieval shared by several callers its own copies of the inputs it needs (for example, load a fresh X509Certificate2 from the raw data) instead of using objects that the first caller owns and may dispose.",
+      "why": "A caller that disposes its own objects, such as the certificates of its chain, must not break the retrieval for the others.",
+      "check": "Look for a shared background task that captures a caller-owned IDisposable (certificate, stream, chain) rather than a copy it owns.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cache a failed remote retrieval (negative caching) for a configured duration, and don't retry the source while that entry exists, instead of paying the full fetch and timeout on every request or adding retry-with-backoff.",
+      "why": "Without it, an unreachable source costs a full timeout on every request. The remembered failure serves as the backoff.",
+      "check": "Look for a remote fetch whose failure path caches nothing, so each later request retries right away, or for added retry/backoff loops where a failure cache would do.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose network retrieval limits such as the fetch timeout, the maximum response size and cache durations as strictly bound options that are validated at host startup (timeout accepted by a timer, size at least one, durations above zero), not as constants in code.",
+      "why": "Fixed limits can't be tuned. A bad value should stop the host at startup, not fail on the first retrieval.",
+      "check": "Look for hard-coded TimeSpan or byte-size limits on HTTP fetches or caches, or for new options that have no startup validator.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a limit that governs a retrieval shared across tenants a host-wide option, not a per-tenant setting.",
+      "why": "One retrieval serves every tenant that names the same resource, so a per-tenant value has no single meaning.",
+      "check": "Look for timeouts or sizes of a shared fetch that are read from tenant or client settings.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep caches of large, rebuildable remote data and of per-replica fetch failures in process memory (IMemoryCache), not in the cross-replica shared-state store.",
+      "why": "Such data can be rebuilt from its source and can be large, and one replica's network failure must not stop the other replicas.",
+      "check": "Look for downloaded lists, documents or failure markers written to a distributed/shared-state cache.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express a policy as one enumerated setting value (e.g. online, online_soft_fail, none), not as a separate boolean beside the mode setting.",
+      "why": "One policy setting states one policy. A boolean beside a mode creates meaningless combinations.",
+      "check": "Look for a new boolean flag that changes how an existing mode setting behaves, such as a soft-fail flag next to a 'none' mode.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make certificate revocation checking fail closed by default: refuse an unknown status unless the tenant or client opts into soft-fail, and log a warning whenever soft-fail accepts a certificate with unknown status.",
+      "why": "A secure default fails closed. Soft-fail lets revoked certificates through when a list fails verification, is unavailable or is unsupported.",
+      "check": "Look for revocation code that treats unknown or unavailable status as valid by default, or that accepts it under soft-fail without logging a warning.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a revocation checker answer 'unknown', never 'good', for revocation sources or list forms it does not support (delta, partitioned or indirect CRLs, a CRL signed by another CA key) and for lists it cannot retrieve or verify.",
+      "why": "Only a verified list can show that a certificate is not revoked. Unsupported forms have to go through the fail-closed or soft-fail policy.",
+      "check": "Look for code paths that skip a CRL or extension they don't recognize and return not-revoked.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept an RSASSA-PSS signature (OID 1.2.840.113549.1.1.10) only with explicit parameters per RFC 4055: SHA-256/384/512 with absent or NULL hash parameters, MGF1 over the same hash, a salt length equal to the hash length, and a trailer field that is absent or 1. Refuse defaulted (SHA-1) parameters and SHA-1 signatures.",
+      "why": "Defaulted PSS parameters mean SHA-1, which must not be accepted.",
+      "check": "Look for PSS verification that uses default parameters, doesn't compare the MGF1 hash or salt length with the signature hash, or allows SHA-1.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

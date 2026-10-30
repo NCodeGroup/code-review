@@ -1,0 +1,78 @@
+{
+  "hash": "9a8e51e6e8a2fb68",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0224",
+  "rules": [
+    {
+      "statement": "When an end-user account is disabled or deleted, end all of its principal's sessions through the session termination seam with a reason that names the cause, rather than revoking grants or tokens directly.",
+      "why": "Revoking grants without the termination seam sends no back-channel logout to relying parties and leaves the termination unaudited, and if sessions stay in place a refresh token of a disabled or deleted account can still be redeemed until it expires.",
+      "check": "Look for account disable/delete code paths that skip session termination, or that delete grants/refresh tokens directly instead of calling the session service's revoke-all with a specific termination reason.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deleting an account or principal, terminate its sessions before removing the account, identity, principal, grants or consents, so the sessions can still be listed and their relying parties notified.",
+      "why": "Once the deletion commits, the grants are erased and can no longer be listed to send back-channel logout to the relying parties.",
+      "check": "In a deletion flow, check that session termination runs after validation but before any removal or save that erases the principal's grants or sessions.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Disabling an account must keep its consents, and deleting a principal must erase its consents and grants as well as its role assignments.",
+      "why": "Disabling can be undone, so removing consents would make the end user consent again. A deleted principal should leave no consent or grant behind.",
+      "check": "Look for disable paths that remove consents, and for principal removal code that leaves consents or grants of that principal in the tenant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The authorization request and every grant that issues tokens for a subject must check the subject's account standing, and must refuse with access_denied when the local account is disabled or no longer exists.",
+      "why": "Otherwise a refresh token or other grant of a deleted or disabled account keeps being redeemed until it expires.",
+      "check": "Look for new or changed token-issuing grant handlers that skip subject validation, and for subject-validation handlers that let a missing or disabled self-issued account through or return an error code other than access_denied.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A chained validation handler that runs after other handlers must return at once when the operation already has an error, and must not overwrite that error.",
+      "why": "The account check runs after the default handler and must leave an earlier refusal as it is.",
+      "check": "Look for later-priority validation handlers that do work or set an error without first checking whether the operation already has one.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Blocking or disabling an end user must block the principal across all of its connections, not only the connection whose account was disabled, while a subject the account source cannot judge (no self-issued identity or self-issuer claim) must not be refused.",
+      "why": "A block on only the local connection would let the principal keep signing in through another connection, and the core cannot tell a deleted principal from one that never had a local account.",
+      "check": "Check that the account check refuses the principal whenever any of its self-issued accounts is disabled or missing, and that subjects with only external identities and no self-issuer claim are not refused.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

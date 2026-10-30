@@ -1,0 +1,52 @@
+{
+  "hash": "a49eeb595918f15a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity .github/agents/copilot-reviewer.agent.md",
+  "rules": [
+    {
+      "statement": "Do not skip, disable, or weaken existing tests (e.g. adding Skip attributes, deleting assertions, loosening expected values) to make a change pass.",
+      "why": "The source treats skipped or weakened tests as a shortcut that hides real failures; that makes it a review finding even when the checks pass.",
+      "check": "Look for tests that were newly skipped or ignored, removed or commented-out assertions, broadened expectations, or deleted test cases in the diff that have no stated reason.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not swallow exceptions or errors; a caught error must be handled, rethrown, or reported, never silently ignored.",
+      "why": "The source names swallowed errors as a shortcut that hides failures and must be flagged.",
+      "check": "Look for empty catch blocks, catch blocks that only return a default value, or ignored error results that are not logged, rethrown, or turned into a meaningful outcome.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not leave TODO or placeholder comments in place of required behavior in a finished change.",
+      "why": "The source names leftover TODOs as a shortcut showing the work was not done as written.",
+      "check": "Search the added lines for TODO, FIXME, HACK, or NotImplementedException placeholders that stand in for behavior the change was meant to deliver.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not hard-code values that should come from inputs, configuration, or computation just to satisfy a test or a specific case.",
+      "why": "The source names hard-coded values as a shortcut that makes a change look correct without implementing the real behavior.",
+      "check": "Look for literal values in production code that copy test expectations, special-case one particular input, or replace a value that should come from configuration or parameters.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

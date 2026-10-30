@@ -1,0 +1,97 @@
+{
+  "hash": "06558b20626428d2",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0204",
+  "rules": [
+    {
+      "statement": "When the same derived result (such as merging layered settings) is needed in several places, compute it in one injectable service that every caller uses, not in hand-copied code or a static helper.",
+      "why": "Hand-made copies of the merge drifted apart: they read different sources and handled one scope differently. A static helper can't be replaced by a host and can't take the dependencies it needs.",
+      "check": "Look for new code that repeats an existing shared computation inline, or adds a static helper for logic that needs injected dependencies or that a host should be able to override.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a library's default implementation of a replaceable service with `TryAdd*` (for example `TryAddSingleton`), so an implementation the host registers first is kept.",
+      "why": "Hosts must be able to supply their own implementation, and every caller must then use the host's.",
+      "check": "Look for library service registrations that use `AddSingleton`/`AddScoped`/`AddTransient` for an extension-point interface where `TryAdd*` should be used.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read `IOptions<T>.Value` when it is used, never in a constructor.",
+      "why": "Reading options in a constructor forces options validation, and every service that validation needs, to run while the service is being built, which can create construction-order problems and dependency cycles.",
+      "check": "Look for constructors that read `options.Value` or store it in a field, instead of keeping `IOptions<T>` and reading `.Value` in the method that needs it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a write, when code must see that write right away (seeding, previews, validation), read the committed state from the store, not a periodically refreshed or polled in-memory copy.",
+      "why": "A polled copy can be minutes behind the commit, even on the replica that made the change, so the follow-up work would miss the change or show stale state.",
+      "check": "Look for post-write logic that reads a cached or polled provider when it needs the value that was just committed.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bulk read-only walks over many entities (for example a validation pass across all records) must read untracked, load only the fields they need with no secrets, and page with a keyset cursor ordered by identifier.",
+      "why": "Loading every entity with its secrets and with change tracking made a settings update unbounded and loaded sensitive data it didn't need.",
+      "check": "Look for loops over all tenants, clients or similar entities that load full tracked entities or secrets, or that load everything without keyset paging.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run an expensive check that walks dependent entities after a change only when the change alters a value that the check reads; compare the effective values before and after the change.",
+      "why": "A change that touches nothing the check reads should load nothing, which keeps updates bounded.",
+      "check": "Look for update handlers that always run a full walk of dependent entities, without first checking whether any setting the walk reads actually changed.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A walk that spans tenants must run each tenant's queries under an explicit tenant scope, because tenant-filtered queries apply the ambient tenant's query filter.",
+      "why": "Without an explicit scope, the ambient tenant's filter would return the wrong tenant's rows, or none.",
+      "check": "Look for loops over tenants that query tenant-filtered stores without setting the tenant scope for each iteration.",
+      "scope": "domain",
+      "domain": "multi-tenant",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a stored settings document can't be read or honored, throw a `JsonException`-derived exception that names the scope and the owner of the document.",
+      "why": "Callers need to know which stored document can't be honored so they can report it (for example with a 409 response).",
+      "check": "Look for deserialization or merge failures of stored settings that are swallowed, or that throw a generic exception without naming the scope and owner.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

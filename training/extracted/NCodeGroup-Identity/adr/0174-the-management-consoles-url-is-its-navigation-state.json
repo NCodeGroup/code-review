@@ -1,0 +1,83 @@
+{
+  "hash": "fbb2850acbde1277",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0174",
+  "rules": [
+    {
+      "statement": "Derive a single-page app's navigation state (scope, selected entity, active surface) from the URL instead of keeping it in separate component state.",
+      "why": "If the state lives only in component state, views can't be bookmarked, linked or restored on reload, the back button leaves the app, and the state can drift from what the address bar shows.",
+      "check": "Look for new React state (useState or a store) that holds the current tenant, scope or surface next to the route, or for navigation that changes the view without changing the URL.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode identifiers placed in a URL path segment with encodeURIComponent, decode them with decodeURIComponent, and treat a blank value or a malformed encoding as no match rather than throwing or passing it through.",
+      "why": "Encoding the identifier as a single segment means any name survives the round trip. Rejecting blank or malformed input stops it from resolving to an unintended route.",
+      "check": "Look for path building that concatenates raw identifiers, and for decodeURIComponent calls that have no try/catch or no check for blank values.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When rewriting a non-canonical or unknown path to its canonical form, replace the current history entry (history.replaceState) instead of pushing a new one. Push an entry only for real user navigation.",
+      "why": "Replacing the entry means back never returns to the non-canonical form, while each real navigation still gets its own back/forward entry.",
+      "check": "Look for redirects, default-surface fallbacks or trailing-slash fixes that call pushState or navigate-with-push, and for user navigations that use replace.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before navigating to a return path restored after sign-in (from session storage, state or query), run it through the app's route resolver so the result is always a same-origin app path.",
+      "why": "A stored or round-tripped return path is untrusted, and navigating to it directly could turn the sign-in flow into an open redirect.",
+      "check": "Look for post-login code that reads a saved URL or path and assigns it to location or history without canonicalizing it or checking that it is same-origin.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write route parsing and formatting as pure functions with no UI dependencies, and cover them with unit tests that include round-trip and fallback cases.",
+      "why": "Pure, tested parse/format functions keep the routing rules in one verifiable place, separate from the browser binding.",
+      "check": "Look for route parsing written inline in components, or for changes to the route grammar that come without unit tests.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key views that are scoped to an entity (such as a tenant) by that entity's identifier, so that switching entities remounts them and no local state or open detail view carries over.",
+      "why": "Remounting when the entity changes, including through history navigation, stops state from one tenant's view leaking across the boundary into another's.",
+      "check": "Look for tenant-scoped container components rendered without a key tied to the tenant id.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

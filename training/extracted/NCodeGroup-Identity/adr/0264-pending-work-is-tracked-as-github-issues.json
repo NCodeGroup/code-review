@@ -1,0 +1,54 @@
+{
+  "hash": "b2d68a5acf4180c5",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0264",
+  "rules": [
+    {
+      "statement": "When a code comment mentions deferred or pending work, it refers to the GitHub issue that tracks it in the form `issue #123`. It does not use a hand-allocated ID or leave the work untracked.",
+      "why": "GitHub issues are the single source of truth for pending work. A reference by issue number stays valid and links the item to the pull request that completes it.",
+      "check": "Look for TODO, FIXME, 'deferred' or 'follow-up' comments that have no `issue #N` reference, or that use a home-grown ID scheme instead.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Markdown, refer to a pending-work item with a full issue link of the form `[#123](https://github.com/<org>/<repo>/issues/123)`.",
+      "why": "A reference by issue number resolves to the tracker, which holds the one authoritative pending-or-done state.",
+      "check": "Look in changed Markdown for pending items given as bare text, as hand-allocated IDs, or as `#N` with no issue link.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add or keep lists or catalogs of pending work in repository files. File each item as its own GitHub issue and link to it instead.",
+      "why": "Markdown catalogs with hand-allocated IDs collide across concurrent branches, need text moved between files to mark completion, and cannot link an item to the pull request that closes it. The repository holds only conventions and reasoning.",
+      "check": "Look for diffs that add backlog, TODO-list or follow-up sections or files that list pending work items in Markdown instead of linking issues.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pull request that completes a tracked pending-work item includes `Closes #N` in its description, so that merging it closes the issue.",
+      "why": "An item is done when the merged pull request closes its issue, which makes completion a single checkable fact.",
+      "check": "For a pull request that removes an `issue #N` reference or implements the work it describes, check that the description contains `Closes #N`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

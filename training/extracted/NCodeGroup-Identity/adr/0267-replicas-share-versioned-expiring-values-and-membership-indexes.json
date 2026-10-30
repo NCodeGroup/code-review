@@ -1,0 +1,95 @@
+{
+  "hash": "3b26e794c7898fb0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0267",
+  "rules": [
+    {
+      "statement": "Redeem single-use shared state (such as a login transaction or one-time code) with one atomic take operation, such as `GETDEL`, rather than a read followed by a separate remove.",
+      "why": "The callback that redeems it has to remove it atomically, so a replayed or concurrent callback finds nothing and the state is never redeemed twice.",
+      "check": "Look for code that consumes one-time state with a Get followed by a Remove/Delete, or any non-atomic check-then-delete on a shared store.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Update shared state that concurrent requests may modify by compare-and-swap on a version, and handle a failed swap, rather than overwriting it blindly.",
+      "why": "Two concurrent requests that refresh the same entry, such as a session's tokens, must not overwrite each other's writes.",
+      "check": "Look for read-modify-write of a shared session or entry that ends in an unconditional Set/Replace with no expected version, or that ignores the result of a conditional replace.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use `IDistributedCache` for shared state that needs atomic add-if-absent, take or compare-and-swap semantics.",
+      "why": "`IDistributedCache` has no atomic add, take or compare-and-swap, so state could be redeemed twice and concurrent updates could overwrite each other.",
+      "check": "Look for `IDistributedCache` used to store login transactions, sessions, nonces or other single-use or concurrently updated state.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an in-memory store, copy a caller's byte buffer (`ReadOnlyMemory<byte>` or array) on write instead of keeping a reference to it.",
+      "why": "A caller that reuses its buffer must not be able to change an entry that is already stored.",
+      "check": "Look for in-process stores or caches that keep a passed-in `ReadOnlyMemory<byte>`/`byte[]` directly, with no `.ToArray()` or other copy.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let shared-state store failures throw so the caller fails closed, and never treat a read that failed as the entry being absent.",
+      "why": "A session or security state that cannot be read must not be treated as missing; the caller fails closed (for example by returning 503).",
+      "check": "Look for catch blocks around store calls that swallow the exception and return null, false or empty, or that treat the failure as 'not found'.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Valkey/Redis, put any compare-then-write or multi-step update (prune plus TTL extension, version check plus set) in one server-side Lua script, or use a single atomic command such as `SET NX PX` or `GETDEL`.",
+      "why": "The comparison and the write then happen atomically on the server, so concurrent replicas cannot interleave between them.",
+      "check": "Look for Valkey/Redis code that issues a GET followed by a separate SET/EXPIRE/ZADD that depends on the value it read, with no script or transaction around them.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make sure shared-store keys that collect members (sets, sorted sets, indexes) are bounded: prune expired members and keep the key's TTL no longer than its longest-lived member.",
+      "why": "An index must live no longer than the longest time-to-live applied to it and must never grow without bound.",
+      "check": "Look for code that adds members to a Valkey/Redis set or sorted set with no pruning of expired members and no TTL on the key.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt values before writing them to a shared external store when they must not be readable there; the store treats values as opaque bytes and does not protect them.",
+      "why": "The store keeps opaque bytes, so the caller serializes values and encrypts whatever must not be readable in the store.",
+      "check": "Look for tokens, secrets or session contents serialized and written to a shared store without being encrypted or data-protected first.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

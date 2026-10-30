@@ -1,0 +1,79 @@
+{
+  "hash": "7f192783d30d98ef",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0299",
+  "rules": [
+    {
+      "statement": "Map JSON claim sets to ClaimsIdentity through the single shared claim-mapping service, not with a second hand-written JSON-to-Claim mapping.",
+      "why": "A second mapping would drift from the JWT stack's, so a UserInfo claim and an ID-token claim with the same JSON value could become different Claims.",
+      "check": "Look for new code that walks JSON claim properties and builds Claim objects itself instead of calling the shared claims identity factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a UserInfo response unless it is a JSON object with a string `sub` that exactly equals the ID token's subject.",
+      "why": "OIDC Core §5.3.2 says a response about another user must not be used.",
+      "check": "Look for UserInfo handling that uses the claims without comparing `sub` exactly (ordinal) to the expected subject, or that accepts a missing or non-string `sub`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Present an access token to a resource such as UserInfo the way it was issued: with a DPoP proof of its bound key (retrying a `use_dpop_nonce` challenge exactly once), or as a bearer token otherwise, and over the mTLS endpoint alias when the client authenticates with mutual TLS.",
+      "why": "RFC 9449 §7/§9 and RFC 8705 §5 require sender-constrained tokens to be presented with their proof, otherwise the resource server rejects them.",
+      "check": "Look for requests that always send `Authorization: Bearer` while ignoring DPoP binding, that retry nonce challenges in a loop or not at all, or that skip mtls_endpoint_aliases resolution for mTLS clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client has registered signing or encryption for a UserInfo response, validate the signed or nested JWT under the registered algorithms with the provider's keys, as an ID token is validated, and accept only the format the client registered.",
+      "why": "An unverified JWT is no better than an unauthenticated document, and a response in a format the client did not register must be rejected.",
+      "check": "Look for code that decodes a UserInfo JWT without validating its signature, that ignores the registered algorithms, or that accepts plain JSON when signing was registered (or a JWT when it was not).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When merging UserInfo claims into the session claims, never take the authentication-anchoring claims (`iss`, `sub`, `sid`, `auth_time`, `acr`, `amr`) or the validation-only claims from UserInfo; take them from the ID token only.",
+      "why": "These claims tie the session to the authentication event, and the UserInfo endpoint is not allowed to change them.",
+      "check": "Look for merge logic that copies all UserInfo claims, including the anchor claims, over the ID token's claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a protocol error response, either a `WWW-Authenticate` challenge `error` (RFC 6750 §3) or an OAuth error body, to a returned protocol error result, and throw an exception only when the endpoint returns neither claims nor an error.",
+      "why": "An error the provider reports is an expected outcome that callers must handle, while an unintelligible answer is an exceptional failure.",
+      "check": "Look for code that throws on a well-formed OAuth or WWW-Authenticate error, or that quietly treats a response with neither claims nor an error as a success.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

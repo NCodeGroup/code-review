@@ -1,0 +1,91 @@
+{
+  "hash": "9a1e7d02422a4642",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0250",
+  "rules": [
+    {
+      "statement": "Treat an EF Core migration that makes an existing column required as a contract step, even when it supplies a default value.",
+      "why": "EF Core in the previous release writes an explicit NULL for every column it maps as nullable, so a default never protects its inserts, and existing NULL rows block the change.",
+      "check": "Look for AlterColumn changes from nullable to non-nullable (or removal of a default from a required column) in a migration that is not marked as a contract step.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Treat adding a unique index, unique constraint, primary key, check constraint or foreign key to an existing table, or narrowing a column's precision or scale, as a contract step; only on a table the same migration creates do these count as expanding.",
+      "why": "Each one refuses writes that the previous release still makes. A table the migration creates gets no rows from the previous release.",
+      "check": "Look for CreateIndex(unique), AddUniqueConstraint, AddPrimaryKey, AddCheckConstraint, AddForeignKey or a narrowing AlterColumn on a table not created in the same migration, with no contract marker.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Treat a foreign key with a Restrict or NoAction delete rule from a new table to an existing principal table as a contract step.",
+      "why": "The previous release does not know about the dependent rows this release writes, so its delete of a referenced row fails.",
+      "check": "Look for a new table whose foreign key to an existing table uses ReferentialAction.Restrict or NoAction, in a migration with no contract marker.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Give every migration that changes data (raw SQL, InsertData, UpdateData, DeleteData) exactly one class marker with a non-blank reason: expand if the previous release reads every written row without failing and with the same meaning, contract if it fails on or loses a value it reads.",
+      "why": "Raw SQL and data changes can't be classified from their text, so the marker states what the change does to the previous release, and a reviewer checks it against the statements.",
+      "check": "Look for a data-changing migration with no marker, with both markers, with a blank reason, or with an expand marker on a migration that also has a contracting schema operation.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Check that a data migration's marker reason matches what its statements actually do; a migration that renames a stored setting, loosens a restriction or removes a value the previous release reads must be marked contract, not expand.",
+      "why": "A renamed setting makes the previous release fail closed, since it refuses a stored document that names an unknown setting. The tool can't read SQL, so this stays a review judgement.",
+      "check": "Read the SQL or data operations of a migration marked expand and confirm the previous release can still read every rewritten row with the same meaning. Flag renames, removals or loosened values.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Flag migrations that the automated expand-only check cannot see as contract risks needing review: making a column nullable that this release then writes NULL into, a store-type change that keeps the CLR type (such as text to jsonb), a collation change, a sequence restart, or dropping a unique index the previous release relies on.",
+      "why": "These break the previous release, but the rule reading the migration operations cannot detect them, so they stay review items.",
+      "check": "Look in migrations for AlterColumn to nullable, a ColumnType change with the same CLR type, collation changes, RestartSequence, or DropIndex on a unique index, and confirm they are handled as contract steps.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship a contract migration step one release after the expansion it completes, never together with it.",
+      "why": "Migrations run before the rollout and must keep the previous release working.",
+      "check": "Look for a contract-marked migration that lands in the same release as the expand step it depends on.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

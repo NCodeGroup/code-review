@@ -1,0 +1,246 @@
+{
+  "hash": "f8e8bba9fb3a6c02",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/backend-for-frontend.md",
+  "rules": [
+    {
+      "statement": "When the shared session or state store is unreachable, fail closed with 503 Service Unavailable, never with 401 or by treating the user as unauthenticated.",
+      "why": "A store outage is a server failure, not an authentication failure. Answering 401 would end sessions or start logins for no reason.",
+      "check": "Look for catch blocks or fallbacks around session/state store calls that return 401, Challenge, an anonymous principal, or continue without the record.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "If a refresh lease cannot be acquired or its wait times out, fail the call with 503 and never fall back to refreshing with the same refresh token outside the lease.",
+      "why": "A second refresh with a rotated refresh token triggers reuse detection, and the OP then revokes the whole token family.",
+      "check": "Look for refresh paths where a lease timeout or store error leads to an unguarded token-endpoint refresh call or a retry with the old refresh token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When discovery or JWKS cannot be fetched, serve the last good JWKS only within a bounded TTL, and never relax or skip token validation.",
+      "why": "Availability fallbacks must not weaken validation. Logins should fail with a clear error instead.",
+      "check": "Look for JWKS or metadata fetch failures that skip signature or issuer checks, accept tokens without keys, or cache stale keys with no expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refresh a cached JWKS when a token presents an unknown `kid`, and rate-limit that refresh.",
+      "why": "This handles OP signing-key rotation, and the rate limit stops attacker-chosen kids from causing a fetch storm.",
+      "check": "Look for unknown-kid handling that rejects without refreshing, or that refetches JWKS on every miss with no rate limit or cooldown.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Clock-skew tolerance for `iat`/`exp`/`nbf` validation must be configurable and capped at 60 seconds.",
+      "why": "Skew must stay bounded so that it matches the family-wide ceiling.",
+      "check": "Look for skew options with no upper bound check, defaults or values above 60 seconds, or hard-coded skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Session cookies default to `SameSite=Strict`, may be set to `Lax`, and must reject `SameSite=None` in configuration.",
+      "why": "RFC 10017 §6.1.3.2 recommends Strict. None would remove the cross-site protection the CSRF defense depends on.",
+      "check": "Look for session cookie options that default to Lax/None or that accept SameSiteMode.None without failing validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a backend-for-frontend, never send access, refresh or ID tokens to the browser in response bodies, cookies or headers.",
+      "why": "If no token reaches the browser, XSS has no token to steal.",
+      "check": "Look for endpoints or cookies that serialize token values to the client, such as a user-info endpoint that includes tokens or cookies that carry tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a new random session handle at every login, accept it only from a `__Host-`-prefixed `HttpOnly` `Secure` cookie, and never accept it from a URL or query string.",
+      "why": "This prevents session fixation and blocks subdomain cookie injection.",
+      "check": "Look for session handles that are reused across logins, read from the query, route or form, or cookies that lack the __Host- prefix, HttpOnly or Secure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never persist a session handle itself: key server-side records by a hash of the handle, and encrypt the payload with a key derived from the handle.",
+      "why": "A dumped session store then yields neither usable keys nor readable tokens unless the attacker also has the cookies.",
+      "check": "Look for store writes that use the raw handle as the key, store the handle in the record, or keep token payloads unencrypted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject replayed logout tokens by recording each `jti` in a shared expiring key set and checking that `iat` is within the allowed window.",
+      "why": "Without these checks, a captured `logout_token` could be replayed.",
+      "check": "Look for back-channel logout validation that skips the jti uniqueness check, uses a per-process set, or skips the iat window check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make one-time login state (`state`, transactions) single-use through an atomic take on a shared store, not through a check-then-delete or a per-replica check.",
+      "why": "Only an atomic take that every replica sees makes `state` truly single-use.",
+      "check": "Look for state consumption done as a separate get and remove, or held in in-memory or per-replica structures.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept only allow-listed relative return URLs, choose them at login, and store them server-side, never read from the callback request.",
+      "why": "This prevents open redirects.",
+      "check": "Look for redirects to absolute or unvalidated URLs, or return URLs taken from callback query parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin the expected issuer in each authorization transaction, and check the RFC 9207 `iss` parameter on the callback when the provider supports it.",
+      "why": "This defends against mix-up attacks.",
+      "check": "Look for callback handling that ignores the `iss` response parameter or does not compare it with the issuer stored in the transaction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A forwarding proxy must use static destinations and method allow-lists, normalize paths, never follow redirects, and strip inbound credentials (cookies, Authorization) before forwarding.",
+      "why": "These measures stop SSRF and the leaking of browser credentials or tokens to downstream services.",
+      "check": "Look for forwarded requests with destinations built from request data, auto-redirect enabled, or Cookie/Authorization headers passed through.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Forward HTTP requests with YARP's `IHttpForwarder`, not a hand-written `HttpClient` proxy.",
+      "why": "`IHttpForwarder` handles streaming, hop-by-hop headers and protocol edge cases correctly.",
+      "check": "Look for new proxying code that copies requests and responses through HttpClient by hand.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use ASP.NET Core Data Protection to protect state that several replicas must read, such as login state, correlation cookies or session tickets. Keep that state in the shared store under random keys.",
+      "why": "Data Protection needs a shared, persistent, rotated key ring. Without one, replicas silently fail to read each other's cookies.",
+      "check": "Look for IDataProtector or ticket-protected cookies used for cross-request authentication state.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate JWTs (ID tokens, logout tokens) with the family JOSE stack (`NCode.Identity.Jose`), not with a second stack such as Microsoft.IdentityModel or the stock OpenID Connect handler.",
+      "why": "Two stacks would apply two key and algorithm policies to the same provider's keys, which contradicts the explicit-policy validation decision.",
+      "check": "Look for new uses of Microsoft.IdentityModel token handlers or AddOpenIdConnect for token validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep DPoP private keys in a key ring separate from the tokens they bind, never in the same session record, and record only the key thumbprint (`jkt`) per session.",
+      "why": "A key stored next to the tokens it protects provides no protection when the store leaks.",
+      "check": "Look for DPoP private key material serialized into session or token records.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When signing or DPoP keys rotate, keep retired keys usable for the maximum session lifetime, and let each session keep the key recorded for it.",
+      "why": "Otherwise rotating keys breaks existing sessions.",
+      "check": "Look for key rotation that drops retired keys immediately, or sessions that always use the current key instead of their recorded one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Unit tests must be hermetic, use `MockBehavior.Strict` mocks, and be named `Method_State_Expected`.",
+      "why": "These are the family's testing conventions.",
+      "check": "Look for Moq mocks without MockBehavior.Strict, tests that hit the network or file system, or test names that do not follow Method_State_Expected.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

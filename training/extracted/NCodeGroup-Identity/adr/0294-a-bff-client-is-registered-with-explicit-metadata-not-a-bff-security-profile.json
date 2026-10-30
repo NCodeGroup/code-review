@@ -1,0 +1,31 @@
+{
+  "hash": "8056545b26b1c86c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0294",
+  "rules": [
+    {
+      "statement": "Do not add a security profile that provisions or templates client registration metadata (redirect URIs, logout URIs, auth method, key sets, lifetimes); a security profile only imposes a ceiling that forbids weaker security settings, and a stricter floor for a class of clients should reuse an existing profile such as fapi2 or be registered by the deployment.",
+      "why": "A profile is a merge-lattice ceiling over security settings, not a template; a provisioning profile would duplicate an existing ceiling and add a concept profiles do not have.",
+      "check": "Look for new security profile definitions that set per-client registration values or duplicate an existing profile's constraints instead of only restricting security settings.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Relying-party or BFF client code must depend only on standard provider metadata and standard client registration (RFC 7591, RFC 9126, RFC 9449), never on features or profiles specific to the NCode OP.",
+      "why": "The client must work against any standards-compliant provider; relying on an NCode-OP-only feature makes deployments appear to need the NCode OP.",
+      "check": "Look for client-side code paths that require provider-specific metadata, profile names or endpoints not defined by OAuth/OIDC specifications.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

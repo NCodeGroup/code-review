@@ -1,0 +1,67 @@
+{
+  "hash": "2d13e35e05a7dee9",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0112",
+  "rules": [
+    {
+      "statement": "When the token endpoint finds an authorization code was already redeemed, deny the request and revoke all grants for the code's end-user session (the session grant plus access- and refresh-token grants issued under it).",
+      "why": "RFC 6749 §4.1.2 and RFC 9700 treat a second redemption as a compromise signal, and tokens issued from the code should be revoked; the session is the only server-side handle for revoking self-contained JWTs.",
+      "check": "Look for code-redemption logic that rejects an already-consumed code without also starting session-scoped revocation by sid.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code-replay revocation must not trigger user-logout side effects such as logout auditing or back-channel logout as if the user had logged out; it is a security revocation, not a user-initiated logout.",
+      "why": "The ADR separates a security revocation from a user-initiated logout. ADR-0228 later amended this: a replayed code now terminates its session through the termination seam, which notifies the session's relying parties and audits the termination.",
+      "check": "Check that the replay path does not call the user-logout flow directly. Any notification or audit should go through the session-termination seam.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always put the end-user session identifier (`sid`, RFC 9068 §2.2.1) in subject-bound access tokens, and do not make it a per-client opt-in setting.",
+      "why": "Session binding is a security property that cannot be bypassed, and revocation enforcement depends on it.",
+      "check": "Look for conditional emission of the sid claim in access tokens, or client settings that turn it on or off.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every first-party endpoint that authenticates a self-issued access token (such as UserInfo, introspection and management APIs) must resolve the token's `sid` and reject the token with `invalid_token`/401 when that session is revoked, using the shared token-validation seam.",
+      "why": "Without this check, tokens issued under a revoked or compromised session stay usable at the OP's own endpoints, and the conformance suite expects a 4xx after a code replay.",
+      "check": "Look for new or changed endpoints that accept the server's own access tokens but only validate the JWT signature and lifetime, with no session-status check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a global access-token denylist, reference tokens, or per-access-token server state just for revocation; revoke by session instead.",
+      "why": "Per-token state and a lookup on every call bring back the cost that stateless JWTs exist to avoid.",
+      "check": "Look for new stores or tables that record issued access-token identifiers for revocation, or denylist lookups.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

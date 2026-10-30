@@ -1,0 +1,76 @@
+{
+  "hash": "8322b3eb8c0207cf",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0055",
+  "rules": [
+    {
+      "statement": "Do not cache authorization-relevant data in a per-node `IMemoryCache`; read it fresh from the store by default, and if caching is needed, add it as a replaceable decorator over a distributed cache (`IDistributedCache`) that is invalidated when the security stamp changes.",
+      "why": "In a cluster, a per-node cache gives one node a stale snapshot while another node has reloaded, so authorization decisions for the same principal differ by node. Reading fresh keeps the store as the single source of truth.",
+      "check": "Look for `IMemoryCache` or in-process dictionaries caching data that drives authorization or token contents (such as server-owned metadata, roles or permissions), or a built-in freshness/cache setting for that data instead of an opt-in distributed-cache decorator.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Packages meant to stay framework-free (persistence, Jose, Secrets and other low-level libraries) must not reference a package that carries the ASP.NET Core `FrameworkReference`; move any shared helper they need into a dependency-free package such as `NCode.Json`.",
+      "why": "Referencing an abstractions package with the ASP.NET Core FrameworkReference pulls ASP.NET Core into packages that are supposed to be reusable without it.",
+      "check": "Look for new ProjectReference/PackageReference entries from framework-free projects to ASP.NET Core-dependent packages, or for a helper added to an ASP.NET Core-dependent package when lower layers need it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the shared `NCode.Json` `JsonElements` helpers (`EmptyObject`, `OrEmptyObject`, `IsNullOrUndefined`) for empty-object defaults and null/undefined checks on `JsonElement` values instead of writing local copies.",
+      "why": "These helpers were moved into a dependency-free shared package so any layer can use them.",
+      "check": "Look for hand-written `JsonElement` empty-object construction or `ValueKind` checks for Null/Undefined that duplicate `JsonElements`.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve per-user metadata claims at token/UserInfo issuance through a pluggable provider keyed by the resolved subject identifier (`sub`), not by stamping them onto the principal during one specific authentication flow or connection type.",
+      "why": "Issuance is the one point that every grant flow (ROPC, interactive, refresh) and every connection kind (local or external IdP) passes through. Stamping at authentication only reaches the flows that are hooked, and it also requires persisting the metadata into the grant.",
+      "check": "Look for metadata or per-user claims added in a flow-specific subject builder or authentication handler (for example only in the password grant) instead of in the issuance claim handlers that use the provider seam.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store a small per-entity payload as columns on the owning entity rather than in a separate 1:1 companion table; use a companion table only for payloads that are large, optional, or versioned independently.",
+      "why": "For small data, a 1:1 satellite table adds a table and a join or second query without making anything easier to relate, since foreign keys provide the relationships.",
+      "check": "Look for new 1:1 owned entity tables, with an FK and cascade, that hold only a couple of small fields.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never let end users write server-owned (system/app) metadata; only the management or administrative layer may write it, and owner-editable profile metadata must stay a separate bag.",
+      "why": "System metadata can drive authorization, so the owner-vs-server trust boundary has to hold at the principal level.",
+      "check": "Look for self-service or end-user endpoints and handlers that update system metadata, or code that merges profile and system metadata into one bag.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "hash": "751c3749d58ac460",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0065",
+  "rules": [
+    {
+      "statement": "After a successful interactive sign-in, redirect only to a ReturnUrl that has been validated as a local URL; never redirect to an unvalidated caller-supplied return URL.",
+      "why": "The login endpoint honors a server-validated ReturnUrl as an open-redirect guard.",
+      "check": "Look for login/sign-in handlers that call Redirect(returnUrl) or Results.Redirect with a query/form value without a local-URL check (e.g. Url.IsLocalUrl or equivalent).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Interactive login must verify credentials through the existing local-account credential verification seam rather than introducing a second credential verifier.",
+      "why": "The local-account store already owns credentials; a parallel verifier duplicates and diverges credential checks.",
+      "check": "Flag new password/credential comparison logic in login endpoints that bypasses the shared credential verification interface used by other grants.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve the interactive login/consent surface from the same origin as the OpenID Provider that issues the session cookie, and submit its forms as native HTML form POSTs rather than fetch/XHR.",
+      "why": "The cookie LoginPath redirect, antiforgery-protected POST, Set-Cookie and ReturnUrl round-trip only work cleanly same-origin, and native POSTs let the browser (and Selenium) follow the Set-Cookie plus redirect.",
+      "check": "Look for login/consent pages hosted on a separate origin (dev server, CDN) or login/consent submissions implemented with fetch/axios instead of a <form method=\"post\">.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the stable conformance locator ids (username, password, login, consent-allow, consent-deny) explicitly on login/consent form elements instead of relying on UI-library-generated ids.",
+      "why": "Conformance browser automation locates fields by stable id/name, and generated ids (e.g. MUI's) are not stable selectors; the ids are a maintenance invariant coupled to the conformance browser config.",
+      "check": "In login/consent components, verify the inputs and buttons carry explicit id/name attributes matching the locator contract; flag renames or removal without a matching conformance config update.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the interactive authentication module (cookie scheme and login/consent endpoints) an explicit opt-in registration that the host calls, never wired by default.",
+      "why": "The interactive surface is a first-class opt-in capability; hosts opt in with one call.",
+      "check": "Flag default service registration or middleware setup that implicitly registers the interactive cookie scheme or maps login/consent endpoints without the host opting in.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Seed browser SPA clients as public clients (empty secret set, PKCE required, explicit redirect_uris), idempotently through the normal persistence/seeding path.",
+      "why": "SPA clients cannot hold secrets, and seeding through the normal persistence path on the tenant seed fan-out keeps provisioning consistent and repeatable.",
+      "check": "Look for seeded SPA clients that carry secrets, lack PKCE enforcement or redirect_uris, or are inserted by bypassing the standard seeding pipeline or non-idempotently.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "hash": "44a9e19094749c82",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0184",
+  "rules": [
+    {
+      "statement": "An EF Core migration's `Up` must only expand the schema; any contracting operation (dropping a schema, table, column or sequence, renaming a table or column, adding a required column to an existing table without a default, making a column required without a default, changing a column's CLR type, or shrinking or newly bounding its max length) is allowed only in a migration explicitly marked as a deliberate contract step with a non-blank reason.",
+      "why": "Migrations run before the rollout while the previous release still serves, and a rollback does not reverse them, so a contracting operation breaks the serving release as soon as it is applied.",
+      "check": "Look in generated migration `Up` methods for DropColumn/DropTable/RenameColumn/RenameTable, AlterColumn with `nullable: false` and no default, type changes or reduced maxLength, and AddColumn with `nullable: false` and no default on an existing table, in a migration that has no contract-step marker giving a reason.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "A contract-step marker must only be applied to a migration that actually contracts the schema, and its reason must name which earlier release stopped reading the shape it removes.",
+      "why": "A marker should not outlive the operation that needed it, and the reason records why the contraction is safe.",
+      "check": "Look for a contract marker on a migration whose operations only expand, or a marker whose reason is blank or does not say which release stopped using the removed shape.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "A migration that contracts the schema must ship in a later release than the expansion it completes, never in the same release.",
+      "why": "The old shape can only be removed once no running version reads it.",
+      "check": "Look for a contract-step migration added in the same change or release as the migration or code change that introduced its replacement shape.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Review raw SQL (`migrationBuilder.Sql`), newly added unique indexes, and newly added foreign keys in a migration by hand, to confirm the previous release's reads and writes still work against them.",
+      "why": "The automated expand-only check cannot see these: raw SQL can delete or rewrite data the previous release reads, and a new unique index or foreign key can reject writes the previous release still makes.",
+      "check": "Look for `migrationBuilder.Sql`, CreateIndex with `unique: true`, or AddForeignKey in a migration, and confirm the previous release's reads and writes stay valid against them.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep hand-written code out of the EF Core `Migrations/` folder, which `.editorconfig` treats as generated code.",
+      "why": "Analyzers do not run on generated code, so hand-written code under `Migrations/` would lose its analyzer checks.",
+      "check": "Look for new hand-written (non-scaffolded) types, helpers or attributes added under a `Migrations/` folder.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

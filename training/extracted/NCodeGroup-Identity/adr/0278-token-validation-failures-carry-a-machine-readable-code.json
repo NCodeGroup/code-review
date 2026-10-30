@@ -1,0 +1,110 @@
+{
+  "hash": "b02dacf573dfed00",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0278",
+  "rules": [
+    {
+      "statement": "Code that decides what to do based on why a validation failed must read the failure's machine-readable code, never match or parse the human-readable failure message text.",
+      "why": "Message text is for people and its wording changes; a caller that matches it breaks silently.",
+      "check": "Look for string comparisons, Contains/StartsWith/regex on FailureReason, exception Message or similar text used to branch on failure kind.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a failure-code vocabulary as an open set: a public static class of snake_case `public const string` values compared ordinally, not an enum, so that extensions can supply their own codes.",
+      "why": "The vocabulary is open: custom handlers must be able to report codes the library doesn't define, and an enum would close it.",
+      "check": "New failure-kind enums, non-snake_case code values, or culture/case-insensitive comparison of codes; codes not defined as const strings in a static class.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a higher layer shares failure codes with a lower layer, define each shared constant as an alias of the lower layer's constant (`= LowerCodes.X`) and pass the lower-layer code through unchanged instead of translating it through a mapping table.",
+      "why": "Each string is then defined once, and a hard-coded mapping loses any code it doesn't list, including ones that custom handlers name.",
+      "check": "Duplicated literal code strings across vocabularies, or switch/dictionary mappings that translate one layer's failure codes to another's.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set a failure code where the failure is detected, and have the reporting component declare it explicitly; never infer the code later from a claim name, a message or a requirement type.",
+      "why": "Only the detecting code knows the precise reason, and inferring it from names is fragile and loses custom codes.",
+      "check": "Code that derives a failure code from claim names, requirement types or message content, instead of a code passed explicitly at the failure site.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A validation result type exposes a nullable failure code that defines validity (`IsValid` is `FailureCode is null`), and its failure constructor takes both a non-empty failure code and a non-empty failure reason.",
+      "why": "Related result types keep the same shape and vocabulary, and validity can't disagree with the presence of a code.",
+      "check": "Result types with a separate IsValid flag that can disagree with FailureCode, or failure constructors that accept a reason without a code or don't reject empty arguments.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never re-check a received JWT's `iss`, `aud`, `exp` or other claims outside the JWT validator to find out why validation failed; read the failure code the validator reports.",
+      "why": "Re-checking duplicates the validator's handlers and bounds lifetimes by hand, which the conventions forbid.",
+      "check": "Code after a failed JWT validation that inspects iss/aud/exp/nbf claims or compares timestamps to classify the failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A custom JWT validation handler must record a failure code with every failure (`context.Fail(code, reason)`), and an assertion that needs a specific code must call `Fail` with it before returning `false`.",
+      "why": "Only the first recorded code is kept, and a failure without a code leaves callers unable to tell failures apart.",
+      "check": "Handlers that fail with only a reason string, or assertions that return false without first calling Fail when a specific code is wanted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWT claim-value requirement must declare its failure code explicitly (for example `invalid_issuer`, `invalid_audience`) rather than relying on the default or having the code inferred from the claim name.",
+      "why": "Nothing is inferred from a claim name; the requirement itself declares its code.",
+      "check": "New claim-value requirements for distinct claims that leave FailureCode at the generic default when a specific code exists or is needed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Token validation failure reasons and failure codes must never contain the token or any of its text.",
+      "why": "Failure reasons are logged and surfaced, so including token text would leak credentials.",
+      "check": "Failure reason strings or exception messages that interpolate the raw token, its segments or its payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

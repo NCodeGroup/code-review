@@ -1,0 +1,124 @@
+{
+  "hash": "3962a437c36d99c1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0220",
+  "rules": [
+    {
+      "statement": "Do not let a setting value such as zero or null switch off a security control; give every security-bound setting a validated range with a positive minimum and a safe non-zero default.",
+      "why": "No setting may weaken a security control below its safe baseline. When zero meant 'no bound', sessions never ended and their grants were never pruned.",
+      "check": "Look for new or changed security settings (lifetimes, timeouts, limits) whose default is 0, whose validation accepts 0, or whose code treats 0/null as 'unbounded'.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store an end-user session's grant with an expiry of min(absolute end, last activity + idle timeout), and move that expiry forward on each touch, so the generic grant expiry reflects when the session ends.",
+      "why": "The grant store and prune read only a grant's expiry. An idle window kept only in the payload left ended sessions in the table, and every reader had to work out the idle end again.",
+      "check": "Look for session creation or touch code that sets the grant expiry to the absolute end only, leaves it null, or tracks the idle window only inside the payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request finds a session past its absolute end, past its idle window, or with no end at all, terminate it through the session termination path (revoke its grants, send back-channel logout, audit) instead of only rejecting it, and check absolute expiry before idle timeout.",
+      "why": "Sessions found past their absolute end used to be rejected without terminating them, so the grants issued under them stayed valid and relying parties got no logout notification.",
+      "check": "Look for session validation that returns false or invalid for an expired session without dispatching the termination command or revoking its grants, and for a session with no absolute end or expiry that is treated as still active.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispatch termination side effects (logout notifications, cascading revocation, audit) only from the caller whose revoke actually changed the stored state, so concurrent paths that find the same ended item run them exactly once.",
+      "why": "A request and the background pass can find the same ended session, and it must be terminated only once.",
+      "check": "Look for termination or cleanup code that sends notifications or commands without first checking that its own revoke or update call succeeded (for example, that it affected a row).",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a persisted payload stored in a versioned envelope through the envelope-aware payload serializer, never by deserializing the stored JSON directly as the payload type.",
+      "why": "Deserializing the raw envelope ($ver, $payload) as the payload failed for every stored session, which broke every feature that lists sessions.",
+      "check": "Look for JsonSerializer.Deserialize<T> (or similar) called on a stored grant or payload column without going through the persisted payload serializer.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change a stored grant's payload and its expiration together in one read-modify-write unit of work against the stored version, and drop the touch if every concurrency retry fails, rather than overwriting the record with a copy held in memory.",
+      "why": "Applying a touch to the session as stored keeps clients that a concurrent request added, so no concurrent write is lost.",
+      "check": "Look for session or grant updates that write a cached or in-memory payload back without re-reading it under the concurrency token, or that update the payload and the expiry in separate operations.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throttle activity-timestamp writes on a hot path (such as advancing a session's last activity) to a minimum interval instead of writing on every request.",
+      "why": "A request that resolves the session advances LastActivityWhen at most once a minute.",
+      "check": "Look for code that persists a last-activity or touch timestamp on every request without comparing it to the last stored value against a minimum interval.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw ArgumentOutOfRangeException when a required lifetime or timeout TimeSpan argument is not positive.",
+      "why": "The session service refuses a lifetime or idle timeout that is not positive, so no session can be created without bounds.",
+      "check": "Look for public methods or required request properties that take a lifetime or timeout TimeSpan and accept zero or negative values without throwing ArgumentOutOfRangeException.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A data migration that rewrites rows must give each rewritten row a regenerated concurrency token and must leave untouched any row or value whose shape it does not recognize.",
+      "why": "The migration regenerates SettingsConcurrencyToken and ConcurrencyToken on rewritten rows, and leaves documents that are not JSON objects and values not in TimeSpan form as they are, so it cannot corrupt data it does not understand.",
+      "check": "Look for migration SQL UPDATE statements that change data columns without also setting a new concurrency token, or that rewrite values without filtering on their expected type or format.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When stored setting values become invalid under a new domain rule, have the migration remove them so the default applies, rather than translating them into another value such as the maximum.",
+      "why": "Nothing expresses 'no bound', and removing the value applies the safe default.",
+      "check": "Look for migrations that map now-invalid setting values (for example 0) to a substitute value instead of removing them.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

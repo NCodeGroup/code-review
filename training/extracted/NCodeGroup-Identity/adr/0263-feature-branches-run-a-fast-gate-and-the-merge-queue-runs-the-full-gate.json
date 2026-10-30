@@ -1,0 +1,45 @@
+{
+  "hash": "19f37eeff64f3742",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0263",
+  "rules": [
+    {
+      "statement": "A CI workflow whose job reports a required status check must trigger on `merge_group` events and on pushes to and pull requests into the release branches (`release/**`), not just on pull requests into `main`.",
+      "why": "A required check whose workflow never runs stays pending forever, so the merge queue and release-line pull requests would wait on it indefinitely.",
+      "check": "In a new or changed `.github/workflows/*.yml` that produces a required check, confirm the `on:` block has `merge_group` plus `push` and `pull_request` for `release/**`, and that no path filter or job condition skips the job on those events.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a file that affects the whole build (for example a new `Directory.*` file, `BannedSymbols*.txt`, `.runsettings`, SDK or NuGet config, or a file under `build/` or `.config/`), add it to the global-input trigger pattern of the affected-tests selector so that changing it runs every test.",
+      "why": "If a global build input is missing from the pattern, a pull request runs too few tests and only the merge queue's full gate catches the break.",
+      "check": "Look for new repository-wide build inputs in the diff that are not added to the global trigger pattern in `build/affected-tests.ps1`.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "build/affected-tests.ps1",
+        "**/Directory.*",
+        "**/*.runsettings",
+        "**/BannedSymbols*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Skip coverage uploads (such as Codecov) on `merge_group` runs, because the push to `main` already uploads coverage for the same merged result.",
+      "why": "The merge queue's run would upload the same coverage that `main`'s push uploads.",
+      "check": "In a CI workflow, a coverage upload step that has no `if: github.event_name != 'merge_group'` (or an equivalent condition).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

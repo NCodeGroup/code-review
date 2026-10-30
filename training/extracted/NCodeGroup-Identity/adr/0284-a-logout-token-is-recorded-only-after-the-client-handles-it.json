@@ -1,0 +1,75 @@
+{
+  "hash": "553e48d0cc087a92",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0284",
+  "rules": [
+    {
+      "statement": "When validating a single-use token or message for replay, only look up its replay key during validation, and record the key in a separate step after the token has been handled successfully.",
+      "why": "If validation consumes the key, a sender's retry after a failed handling attempt is refused as a replay and the operation never completes. A token that was handled must still be refused afterward.",
+      "check": "Look for validation code that calls IExpiringKeySet.TryAddAsync (or any add/record) on a jti or nonce before the caller has acted on the token. Also check that a lookup-only ContainsAsync is paired with a later record call after handling succeeds.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel logout endpoint must validate the logout token, end the sessions, record the token as handled, and only then answer 200. If ending the sessions fails, it answers 400 without recording the token.",
+      "why": "Back-Channel Logout §2.8 uses 400 to ask the OP to retry, and the retry has to validate again. §2.6 step 8 requires refusing a token that was already handled.",
+      "check": "In a logout endpoint, look for a 200 sent before the handled-token record call, a token recorded before the sessions are ended, or a token recorded on the failure path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep validation result types as plain data that consumers and test doubles can construct. Put operations that need services, such as committing or recording, on the service that produced the result, not on the result.",
+      "why": "Putting a key set or registration inside a result means it is no longer plain data, and consumers and test doubles can no longer construct it easily.",
+      "check": "Look for result or DTO types that gain injected services, store references, or get methods that perform I/O or commit state.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a shared contract, such as a cache or replay key scheme and its expiry skew, in the single class that both reads and writes it. Do not split it across separate services that must agree.",
+      "why": "Splitting it means two contracts for one fact, and the two copies can drift apart.",
+      "check": "Look for key-format strings or skew constants duplicated in more than one class, or a new service that rebuilds a key another class already builds.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a validation result carry the verified values that later steps need, so steps that run after side effects need no further discovery or network calls that can throw.",
+      "why": "A step that runs after sessions are ended must not fail because of a discovery call such as one throwing OpenIdProviderException. Carrying the verified issuer avoids that call.",
+      "check": "Look for post-handling steps that fetch discovery or metadata again, or call other external services, to get values the validator already verified.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an add-if-absent operation with a `Try` prefix and have it return false when the item is already present or has expired. Throw ArgumentNullException for null arguments and ArgumentException for an argument in an invalid state, such as a result that is not valid.",
+      "why": "This follows the existing convention of IExpiringKeySet.TryAddAsync and similar replay-cache APIs, so concurrent callers can tell which one won.",
+      "check": "Look for record or add methods returning bool without a Try prefix, Try methods that throw when the item is already present, or missing argument checks.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

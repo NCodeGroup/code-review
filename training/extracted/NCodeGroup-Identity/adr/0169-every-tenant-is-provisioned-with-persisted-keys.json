@@ -1,0 +1,122 @@
+{
+  "hash": "34824a5afc511025",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0169",
+  "rules": [
+    {
+      "statement": "Automatic key provisioning may only add keys for algorithms that have no usable key; it must never remove, replace or rotate a key that is already held.",
+      "why": "Operators decide where keys come from, and quietly replacing a key changes the keys relying parties trust and invalidates tokens already issued.",
+      "check": "Look for seeding or provisioning code that deletes, overwrites or regenerates existing keys, or that generates a key without first checking whether a held key already covers the algorithm.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse symmetric algorithms and the `none` algorithm for keys that are published in a JWKS or used across trust boundaries.",
+      "why": "A key that is published and used across trust boundaries must be asymmetric. A symmetric secret or `none` would leak the secret or give no protection at all.",
+      "check": "Look for key provisioning or validation code that accepts HS*, `dir`/symmetric key-wrap algorithms or `none` for tenant or published keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind each generated key to exactly one algorithm by setting its `alg`, and do not share one key across several algorithms such as RS256 and PS256.",
+      "why": "RFC 8725 §3.1 says a key should be used with only one algorithm.",
+      "check": "Look for generated JWKs that have no `alg`, or for one key provisioned to serve several algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use at least 3072 bits for long-lived generated RSA keys that have no rotation, and do not default to 2048 bits.",
+      "why": "NIST SP 800-57 accepts 2048-bit RSA only through 2030, and keys that are never rotated must last past that date.",
+      "check": "Look for RSA key generation defaults or configuration defaults of 2048 bits for keys that are persisted and not rotated.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a persisted key can no longer be decrypted, fail with a message that names the owner and the lost or changed protection key, and do not silently delete and regenerate it outside development modes.",
+      "why": "Regenerating hides a lost key ring and silently changes the keys relying parties trust.",
+      "check": "Look for catch blocks around key unprotection that drop the key, regenerate it or continue without it in production code paths, or for error messages that do not identify the affected owner.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the startup options validator and the runtime code that uses those options apply the same shared policy object, so any configuration accepted at startup can be honored at runtime.",
+      "why": "If the two use separate rule sets, the host can accept a configuration at startup that the runtime cannot honor.",
+      "check": "Look for an IValidateOptions implementation that copies validation logic instead of calling the same policy or service the runtime uses.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make seed and provisioning steps idempotent, and when a commit fails on a concurrency conflict, retry the whole seed in a fresh unit of work so it adds only what the winner did not.",
+      "why": "Several replicas or requests can seed the same entity at once. An optimistic concurrency token plus an idempotent retry makes them converge without duplicates.",
+      "check": "Look for seed contributors that add data without checking for existing rows, or for concurrency-failure retries that reuse the failed DbContext or unit of work.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send change notifications only after the write has committed, and when announcing a committed change to other replicas fails, log the failure and do not fail the write.",
+      "why": "The write has already succeeded, and replicas that missed the announcement pick up the change through their polls.",
+      "check": "Look for change commands or broadcasts sent before SaveChanges or commit, or for broadcast exceptions that propagate out of a write that already committed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a background pass over many items, catch and log the failure of each item and continue the pass, so one failure does not abort the rest.",
+      "why": "A failure for one tenant must not stop the other tenants from being reconciled.",
+      "check": "Look for loops in background or hosted services where an exception from one item ends the whole pass.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a write invalidates a cached entity, evict it from the local cache before any follow-up work that rebuilds it, so the next cache miss sees the new state.",
+      "why": "Evicting first means a request that misses the cache afterwards rebuilds the entity from current data, so the change takes effect at once on this replica.",
+      "check": "Look for writes to cached entities that do not evict the cache entry, or that do re-seed or rebuild work before evicting.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "hash": "cac10ef3b3b040ee",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0188",
+  "rules": [
+    {
+      "statement": "Do not put method bodies or logic, including extension methods with implementations, in an `*.Abstractions` package; keep it to contracts only and move helpers to an implementation or dependency-free helper package.",
+      "why": "An Abstractions package holds contracts only and no logic, so helpers with real bodies do not belong there.",
+      "check": "Look for new or moved classes in `*.Abstractions` projects that contain non-trivial method bodies, such as static extension classes or an `Extensions` folder holding logic.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put general-purpose time helpers in the dependency-free `NCode.Time` package (namespace `NCode.Time`), not in JSON, JOSE or other feature packages.",
+      "why": "`NCode.Time` references only the base class library, so any package in the family can use it. Time helpers are not about JSON or a single feature.",
+      "check": "Look for new DateTime/DateTimeOffset/TimeProvider extension helpers added to packages other than `NCode.Time`, or helpers in `NCode.Json` or `NCode.Identity.*` that only deal with time.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an instant must match an RFC 7519 NumericDate, truncate it to whole seconds with the shared `NCode.Time` helpers (`WithPrecisionInSeconds`, `GetUtcNowWithPrecisionInSeconds`, `GetTimestampWithPrecisionInSeconds`) and do not write the tick arithmetic inline.",
+      "why": "A time the server stores must equal the NumericDate it round-trips through a JWT. Repeating the truncation at many call sites lets one drift and store a time that no longer matches its token.",
+      "check": "Look for manual tick or millisecond truncation, such as `Ticks % TimeSpan.TicksPerSecond` or building a new DateTimeOffset from seconds, and for raw `TimeProvider.GetUtcNow()` values stored next to token lifetimes or put into token claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Time-related tests use fixed instants rather than the wall clock, so results never depend on when the test runs.",
+      "why": "Tests that read the current time can depend on the exact millisecond they run at and become flaky.",
+      "check": "Look for `DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.UtcNow` or `TimeProvider.System` in tests of time logic, where a fixed instant or a fake TimeProvider should be used.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

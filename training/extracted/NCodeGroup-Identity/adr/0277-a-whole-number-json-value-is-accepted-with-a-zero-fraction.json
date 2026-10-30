@@ -1,0 +1,63 @@
+{
+  "hash": "263d9028bd953929",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0277",
+  "rules": [
+    {
+      "statement": "Read an integer that a remote party sends in JSON with the `NCode.Json` whole-number readers (`TryGetWholeInt32` / `TryGetPropertyWholeInt32` on a `JsonElement`, or `WholeInt32JsonConverter` on a serialized `int` member), never with `JsonElement.TryGetInt32` or the serializer's default `int` handling.",
+      "why": "JSON has a single number type (RFC 8259 §6), so a sender may write 60 as `60.0` or `6e1`. The default readers reject those forms and break valid responses.",
+      "check": "Look for `TryGetInt32`, `GetInt32`, `TryGetValue<int>` or a plain `int`/`int?` DTO member with no `[JsonConverter(typeof(WholeInt32JsonConverter))]` that reads a number from a remote response or request, such as `expires_in`.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JSON number that should be a whole count has a non-zero fraction, is out of `int` range, or arrives as a string or another non-number kind, refuse it. Do not round, truncate or parse it from a string.",
+      "why": "Rounding or truncating invents a value the remote party never stated, and the RFCs specify a JSON number, not a numeric string.",
+      "check": "Look for `Math.Round`, `Math.Truncate`, `(int)` casts of doubles or decimals, or `int.Parse` on string-kind JSON values when reading protocol integers.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `decimal` (`TryGetDecimal` with `decimal.Truncate`), not `double`, to test whether a JSON number is a whole value.",
+      "why": "Binary rounding in `double` turns `60.0000000000000001` into 60 and accepts it, while `decimal` parses it exactly and refuses it.",
+      "check": "Look for `TryGetDouble`/`GetDouble` or `double` arithmetic used to decide whether a JSON number is an integer.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a shared parsing or validation rule in one shared `NCode.*` package that each consumer references, instead of keeping a private copy in each package or an internal helper in an `*.Abstractions` package.",
+      "why": "Copies of one rule drift apart, an `*.Abstractions` package holds no helper logic, and production assemblies don't use cross-assembly `InternalsVisibleTo`.",
+      "check": "Look for duplicated reader or converter logic across packages, helper logic added to an `*.Abstractions` project, or `InternalsVisibleTo` added so another production assembly can reach the helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a `TryGet...` JSON reader helper check `ValueKind` first and return `false` for any unacceptable value. It must never throw.",
+      "why": "The whole-number readers follow the non-throwing pattern of the existing `NumericDate` readers.",
+      "check": "Look for a new `TryGet*` extension on `JsonElement` that calls a throwing `Get*` method or doesn't check `ValueKind` before reading.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

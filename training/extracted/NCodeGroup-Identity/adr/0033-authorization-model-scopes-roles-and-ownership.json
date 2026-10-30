@@ -1,0 +1,91 @@
+{
+  "hash": "6cd8fd56cdcaf3c3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0033",
+  "rules": [
+    {
+      "statement": "Name management permission scopes `{verb}:{family}`, where the family is a single entity or one of its leaves (for example settings or secrets), rather than one coarse scope covering an entity and all its sub-resources.",
+      "why": "Fine-grained delegation such as a secrets-only or settings-only manager can only be expressed when scopes go down to the leaves, so operators can define custom roles without code changes.",
+      "check": "Look for new management endpoints or scope definitions that reuse a broad entity scope for leaf operations (secrets, settings), or scope names that don't follow `{verb}:{family}`.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize an operation on a resource by checking role assignments at that resource node or any of its ancestors (inherited downward), not by checking a global, resource-independent admin claim.",
+      "why": "Authority is granted at a specific resource (admin of tenant-a but not tenant-b). Type-level roles and instance ownership are one mechanism at different nodes.",
+      "check": "Look for authorization handlers or checks that grant tenant- or instance-level access based only on a global role claim without matching the target resource or its ancestors, or that build a separate path for ownership.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep resource creation and cross-tenant enumeration on the server-root authority, separate from operations on an existing tenant, which are authorized at that tenant's node.",
+      "why": "Mixing the two either keeps a tenant admin from managing its own tenant or lets it create tenants or list other tenants.",
+      "check": "Look for endpoints that guard tenant create/list-all and tenant read/update/delete/deactivate with the same scope or policy, or that allow tenant-scoped authority to list across tenants.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse any operation that would remove the last owner of an owned resource.",
+      "why": "A resource must always have at least one owner. Only higher-level admins can reassign ownership.",
+      "check": "Look for owner-removal or owner-replacement code that has no guard against leaving the owner set empty.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a principal creates an ownable resource, automatically assign it the Owner role on that new instance.",
+      "why": "The creator becomes the owner, which keeps the at-least-one-owner rule true from the moment the resource exists.",
+      "check": "Look for create paths for ownable resources that persist the resource without also creating an Owner assignment for the calling principal.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not let the Owner role grant permission to create new resources. Owners may only read, update, delete and manage the leaves and owners of the instance they own.",
+      "why": "Creating a resource is a type-level act that needs a tenant-wide scope (or, later, an approval flow), not instance ownership.",
+      "check": "Look for Owner role definitions or ownership handlers that include create verbs, or create endpoints that accept ownership as enough.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define role assignments and ownership over an abstract principal identifier, not over a user/subject-specific type.",
+      "why": "Service principals (clients) will be added later, and that should be an additive change.",
+      "check": "Look for assignment or ownership models, storage or handlers that hard-code a user/subject id type instead of a general principal reference.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

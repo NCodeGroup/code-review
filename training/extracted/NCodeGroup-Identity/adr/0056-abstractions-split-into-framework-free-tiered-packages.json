@@ -1,0 +1,52 @@
+{
+  "hash": "b21b53a2e4e69e21",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0056",
+  "rules": [
+    {
+      "statement": "Do not add a `Microsoft.AspNetCore.App` `FrameworkReference` to a low-level abstractions package; put the ASP.NET Core HTTP types (results, HTTP exceptions, URI descriptors) in a separate `*.AspNetCore.Abstractions` package and keep the base abstractions on the BCL alone.",
+      "why": "A FrameworkReference on the lowest common package pulls ASP.NET Core into everything that depends on it. It also stops framework-free branches such as crypto/JOSE from referencing the core without turning the layering upside down.",
+      "check": "Look for a `<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />` added to an `*.Abstractions` (or similarly low-tier) .csproj, or for ASP.NET Core types (IResult, HttpContext, etc.) added to a package meant to depend only on the BCL.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put shared `JsonElement` helpers (such as `TryGetPropertyValue<T>`, `IsNullOrUndefined`, `OrEmptyObject`, `EmptyObject`) in `NCode.Json`'s `JsonElements` and use them from there, not from a package-specific `JsonElementExtensions` class.",
+      "why": "A single dependency-free home avoids keeping two copies of the same utility in separate branches.",
+      "check": "Look for new or existing local `JsonElement` extension/helper classes that duplicate what `NCode.Json.JsonElements` already provides.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you need a detached `JsonElement` parsed from a string, use `JsonElement.Parse(string)`, not `JsonDocument.Parse(...)` followed by `RootElement.Clone()` or other hand-rolled variants.",
+      "why": "The ADR makes `JsonElement.Parse(string)` the standard way to do detached parsing.",
+      "check": "Look for `JsonDocument.Parse(json)` used only to get a cloned or detached root element, where `JsonElement.Parse` would work.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare a project or package reference directly in the project that consumes its types, rather than relying on it arriving transitively through another package that doesn't use it.",
+      "why": "A reference held by the wrong package is misplaced. It blocks refactoring dependency tiers, and removing it breaks downstream projects that were quietly depending on it.",
+      "check": "Look for a .csproj reference added to a package that doesn't use those types itself, or for code that uses types from an assembly its project doesn't reference directly.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

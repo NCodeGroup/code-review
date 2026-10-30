@@ -1,0 +1,125 @@
+{
+  "hash": "bbf8339f10f57744",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0097",
+  "rules": [
+    {
+      "statement": "When validating a DPoP proof, require `typ: dpop+jwt`, require an asymmetric `alg` from the advertised `dpop_signing_alg_values_supported` set (never `none` or a symmetric algorithm), verify with the embedded public JWK and reject it if it carries private key material, check `htm`/`htu` against the request, bound `iat` by the configured proof lifetime, and reject replayed `jti` values.",
+      "why": "RFC 9449 §4.3 requires these checks. Skipping any of them lets an attacker forge or replay proofs and defeats sender-constraining.",
+      "check": "Look for DPoP proof validation code that omits any of these checks, accepts `none`/HMAC algorithms, accepts a JWK with private parameters (e.g. `d`), or skips the `jti` replay check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never hard-code `token_type = Bearer` in a token issuance path; set the response `token_type` and the access token's `cnf` claim from the proof-of-possession binding evaluated for the request.",
+      "why": "Each grant has to honor DPoP and mTLS binding the same way, so a new grant cannot forget to bind the token.",
+      "check": "Look for a grant handler or issuance path that writes a literal `Bearer` token type, or that creates an access token without carrying the request's confirmation (`cnf`) through.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass per-request results that downstream steps need (such as a proof-of-possession binding) explicitly on the request/context objects that already flow through the pipeline, not through an ambient property bag or other side channel.",
+      "why": "Explicit threading means every consumer receives the value and none can silently miss it. An ambient side channel hides the dependency.",
+      "check": "Look for new code that stashes request-scoped results in a property bag, HttpContext.Items, or similar ambient storage when a typed request/context object already reaches the consumer.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a client certificate from a forwarded proxy header only when an operator has explicitly configured that header name. Behind a proxy, treat the configured header as the only certificate source.",
+      "why": "Trusting a forwarded certificate header from anywhere other than the trusted proxy lets a client spoof it and bypass certificate binding.",
+      "check": "Look for code that reads `X-Forwarded-Client-Cert`, `X-Amzn-Mtls-Clientcert`, `ssl-client-cert` or similar headers unconditionally or by a hard-coded name, or that falls back to another certificate source when forwarding is configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind an access token to the mutual-TLS client certificate only when the client's effective `require_tls_client_certificate_bound_access_tokens` requirement is true. Refuse with `invalid_request` a client that requires binding but presents no certificate.",
+      "why": "Binding is opt-in, just as presenting a DPoP proof is. Advertised server support must not force binding, and a certificate presented only for `tls_client_auth` does not imply binding.",
+      "check": "Look for issuance code that binds `x5t#S256` based on the server's advertised support flag or on the mere presence of a client certificate, or that silently issues a bearer token when a client requires binding and sent no certificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a server's advertised support and a client's requirement as separate settings. Name a client requirement `require_` plus its RFC client metadata member, merge it by logical OR so a child cannot lift a parent's requirement, default it to false, and do not make it discoverable.",
+      "why": "Keeping support and requirement separate stops support from implicitly forcing every client. OR-merging stops tenants or clients from loosening a requirement a parent set.",
+      "check": "Look for new security requirement settings that are merged with Replace, default to true, are exposed in discovery, reuse the support/discovery name, or do not follow the `require_<metadata>` naming.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default discovery capability flags such as `tls_client_certificate_bound_access_tokens` to false, and advertise them only after the deployment has opted in and wired the supporting infrastructure.",
+      "why": "Discovery metadata is secure by default and must not claim a capability the deployment cannot actually honor.",
+      "check": "Look for new discovery metadata that defaults to true or is advertised without checking that the capability is configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a bound access token is presented at a protected resource, re-check its proof against the token's `cnf`. For `jkt`, require the `DPoP` scheme, a single proof whose `ath` equals the base64url SHA-256 of the access token, and a key thumbprint that matches `cnf.jkt`. For `x5t#S256`, compare the presented certificate's thumbprint.",
+      "why": "RFC 9449 §7.1 and RFC 8705 §3 require resource servers to verify possession. Otherwise a stolen bound token works like a bearer token.",
+      "check": "Look for resource endpoint authentication that accepts a token with a `cnf` claim without validating the DPoP proof's `ath` and thumbprint or the certificate thumbprint, or that accepts multiple DPoP proofs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist the issuance `cnf` confirmation with a refresh token so rotated tokens stay bound to the original key, and reject a bound refresh token presented without a matching proof.",
+      "why": "RFC 9449 §5 requires binding continuity. Dropping `cnf` on refresh would turn a bound token into an unbound one.",
+      "check": "Look for refresh-token persistence or rotation code that drops the confirmation, or a refresh grant that does not compare the presented proof with the stored binding.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a setting is renamed or split, ship a migration that translates stored settings documents without loosening any existing requirement, and document the configuration change operators must make, because configuration values are not migrated.",
+      "why": "Stored data must keep its meaning across the change. Unregistered old names are refused, and a translation must never weaken security.",
+      "check": "Look for setting renames or splits that come without a stored-data migration, with a migration that drops or weakens a requirement, or without release notes on the configuration key change.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

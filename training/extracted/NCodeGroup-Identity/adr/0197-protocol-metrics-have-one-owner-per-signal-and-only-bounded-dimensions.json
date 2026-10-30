@@ -1,0 +1,154 @@
+{
+  "hash": "129e63d418b3f0fb",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0197",
+  "rules": [
+    {
+      "statement": "Do not add a request count or latency instrument for HTTP endpoints; enrich ASP.NET Core's `http.server.request.duration` with extra attributes through `IHttpMetricsTagsFeature` instead.",
+      "why": "A second instrument for the same fact doubles the series a deployment pays for and drifts from the built-in one.",
+      "check": "New Counter/Histogram recording per-request counts or durations in endpoint or middleware code, instead of tags added via IHttpMetricsTagsFeature.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Count an auditable domain outcome by publishing an event through the event seam, not with a separate counter at the call site; give direct instruments only to hot- or flood-path mechanisms that are not events.",
+      "why": "A parallel counter drifts from the event count, and sending a flood of refusals through the event pipeline would put back the load the limiter exists to shed.",
+      "check": "Counter.Add calls next to event publishing for the same outcome, or rate-limit refusals and other flood-path mechanisms published as events.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every metric attribute value must come from a vocabulary the server controls, never from request input; map an unrecognized value to `_OTHER`.",
+      "why": "If request input can set an attribute value, any caller can create series at will and exhaust the backend's series limit.",
+      "check": "Tag values taken from request parameters (grant_type, client_id, headers, URIs) without first checking them against a registered set.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never use tenant, client, subject, or remote address as metric attributes; put them on traces and logs instead.",
+      "why": "These values are unbounded and grow with the customer base until the metrics backend drops data.",
+      "check": "Metric tags, or event metric attributes, holding a tenant id, client id, subject, IP address, or similar per-customer identifier.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create meters through `IMeterFactory`, never `new Meter(...)`, with one meter per package named after the package and exposed as a public constant.",
+      "why": "The factory scopes meters to their service provider, so two hosts in one process don't share instruments and tests can read them with `MetricCollector<T>`.",
+      "check": "`new Meter(` in library code, or a meter name that is a hard-coded literal instead of a public constant matching the package name.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a package's instruments once, in one internal singleton metrics class, and have call sites call methods on that class instead of Meter or instrument APIs.",
+      "why": "This keeps each instrument defined once, in the package that owns the mechanism.",
+      "check": "CreateCounter/CreateHistogram or Instrument.Add/Record calls scattered across call sites outside the package's metrics class.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give instrument and attribute names the family namespace prefix (`ncode.{product}.{area}...`), but keep the standard name for attributes that OpenTelemetry semantic conventions already define (such as `error.type`, `http.route`, `http.response.status_code`).",
+      "why": "Follows ASP.NET Core's naming practice and lets a host subscribe to the whole family with one wildcard.",
+      "check": "New instrument or attribute names without the family prefix, or custom renames of attributes the semantic conventions already define.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use UCUM units: durations are histograms in seconds (`s`) with explicit bucket advice, and counts use an annotation unit such as `{request}`.",
+      "why": "The decision makes UCUM units the convention for every instrument.",
+      "check": "Duration instruments in ms, or without bucket advice, or counters with no unit or a non-annotation unit.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library packages must depend only on `System.Diagnostics.Metrics` for instrumentation, not on the OpenTelemetry API or SDK; leave OpenTelemetry wiring to host composition.",
+      "why": "A library that depends on the SDK forces it on every consumer, and recording costs nothing until a listener subscribes.",
+      "check": "OpenTelemetry package references or usings in library (non-host) projects.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add the OTLP exporter only to the specific signal pipeline that needs it, and only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured; do not use the cross-signal `UseOtlpExporter`.",
+      "why": "A host without a collector should not keep retrying a missing endpoint, and `UseOtlpExporter` also exports every log, turns on tracing, and cannot be combined with a host's own exporters.",
+      "check": "`UseOtlpExporter()` calls, or an OTLP exporter added without checking that the endpoint is configured.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure a view that drops unbounded attributes such as `server.address` and `server.port` from `System.Net.Http` instruments when outbound calls go to URIs registered by clients.",
+      "why": "Hosts of client-registered URIs are unbounded, so they create unbounded series.",
+      "check": "OpenTelemetry metrics setup that adds System.Net.Http meters without a view filtering out server.address and server.port.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every new or changed instrument a unit test that reads it through `MetricCollector<T>` and asserts its name, unit, and attributes, and update the metrics catalog document in the same change.",
+      "why": "Dashboards and alerts are built against a reviewed contract, so adding or renaming an instrument or attribute must be a deliberate change.",
+      "check": "A new or renamed instrument or attribute with no MetricCollector test and no update to the metrics catalog doc.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*Tests/**/*.cs",
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the OAuth error-code metric attribute where the error response is written, so every path that writes an error tags it the same way.",
+      "why": "HTTP status alone cannot tell error codes such as `invalid_grant` and `invalid_client` apart, and tagging in one place keeps every path consistent.",
+      "check": "An error response path (filter, executor, redirect) that writes an OAuth error without the error attribute, or that tags it somewhere other than the shared writer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "hash": "3fb9e7fc562f31f9",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #350",
+  "rules": [
+    {
+      "statement": "Refer to OAuth/OpenID Connect protocol parameter names, field names and values (such as `response_type`, `code`, `client_id`) through shared named constants instead of writing string literals inline.",
+      "why": "The maintainer flagged inline protocol field literals scattered across files. Shared constants keep the wire vocabulary in one place, so a typo or a mismatch between client and server can't slip in.",
+      "check": "Look for string literals that match protocol parameter or field names in request builders, parsers, form or query construction, and JSON property access, where a shared protocol-constants type should be used instead.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put protocol wire-vocabulary constants in a dependency-free package that both server and client code reference, rather than in a package that brings in persistence, settings or ASP.NET Core.",
+      "why": "Clients could not reuse the server's constants because the package holding them pulled in server-only dependencies. That pushed the client to copy the names as inline literals.",
+      "check": "Look for protocol name constants being added to, or referenced from, a package with heavy server dependencies, or for client code that redefines protocol names locally instead of referencing the shared lightweight constants package.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

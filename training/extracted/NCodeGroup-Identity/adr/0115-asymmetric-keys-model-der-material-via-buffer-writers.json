@@ -1,0 +1,53 @@
+{
+  "hash": "41c2dc3cbea363ce",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0115",
+  "rules": [
+    {
+      "statement": "Asymmetric key abstractions must expose public key material as SubjectPublicKeyInfo (SPKI) DER, not as a System.Security.Cryptography.AsymmetricAlgorithm instance.",
+      "why": ".NET post-quantum types (MLDsa, SlhDsa, MLKem, CompositeMLDsa) and Edwards-curve OKP keys do not derive from AsymmetricAlgorithm. DER key material is the only surface they share with RSA/ECC, so a model built around AsymmetricAlgorithm cannot represent them.",
+      "check": "Look for asymmetric key base types or interfaces that return or accept AsymmetricAlgorithm as the general public-key representation, such as an ExportAsymmetricAlgorithm() member, instead of an SPKI DER export. Family-specific accessors like ExportRSA()/ExportECDsa() are fine.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put cryptographic operations (sign/verify, encapsulate/decapsulate) on algorithm-specific abstractions, never on the shared asymmetric key base type.",
+      "why": "The operations differ by algorithm family and do not generalize. This matches Microsoft's choice not to give the PQC types a common base class.",
+      "check": "Look for SignData/VerifyData/Encapsulate/Decapsulate-style members added to a common asymmetric key base class or interface instead of an algorithm-specific type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key-material export methods must write into a caller-supplied generic buffer writer (`void Export...<TWriter>(ref TWriter destination) where TWriter : IBufferWriter<byte>, allows ref struct`) instead of returning a byte[].",
+      "why": "This follows the general buffer convention: it avoids array allocations and lets the caller choose the backing storage.",
+      "check": "Look for new or changed export/encode methods for key or DER material that return byte[] instead of writing to a ref TWriter constrained to IBufferWriter<byte> with allows ref struct.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a non-sensitive pooled buffer writer (`BufferFactory.CreatePooledBufferWriter(isSensitive: false)`, backed by the shared MemoryPool) for public, non-secret material such as SPKI public keys, and keep the pinned SecureMemoryPool for secret material.",
+      "why": "The public half of a key is not secret, so it does not need the more expensive pinned secure pool.",
+      "check": "Look for public-key or other non-secret encoding that rents a sensitive or secure buffer. Also flag private-key material written to a non-sensitive pooled writer.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

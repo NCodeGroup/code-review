@@ -1,0 +1,54 @@
+{
+  "hash": "98d3cce4d6481697",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0216",
+  "rules": [
+    {
+      "statement": "Rotate the refresh token of a public client on every refresh unless the grant is sender-constrained by a stored proof-of-possession confirmation (DPoP `jkt` or certificate `x5t#S256`), and do not let any setting or option turn that rotation off.",
+      "why": "RFC 9700 §2.2.2/§4.14.2 and OAuth 2.1 §4.3.1 require a public client's refresh token to be either sender-constrained or rotated; otherwise the client gets a reusable bearer refresh token.",
+      "check": "Look for refresh-token grant logic or settings where a public (non-confidential) client without a token confirmation can keep its refresh token, e.g. a boolean rotation flag that defaults to false or that can override the requirement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not rotate, by default, the refresh token of a confidential client whose tokens are sender-constrained; decide whether to rotate from the binding of each token, not by forcing rotation for every client.",
+      "why": "FAPI 2.0 §5.3.2.1 forbids rotation for sender-constrained confidential clients: it adds no security there, and a client that loses the rotation response loses its session.",
+      "check": "Look for defaults or profiles that rotate every refresh token (an 'always' policy) for confidential or DPoP/mTLS-bound clients, or for rotation decisions made only from the client registration and not from the token's confirmation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a setting whose value selects a behavior the server enforces against a closed set of allowed values, and reject (fail closed on) any unknown value.",
+      "why": "An unknown value for an enforced security behavior must not silently fall through to a weaker behavior.",
+      "check": "Look for new policy-style string settings that accept arbitrary values or fall back to a default on unrecognized input, instead of using a one-of validation that rejects them.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A data migration that rewrites stored JSON documents must rewrite a document only when it is a JSON object, the old key has the expected type, and the target key is absent, and it must give every rewritten row a new concurrency token.",
+      "why": "Guarded rewrites avoid corrupting unexpected or already-migrated data, and a new concurrency token makes cached or concurrent writers notice that the row changed.",
+      "check": "Look for migrations that rewrite JSON columns without checking the document shape, the old value's type, or an existing target key, or that update rows without regenerating the concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*Migration*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

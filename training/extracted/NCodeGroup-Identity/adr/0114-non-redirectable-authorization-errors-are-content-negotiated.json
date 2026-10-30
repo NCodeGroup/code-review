@@ -1,0 +1,85 @@
+{
+  "hash": "eb5eea5f72e60d99",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0114",
+  "rules": [
+    {
+      "statement": "When an authorization error cannot be safely redirected (invalid or unregistered redirect_uri, unresolvable client_id), never redirect to the untrusted URI; show the error to the resource owner directly instead.",
+      "why": "OpenID Connect Core §3.1.2.4 requires the OP not to redirect to an untrusted URI and says it SHOULD inform the resource owner.",
+      "check": "Look for authorize-endpoint error paths that redirect to a redirect_uri that was not validated, or that redirect when client_id could not be resolved.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep IResult types in abstractions packages thin: ExecuteAsync resolves an IResultExecutor<TResult> from DI and delegates to it, and serialization, Accept parsing and formatter lookup live in the core implementation.",
+      "why": "Putting the plumbing inside a public result type in a lean abstractions package couples it to specific response types and representations.",
+      "check": "Look for an IResult.ExecuteAsync in an Abstractions project that serializes JSON, parses Accept headers or picks formatters inline instead of delegating to an executor.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*Abstractions*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Support alternate response representations through an open collection of formatter strategies. Each formatter declares the media types it emits and a CanFormat predicate, and is registered with TryAddEnumerable. Do not add type checks or media-type checks inside the result type.",
+      "why": "An inline branch favors one response type and one media type. With the open collection, a new representation is an additive registration.",
+      "check": "Look for code like `if (response is SomeError && prefersHtml)` inside result or executor code, or a new single-purpose renderer seam for one response type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement the default representation (for example JSON) as a formatter registered in the same pipeline as the alternates, and make it the final fallback candidate in negotiation.",
+      "why": "The default body then goes through the same pipeline rather than a special-cased branch, so a wildcard or non-matching Accept still resolves to it.",
+      "check": "Look for a default JSON body written in an inline fallback branch outside the formatter collection, or negotiation that has no final default candidate.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In server-driven content negotiation, choose a non-default formatter only when Accept lists an explicit type/subtype it supports. Wildcard-only Accept values such as */* must get the default representation.",
+      "why": "This keeps negotiation safe by default: JSON stays the OAuth/OIDC wire default for curl and other programmatic callers unless an interactive client asks for something else.",
+      "check": "Look for negotiation that lets */* or type/* match an HTML or other alternate formatter.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write HTML response bodies with HttpResponse.WriteAsync(text, SecureEncoding.UTF8, cancellationToken) from NCode.Buffers, following the existing HTML executor idiom.",
+      "why": "This reuses the established NCode.Buffers writing stack.",
+      "check": "Look for HTML bodies written with Encoding.UTF8, by manually encoding into byte arrays, or through other ad-hoc writers.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Optional alternate representations registered by an optional package must degrade gracefully: when no formatter is registered, the response falls back to the default representation without error.",
+      "why": "Hosts without the interactive package must still get valid JSON error responses.",
+      "check": "Look for code that throws or fails when no alternate formatter is registered, or that makes core code depend on the optional package.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

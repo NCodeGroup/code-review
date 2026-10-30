@@ -1,0 +1,126 @@
+{
+  "hash": "b6d274880e76f092",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0217",
+  "rules": [
+    {
+      "statement": "A refresh token reuse interval (grace period for retrying a rotated refresh token) must be an opt-in per-client setting that defaults to zero (off) and is validated to the range zero to 60 seconds.",
+      "why": "A longer or default-on window weakens reuse detection; RFC 9700 makes no exception for retries, and Auth0 and Okta make it opt-in, with Okta capping it at 60 seconds.",
+      "check": "Look for a reuse/grace interval setting that defaults to a non-zero value, has no upper bound, or allows more than 60 seconds.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a refresh token retry within the reuse interval the way the rotation was answered: issue a new access token, an ID token when `openid` is in scope, and a new refresh token in the same lineage, without revoking the lineage or the first successor.",
+      "why": "Revoking the current head or the lineage would end the session of a client that lost the response or of a concurrent tab, and the stored hash cannot reproduce the first successor's value.",
+      "check": "Look for retry handling that revokes the lineage, re-rotates the head (invalidating the other successor), or tries to return the earlier successor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a re-presented refresh token as a retry only when a rotation spent it (it is revoked with a consumed time set by the successor's creation), it is not expired, and the current time is before the consumed time plus the interval; a token spent without a successor never qualifies.",
+      "why": "Only a token that was rotated has a successor to branch from; a token revoked outright must still be treated as reuse.",
+      "check": "Look for retry checks that skip the consumed-time, expiry, or interval comparison, or that set the consumed time on a revocation without a successor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a refresh token retry with `invalid_grant` (400), without a replay audit event or lineage revocation, when the request cannot issue a refresh token, the grant names no lineage, or no grant of the lineage is still active.",
+      "why": "A retry is only answered while it can issue another refresh token in a live lineage; otherwise it is simply invalid, not a detected reuse.",
+      "check": "Look for retry paths that issue tokens without `offline_access`, without a lineage, or for a fully revoked lineage, or that record a replay event or revoke the lineage on this refusal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a refresh token rotation loses a concurrency race to another rotation of the same token and a reuse interval is configured, re-read the grant and answer as a retry instead of treating it as reuse.",
+      "why": "Two tabs refreshing at the same time must both keep their session rather than trip reuse detection.",
+      "check": "Look for rotation code that treats any concurrency conflict as reuse and revokes the lineage without re-reading the grant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On an optimistic concurrency conflict, re-read the entity and retry a bounded number of times (three attempts in total), return the 'not applicable' result if the re-read shows the precondition no longer holds, and let the exception propagate after the last conflict.",
+      "why": "A concurrent write that left the entity still valid (for example, a bump of its concurrency token) would otherwise be misread as a lost race or a reuse.",
+      "check": "Look for concurrency conflict handling that fails immediately without re-reading, retries without a bound, or swallows the exception after the final attempt.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a branch to a refresh token lineage in one unit of work that reads the lineage's active grants, updates each one so its concurrency token changes, and adds the successor, returning null when no grant is active.",
+      "why": "Touching the active grants makes a concurrent revocation of the lineage, session, subject, or grant conflict with the branch, so a revocation can never miss a new branch.",
+      "check": "Look for code that inserts a new refresh token into a lineage without checking for active grants or without updating them in the same transaction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Revoking a refresh token at the revocation endpoint must revoke its whole rotation lineage when it has one, and only the grant itself otherwise.",
+      "why": "RFC 7009 §2.1 permits revoking related tokens, and revoking the family is what ends every branch created by retries.",
+      "check": "Look for revocation handling that revokes only the presented refresh token when it belongs to a lineage.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record an answered refresh token retry as its own audit event (separate from rotation and from replay/reuse), send every retry path through one method, and record nothing for a refused retry.",
+      "why": "Operators need to tell a client's retry from a rotation and from a reuse.",
+      "check": "Look for retry paths that emit no audit event, reuse the rotation or replay event, audit each path separately, or audit refused retries.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject the configuration of a client that is required to allow refresh token retries (for example, under FAPI 2.0) and whose refresh tokens rotate but whose effective reuse interval is not positive.",
+      "why": "FAPI 2.0 §5.3.2.1 requires a server that rotates refresh tokens to let the client retry, and that cannot happen without an interval.",
+      "check": "Look for client settings or security profiles that require retries without a validation rule ensuring a positive reuse interval for rotating clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

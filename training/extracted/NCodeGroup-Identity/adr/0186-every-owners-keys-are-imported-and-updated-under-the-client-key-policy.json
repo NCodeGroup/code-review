@@ -1,0 +1,80 @@
+{
+  "hash": "e3a20c5e45b9dc86",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0186",
+  "rules": [
+    {
+      "statement": "Validate imported keys with one shared key-import policy, whatever entity owns the key, instead of separate validation in each owner's handler.",
+      "why": "Separate per-owner checks drifted apart, and whether a key is valid does not depend on who owns it.",
+      "check": "Look for import endpoints or handlers that validate key type, use, key_ops or alg themselves, or that call a lower-level secret importer directly instead of the shared key-import policy service.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a key import is refused, return 400 Bad Request with a problem detail that gives the specific reason, not a generic failure message.",
+      "why": "Callers need to know why their key was refused.",
+      "check": "Look for key-import failure paths that return a generic error, or that drop the validator's reason before building the 400 response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the `kid` of an imported JSON Web Key and use it as the key's identifier, falling back to the internal secret identifier only when the key has no `kid`.",
+      "why": "Relying parties select keys by the `kid` the publisher chose (RFC 7517 §4.5), so tokens signed with the key must carry that `kid`.",
+      "check": "Look for JWK import or mapping code that drops the `kid`, or that always identifies the key by a generated or internal ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject with 409 Conflict a key import whose effective `kid` (its own `kid`, or its secret identifier when it has none) matches one already among the same owner's keys.",
+      "why": "Keys are selected by `kid`, so a duplicate makes key selection ambiguous.",
+      "check": "Look for key-import paths that skip the uniqueness check on `kid`, compare only explicit `kid` values and ignore the fallback identifier, or return a status other than 409 for a duplicate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before writing a key-metadata update, check the new `use` and `alg` against the stored key's type and size with the same algorithm-compatibility rule that import uses, and keep the key's existing `kid`.",
+      "why": "Otherwise an update can give a key an algorithm its type does not accept, or drop the identifier it is selected by.",
+      "check": "Look for key or secret update methods that write `use` or `alg` without running the shared validation, or that rebuild the stored key without copying over its KeyId.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In API contracts that describe a key, include the key's `kid` as a required, non-nullable field, already resolved to its fallback, instead of a nullable field set only when it differs from the internal identifier.",
+      "why": "A nullable field makes every caller repeat the fallback, and the key is selected by a `kid` either way.",
+      "check": "Look for key or secret response DTOs that leave out the `kid`, or declare it nullable or optional.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "hash": "7fcde2e3aac7efa7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0205",
+  "rules": [
+    {
+      "statement": "Make a handler for cross-replica broadcast or invalidation messages idempotent, so a message that is lost, repeated, late, or out of order leaves the state correct.",
+      "why": "Delivery is best effort, at most once, and unordered, and the publisher's own replica also receives its message, so a handler may run twice for one change.",
+      "check": "Look for broadcast or pub/sub handlers that assume one delivery, assume ordering, or do non-idempotent work such as incrementing, appending, or one-time side effects.",
+      "scope": "domain",
+      "domain": "multi-replica-cache-coherence",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a broadcaster dispatches a message to several handlers, catch and log each handler's failure, keep delivering to the other handlers, and never pass the failure back to the publisher.",
+      "why": "One faulty handler must not stop other features from getting the hint or fail the operation that published it.",
+      "check": "Look for dispatch loops over handlers that have no per-handler try/catch, that stop at the first exception, or that rethrow to the caller of PublishAsync.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a cache-invalidation announcement as a hint only: every cache it invalidates still needs a bounded absolute lifetime or a polling fallback, so a replica that missed the message converges anyway.",
+      "why": "Announcements can be lost, for example when a publisher can't reach the broker. A sliding expiration alone keeps a busy entry stale forever.",
+      "check": "Look for caches that rely only on broadcast invalidation, or that use only a sliding expiration with no absolute lifetime or periodic refresh.",
+      "scope": "domain",
+      "domain": "multi-replica-cache-coherence",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a pub/sub subscription is first established or restored after a reconnect, have the handlers assume they missed messages and invalidate everything they cached.",
+      "why": "Messages published before the subscription took effect, or while the connection was down, never reached the replica.",
+      "check": "Look for subscribers that don't call a missed-message or invalidate-all path after subscribing or on a connection-restored event.",
+      "scope": "domain",
+      "domain": "multi-replica-cache-coherence",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish a change notification only after the write has committed, put the publish in a finally block so a failed follow-up step still announces it, and log and swallow a publish failure instead of failing the write.",
+      "why": "The change is committed either way. A notification outage must not fail a management write, and other replicas converge through the bounded fallback.",
+      "check": "Look for notifications sent before the commit, publishes skipped when a later step throws, or publish exceptions that reach the caller of a committed write.",
+      "scope": "domain",
+      "domain": "multi-replica-cache-coherence",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hand each incoming pub/sub message to its handlers on a thread-pool thread, not inline on the connection's receive loop.",
+      "why": "A slow handler must never block the connection from receiving other messages.",
+      "check": "Look for subscription callbacks that await or run handler work synchronously inside the message-receive callback.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a default adapter for an extensibility port with TryAdd so that a host's earlier registration wins, and register handlers that can coexist with TryAddEnumerable.",
+      "why": "A host that registered its own implementation first must keep it, and several handlers may share one channel.",
+      "check": "Look for AddSingleton/AddScoped of default port implementations where TryAdd is needed, or multi-handler registrations that use Add or TryAdd instead of TryAddEnumerable.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prefix pub/sub channel names on a shared broker with the configured key prefix, the same way keys are prefixed.",
+      "why": "The prefix keeps separate deployments that share one server from receiving each other's messages.",
+      "check": "Look for PUBLISH or SUBSCRIBE calls that use a raw channel name without the configured key prefix.",
+      "scope": "domain",
+      "domain": "valkey-redis",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare broadcast channel names ordinally.",
+      "why": "Channels are an open vocabulary of names compared ordinally, so matching must not depend on culture.",
+      "check": "Look for channel-name matching that uses culture-sensitive or case-insensitive comparison, or default comparers, instead of StringComparer.Ordinal.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

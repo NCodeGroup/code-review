@@ -1,0 +1,113 @@
+{
+  "hash": "5d1491f39cdf137b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0093",
+  "rules": [
+    {
+      "statement": "Persist, key and resolve grants, consent, sessions and revocation by the stable internal subject identifier, and apply the pairwise `sub` projection only where the subject leaves the server in an emitted token or response.",
+      "why": "Internal joins have to work across clients (for example, revoking everything for a user). If the pairwise value replaced the internal id, those joins would break, because preventing that correlation is exactly what pairwise is for.",
+      "check": "Look for code that stores a pairwise/projected `sub` in grant, consent or session records, keys a lookup on it, or passes it into internal resolution instead of the stable principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the subject projection at every outbound seam that emits `sub`: ID tokens, access tokens, back-channel `logout_token` and token introspection.",
+      "why": "If one emission path leaks the raw stable subject, relying parties or resource servers in different sectors can correlate the user.",
+      "check": "In new or changed code that writes a `sub` claim or field into an outbound token or response, check that the value comes from the subject projection service and not straight from the internal principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have UserInfo return the `sub` already carried by the access token instead of projecting the subject a second time, so UserInfo `sub` always equals ID-token `sub`.",
+      "why": "Echoing the already-projected value keeps the UserInfo and ID-token subjects identical by construction, as OpenID Connect Core requires.",
+      "check": "Look for UserInfo code that recomputes or re-projects `sub` instead of using the access token's `sub`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never try to reverse a pairwise `sub` presented back to the server, and never add a stored reverse map for one; recover the stable subject from server-side state such as the persisted session or login cookie.",
+      "why": "The derivation is one-way and stateless by design. Trusting or reversing a presented pairwise `sub`, for example from an `id_token_hint`, would need a reverse map, and the design deliberately has none.",
+      "check": "Look for code that reads `sub` from an inbound `id_token_hint` or another client-presented token to identify the principal, or that adds a table or store mapping pairwise values back to principals.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive the pairwise `sub` deterministically as a hash over the sector identifier, the stable principal id, the tenant id and an optional secret salt, joined with a separator that cannot appear in any of the component values.",
+      "why": "A pure function gives a stable pseudonym with no persisted mapping. The tenant id isolates tenants, the separator keeps the composition unambiguous, and the salt is defense in depth against preimage guessing.",
+      "check": "In changes to the pairwise derivation, look for a missing tenant id, inputs concatenated with no separator or with a separator that can appear in the values, or non-deterministic inputs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve the pairwise sector identifier as the host of `sector_identifier_uri` when it is set, otherwise the single common host of the client's `redirect_uris`, and otherwise fall back to the `client_id` instead of failing at issuance.",
+      "why": "This follows OpenID Connect Core §8.1. With the fallback, a client whose redirect hosts are ambiguous becomes its own sector and still gets a stable, non-correlatable `sub`.",
+      "check": "Look for sector resolution that ignores `sector_identifier_uri`, picks one host when redirect hosts are ambiguous, or throws or returns an error at issuance when no sector can be found.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep extracting a stable subject from an inbound principal and projecting a subject to a client-facing value in separate, distinctly named methods, and do not let either one call the other.",
+      "why": "They are not inverses, since the projection is one-way. Different names keep call sites clear about which direction they work in.",
+      "check": "Look for one method that both extracts and projects, for one delegating to the other, or for a projected value used where an extracted stable subject is expected.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register replaceable framework services with `TryAdd*` (for example `TryAddSingleton`) so a host application can override them.",
+      "why": "A replaceable registration lets a deployment supply its own implementation, such as a stored or rotatable mapping, without touching the pipeline.",
+      "check": "Look for framework service registrations meant to be overridable that use `AddSingleton`/`AddScoped`/`AddTransient` instead of `TryAdd*`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a new protocol capability or setting, give it a default that leaves already-configured or unconfigured clients behaving as they did before.",
+      "why": "`subject_type` defaults to `public`, so adding pairwise support does not change existing clients.",
+      "check": "Look for new client or server settings whose defaults silently change token contents or behavior for clients that never set them.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

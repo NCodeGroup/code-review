@@ -1,0 +1,101 @@
+{
+  "hash": "702a004c87e62bec",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/hosting-analysis.md",
+  "rules": [
+    {
+      "statement": "When a forwarded client-certificate header is present but its value cannot be decoded, fail the request with an `invalid_request` error; never treat an undecodable value as if no certificate had been sent.",
+      "why": "If a bad forwarded value is quietly read as 'no certificate', authentication behaves differently than intended and malformed input from the proxy goes unnoticed.",
+      "check": "Look for code that parses a forwarded client-certificate header (e.g. X-Forwarded-Tls-Client-Cert) and returns null, skips, or falls through to the no-certificate path when decoding fails, instead of producing an invalid_request error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When parsing a forwarded client-certificate chain, treat the first certificate as the client's own and pass the rest only as intermediates for chain building, never as trust anchors.",
+      "why": "The proxy forwards a comma-separated chain with the client certificate first. The extra certificates help build the chain but must not be trusted for that reason alone.",
+      "check": "Look for parsing of a comma-separated forwarded certificate header that takes a different certificate as the leaf, or that adds the forwarded intermediates to the trusted roots.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a `tls_client_auth` certificate in the server by building its chain to the trust anchors configured for that client or tenant (custom root trust, clientAuth EKU, validity, the configured revocation mode) before matching the subject, and trust no certificate when no anchor is configured.",
+      "why": "The proxy only requests and forwards the certificate without verifying it, so the server is the only place where per-tenant and per-client trust is enforced.",
+      "check": "Look for tls_client_auth code that matches the subject/SAN without first building the chain to configured anchors, that uses the system root store, that skips the EKU, validity or revocation checks, or that accepts certificates when no anchors are configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that calls a remote key-management or signing service must handle HTTP 429 throttling responses with back-off and retry.",
+      "why": "Services such as Key Vault throttle each vault, so a signer on the token path has to survive being throttled.",
+      "check": "Look for new remote signing or KMS client code that has no retry with back-off on 429 / throttling responses.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve JWKS and public-key lookups from cached public keys instead of calling the remote KMS for each request.",
+      "why": "Every remote call adds a network round-trip, and public keys can be cached, so remote calls should be kept to the actual signing operations.",
+      "check": "Look for JWKS or public-key retrieval code that calls the KMS or vault on every request without caching the result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trust forwarded headers only from configured known proxies or networks, and never enable insecure or trust-all handling of forwarded headers.",
+      "why": "Forwarded headers such as X-Forwarded-Proto, Host and the client-certificate header can be spoofed if they are accepted from untrusted addresses.",
+      "check": "Look for ForwardedHeadersOptions that clear KnownProxies/KnownNetworks without adding configured values, that trust all addresses, or that read forwarded certificate headers without proxy trust.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a host refuse to start in the Production environment when development-only settings are configured, such as developer signing keys, wildcard `AllowedHosts`, permissive developer CORS, or data seeders.",
+      "why": "Development-only settings in production open security holes, so the host should fail fast rather than run with them.",
+      "check": "Look for newly added development-only options or features that have no Production startup validation rejecting them.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write every database migration so the previous release's code keeps working against the migrated schema, for example by adding before removing, and never by renaming or dropping in one step.",
+      "why": "Migrations run in a Job before the rollout, so the old release still serves traffic against the new schema while the rollout happens.",
+      "check": "Look for migrations that drop or rename columns or tables, or add NOT NULL columns without defaults, that the previous release still uses.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

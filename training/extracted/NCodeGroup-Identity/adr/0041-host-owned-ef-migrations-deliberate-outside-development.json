@@ -1,0 +1,87 @@
+{
+  "hash": "471faf53bcfd2261",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0041",
+  "rules": [
+    {
+      "statement": "Do not ship EF Core migrations in a published, reusable persistence library; the library ships only the model, and the consuming host owns the provider-specific migrations.",
+      "why": "Migrations are provider-specific SQL. Shipping them in the package would tie it to one provider and to each consumer's schema lifecycle and deployment schedule.",
+      "check": "Look for Migrations folders, Migration classes or ModelSnapshot files added to a packable library project, as opposed to a host or app project.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never call `Database.Migrate()` or apply schema changes at application startup outside the Development environment; apply them deliberately out-of-band, for example with an idempotent `dotnet ef migrations script --idempotent` script.",
+      "why": "Schema changes to a shared production database must be deliberate and observable. They should not be a side effect of a rolling deploy, which is unsafe when several instances start at once.",
+      "check": "Look for `Migrate()`/`MigrateAsync()` calls in startup code that are not guarded by an `IsDevelopment()` check.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use `EnsureCreated()` for a relational database whose schema must evolve; use EF Core migrations, and keep `EnsureCreated()` only for the in-memory provider.",
+      "why": "`EnsureCreated()` never changes an existing schema, so new entities fail at runtime with missing tables. A database it creates also has no migrations history, so it cannot be migrated later.",
+      "check": "Look for `EnsureCreated()`/`EnsureCreatedAsync()` calls against relational providers such as SQLite or SQL Server.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Provide an `IDesignTimeDbContextFactory<TContext>` in the project that owns the migrations, and set `MigrationsAssembly` in the runtime DbContext registration to that project.",
+      "why": "With the factory, `dotnet ef` never boots the full web host, and setting `MigrationsAssembly` lets `Migrate()` find the migrations at runtime.",
+      "check": "Look for migrations added to a project that has no design-time factory, or for a DbContext registration whose provider options do not set `MigrationsAssembly` when the migrations live outside the context's assembly.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a separate migration set for each database provider; never reuse one provider's migrations on another.",
+      "why": "Migrations are provider-specific SQL, so a SQLite migration cannot run on SQL Server.",
+      "check": "Look for a single migrations set applied to several providers, or for a newly supported provider that comes without its own migrations.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When startup finds a relational database that has tables but no applied migrations, fail fast with an actionable message; never delete the database automatically.",
+      "why": "A clear message is better than a raw provider 'table already exists' error, and deleting the database automatically would lose data.",
+      "check": "Look for startup database initialization that calls `EnsureDeleted()` automatically, or that lets a migration run into a provider error on a database built by `EnsureCreated()`.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat generated EF Core migration files as generated code: exclude them from CSharpier and mark them `generated_code = true` in `.editorconfig`.",
+      "why": "Generated migrations should not be reformatted or held to the analyzer and warnings-as-errors gates.",
+      "check": "Look for a new migrations folder that has no `.csharpierignore` entry and no `generated_code` editorconfig setting, or for manual reformatting of migration files.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        ".editorconfig",
+        ".csharpierignore"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

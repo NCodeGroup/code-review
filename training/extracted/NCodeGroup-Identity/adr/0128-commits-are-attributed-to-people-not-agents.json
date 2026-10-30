@@ -1,0 +1,52 @@
+{
+  "hash": "25949a96a823f54b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0128",
+  "rules": [
+    {
+      "statement": "Do not put agent attribution in commit messages: no `Co-authored-by:` trailer naming an AI agent account (such as Copilot or `copilot-swe-agent[bot]`), no `Claude-Session:` line, and no \"Generated with [Claude Code\" line.",
+      "why": "GitHub builds the contributor list from commit authors and Co-authored-by trailers, and that list should name only accountable people. Removing a trailer later means rewriting and force-pushing published history.",
+      "check": "Look in the commit messages of the PR for Co-authored-by lines naming an AI agent, Claude-Session lines, or 'Generated with Claude Code' footers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Commits must have a person as author and committer, not an AI agent or bot account; re-author agent-created commits before they merge.",
+      "why": "The contributor graph is a list of accountable people, and agent-authored commits put the agent on it even when no trailer names it.",
+      "check": "Check the PR's commits for an author or committer that is an agent account (for example `copilot-swe-agent[bot]` or a `+Copilot@users.noreply.github.com` email).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Keep AI tool commit-attribution settings off in versioned editor and agent configuration: Claude Code's `attribution` set to off in `.claude/settings.json`, and VS Code's `git.addAICoAuthor` set to `off` in `.vscode/settings.json`.",
+      "why": "The setting must live in a versioned file so it reaches every session, tool and clone, which an instruction given to one session cannot do.",
+      "check": "Flag diffs to `.claude/settings.json` or `.vscode/settings.json` that turn on or remove these attribution settings.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".claude/settings.json",
+        ".vscode/settings.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A commit-msg hook that enforces attribution must strip agent attribution lines silently, not reject the commit.",
+      "why": "Rejecting a commit interrupts an automated flow over an attribution detail, and a blocked agent just retries. Stripping cannot be worked around, cannot fail a batch, and leaves messages that are already correct untouched.",
+      "check": "In changes to git hooks such as `.githooks/commit-msg`, look for code that exits non-zero on agent trailers when it should remove them and exit 0.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".githooks/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

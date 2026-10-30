@@ -1,0 +1,113 @@
+{
+  "hash": "cbb71c23f6e0ce9a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0202",
+  "rules": [
+    {
+      "statement": "Define a security profile only through ceilings, defaults and request-time requirements, and never add a profile-specific branch (such as `if profile == \"fapi1-advanced\"`) to an enforcement point.",
+      "why": "A profile that is pure data and composable requirements can be added beside the others and registered the same way, without each enforcement point having to know about every profile.",
+      "check": "Look for code in endpoints, validators or handlers that tests a profile's identity or name instead of reading the effective settings or composing a requirement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization request carries a request object, read every authorization parameter only from the request object, and fall back to the outer query only for `client_id`, which the object must still match.",
+      "why": "RFC 9101 §6.3, FAPI 1.0 Advanced §5.2.2-10 and FAPI 2.0 Message Signing require this, because merging lets an unsigned outer parameter such as `response_mode` change a signed request.",
+      "check": "Look for parameter lookups that merge or fall back to outer query or form values when a request object exists, or a `Parameters` collection built from both sources.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a request object that lacks `response_type`, `scope`, `redirect_uri` or `client_id` with `invalid_request_object`, and refuse an outer `response_type`, `redirect_uri` or `client_id` that is sent but differs from the object's value. Ignore an outer `scope` rather than comparing it.",
+      "why": "A code must never be sent to one URI and be redeemable only with another, while OpenID Connect Core §6.1 lets the object's scope supersede the outer one.",
+      "check": "Look at request-object validation for required claims that are not checked, outer values that are not compared for equality, or an outer scope that is compared or merged.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare `redirect_uri` values as the exact strings written, with ordinal string comparison, and never through parsed `Uri` equality.",
+      "why": "`Uri` equality ignores the case of the host, but redirect URIs must match exactly.",
+      "check": "Look for `Uri.Equals`, `==` on `Uri` instances, or case-insensitive comparison applied to redirect URIs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether a response mode is JWT-secured from a trait the response-mode handler declares, and never from the mode name (such as a `.jwt` suffix) or a hard-coded list of modes.",
+      "why": "Handlers are registered, so a name-based inference would misjudge new handlers and would duplicate knowledge that the handler owns.",
+      "check": "Look for `EndsWith(\".jwt\")`, string matching on response-mode names, or fixed mode lists inside requirements or validators.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an authorization error to the user agent, not as a redirect, whenever no verified redirect target exists yet. Once the request object is verified, take `state` and `response_mode` for every later response, errors included, from the object.",
+      "why": "Before verification the endpoint does not know a safe redirect target. After verification, errors must carry the object's `state` and be delivered in its response mode (RFC 6749 §4.1.2.1).",
+      "check": "Look for error paths that redirect to an unverified `redirect_uri`, or errors raised after verification that use outer `state` or `response_mode` values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate the redirect target, including that the `redirect_uri` is registered, at the pushed authorization request endpoint when the request is pushed, and not only later at the authorization endpoint.",
+      "why": "RFC 9126 §2.1 expects the PAR endpoint to refuse a redirect URI that is not registered.",
+      "check": "Look for PAR handling that stores a request without resolving and validating its redirect URI and response delivery.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library packages must not call Kestrel's `ConfigureHttpsDefaults` (or change certificate-validation modes such as `AllowAnyClientCertificate`). Leave that to the host's own composition.",
+      "why": "`ConfigureHttpsDefaults` keeps only its last action, so a package that called it would silently replace, or be replaced by, the host's HTTPS defaults.",
+      "check": "Look for `ConfigureHttpsDefaults` or `ConfigureKestrel` calls inside library service-registration or extension code instead of host startup code.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit private keys or certificates. Test and conformance scripts generate them on first use into a gitignored folder.",
+      "why": "Generating keys on first use means no private key is ever committed.",
+      "check": "Look for added `.pfx`, `.pem`, `.key` files or private JWKs in the diff, or scripts that write keys to tracked paths.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "hash": "7d3ebb3deba01b16",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0019",
+  "rules": [
+    {
+      "statement": "Collection (list) endpoints must return a bounded page using keyset (cursor) pagination, never an unbounded result set and never offset/skip-based pagination.",
+      "why": "Unbounded lists are a latent denial-of-service and memory/latency cliff; offset pagination skips or repeats rows under concurrent writes and turns into scan-and-discard at high offsets.",
+      "check": "Look for list endpoints or store methods that return all rows (ToListAsync with no limit), or that use Skip/Take, page/pageSize, or $skip/$top parameters.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order a keyset page by an indexed, unique key, fetch limit + 1 rows where the key is greater than the cursor, and use the extra row only to tell whether a next page exists.",
+      "why": "Seeking an index stays stable under concurrent inserts and deletes and avoids scans; fetching limit + 1 detects more pages without a count query.",
+      "check": "Check that page queries filter by key > cursor, order by an indexed unique key, take limit + 1, and set a next cursor only when the extra row is present. Flag ordering on non-unique or unindexed columns.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Clamp the caller's page-size parameter to a server-defined default and maximum.",
+      "why": "A page size the caller controls without a cap brings back the unbounded-result denial-of-service.",
+      "check": "Look for a limit or page-size query parameter passed to the store without a default and an upper bound.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pagination cursors must be opaque to callers and created and read only by the persistence layer (for example, a base64url encoding of the last key); the web layer passes them through unchanged.",
+      "why": "Keeping the cursor opaque and owned by the store keeps the persistence boundary intact and lets the encoding change without breaking the contract.",
+      "check": "Flag web or endpoint code that decodes, builds, or reads cursor contents, and contracts that expose raw key fields as the continuation mechanism.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add generic query protocols (OData, JSON:API filter/sort/expand) or expose IQueryable to the web layer; add each specific filter as an explicit query parameter backed by an explicit store method.",
+      "why": "Arbitrary filters and sorts leak IQueryable across the store boundary, create denial-of-service and complexity risks (unindexed sorts, N+1 expands), and add a large versioned public contract.",
+      "check": "Flag references to OData packages, $filter/$orderby/$expand handling, or store or service methods that return or accept IQueryable or expressions from callers above the persistence layer.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the shared keyset pagination logic (decode cursor, fetch limit + 1, detect more pages, encode the next cursor) in one shared base implementation; each store supplies only its ordered query and sort key.",
+      "why": "Centralizing it keeps every resource family consistent, so new families get correct pagination for free.",
+      "check": "Flag store implementations that re-implement cursor encoding or decoding, or the limit + 1 logic, instead of using the shared base.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize a paged list once per request, against the family and scope being listed, instead of filtering the items in the page one by one.",
+      "why": "Dropping unauthorized items makes a page shorter than the limit and breaks the more-pages signal; the permission really being checked is the right to list a family within a scope.",
+      "check": "Look for list endpoints that loop over page items and call authorization per item, or that remove items from a page after it is fetched.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

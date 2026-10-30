@@ -1,0 +1,111 @@
+{
+  "hash": "7b71f07ea3b5b323",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0071",
+  "rules": [
+    {
+      "statement": "In an Aspire AppHost, make a dependent resource wait on the API's readiness health check (`WithHttpHealthCheck` on the readiness endpoint plus `.WaitFor(api)`), not just on the process having started.",
+      "why": "Starting UIs alongside the API with no ordering lets them race it and fail. Gating on readiness removes that race reliably.",
+      "check": "Look for AppHost resources that call the API but have no `.WaitFor(...)`, or an API resource without `WithHttpHealthCheck` pointing at its readiness endpoint.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the Aspire AppHost as its own sibling orchestration project that references the host, never nested inside the host project, and mark it `IsPackable=false` so it ships no artifact.",
+      "why": "The host must stay a single process. The AppHost is dev-only tooling, and keeping it unpackable means the pack, PublicAPI and provenance gates skip it.",
+      "check": "Look for Aspire `DistributedApplication` code inside a shipping host project, or an AppHost csproj that lacks `<IsPackable>false</IsPackable>`.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin the `Aspire.AppHost.Sdk` version under `msbuild-sdks` in global.json, and set `Aspire.Hosting.*` package versions centrally in Directory.Packages.props, moving them in lockstep.",
+      "why": "Central package management with lockstep versioning stops the SDK and the hosting packages drifting apart.",
+      "check": "Look for an Aspire SDK version written inline in the csproj `Sdk` attribute, or `Aspire.Hosting.*` PackageReferences that carry a `Version`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "global.json",
+        "Directory.Packages.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When Aspire runs JavaScript resources from a shared pnpm workspace, turn off per-resource install (`WithPnpm(install: false)`) and install the workspace once, serially, from a single bootstrap script. Never add a per-app `pnpm install`.",
+      "why": "Two `pnpm install` runs at once against the workspace's shared, symlinked node_modules collide with ERR_PNPM_EBUSY and fail the dependent resource.",
+      "check": "Look for `WithPnpm()` without `install: false`, or for per-app `pnpm install` steps added to orchestration or repair code.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin local-dev endpoints whose ports are baked into redirect URIs, CORS origins or bootstrap documents to fixed ports, un-proxied (`IsProxied = false`), and do not let Aspire assign them dynamically.",
+      "why": "Seeded redirect URIs, CORS allowlists and the issuer, cookie and antiforgery binding assume those exact origins. A dynamic or host-rewriting proxy breaks them.",
+      "check": "Look for API or SPA endpoints in the AppHost with no explicit port, or with proxying left on, when other config hard-codes that origin.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve every local-dev browser surface over HTTPS with the ASP.NET Core development certificate (for example `WithHttpsDeveloperCertificate` for Vite resources), and register only `https://` dev redirect URIs and CORS origins.",
+      "why": "The browser can then trust one certificate across the whole stack, and the seeded redirect and CORS origins stay `https` only.",
+      "check": "Look for `http://` dev redirect URIs or CORS origins, or Vite resources that don't opt into the development certificate.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep backing services such as databases or caches in local-dev orchestration opt-in, so the stack's basic run has no hard requirement on those containers.",
+      "why": "The zero-setup SQLite/in-memory inner loop must keep working. Making containers mandatory breaks that promise.",
+      "check": "Look for AppHost changes that make a container resource required for the default run with no opt-in switch.",
+      "scope": "domain",
+      "domain": "dotnet-aspire-local-dev",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In local dev, get runtime bootstrap/config documents from the real host endpoint (for example through a dev-server proxy to the API origin) instead of shipping a static dev copy.",
+      "why": "Using the real runtime endpoint means local dev cannot drift from production.",
+      "check": "Look for checked-in static bootstrap or config JSON used only in dev, in place of proxying to the API.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.*",
+        "**/public/**/*.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

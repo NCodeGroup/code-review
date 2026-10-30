@@ -1,0 +1,66 @@
+{
+  "hash": "3152ef9d8231df4c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0254",
+  "rules": [
+    {
+      "statement": "Serve content-hashed static files with `Cache-Control: public, max-age=31536000, immutable`, keep their `ETag`/`Last-Modified` validators and range support, and send no cache lifetime on a `404`.",
+      "why": "Validators alone give the browser no freshness lifetime, so it sends a conditional request for every file on every page load. A hashed name never refers to two versions, so the file can be cached forever, but a 404 must not be cached.",
+      "check": "Look for endpoints that serve hashed bundle assets and either leave out the immutable Cache-Control, drop the validators or range handling, or put a cache lifetime on not-found responses.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map endpoints for public files that are the same for every tenant in a route group that does not resolve or materialize the tenant, so a request under any tenant segment, known or unknown, gets the file.",
+      "why": "Resolving the tenant for a file that does not depend on the tenant does wasted work, and it makes an unknown tenant's request fail for no reason.",
+      "check": "Look for tenant-independent asset or static endpoints that sit behind a tenant-resolving filter or open a tenant scope, or that return errors for unknown tenants.",
+      "scope": "domain",
+      "domain": "multi-tenant-hosting",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Root a static-file provider at the one directory meant to be public, and answer `404` for paths that leave it, for hidden or system files, and for files with an unknown content type.",
+      "why": "Only the intended assets should be servable. Files the host reads internally, such as the shell `index.html`, must not be exposed.",
+      "check": "Look for file providers rooted above the public assets directory, or for asset handlers that do not reject path traversal, hidden files or unmapped content types with 404.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When server code parses or transforms frontend build output, add a test that runs against the real built artifact, not only hand-written or checked-in copies. Mark it to skip when an environment variable does not point to the artifact, and run it in the CI job that builds the frontend.",
+      "why": "Hand-written fixtures and checked-in copies drift from what the build produces, so a build change that breaks the parsing would still pass the .NET gate.",
+      "check": "Look for code that consumes build output and is tested only with handcrafted HTML or a committed copy of the build output, with no gated test that reads the actual built file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin the bundler's assets output directory (for example Vite `build.assetsDir`) in the shared build preset, so it matches the directory the host serves from.",
+      "why": "The assets directory is a contract between host and build. A bundle built with a different directory has none of its files served.",
+      "check": "Look for frontend configs that override or leave unset the assets directory, or for host code whose served directory name differs from the preset's.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.*",
+        "**/preset.ts",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

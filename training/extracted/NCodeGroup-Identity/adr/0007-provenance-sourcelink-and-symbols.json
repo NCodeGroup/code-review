@@ -1,0 +1,71 @@
+{
+  "hash": "bc47e4563d1ee590",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0007",
+  "rules": [
+    {
+      "statement": "For a library hosted in a public GitHub repository, enable SourceLink with the `Microsoft.SourceLink.GitHub` package and `PublishRepositoryUrl=true`, and do not set `EmbedAllSources`, so tracked source isn't embedded in the PDB.",
+      "why": "The public repo serves tracked source from raw.githubusercontent.com with no auth, so a debugger can fetch it. Embedding all sources would only make every package bigger.",
+      "check": "Look for MSBuild changes that remove the Microsoft.SourceLink.GitHub reference or PublishRepositoryUrl from packable projects, or that add `EmbedAllSources=true` in a public-repo build.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.targets",
+        "**/Directory.Build.props",
+        "**/Directory.Packages.props",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set `EmbedUntrackedSources=true` on packable projects so that generated files with no source-control URL (for example Nerdbank.GitVersioning `ThisAssembly`/`AssemblyInfo`) are embedded in the PDB.",
+      "why": "Untracked generated files have no URL to point at, so embedding them is the only way step-into debugging works for them.",
+      "check": "Look for packable build configuration that drops `EmbedUntrackedSources` or sets it to false.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.targets",
+        "**/Directory.Build.props",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Packable projects must use `DebugType=portable` with `IncludeSymbols=true` and `SymbolPackageFormat=snupkg`, so each `.nupkg` ships with a companion `.snupkg`.",
+      "why": "The `.snupkg` can be published to the NuGet.org symbol server, which gives consumers the standard symbol story while keeping the main package small.",
+      "check": "Look for changes to DebugType (such as embedded, full or none), removal of IncludeSymbols, or a SymbolPackageFormat other than snupkg on packable projects.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.targets",
+        "**/Directory.Build.props",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set `ContinuousIntegrationBuild=true` when building on CI, so package output is deterministic and has normalized paths.",
+      "why": "Deterministic, path-normalized builds let consumers trust that a package was built from a known commit.",
+      "check": "Look for removal of ContinuousIntegrationBuild, or of the condition that sets it on CI, in the shared build props/targets.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.targets",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Package publishing pipelines must push the `.snupkg` symbol package along with each `.nupkg`.",
+      "why": "Without the symbol package on the symbol server, consumers can't step into the released source.",
+      "check": "Look for CI/release workflow changes that push only `*.nupkg` and leave out the `*.snupkg` artifacts.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.github/workflows/*.yml",
+        "**/.github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "hash": "cc0b42056a532a8a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0152",
+  "rules": [
+    {
+      "statement": "Pin the frontend's Node major once, in `.node-version`. Anything that can read a file (CI via `actions/setup-node` `node-version-file`, dev orchestrators, bootstrap scripts) reads that file, and documentation refers to the file instead of naming a version number.",
+      "why": "A version stated in many places drifts: a runtime move has to find every copy, and each lookup can select an install its own way.",
+      "check": "Look for a hard-coded Node version in workflows (`node-version:` literals), scripts, AppHost code or docs that should read `.node-version` instead.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*.ps1",
+        "**/*.md",
+        "**/*.cs",
+        "**/.node-version"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the Node major in `.node-version` changes, update `engines.node` (as the runtime's floor, e.g. `>=26.0.0`) and every `@types/node` range in the same change.",
+      "why": "These values can't read the file. `engines.node` is also what invalidates Turborepo's task cache when the runtime changes.",
+      "check": "A diff that changes `.node-version` without matching `engines.node` and `@types/node` updates, or the reverse.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.node-version",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin pnpm's exact version in the `packageManager` field and provision it from that pin with pnpm's own tooling (`pnpm/action-setup` in CI, npm global install locally), never through Corepack.",
+      "why": "Node 25 and later no longer ship Corepack, and reinstalling it adds back a shim layer that Node itself dropped.",
+      "check": "Look for `corepack enable`/`corepack prepare` or a Corepack install in workflows or scripts, hand-written pnpm install steps in CI, or a `packageManager` without an exact version.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*.ps1",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep pnpm (like TypeScript) on the newest major that Dependabot officially supports, and don't adopt pnpm features Dependabot can't read, such as newer lockfile formats or `devEngines`.",
+      "why": "Dependabot reads unsupported pnpm lockfiles as an empty dependency graph, which silently stops security updates.",
+      "check": "A `packageManager` bump to a pnpm major that Dependabot doesn't support, or `devEngines` added to package.json.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json",
+        "**/pnpm-lock.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put every pnpm setting in `pnpm-workspace.yaml`, not in `.npmrc` or the `pnpm` field of `package.json`.",
+      "why": "pnpm 11 and later read settings only from `pnpm-workspace.yaml`.",
+      "check": "pnpm settings added to `.npmrc` or a `\"pnpm\"` key in package.json.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.npmrc",
+        "**/package.json",
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deny dependency install scripts unless reviewed. Keep `strictDepBuilds: true`, and record an explicit `allowBuilds` decision for each dependency with a build script, allowing it only when the dependency can't work without it.",
+      "why": "Least privilege: an unreviewed script should fail the install instead of printing a warning, and a script should run only when it is actually needed.",
+      "check": "Look for `strictDepBuilds` being removed or set to false, a new dependency with a build script and no `allowBuilds` entry, or `allowBuilds: true` with no justification.",
+      "scope": "domain",
+      "domain": "frontend-tooling",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin every third-party GitHub Action to a full commit SHA, not a tag or branch.",
+      "why": "The ADR says every third-party action is pinned to a commit.",
+      "check": "`uses: owner/action@v1` or `@main` for a third-party action in a workflow.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When choosing among installed versions (for example, the newest install of a runtime), compare versions numerically, not as text or by directory listing order.",
+      "why": "Text sorting ranks `22.9.0` above `22.22.2`, and taking the first directory listed picks an arbitrary install.",
+      "check": "Version strings sorted with ordinal or string comparison, or the first enumerated directory taken, instead of parsing to `System.Version` or similar.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

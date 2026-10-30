@@ -1,0 +1,93 @@
+{
+  "hash": "6cd44c73232a37c4",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0180",
+  "rules": [
+    {
+      "statement": "A database migration must only expand the schema (add tables, nullable or defaulted columns, and indexes) so the previous release keeps working against it; drops, renames, and tightened constraints go in a later release that is explicitly marked as a contract step.",
+      "why": "The previous release keeps serving while the migration runs and during the rollout, and a rollback returns to it without reversing the migration, so a schema it cannot read breaks production.",
+      "check": "Look for migrations that drop or rename tables/columns, make a column non-nullable, add a column that is non-nullable with no default, or add a constraint to an existing table, and are not marked as a deliberate contract step.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rename a column or table as an add, a data copy, and a later drop spread across at least two releases, never as a single rename operation.",
+      "why": "A rename in one step breaks the previous release that still reads the old name during rollout and after a rollback.",
+      "check": "Look for RenameColumn/RenameTable (or equivalent raw SQL) in a migration, or an add-and-drop of the same data in the same migration.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Review raw SQL in a migration (migrationBuilder.Sql) by hand for drops, renames, or tightened constraints, because automated expand-only checks do not classify it.",
+      "why": "Raw SQL bypasses the test that catches contracting schema operations, so it stays a review item.",
+      "check": "Any migrationBuilder.Sql call whose SQL contains DROP, RENAME, ALTER ... SET NOT NULL, or ADD CONSTRAINT on an existing table, with no contract-step marking.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not put long-running data migrations in a schema migration; run them in application code after the rollout.",
+      "why": "The migration runs as a pre-upgrade step that blocks the release and must fit inside the deployment timeout.",
+      "check": "Look for migrations that backfill or transform large amounts of data (bulk UPDATE/INSERT ... SELECT, loops over rows) rather than only changing schema.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a database migration Job as a Helm pre-install/pre-upgrade hook that is at least as restricted as the server pod: non-root user, read-only root filesystem, all capabilities dropped, and automountServiceAccountToken false.",
+      "why": "A failed migration should fail the release before any pod is replaced, and the migration Job must not run with more privilege than the server.",
+      "check": "In chart templates, check that a migration Job has the pre-install,pre-upgrade hook annotation and a securityContext with runAsNonRoot, readOnlyRootFilesystem, capabilities drop ALL, and no mounted service-account token.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/templates/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a migration Job's pod an app.kubernetes.io/component label different from the server pods, and make Service and PodDisruptionBudget selectors include the server component so they never select the Job.",
+      "why": "A Service or PodDisruptionBudget that matches the migration pod would route traffic to it or count it toward availability.",
+      "check": "Check that Service/PDB selectors include app.kubernetes.io/component for the server, and the Job pod template uses a different component value.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/templates/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let the migration database connection be configured separately from the runtime connection, defaulting to the runtime one, so the running application can run without rights to change its own schema.",
+      "why": "Keeping schema-change rights apart from runtime rights means a compromised or buggy host cannot change its schema.",
+      "check": "Look for migration workers or charts that hard-wire the runtime connection string or secret with no separate, overridable migration connection setting.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/values.yaml",
+        "**/templates/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

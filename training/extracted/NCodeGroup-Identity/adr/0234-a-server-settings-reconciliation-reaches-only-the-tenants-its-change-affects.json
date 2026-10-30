@@ -1,0 +1,52 @@
+{
+  "hash": "d49e54ed48102427",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0234",
+  "rules": [
+    {
+      "statement": "When persisting a JSON snapshot that is compared or fingerprinted later, write its properties in a deterministic order (for example ordinal order of the names) using the application's configured JSON serializer options.",
+      "why": "The recorded settings are written as one JSON object in ordinal name order with the environment's JSON options, so the record can be read back and compared reliably.",
+      "check": "Look for snapshot or fingerprint serialization that iterates a dictionary or hash set in unspecified order, or that uses default JsonSerializerOptions instead of the configured ones.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a persisted record that only serves as an optimization cannot be deserialized, catch the JsonException, log it with a dedicated log event, and fall back to the full, unoptimized behavior instead of failing.",
+      "why": "An unreadable reconciled-settings record is logged as ReconciledServerSettingsUnreadable and treated as absent, so the pass reconciles every tenant and still converges.",
+      "check": "Look for deserialization of persisted optimization state that lets a JsonException propagate and abort the operation, or that swallows it without logging.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A store method that records the outcome of a background pass must update only the fields it owns, and only while the row is unchanged since the pass read it (an optimistic-concurrency condition).",
+      "why": "UpdateReconciledSettingsAsync records the fingerprint and settings and nothing else, only while the server row is unchanged, so a concurrent settings write is not overwritten or marked reconciled by mistake.",
+      "check": "Look for store updates from a reconciliation or background job that overwrite the whole entity, or that write without a concurrency token or row-version check.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deciding whether a server-level settings change affects a tenant or client, compare that scope's resolved effective settings before and after the change, not the raw server-level values.",
+      "why": "Tenant overrides, security profiles and merges decide which server settings reach a tenant, so only the effective value reliably shows whether a change reaches it.",
+      "check": "Look for change-impact logic that diffs server-level settings and infers which tenants are affected without resolving each tenant's effective settings under both the old and new values.",
+      "scope": "domain",
+      "domain": "multi-tenant-settings",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

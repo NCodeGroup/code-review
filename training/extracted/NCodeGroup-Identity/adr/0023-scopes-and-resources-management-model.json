@@ -1,0 +1,75 @@
+{
+  "hash": "5353f55bc857d86b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0023",
+  "rules": [
+    {
+      "statement": "When an entity stores references to other records as a denormalized JSON array instead of a join table, validate on every create and update that each referenced value exists on the target owner, and reject the write if any is unknown.",
+      "why": "Write-time validation means no dangling reference is ever introduced, which is what makes a JSON array safe to use in place of a normalized join.",
+      "check": "Look for create/update paths that persist a JSON list of reference values (e.g. granted scopes) without first checking each value against the owning record's current set and returning a validation error for unknown values.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading a denormalized list of references, compute the effective set as its intersection with the referenced records that currently exist, so stale values are ignored rather than trusted or treated as errors.",
+      "why": "A later deletion can leave a stale value in the array. Intersecting at read time makes such a dangling reference harmless and removes any need to cascade or clean up on deletion.",
+      "check": "Look for code that uses stored reference values (e.g. a client grant's scopes) directly without intersecting them with the current scopes of the owning resource server, or that throws when it finds a stale value.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a scope as owned by exactly one resource server (API), so its identity is the pair (resource server, value); never look up or match a scope by its value alone across resource servers.",
+      "why": "The same scope name can mean different things on different APIs, so the same value on two resource servers is two distinct scopes.",
+      "check": "Look for scope queries, uniqueness constraints or comparisons keyed only on the scope value without the owning resource server, and for scope catalogs shared across APIs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model the standard OIDC scopes (openid, profile, email, address, phone, offline_access) as system scopes under a reserved system resource server seeded per tenant, not as a separate special-case path, and reject deletion of any system resource server or system scope.",
+      "why": "This keeps one uniform model where every scope sits under a resource server, and the standard scopes must always be present.",
+      "check": "Look for hard-coded identity-scope handling that bypasses the resource server model, and for delete operations on resource servers or scopes that do not refuse rows marked IsSystem.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce uniqueness of an operator-supplied identifier or value through a normalized companion column with a unique index scoped to its owner (such as tenant or parent entity), not by comparing the raw value.",
+      "why": "Values like a resource server identifier or a scope value must be unique per owner, and a normalized column is the consistent way to apply that constraint.",
+      "check": "Look for new entities with user-meaningful identifiers that lack a Normalized* column, a unique index scoped to the owner, or that check uniqueness on the raw value.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make tenant-owned management entities and their child compositions tenant-scoped, so they are only materialized within the ambient tenant.",
+      "why": "Scopes, APIs and client grants are a tenant concern and must follow the tenant-scoped data access model.",
+      "check": "Look for new tenant-owned entities or child entities that lack TenantId or the tenant query filter, or for queries that bypass it.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

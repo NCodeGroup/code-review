@@ -1,0 +1,62 @@
+{
+  "hash": "432b53023373dd06",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0120",
+  "rules": [
+    {
+      "statement": "Keep `*.Abstractions` packages to contracts only (interfaces, DTOs, data-only records, exceptions, constants, and builders that only construct and append data), and put behavior such as evaluation, normalization, arithmetic or throwing closures in the implementation package.",
+      "why": "An Abstractions package exists so consumers can depend on contracts without the implementation. Logic placed there breaks that rule, and logic left out of it forces consumers to reference the implementation anyway.",
+      "check": "Look for methods in an `*.Abstractions` project that do real work, such as building closures, validating, computing or normalizing, instead of only constructing data. Also look for Abstractions-only consumers that have to reference the implementation package to configure something.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a configurable, extensible set of validation rules the way ASP.NET Core authorization does: pure-data requirement records, interpreted by handlers keyed by requirement type and resolved from DI as a collection, so external code can add a rule by registering a handler and does not need to fork.",
+      "why": "This keeps the configuration declarative and inspectable. It can live in Abstractions, and third parties can add reusable rules through DI.",
+      "check": "Look for validation configuration made of opaque closures or a fluent DSL that holds logic. Also look for a fixed set of built-in rules that has no requirement-plus-handler extension point registered in DI.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have validation handlers report results on a shared context (succeed for a requirement, or fail with a machine-readable failure code and a reason) instead of throwing. Treat the input as valid only when every requirement succeeded and none failed, and gather all failures into a single exception carried on the result.",
+      "why": "Voting lets every handler run and its failures be combined. Consumers can then read `IsValid` and `Exception` from the result instead of catching exceptions thrown by individual validators. ADR-0278 amended the decision to add the machine-readable failure code.",
+      "check": "Look for a handler that throws to signal a validation failure, calls Fail without a failure code, or treats the input as valid when some requirement was never marked as succeeded. Also look for a validator that throws instead of putting the aggregated exception on the result.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a service interface whose consumers use disjoint sets of its operations into separate interfaces (for example an encoder and a validator) instead of keeping one combined interface or adding a facade.",
+      "why": "Splitting along disjoint usage decouples each group of consumers from the parts it never uses.",
+      "check": "Look for a new or changed service interface that combines unrelated responsibilities, where each consumer uses only one of them.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose overridable default behaviors on a data-only parameters type as nullable delegates. When a delegate is null, the implementation supplies its built-in default, and the default stays an implementation detail.",
+      "why": "This lets consumers that reference only the Abstractions package override behavior without depending on the implementation's default types.",
+      "check": "Look for parameter types in Abstractions that reference implementation default classes directly, and for implementations that fail or misbehave when an optional delegate is null instead of falling back to the default.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

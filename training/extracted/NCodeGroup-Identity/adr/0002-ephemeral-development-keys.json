@@ -1,0 +1,42 @@
+{
+  "hash": "90e1ae890eb4272b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0002",
+  "rules": [
+    {
+      "statement": "Default service registrations must never silently generate signing keys or seed key/secret stores; key material must come from operator-configured or persisted sources.",
+      "why": "Auto-generated default keys regenerate on restart (invalidating issued tokens), differ across instances (breaking validation), and hide a security-critical key provenance and lifecycle decision that operators must own.",
+      "check": "Look for default `Add*` registration methods or default providers that create RSA/EC/symmetric keys, self-signed certificates, or in-memory seeded secret stores without an explicit caller opt-in.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Provide ephemeral, in-memory development signing keys only through a separate, explicitly and clearly named opt-in extension method (e.g. `AddEphemeralDeveloperKeys()`) that development and test hosts call on purpose, and never persist those ephemeral keys.",
+      "why": "An explicit, discoverable opt-in keeps the server safe by default while still making dev/test environments runnable with one deliberate call; ephemeral keys are fine for development but must not be used in production.",
+      "check": "Flag development key conveniences that are applied by default, hidden behind generic names, enabled implicitly by environment detection inside library defaults, or that write generated keys to persistent storage.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make create-if-missing persistence paths idempotent under concurrency, using an idempotent upsert or retry-on-conflict, not a check-then-insert that can race.",
+      "why": "When two first requests create the same row at the same time, a check-then-insert produces a duplicate-key failure.",
+      "check": "Look for code that queries whether a row exists and then inserts it, with no unique-constraint conflict handling, upsert, or retry.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

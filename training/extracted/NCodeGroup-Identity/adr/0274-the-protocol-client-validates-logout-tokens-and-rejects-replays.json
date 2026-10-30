@@ -1,0 +1,136 @@
+{
+  "hash": "728cb0d5109f838e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0274",
+  "rules": [
+    {
+      "statement": "When validating an OpenID Connect back-channel logout token, require `typ` to be `logout+jwt` when present, at least one of `sub` or `sid` as non-empty strings, an `events` object whose `http://schemas.openid.net/event/backchannel-logout` member is an object, a non-empty `jti`, a numeric `exp`, and no `nonce`.",
+      "why": "Back-Channel Logout 1.0 §2.6 defines these claim rules. Checking `typ` stops an ID token from being accepted as a logout token.",
+      "check": "Look for logout-token validation code that skips any of these checks, accepts a `typ` of `JWT`, or allows a `nonce`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a logout token as a JWT with the same signature policy as ID tokens: the same permitted asymmetric algorithms, limited by the client's registered `id_token_signed_response_alg` and the provider's `id_token_signing_alg_values_supported`, plus `iss`, `aud`, required `exp` and `iat`, and a bounded clock skew.",
+      "why": "§2.6 validates signature and `alg` as for ID tokens, and the OP signs logout tokens with the client's ID-token signing algorithm.",
+      "check": "Look for logout-token validation that uses a looser or separate algorithm list, or that does not check issuer, audience, `exp`/`iat` or clock skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce a maximum lifetime on logout tokens, measured from the earlier of `iat` and `nbf` to `exp`, so the replay window and the replay store stay bounded.",
+      "why": "An unbounded lifetime widens the replay window and grows the number of replay-store entries.",
+      "check": "Look for logout-token validation with no maximum-lifetime limit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check a single-use token identifier such as a logout token's `jti` for replay against shared state that all replicas share (an atomic expiring key set), and run the check only after every other validation check has passed.",
+      "why": "A token replayed to any replica must fail, and only a token that passed the other checks should affect the replay state.",
+      "check": "Look for replay checks held in per-process memory, or replay lookups or recording that run before the signature and claim checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a shared-store key from untrusted token values by hashing (lowercase hex SHA-256 of UTF-8) a length-prefixed concatenation of its scoping components, such as issuer, client id and identifier, behind a fixed purpose prefix.",
+      "why": "Length prefixes keep different component lists from colliding, the scoping stops identifiers from clashing across issuers and clients, and the hash keeps request text out of the store.",
+      "check": "Look for store keys that hold raw request or token text, join components without length prefixes or a delimiter-safe encoding, or leave out the issuer or client scope.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a replay-store entry expire at the token's `exp` plus the allowed clock skew, the last instant the token could still validate.",
+      "why": "The entry must outlive every moment the token could validate, and it should not stay in the store longer than that.",
+      "check": "Look for replay entries with a fixed TTL, no expiry, or an expiry that leaves out the clock skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put token text in a validation failure reason. Map exceptions whose messages embed the token, such as `JwtDecodeException`, to fixed text.",
+      "why": "A `JwtDecodeException` message holds the whole token, which would then leak into results and logs.",
+      "check": "Look for failure reasons or log messages that pass on exception messages from JWT decoding, or the token string itself.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an invalid token as data in a validation result with a failure reason. Throw only for provider or infrastructure failures, and rethrow `OperationCanceledException` even when the validation result wraps it.",
+      "why": "In the errors-as-data style, callers branch on the result, and cancellation must still reach them as cancellation.",
+      "check": "Look for validators that throw on invalid tokens, or that turn a cancellation into a failed result instead of rethrowing it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a validator or service operation a request object with `required` properties instead of loose parameters, so fields can be added later without changing the signature.",
+      "why": "Fields can then be added without breaking the public contract.",
+      "check": "Look for new public validation methods that take several primitive parameters instead of a request type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put settings that mirror a client's registered metadata, such as `backchannel_logout_session_required`, on the per-client registration and not in process-wide options.",
+      "why": "Two clients in one process can register differently.",
+      "check": "Look for registration-specific protocol settings added to global options classes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a separate validator contract for each token type that has different required claims or a different `typ`, and do not add a mode flag to an existing validator.",
+      "why": "A separate contract keeps each set of claim rules exact, with no conditional requirements.",
+      "check": "Look for a token-kind parameter or conditional claim requirements added to an existing token validator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

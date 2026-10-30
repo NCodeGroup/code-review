@@ -1,0 +1,431 @@
+{
+  "hash": "b485de1d78d99618",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-testing.instructions.md",
+  "rules": [
+    {
+      "statement": "Test persistence behavior that depends on SaveChanges side effects (concurrency tokens, cascade deletes, SaveChanges interceptors, value converters) against a real EF Core DbContext provider, not only through a mocked store.",
+      "why": "Endpoint tests that mock the store cannot observe these effects; an interceptor hooked only to the synchronous SavingChanges sat dead because every test mocked the store.",
+      "check": "New or changed EF interceptors, converters, concurrency tokens or cascade configuration whose only tests mock the store, with no test running a real DbContext.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cover a handler that writes through more than one store with an end-to-end test through the host, not only with store-mocked unit tests.",
+      "why": "Ordering constraints between stores, such as a row that can only be added after its owner is committed, are invisible to mocked stores. One handler failed on every call while its unit tests passed.",
+      "check": "A new handler that writes through several stores and is tested only with mocked stores.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test optimistic-concurrency conflicts, unique or filtered-unique indexes, and foreign-key enforcement against a relational provider such as SQLite in-memory (a shared open SqliteConnection plus EnsureCreated), never EF InMemory.",
+      "why": "EF InMemory does not put concurrency tokens in the UPDATE WHERE clause and enforces no unique index or foreign key, so these tests pass without exercising the constraint.",
+      "check": "Tests that assert DbUpdateConcurrencyException, a duplicate-key DbUpdateException or a dependent-row failure while using UseInMemoryDatabase. Concurrency tests should use two DbContexts as the racing writers.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test store queries that filter on or order by a DateTimeOffset on EF InMemory, not on the EF Core SQLite provider.",
+      "why": "EF Core's SQLite provider cannot compare or order DateTimeOffset values.",
+      "check": "SQLite-based tests of queries that compare or order DateTimeOffset columns.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate an EF InMemory database name once, in a local outside the AddDbContext options lambda, and close over it.",
+      "why": "The options lambda runs for every context, so a Guid.NewGuid() inside it gives each scope its own empty database, and a test's writes become invisible in the next scope.",
+      "check": "UseInMemoryDatabase(Guid.NewGuid()...) called inside an AddDbContext options lambda.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Call EnableServiceProviderCaching(false) in a test that adds an entity to a shared DbContext's model.",
+      "why": "EF Core caches the model per context type across service providers, so the test may otherwise get a model built without its entity.",
+      "check": "Tests that contribute extra entities or model configuration to an existing DbContext type without disabling service provider caching.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test of a global query filter, clear the change tracker (ChangeTracker.Clear()) or use a fresh DbContext after seeding, so the assertion runs an actual database query.",
+      "why": "A HasQueryFilter predicate is not re-applied to entities returned from the change tracker, so a test that reads already-tracked entities passes without the filter running.",
+      "check": "Query-filter tests that seed and then query through the same context without clearing tracked entities.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build stored payload fixtures with the production serializer or protector, never with a bare JsonSerializer call.",
+      "why": "The server stores a protected, versioned envelope, so a test that hands the code the bare payload passes while the code fails on every real stored row.",
+      "check": "Tests that seed persisted payloads with JsonSerializer.Serialize instead of the production persisted-payload serializer or protector.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test seeds deliberately invalid or unreadable data, first assert that the system actually treats it as invalid, then test the behavior.",
+      "why": "Without that precondition, the test can pass on data the server reads fine.",
+      "check": "Tests that seed corrupt or incoherent data and go straight to asserting downstream behavior, with no assertion that the data is rejected.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a strict-mock test of a read-and-retry loop, return a new object for each read (for example SetupSequence(...).ReturnsAsync(first).ReturnsAsync(second)).",
+      "why": "The code under test changes the object it read, so with one shared instance the second read sees the first attempt's own write.",
+      "check": "Retry-loop tests whose mock returns the same instance on every read.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test a read-modify-write by capturing the update delegate passed to the store mock, invoking it with the stored state the scenario means (such as one a concurrent writer changed), and asserting what it returns.",
+      "why": "This exercises the merge logic against concurrent changes rather than only checking that the store was called.",
+      "check": "Read-modify-write tests that verify the update call but never invoke the captured update function with a meaningful stored value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When mocking a class that the code under test disposes, and whose non-virtual DisposeAsync calls a protected DisposeAsyncCore, set up and verify DisposeAsyncCore through Moq's Protected() API.",
+      "why": "DisposeAsync cannot be intercepted, so a strict mock fails, or disposal goes unverified, unless the protected core is set up.",
+      "check": "Strict mocks of disposable abstract types with no Protected().Setup<ValueTask>(\"DisposeAsyncCore\").",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each integration test that protects or unprotects data with ASP.NET Core Data Protection its own WebApplicationFactory instance (using var factory = ...), not a shared IClassFixture.",
+      "why": "Shared hosts leak key-ring and serializer state between tests, so the second run fails.",
+      "check": "Data Protection-dependent integration tests that use a class-fixture factory.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never assert a host startup failure through WebApplicationFactory. Build the host directly (for example Host.CreateEmptyApplicationBuilder, the registration under test, then StartAsync) and assert there.",
+      "why": "The disposed service provider can surface an ObjectDisposedException that masks the real error under parallel load. The test passes alone and fails in the gate.",
+      "check": "Tests that expect an exception from WebApplicationFactory.CreateClient, Server or Services startup.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never call StopAsync or Dispose on a WebApplicationFactory's host; dispose the factory instead.",
+      "why": "Stopping the host twice, concurrently with its own run loop, disposes the service provider under in-flight work, and random tests fail during disposal.",
+      "check": "Test code calling StopAsync or Dispose on factory.Services' host or on an IHost obtained from a factory.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test that directly composes services needing an unrelated dependency, register a never-called strict mock (new Mock<T>(MockBehavior.Strict).Object) rather than disabling DI validation or composing a real backend.",
+      "why": "This keeps DI validation on while isolating the configuration under test.",
+      "check": "Tests that set ValidateOnBuild or ValidateScopes to false, or wire a real database, only to satisfy composition.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To prove that composition or options validation constructs no instance of a service, register a factory for that service that throws, then trigger the code path.",
+      "why": "A throwing registration fails the test the moment the service is constructed.",
+      "check": "Tests claiming lazy or no construction that do not register a throwing factory.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Supply configuration that the composition root reads while it registers services through builder.UseSetting(key, value) in a test factory, not ConfigureAppConfiguration. Assert an effect that only that composition has.",
+      "why": "A ConfigureAppConfiguration overlay reaches options bound later but not values read during registration, so the test silently runs the wrong composition.",
+      "check": "Test factories that set registration-time switches through ConfigureAppConfiguration, or tests that never prove the setting took effect.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure in the test factory every value an integration test depends on, rather than relying on launchSettings.json launch profiles.",
+      "why": "WebApplicationFactory never loads launchSettings.json, so values a launch profile pins are absent in tests.",
+      "check": "Integration tests that assume issuer, admin or other values defined only in launch profiles.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change configuration at runtime in a test by setting the key on the host's IConfiguration cast to IConfigurationRoot and calling Reload().",
+      "why": "The test's in-memory overlay is the last provider, so it keeps the value through the reload and every reload token fires.",
+      "check": "Runtime-reconfiguration tests that mutate configuration without Reload, or that rebuild the host instead.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read response security headers such as Content-Security-Policy and X-Frame-Options from HttpResponseMessage.Headers, not Content.Headers. Also test a returning browser by sending back the cookies the first response set.",
+      "why": "Some headers, such as antiforgery's X-Frame-Options, are added only on later requests, so testing only the first response passes without the page's own headers.",
+      "check": "Security-header assertions that read Content.Headers or that test only a cookie-less first request.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test a header that depends on the forwarded scheme with an X-Forwarded-Proto request over http through a host that trusts the proxy, paired with a control host that trusts no proxy.",
+      "why": "A test over https alone still passes when the step that writes the header runs before forwarded-headers processing.",
+      "check": "HSTS or scheme-dependent header tests that only use https requests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove constant-time or equal-time verification by recording that the hasher or verifier ran on the dummy path, never by measuring elapsed time.",
+      "why": "Elapsed-time assertions are flaky in a parallel test gate.",
+      "check": "Tests using Stopwatch or timing thresholds to assert timing-attack resistance.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test an adapter over ASP.NET Core Identity against a real UserManager<TUser> (AddIdentityCore plus EF stores) as well as a mocked one.",
+      "why": "A mocked UserManager hides behavior such as password validators on CreateAsync, and rehashing and security-stamp rotation on CheckPasswordAsync.",
+      "check": "Identity adapter changes that are tested only against a mocked UserManager.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write non-NFC or otherwise normalization-sensitive strings in tests with Unicode escapes (for example \"café\"), never as pasted characters.",
+      "why": "An editor may normalize pasted characters and silently change the test input.",
+      "check": "Normalization tests whose literal strings contain combining characters directly instead of escapes.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assert a URI the server must deliver exactly as written on Headers.Location.OriginalString, not on AbsoluteUri or ToString().",
+      "why": "System.Uri normalizes the value, for example by adding a trailing slash, so the assertion passes while the server sends a different string.",
+      "check": "Redirect-exactness assertions on Location.ToString() or AbsoluteUri.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assert a background job's effect by polling with a deadline (for example a Stopwatch, 100 ms steps, about 15 s), never with a fixed delay.",
+      "why": "Fixed delays are flaky and slow.",
+      "check": "Task.Delay or Thread.Sleep followed by a single assertion on asynchronous work.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove a worker's concurrency with jobs that wait on a TaskCompletionSource. Assert that a second job completes while the first waits, and prove a limit of one by asserting that the second job does not complete until the first is released.",
+      "why": "This gives a deterministic proof of parallelism and limits without timing guesses.",
+      "check": "Concurrency tests that rely on sleeps or timing instead of release gates.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fail a test handler that is invoked asynchronously or through reflection by returning ValueTask.FromException (or Task.FromException), not by throwing synchronously.",
+      "why": "Reflection wraps a synchronous throw in TargetInvocationException, so the exception type never reaches the code under test as an async handler's would.",
+      "check": "Test job or handler fakes that throw synchronously to simulate failure or cancellation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve remote data that tests depend on, such as CRLs, OCSP responses and JWKS, through stub HTTP handlers or IHttpClientFactory stubs, never the network.",
+      "why": "Network access makes tests non-hermetic and flaky.",
+      "check": "Tests that reach real external URLs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin a protocol encoder or parser to a few fixtures produced by an independent reference tool, keep the generating commands in a comment, and never edit the fixtures by hand.",
+      "why": "A parser and a test builder that share one misreading of the specification both pass.",
+      "check": "New protocol parsers or encoders tested only with fixtures from the repository's own builder, or fixtures without their generating commands.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a test certificate subject with X500DistinguishedNameBuilder, choosing each value's string type explicitly.",
+      "why": "Subject DNs are matched by RFC 4517 rules, not by bytes, so the string type matters.",
+      "check": "Certificate-matching tests that build subjects from raw DN strings.",
+      "scope": "domain",
+      "domain": "x509-certificates",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an integration test that requests an authorization code, send an S256 PKCE challenge and redeem the code with the matching verifier.",
+      "why": "Codes are bound to PKCE by default, so a test without PKCE exercises the refusal, not the flow.",
+      "check": "Authorization-code flow tests that send no code_challenge or code_verifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make sure a negative test is refused for the reason it names: seed a client registered for the exact authentication method the test uses.",
+      "why": "A client registered for another method is refused with invalid_client because of the mismatch, so the test passes without exercising its rule.",
+      "check": "Negative client-authentication tests whose seeded client's token_endpoint_auth_method differs from the method used.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write private-use redirect URIs in tests as reverse domain names (for example com.example.app:/callback), not arbitrary schemes like myapp://callback.",
+      "why": "Arbitrary schemes are of no registered redirect URI kind and are refused.",
+      "check": "Test redirect URIs that use non-reverse-DNS custom schemes in a success path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In DPoP end-to-end tests, compare cnf.jkt with an RFC 7638 thumbprint computed in the test, and obtain a fresh authorization code for each code expected to be refused.",
+      "why": "The OP consumes a code before it checks dpop_jkt, so reusing one code hides the check.",
+      "check": "DPoP tests that reuse a code across refusal cases or take the expected thumbprint from the server.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode a test JWT that needs exact or malformed time claims with IJoseSerializer.CreateEncoder(...).Encode, not with an IJwtEncoder that enforces token lifetime.",
+      "why": "The JWT encoder injects default iat/nbf/exp and overwrites a non-integer iat, so lifetime-validation tests would not test what they claim.",
+      "check": "Tests of absent, malformed or far-off time claims that build tokens through IJwtEncoder.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test needs a key or setting that a tenant or host reads once at first use, provision or seed it before the first request, and assert an effect only that key produces (for example, that the token is a five-segment JWE).",
+      "why": "Keys and settings are read once at first use, and the assertion proves the key was actually provisioned.",
+      "check": "Tests that seed keys or settings after the first request, or that don't assert the resulting effect.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

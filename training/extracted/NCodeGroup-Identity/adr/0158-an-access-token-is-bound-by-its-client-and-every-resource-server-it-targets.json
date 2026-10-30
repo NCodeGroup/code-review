@@ -1,0 +1,125 @@
+{
+  "hash": "02196b69078884bc",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0158",
+  "rules": [
+    {
+      "statement": "When the settings of two sibling scopes (for example a client and a resource server) are joined for one operation, combine them only with order-independent, idempotent lattice merges such as Or, Min or Intersect, and fail closed when a setting has a projection merge such as Replace or Keep.",
+      "why": "A projection would let the order of the collections decide the value, so one sibling could overwrite the other's bound. A lattice merge binds both and does not count inherited parent values twice.",
+      "check": "Look for sibling settings joined with a parent-to-child Merge or Replace/Keep semantics, or a combine path that quietly accepts a descriptor without a lattice merge instead of throwing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound an access token by its client's effective settings and by the effective settings of every resource server it targets, including every audience of a multi-audience token, and read all access-token settings from that one combined collection.",
+      "why": "If one scope's settings replace another's, that scope's bounds and the security-profile ceilings selected above it no longer apply.",
+      "check": "Look for issuance code that reads some access-token settings (encryption, lifetime, signing algorithms, sender constraint) from only the client's or only one resource server's settings, or that skips audiences after the first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a security requirement or bound can't be met, refuse the request; never silently weaken the requirement or redirect it, for example by falling back to a different key or algorithm.",
+      "why": "Silent fallbacks issue tokens outside the configured bounds, or tokens their recipient can't use.",
+      "check": "Look for fallback branches that pick a less constrained option (another key, the tenant key, an unlisted algorithm, a bearer token) when the constrained choice isn't available.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt an access token to the key of the party that will decrypt it: when the single targeted resource server decrypts its own tokens, use its key, chosen within the combined allowed algorithms, and fail if none of its keys qualifies. Never fall back to the tenant/server key.",
+      "why": "RFC 9068 §4 has a resource server decrypt with the keys and algorithms it specified, so a token encrypted to another key is one it can't read.",
+      "check": "Look for encryption-recipient selection that falls back to a server or tenant key when the resource server's keys are excluded by the allowed algorithm lists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse to issue an encrypted access token for several audiences when any of them decrypts its own tokens, because a compact JWE has only one recipient.",
+      "why": "Only one audience could decrypt such a token, so it can't be issued correctly.",
+      "check": "Look for multi-audience encryption paths that pick one audience's key or the tenant key when an audience holds its own decryption key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a required sender constraint (DPoP per RFC 9449 or mTLS per RFC 8705) as met only when the token's binding uses a `cnf` confirmation method that every targeted resource server verifies.",
+      "why": "A token bound by a method a resource server doesn't verify passes as compliant but is a bearer token to that resource server.",
+      "check": "Look for sender-constraint checks that accept any binding without intersecting the confirmation methods (`jkt`, `x5t#S256`) the targeted resource servers support.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce the requirements the token endpoint can already know from the client, such as a required sender constraint, before redeeming an authorization code or rotating a refresh token.",
+      "why": "A refusal that comes after the grant is spent wastes the single-use code or refresh token.",
+      "check": "Look for client-level requirement checks placed after code redemption or refresh-token rotation, rather than before.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return `invalid_request` for a refusal the client could avoid by changing the request, and `server_error` for a configuration that can't be satisfied (for example no key for the permitted algorithms). Never let such a case surface as an unhandled exception.",
+      "why": "A refusal should name its cause, and an unsatisfiable configuration is the server's fault, not the client's.",
+      "check": "Look for missing-key or credential-not-found exceptions that escape unhandled, or for error codes that blame the client for a configuration problem (or the reverse).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put security policy that every implementation must apply in its own public, replaceable service that other replaceable services resolve and call. Don't embed it inside a replaceable implementation or a data resolver.",
+      "why": "Otherwise anyone who replaces the implementation must reimplement the policy or silently skip it, and an extension can't add a bound without replacing the whole service.",
+      "check": "Look for enforcement logic inside a default implementation of a public replacement point, or inside a resolver interface meant to supply data, with no separate policy seam.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "State each security rule once, as a setting or ceiling, and don't also keep a separate requirement object or check that duplicates it.",
+      "why": "A rule stated twice can drift apart, and a profile ceiling already binds every scope below the one that selects the profile.",
+      "check": "Look for new requirement or validator classes that re-check a constraint already expressed by a setting or profile ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

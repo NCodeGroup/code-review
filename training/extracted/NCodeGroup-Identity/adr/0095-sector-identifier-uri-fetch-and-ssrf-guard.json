@@ -1,0 +1,119 @@
+{
+  "hash": "d868b4eaf9efca7d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0095",
+  "rules": [
+    {
+      "statement": "Fetch any URL supplied by a client or caller through a dedicated named HttpClient whose SocketsHttpHandler ConnectCallback resolves the host once, refuses loopback, private (RFC 1918), CGNAT, link-local, unique-local, multicast and reserved ranges (IPv4, IPv6 and IPv4-mapped IPv6), and connects the socket to the vetted IP. Do not use the shared default HttpClient for this.",
+      "why": "A server-side fetch of a caller-supplied URL is an SSRF sink. Resolving the address and pinning the socket to it is the only reliable defense against internal targets and DNS rebinding.",
+      "check": "Look for outbound requests to client-supplied or registration-supplied URLs that go through IHttpClientFactory's default client or a plain HttpClient, with no ConnectCallback that resolves the address, blocks private and reserved IPs, and connects to the resolved address.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Block private and internal targets by checking the resolved IP address at connect time, not by inspecting the URL's host string.",
+      "why": "A hostname can resolve to a private address (DNS rebinding), and IP literals can be obfuscated, so string checks on the host can be bypassed.",
+      "check": "Flag SSRF protections that compare Uri.Host against hostnames, IP-literal patterns or regexes and never check the address the socket actually connects to.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set AllowAutoRedirect = false on HTTP handlers that fetch untrusted URLs.",
+      "why": "Following a redirect could send the guarded fetch on to an internal host.",
+      "check": "Look for SSRF-guarded or untrusted-URL handlers or clients that leave AllowAutoRedirect at its default of true.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not make the private-address SSRF block a setting that can be turned off. A deployment that has to reach non-public hosts should replace the whole fetching service instead.",
+      "why": "The block is the non-negotiable SSRF floor, and replacing the service keeps the secure default intact.",
+      "check": "Flag options or settings that disable the private or internal address block on an outbound fetch of untrusted URLs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound outbound fetches of untrusted URLs with a configurable timeout, using a CancellationTokenSource linked to the caller's token, and report a timeout as a validation error that is distinct from caller cancellation.",
+      "why": "Without a timeout, a slow remote host can tie up the server. Separating the two cases makes sure a timeout is not mistaken for the caller cancelling.",
+      "check": "Look for untrusted outbound fetches with no timeout, with a timeout that is not linked to the caller's token, or that catch OperationCanceledException without checking whether the caller's token was the one cancelled.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cap the response size of untrusted outbound fetches in two places: reject based on the advertised Content-Length, and enforce a hard byte limit while streaming the body.",
+      "why": "A Content-Length that lies or is missing must not be able to exhaust memory.",
+      "check": "Flag code that reads an untrusted response with ReadAsStringAsync or ReadAsByteArrayAsync and no limit, or that trusts Content-Length alone without counting bytes while reading.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register replaceable extension-point services with TryAdd* (for example TryAddSingleton) so a deployment can override them through DI.",
+      "why": "Deployments with a different retrieval or trust model can then supply their own implementation without changing the endpoint.",
+      "check": "Look for default implementations of extension-point interfaces registered with AddSingleton or AddScoped instead of TryAdd*.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep synchronous metadata validation limited to cheap, pure checks, and move network-dependent validation behind a separate async, replaceable service.",
+      "why": "Isolating the remote step keeps the pure validation simple and lets the network policy be replaced.",
+      "check": "Flag network I/O, or sync-over-async calls, added inside synchronous metadata validation methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating a sector_identifier_uri at client registration and update, require an absolute https URI, require the fetched document to be a JSON array of strings, and require every registered redirect_uri to appear in that array using ordinal comparison. On failure, return invalid_client_metadata.",
+      "why": "OpenID Connect Core §8.1 requires this check so that clients can share a pairwise sector only when the party controlling the document vouches for their redirect URIs.",
+      "check": "Look for sector_identifier_uri handling that accepts non-https URIs, skips the fetch, accepts non-array or non-string JSON, uses case-insensitive or prefix matching, or misses redirect URIs on update.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject the dynamic registration of a pairwise client whose redirect_uris span more than one host if it does not supply a sector_identifier_uri.",
+      "why": "OpenID Connect Core §8.1 requires this because otherwise the client's sector is ambiguous.",
+      "check": "Look for registration validation that accepts subject_type=pairwise with redirect URIs on multiple hosts and no sector_identifier_uri.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

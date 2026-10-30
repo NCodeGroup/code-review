@@ -1,0 +1,55 @@
+{
+  "hash": "dd040fe1f94d5b11",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0034",
+  "rules": [
+    {
+      "statement": "When an endpoint creates a resource that must have an owner, write the creator's Owner role assignment in the same unit of work (same SaveChanges or transaction) as the resource insert, not in a separate later save.",
+      "why": "If the two writes are split, a failure between them leaves a resource with no owner. Writing both in one unit of work guarantees the resource is never ownerless.",
+      "check": "Look at create handlers and endpoints for owned resources. Flag any that save the resource without also adding the owner assignment, or that call SaveChanges/commit before adding the assignment.",
+      "scope": "domain",
+      "domain": "authorization",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Operations that remove or reassign owners of a resource must reject any change that would remove the resource's last Owner assignment.",
+      "why": "A resource must always keep at least one owner. Then owners can hand ownership off but cannot leave a resource orphaned.",
+      "check": "Look at owner-removal and role-assignment-deletion code paths. Flag any that have no validation counting the remaining Owner assignments before the delete.",
+      "scope": "domain",
+      "domain": "authorization",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An ownership-based authorization handler must not satisfy Create requirements. Owning an instance allows read, update, delete and managing its leaves and owners, but creating a sibling requires authority at the parent node.",
+      "why": "The Owner role means managing one owned instance. Creating a new resource is authority over the parent, which instance ownership does not give.",
+      "check": "Look at authorization handlers that grant access based on per-instance assignments. Flag any that call context.Succeed for a Create operation requirement.",
+      "scope": "domain",
+      "domain": "authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not store ancestor or parent pointers on role-assignment records when the resource hierarchy is fixed and can be derived from the resource. Work out the ancestor chain from the resource's type, id and tenant when the authorization decision is made.",
+      "why": "A stored copy of a derivable hierarchy can drift out of sync with the resource, and at this scale it does not make decisions faster.",
+      "check": "Flag new columns or properties on assignment entities that hold parent or ancestor ids or chains, and authorization code that reads those columns instead of deriving the chain from the resource.",
+      "scope": "domain",
+      "domain": "authorization",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

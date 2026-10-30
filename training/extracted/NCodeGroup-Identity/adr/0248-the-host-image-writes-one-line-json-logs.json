@@ -1,0 +1,70 @@
+{
+  "hash": "275acfc17a85944b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0248",
+  "rules": [
+    {
+      "statement": "The final (production) stage of a host container image sets `Logging__Console__FormatterName=json`, `Logging__Console__FormatterOptions__UseUtcTimestamp=true` and `Logging__Console__FormatterOptions__TimestampFormat=O`, so every log entry is one JSON object on one line with a UTC round-trip timestamp.",
+      "why": "A container log collector reads standard output one line at a time. The multi-line `simple` format splits one entry into several records and separates an exception from the entry that reports it. UTC timestamps let entries from replicas in different time zones sort together.",
+      "check": "Look for a Dockerfile final stage that is missing any of the three environment variables, sets a different formatter, or drops UTC or the `O` timestamp format.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the default log output format in the container image itself, not in a Helm chart or other deployment manifest, and leave operators to override it through environment variables.",
+      "why": "The same image run with `docker run` or on another orchestrator would otherwise write a different format, and the artifact that is shipped would differ from the one that is run.",
+      "check": "Look for Helm values or chart templates that add their own `Logging__Console__*` defaults instead of leaving them to the image and to operator-supplied `extraEnv`.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**",
+        "**/helm/**",
+        "**/Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the human-readable `simple` console formatter for debug or development image stages and local runs (`dotnet run`, AppHost), and select the JSON formatter only in the production image stage.",
+      "why": "Debug stages and local runs write to a console that a person reads, and JSON is harder to read by eye.",
+      "check": "Look for the JSON formatter forced in a `base` or debug Dockerfile stage, in launchSettings, or in appsettings that local runs load.",
+      "scope": "domain",
+      "domain": "container-images",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/appsettings*.json",
+        "**/launchSettings.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every process that runs from the same image, such as a migration worker, registers the console logging provider the same way the host does, so it reads the same `Logging:Console` configuration.",
+      "why": "Then all processes in the image write the same one-line JSON format that the collector expects.",
+      "check": "Look for a worker or tool entry point in the image that sets up console logging differently, for example by hard-coding a formatter or skipping configuration binding.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library package never chooses its host's logging sinks or output formatter.",
+      "why": "The output format is part of the sink, and choosing the sink belongs to the host, not to a library.",
+      "check": "Look for library extension methods that call `AddConsole`, `AddJsonConsole` or `AddSimpleConsole`, set `FormatterName`, or add other logging providers.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

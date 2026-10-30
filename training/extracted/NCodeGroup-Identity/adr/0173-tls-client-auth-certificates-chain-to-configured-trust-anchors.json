@@ -1,0 +1,159 @@
+{
+  "hash": "684d43ec7b36ae24",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0173",
+  "rules": [
+    {
+      "statement": "Validate a client certificate's chain with `X509Chain` in `X509ChainTrustMode.CustomRootTrust` using only the configured trust anchors, never the machine or user certificate store.",
+      "why": "Trusting the platform store would accept any public-CA certificate that carries a registered subject, and relying on the TLS proxy to validate lets self-signed certificates through.",
+      "check": "Look for X509Chain use on client certificates that leaves TrustMode at System, adds anchors to ExtraStore instead of CustomTrustStore, or falls back to the system store when no anchors are configured.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no trust anchors are configured for client certificate authentication, treat every certificate as untrusted and log a warning naming the client.",
+      "why": "Fail-closed is the secure default. Falling back to some other trust source would reopen the authentication bypass.",
+      "check": "Look for code paths where an empty anchor list skips validation, returns success, or falls back to the platform trust store.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure the platform chain engine to retrieve nothing: disable certificate downloads and set `X509RevocationMode.NoCheck`, and do any revocation checking in server code through a guarded HTTP client.",
+      "why": "Otherwise the platform fetches AIA, CRL or OCSP URLs taken from an attacker-supplied certificate, and that fetch bypasses the outbound-request guard.",
+      "check": "Look for X509ChainPolicy settings with DisableCertificateDownloads false or RevocationMode Online/Offline on chains built from client-presented certificates.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require the `clientAuth` extended key usage as the application policy when validating a client authentication certificate chain, and evaluate validity at the injected `TimeProvider`'s current time.",
+      "why": "Without the policy, a certificate issued for another purpose would be accepted. Taking the time from TimeProvider keeps validation consistent and testable.",
+      "check": "Look for client-cert chain policies with no ApplicationPolicy for clientAuth (1.3.6.1.5.5.7.3.2), or with VerificationTime left at the default or taken from DateTime.Now/UtcNow.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a security outcome enum an unknown or failure state as its zero value, and pass the check only when every result is explicitly the positive state.",
+      "why": "Then an unset or default result fails closed instead of granting trust.",
+      "check": "Look for status enums where the zero value is Good, Valid or Success, and for aggregation logic that passes unless some result is Revoked instead of requiring all results to be Good.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fetch any URL taken from untrusted input, such as a certificate's CRL distribution point, through a named HTTP client whose `SocketsHttpHandler` connect callback applies the outbound-request forgery guard, follows no redirects, and enforces a short timeout and a maximum response size.",
+      "why": "Otherwise a certificate could direct the server at private, loopback or link-local addresses, or exhaust its resources.",
+      "check": "Look for HttpClient fetches of certificate- or client-supplied URLs that do not use the guarded named client, that allow redirects, or that have no timeout or byte cap on the response body.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a revocation list only after verifying that it is DER, that its issuer name matches the issuing certificate's subject, that the issuer signed it (with `cRLSign` key usage when the issuer carries the extension), and that it is current (`thisUpdate` not in the future beyond a small skew, `nextUpdate` present and in the future). Reject delta, indirect and partial-reason lists, and lists with unknown critical extensions.",
+      "why": "An unverified or stale CRL could hide a revocation or be forged.",
+      "check": "Look for CRL parsing code that skips signature verification, issuer matching, freshness checks or critical-extension checks, or that accepts delta or indirect CRLs.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cache a verified revocation list keyed by its location and the issuer's SHA-256 thumbprint, and expire it at the earlier of its `nextUpdate` and a fixed maximum lifetime.",
+      "why": "This keeps the cached data from outliving its validity, and stops one issuer's list from being reused for another issuer.",
+      "check": "Look for CRL caches keyed only by URL, keyed by a SHA-1 thumbprint, or with an expiry that ignores nextUpdate or has no upper bound.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare X.500 distinguished names with RFC 4517 `distinguishedNameMatch` (RFC 4518 string preparation, case-insensitive), using one shared parser and matcher type everywhere. Never compare DER bytes or `X500DistinguishedName.Name` strings.",
+      "why": "Byte and string comparison break on the string type the CA chose and on case. A single implementation keeps settings validation, authentication and CRL issuer checks consistent.",
+      "check": "Look for subject or issuer comparisons using RawData/SequenceEqual, string equality on .Name or .Subject, or ad hoc DN parsing outside the shared type.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a setting value with the same parser the runtime uses to consume it, so every value the setting accepts is one the runtime can process.",
+      "why": "Otherwise values can be stored that silently never match at runtime.",
+      "check": "Look for setting validation rules (regex, ad hoc checks) that differ from the parser used by the handler that consumes the value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat only self-issued CA certificates in a configured trust bundle as trust anchors. Use any other entry only as an untrusted intermediate that can complete a chain, and require every entry to be a single certificate whose basic constraints mark it as a CA.",
+      "why": "Pinning an intermediate must not make it a trust anchor on its own.",
+      "check": "Look for code that adds all configured bundle certificates to CustomTrustStore, or that accepts entries without a CA basic constraint or with more than one certificate.",
+      "scope": "domain",
+      "domain": "mtls-pki",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check client certificate trust as its own step before subject matching, and report an untrusted certificate with a distinct audit reason from a subject mismatch.",
+      "why": "Separate reasons let operators tell a PKI trust failure apart from a registration mismatch. Running trust first makes sure an untrusted certificate is never matched.",
+      "check": "Look for authentication handlers that match the subject before checking trust, or that report both failures with the same reason.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put pluggable security mechanisms, such as chain validation and revocation checking, behind DI-registered interfaces that deployments can replace, and keep the configuration vocabulary that states the policy closed.",
+      "why": "A deployment with a bespoke trust or revocation source can then replace the service without editing handlers or extending the policy vocabulary.",
+      "check": "Look for handlers that construct validators or checkers directly instead of resolving them from DI, or for new policy enum values added to support a different mechanism.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

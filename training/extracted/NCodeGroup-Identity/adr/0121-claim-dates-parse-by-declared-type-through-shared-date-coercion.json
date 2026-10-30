@@ -1,0 +1,53 @@
+{
+  "hash": "37122f1ab89955f8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0121",
+  "rules": [
+    {
+      "statement": "Parse date/time strings through `NCode.Json.DateCoercion.TryParseDateTimeOffset` or `TryParseDateTime` instead of calling `DateTime.TryParse`/`DateTimeOffset.TryParse` directly.",
+      "why": "Hand-rolled parsing duplicates the shared date coercion policy and drifts from it, so different packages end up accepting different formats or producing different values.",
+      "check": "Look for new `DateTime.TryParse`, `DateTimeOffset.TryParse`, `DateTime.Parse` or `DateTimeOffset.Parse` calls on date strings in production code where `DateCoercion` should be used.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not fall back to `DateTime` parsing when a `DateTimeOffset` parse fails, because the fallback silently clamps an out-of-range instant to a machine-local value instead of failing.",
+      "why": "The fallback only runs when the instant can't be represented, and then it produces a wrong instant instead of a failure.",
+      "check": "Look for code that tries `DateTimeOffset` parsing and then, if that fails, parses the same text as `DateTime`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decoding JSON into claims or other loosely-typed values, keep a JSON string as a plain string with its exact value, and never infer a date (or any other type) from what the string looks like.",
+      "why": "Lenient sniffing changes signed data after verification (\"1.2\" becomes a date, \"10:30\" becomes today, an OIDC `birthdate` loses its required YYYY-MM-DD format), and JSON strings carry no type information.",
+      "check": "Look for decoders that try to parse a JSON string as a date or number and then retype it (for example as `ClaimValueTypes.DateTime`) or rewrite its value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a value whose declared type is a date (for example `ClaimValueTypes.DateTime`), parse it with `DateCoercion.TryParseDateTimeOffset`, and if parsing fails, including for an instant that can't be represented, emit the original string unchanged rather than a clamped or machine-local guess.",
+      "why": "Encoding should follow the producer's declared type and must never write a wrong instant.",
+      "check": "Look for date-typed encoding paths that parse with something other than `DateCoercion`, or that replace an unparseable value with a default, clamped or local-time value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

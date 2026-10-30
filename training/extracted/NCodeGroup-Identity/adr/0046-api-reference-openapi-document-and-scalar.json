@@ -1,0 +1,74 @@
+{
+  "hash": "422dbc5e0c7ee56d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0046",
+  "rules": [
+    {
+      "statement": "Never pre-fill a secret (client secret, password, key) into a served OpenAPI document or API reference UI configuration outside the Development environment; outside Development the operator must type it into the Authorize dialog.",
+      "why": "A pre-filled secret is baked into the served configuration, where anyone who can reach the reference page can read it, which breaks the rule against putting secret material on the public surface.",
+      "check": "Look for OpenAPI transformers or Scalar/Swagger options that set client secrets, passwords or tokens without an IsDevelopment() guard, or that read secrets from configuration into served UI options in every environment.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate only the secret pre-fill on the Development environment, not the whole API reference login flow; configure the token URL, credentials location and scopes in every environment.",
+      "why": "Production is where the first tenant or server gets bootstrapped, so the login flow must work there too. Only the secret is too sensitive to serve.",
+      "check": "Look for the whole OAuth/client-credentials security scheme or the reference UI's authentication setup wrapped in an IsDevelopment() check, rather than just the secret value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register OpenAPI document contributions that describe a library's own endpoints (tags, security schemes, examples) as `AddOpenApi` document transformers inside the library's service-registration extension, not in each host's Program.cs.",
+      "why": "The document is a property of the server, not of the host, so hosts that re-declare it drift apart and each one re-implements the security-scheme wiring.",
+      "check": "Look for host Program.cs files that add tags, security schemes or examples for endpoints owned by a library package, or for library endpoints added without matching document transformers in the library.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give the mapping extension that exposes an OpenAPI document and its reference UI separate options for mapping the document and mapping the UI, so a host can enable or disable each on its own.",
+      "why": "A host might want to expose the machine-readable spec without the UI, serve the UI against a document hosted elsewhere, or turn either off.",
+      "check": "Look for API reference mapping extensions that always map the document and UI together, with no separate toggles.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To have an API reference renderer pre-check and pre-fill a form-urlencoded request field, mark the field `required` and set its schema `Default` in the OpenAPI document; don't rely on a named `example` being applied to form fields.",
+      "why": "Renderers such as Scalar build form bodies from schema properties: optional properties render unchecked and are left out of the request, and named examples aren't applied, so the form ends up empty.",
+      "check": "Look for OpenAPI transformers that try to pre-fill application/x-www-form-urlencoded fields only through named examples, or that leave the fields optional.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure the API reference's OAuth client-credentials login to send credentials in the location that matches the client's registered token endpoint authentication method (for example, the Authorization header for `client_secret_basic`).",
+      "why": "A client may authenticate only with its registered method, so a renderer that sends credentials somewhere else gets its login rejected.",
+      "check": "Look for Scalar/OpenAPI OAuth configuration whose credentials location (Body vs Header) doesn't match how the target client is registered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

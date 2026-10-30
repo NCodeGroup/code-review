@@ -1,0 +1,163 @@
+{
+  "hash": "05e05cce179eb0a8",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0139",
+  "rules": [
+    {
+      "statement": "Accept a setting name in a keyed settings or metadata document only if it has a registered descriptor; never invent an ad-hoc descriptor or infer the type from the configured string or the JSON token.",
+      "why": "An unregistered name loads but nothing reads it and nothing reports it, so typos, refactor leftovers and settings from extensions that are no longer composed look like working configuration.",
+      "check": "Look for code that falls back to a string type or a JSON-token-inferred type for an unknown setting key, or a Set(key, value) path that succeeds without a matching descriptor of that value type.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Any component that reads or writes a setting must register that setting's descriptor through the shared descriptor data source, in the same change.",
+      "why": "Only registered descriptors type a setting, so an extension that uses a setting without contributing its descriptor fails when the setting is validated.",
+      "check": "New setting keys used in reads or writes with no matching descriptor contributed through the descriptor collection data source.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading settings from configuration, reject values the binder cannot convert, a list setting written as a single value, and a single-value setting written as a list or section, and read an empty array as an empty list. Run this check from an IValidateOptions registered with ValidateOnStart.",
+      "why": "These shapes otherwise bind to nothing without any error, and validating on start stops the host before it accepts traffic with configuration it cannot honor.",
+      "check": "Settings configuration readers that skip or ignore values that don't convert or have the wrong shape, treat an empty array as unset, or validate lazily without ValidateOnStart.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "If a configuration reload cannot be fully honored, reject all of it, log an error, and keep the previously loaded settings in force. Never apply part of a reload.",
+      "why": "A running host cannot be stopped, and applying part of a reload is worse than applying none of it.",
+      "check": "Reload or change-token handlers that apply valid entries and drop invalid ones, or that swallow validation failures without an error log.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate management API writes of settings documents (create and patch) before storing them. Return 400 with a validation problem whose errors are keyed by setting name for a non-object document, an unregistered name, a value of the wrong type, or null for a setting with no default, and store nothing.",
+      "why": "A wrong-typed value that is accepted at write time later fails every request that resolves the entity, and a document that is not an object would otherwise be stored as {}.",
+      "check": "Create or patch endpoints that persist settings without calling the settings validation, coerce a document that is not an object to an empty one, or return errors that are not keyed by setting name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deserializing a stored settings document must fail closed: throw for any entry it would reject, such as an unknown name or a wrong type, rather than loading the rest without it.",
+      "why": "A stored setting whose descriptor is gone is a control the operator configured that the server would no longer enforce, and silently dropping it weakens security.",
+      "check": "Deserialization code that skips, ignores or only logs unknown or invalid stored setting entries.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship a data migration that rewrites stored settings documents whenever a setting is renamed or retired. Keep a retired setting's descriptor registered until a later release removes it.",
+      "why": "Stored documents fail closed when read, so an unmigrated rename or removal breaks every request that loads them.",
+      "check": "PRs that rename or remove a setting descriptor or key without a matching stored-data migration, or that drop a retired descriptor in the same release that retires it.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store dynamic client registration metadata (client_name, client_uri, logo_uri, tos_uri, policy_uri, contacts, jwks, software_id, software_version) as registered, typed client settings, not as untyped keys.",
+      "why": "Untyped keys reopen the closed vocabulary for one writer, and other components, such as the consent page, read these values as settings.",
+      "check": "Registration code that writes RFC 7591 metadata into the settings document under keys with no descriptor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not store the scope requested in dynamic client registration. The registration response's scope must report the scopes the client can request now, taken from the scope entitlement service, as RFC 7591 §3.2.1 permits.",
+      "why": "Echoing the requested scope claims scopes the client cannot obtain and creates a second source of truth beside resource servers and grants.",
+      "check": "Registration handlers that persist the requested scope or echo it back in the response unchanged.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind configuration sections to options classes strictly and validate them on start, rather than reading single keys. When an enum-like mode value names no defined member, throw instead of falling back to a default.",
+      "why": "Reading single keys lets a misspelled sibling key go unnoticed, and falling back on an unknown mode silently changes behavior.",
+      "check": "Code that reads configuration with configuration[\"Section:Key\"] or GetValue for settings that belong to an options section, or that parses a mode with a default fallback for unknown values.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate trusted proxy and network configuration strictly: a proxy must be an IP address with IPv4 written as four decimal octets, a network must be CIDR notation whose address is the network's first address (never mask host bits silently), and a forward limit must be at least one.",
+      "why": "Lenient parsers accept shorthand like 10.0.0 for a different address and turn 10.0.0.4/8 into a trust of 10.0.0.0/8, which widens trust without anyone noticing.",
+      "check": "Use of IPAddress.Parse or TryParse without checking for four octets, CIDR parsing that masks host bits instead of rejecting them, or entries that fail to parse and are skipped instead of reported as errors.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a development-only configuration section (such as developer CORS) that is present in Production as a production-safety violation. Middleware extension methods for a policy that is not registered must add nothing.",
+      "why": "Development-only policies are never registered in Production, so such configuration would be silently ignored there.",
+      "check": "Development-only options sections that production-safety validation does not check, or Use* extensions that assume a development-only policy is registered.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured CORS allowed origins so that each one is written exactly as a browser sends it in the Origin header.",
+      "why": "An origin written differently never matches the browser's Origin header, so the configured value is never honored.",
+      "check": "Allowed-origin options that accept trailing slashes, paths, or other forms that differ from a serialized origin, without validation.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a test that asserts every setting name the library defines has a registered descriptor in the composed server.",
+      "why": "This pins the closed vocabulary, so a setting added without a descriptor is caught.",
+      "check": "Settings added or removed without the descriptor-coverage test being kept or updated.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

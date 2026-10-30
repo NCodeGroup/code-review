@@ -1,0 +1,87 @@
+{
+  "hash": "5f2fec50b91cd867",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0232",
+  "rules": [
+    {
+      "statement": "In a background worker loop, treat an OperationCanceledException as shutdown only when the host's stopping token is actually cancelled; handle any other cancellation (such as an HttpClient timeout) as an ordinary failure of that unit of work.",
+      "why": "A timeout surfaces as a TaskCanceledException whose token is not the worker's. A loop that treats every cancellation as shutdown ends on it, and BackgroundServiceExceptionBehavior.StopHost then stops the whole host.",
+      "check": "Look for `catch (OperationCanceledException)` or `catch (TaskCanceledException)` in BackgroundService/ExecuteAsync loops that break or return without a `when (stoppingToken.IsCancellationRequested)` filter or an equivalent check.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate options when the host starts: register an IValidateOptions validator with ValidateOnStart that rejects out-of-range values (for example counts or capacities below 1) and names the configuration key of each invalid value.",
+      "why": "A bad value such as a queue that holds nothing or a worker that runs nothing should stop the host at startup, not silently drop or never run work.",
+      "check": "New options classes with numeric limits or enum values that are not covered by a validator, are registered without `.ValidateOnStart()`, or whose failure messages leave out the configuration key.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an options property is an enum bound from configuration, validate that its value is a defined member of the enum (for example with Enum.IsDefined) and fail startup if it is not.",
+      "why": "A value that names no member of the enum, such as for BoundedChannelFullMode, has to stop the host instead of causing undefined behavior at runtime.",
+      "check": "Enum-typed options properties whose validator does not check for a defined value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create one service scope per unit of background work with `CreateAsyncScope` (`await using`), and resolve every handler for that unit of work from that one scope.",
+      "why": "Scoped handlers then get their dependencies per attempt, and the scope is disposed asynchronously.",
+      "check": "`IServiceScopeFactory.CreateScope()` or `IServiceProvider.CreateScope()` in async background processing code, a scope that is not disposed with `await using`, or handlers resolved from the root provider.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a job has several handlers, run them all in sequence even if one fails, and reschedule the job at most once per failed attempt no matter how many handlers failed.",
+      "why": "If each failing handler scheduled its own retry, one failed attempt would run again as many times as handlers failed.",
+      "check": "Retry or reschedule calls inside a per-handler loop or catch block, or a handler failure that skips the remaining handlers.",
+      "scope": "domain",
+      "domain": "background-job-dispatch",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Process a queue of independent background jobs with a bounded number of concurrent consumers (for example several loops reading one Channel created with SingleReader = false), not a single serial loop and not Parallel.ForEachAsync.",
+      "why": "With a single loop, one slow endpoint holds up every queued job. With Parallel.ForEachAsync, an exception in one body cancels every running job.",
+      "check": "Job-dispatch workers that run one job at a time with a single reader loop, that use Parallel.ForEachAsync over a channel, or that read one channel from several consumers while it is created with SingleReader = true.",
+      "scope": "domain",
+      "domain": "background-job-dispatch",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make job handlers idempotent, and make any job handler registered as a singleton thread-safe.",
+      "why": "A retry runs every handler of the job again, and several consumers can run a singleton handler at the same time.",
+      "check": "Job handlers with non-idempotent side effects that a retry would repeat, or singleton handlers that keep mutable state without synchronization.",
+      "scope": "domain",
+      "domain": "background-job-dispatch",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

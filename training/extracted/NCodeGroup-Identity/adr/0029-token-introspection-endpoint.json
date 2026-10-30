@@ -1,0 +1,79 @@
+{
+  "hash": "c4258183e34fe12e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0029",
+  "rules": [
+    {
+      "statement": "A token introspection endpoint must answer an unknown, expired, revoked or otherwise invalid token with 200 OK and only `{\"active\": false}`, never a 400/404 or any detail on why the token failed.",
+      "why": "RFC 7662 says this is the correct answer, and returning error codes or reasons would let callers use the endpoint to learn things about tokens.",
+      "check": "Look in introspection handlers for 4xx responses, error descriptions or extra members returned when a token is not active; the only hard error should be a missing `token` parameter (400 invalid_request).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token introspection request must be rejected with `400 invalid_request` when the `token` parameter is missing.",
+      "why": "The ADR makes a missing token the one hard error the endpoint returns. Every other authenticated request gets 200 with a result.",
+      "check": "Check that the introspection request parser fails with invalid_request when `token` is absent or empty, and does not return `active: false` for that case.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The token introspection endpoint must require client authentication before it resolves any token.",
+      "why": "Only registered clients may introspect, because the endpoint is meant for trusted protected resources.",
+      "check": "Look for introspection endpoint code that parses or resolves the token before client authentication succeeds, or that allows anonymous callers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When introspection tries a token as a JWT first, catch parse and validation failures and move on to the next resolution path (for example a persisted refresh-token grant) instead of returning an error.",
+      "why": "A non-JWT token such as an opaque refresh token has to reach the grant lookup and must not cause an error response.",
+      "check": "Look in the JWT introspection path for exceptions or error results that end the request when the value is not a valid JWT, rather than falling through to the grant lookup or to `active: false`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protocol response types whose claims vary by token or extension (introspection, discovery metadata) should hold their fixed required members as properties and put all other members in a `[JsonExtensionData]` dictionary that is flattened into the top-level JSON, rather than a fixed strongly-typed DTO.",
+      "why": "Claims differ from token to token and from handler to handler. The dictionary lets the result be extended without a public-API change for each new claim.",
+      "check": "Look for new introspection or discovery-style response DTOs that add a strongly-typed property for each optional claim instead of using a `[JsonExtensionData]` dictionary.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An OAuth endpoint provider should stay thin: it authenticates the client, parses the form into a typed request, and hands the logic to a mediator command handler. New behaviour goes in as extra command handlers, not as changes to the endpoint.",
+      "why": "This keeps endpoints consistent with the mediator conventions and lets policies such as audience-scoped introspection be added without changing the contract.",
+      "check": "Look for token resolution or policy logic written directly in an endpoint provider instead of a command handler, or for policy changes made by editing the endpoint rather than registering a handler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

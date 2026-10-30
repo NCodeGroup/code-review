@@ -1,0 +1,139 @@
+{
+  "hash": "bc7db37446ad0bcd",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0286",
+  "rules": [
+    {
+      "statement": "Take the DPoP signing key from a named, rotatable key ring shared by the application. Do not generate or store a DPoP key per session or next to the tokens it binds.",
+      "why": "Keeping the key apart from the tokens means stealing a session's tokens does not also give away the key that binds them, and the ring can be rotated on its own schedule.",
+      "check": "Look for DPoP key generation per session or user, and for DPoP private keys stored in session or token storage. Also flag a DPoP key taken from the general signing ring without its own configured name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use only asymmetric keys for DPoP proofs. Choose the algorithm from the provider's advertised `dpop_signing_alg_values_supported`, and never select a MAC algorithm or `none`.",
+      "why": "A DPoP proof has to be verifiable from the public JWK in its header, so symmetric keys and `none` are never valid choices.",
+      "check": "Look for DPoP algorithm or key selection that accepts symmetric keys, that can pick `none`, or that ignores the provider's advertised algorithm list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a token request carried a DPoP proof, require the successful response's `token_type` to be `DPoP`, compared case-insensitively. Treat any other value, such as `Bearer`, as a downgrade and reject it with an error.",
+      "why": "Accepting a bearer token in reply to a proof is a silent downgrade of sender-constrained tokens (RFC 9449; RFC 6749 §5.1 makes token_type case-insensitive).",
+      "check": "Look for token response handling after a DPoP proof that does not check `token_type`, that accepts `Bearer`, or that compares the value case-sensitively.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a fresh DPoP proof for every request. Token-endpoint proofs use `htm` POST, `htu` set to the endpoint and no `ath`. Resource-server proofs include `ath` for the access token and the cached nonce for that origin.",
+      "why": "RFC 9449 §4 and §7 require a unique proof per request, and require `ath` only when the proof accompanies an access token.",
+      "check": "Look for a proof that is cached or reused across requests, an `ath` claim on token-endpoint proofs, or resource proofs missing `ath`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retry a `use_dpop_nonce` error response at most once, and only when it carries a `DPoP-Nonce`. Build the retry with a new proof, a form rebuilt from a fresh copy of the caller's parameters, and client authentication run again, so that no client assertion is replayed.",
+      "why": "Replaying the same form would reuse a `private_key_jwt` assertion, and retrying without a limit could loop.",
+      "check": "Look for nonce retry loops, retries that resend the same form or proof, and retries that reuse an existing client assertion instead of authenticating again.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store a DPoP server nonce per origin (scheme, host and port) in a size-bounded cache. Record a `DPoP-Nonce` from any response to a request that carried a proof.",
+      "why": "Nonces are issued per server (RFC 9449 §8), and an unbounded cache keyed by attacker-influenced origins would grow without limit.",
+      "check": "Look for nonce caches keyed by the full URI or kept globally, caches with no size bound, and responses whose `DPoP-Nonce` header is ignored.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin a session's DPoP key by its RFC 7638 SHA-256 JWK thumbprint (`jkt`), and sign later proofs for that session with the pinned key, even after the key ring rotates.",
+      "why": "Tokens are bound to `cnf.jkt`, and refresh-token binding stays continuous across rotation only if the same key keeps signing.",
+      "check": "Look for refresh or resource calls that pick the current or newest ring key instead of the stored `jkt`, and for thumbprints that are not RFC 7638 SHA-256.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When DPoP is required, detect a missing key ring, an empty ring or an unknown pinned key before sending anything, and fail with `InvalidOperationException` as a configuration error. Report a provider that advertises no usable algorithm as a provider error. Never fall back to sending the request without DPoP.",
+      "why": "Sending nothing when DPoP is required prevents an unbound request, and keeping configuration errors separate from provider errors makes each failure clear.",
+      "check": "Look for required-DPoP paths that send the request anyway, that skip DPoP silently, or that report configuration and provider failures with the same exception type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not attach DPoP proofs to token revocation requests.",
+      "why": "Neither RFC 7009 nor RFC 9449 defines a DPoP proof for revocation.",
+      "check": "Look for DPoP proof creation or `DPoP` headers in revocation request code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the client itself writes a protocol parameter (such as `dpop_jkt`), treat its name as reserved and reject it in caller-supplied additional parameters.",
+      "why": "A caller-supplied copy could conflict with the client's value or override it.",
+      "check": "Look for new client-written request parameters that are not added to the reserved-name check for additional parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write the abbreviation DPoP as `DPoP` in identifiers (for example `DPoPSigningAlgValuesSupported`), not `Dpop`.",
+      "why": "The same casing everywhere matches the existing protocol constants and DPoP services.",
+      "check": "Look for new or renamed identifiers that contain `Dpop`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

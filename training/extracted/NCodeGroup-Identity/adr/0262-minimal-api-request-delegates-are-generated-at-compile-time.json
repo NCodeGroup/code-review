@@ -1,0 +1,59 @@
+{
+  "hash": "bf8f599886954eac",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0262",
+  "rules": [
+    {
+      "statement": "A project that maps a minimal-API endpoint binding `[FromForm]`, `IFormFile` or `IFormCollection` must set `EnableRequestDelegateGenerator=false` in its project file, because the generated form binding does not yet honor antiforgery validation.",
+      "why": "In ASP.NET Core 10, the Request Delegate Generator's form binding reads the form without checking `IAntiforgeryValidationFeature`, so a post whose antiforgery token failed validation answers 500 instead of the runtime factory's 400.",
+      "check": "Look for a new or changed endpoint handler with a `[FromForm]`, `IFormFile` or `IFormCollection` parameter in a project that has the Request Delegate Generator turned on, whether by inheriting the shared Directory.Build.props setting or by setting it itself. Flag it unless the endpoint moves to a project that has opted out, or the project file sets `EnableRequestDelegateGenerator=false`.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every form-bound endpoint must have an integration test that posts the form without the antiforgery token and asserts both a 4xx response and that no state changed.",
+      "why": "These tests guard against the 500-instead-of-400 antiforgery gap, and the generator may be turned back on for a form-bound project only when they pass.",
+      "check": "When a diff adds a form-posting endpoint, or turns the Request Delegate Generator back on for a project with form endpoints, check for a test that sends the form with no antiforgery token, expects a 4xx status, and checks that nothing changed.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the Request Delegate Generator reports that it cannot generate a handler shape, change the handler to a supported shape rather than suppressing the diagnostic or disabling the generator.",
+      "why": "A suppressed diagnostic silently falls back to runtime binding, which compiles expression trees at every host start and brings back the cold-start and test-suite JIT cost.",
+      "check": "Flag `#pragma warning disable`, `NoWarn`, `[SuppressMessage]` or an `.editorconfig` severity change aimed at Request Delegate Generator (RDG) diagnostics. Also flag `EnableRequestDelegateGenerator=false` added for a reason other than form-bound endpoints.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A project file that opts out of the Request Delegate Generator must say next to the setting why it opted out, naming the antiforgery guard test and the decision record or tracking issue for turning it back on.",
+      "why": "An opt-out is temporary until the upstream generator honors antiforgery validation, so the setting must point to the tests that make re-enabling safe and to the issue that tracks it.",
+      "check": "Look for `EnableRequestDelegateGenerator=false` in a .csproj without a nearby comment that names the guard test and the ADR or issue.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

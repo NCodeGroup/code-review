@@ -1,0 +1,89 @@
+{
+  "hash": "b89a01c608dc55b0",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/audit-records.md",
+  "rules": [
+    {
+      "statement": "Never write secret or credential material to an audit event or its details: no token values, refresh tokens, session handles, cookie values, OAuth `state`, authorization codes, client credentials, initiator secrets or logout guards. Resource snapshots must hold only non-sensitive values.",
+      "why": "Audit records go to logs, traces and stores that operators query widely, so a secret written there leaks. The source says no token or credential is ever written and resource_values is never secret material.",
+      "check": "Look for audit event construction or details dictionaries that take a token string, secret, cookie, code, state or password, or a resource snapshot that serializes secret fields.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use only bounded, low-cardinality values as metric tags (such as event name, category and outcome). Never tag a metric with a tenant id, client id, subject id or network address.",
+      "why": "Only bounded fields can be metric attributes. Identifiers and addresses have unbounded cardinality.",
+      "check": "Look for Counter/Histogram Add or Record calls, or TagList entries, whose tag values come from tenant, client, subject or user ids or from IP addresses.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put only a verified subject id in an audit record's subject id field. On a failed authentication, record a user name the caller supplied in a separate details member (such as `attempted_username`) and leave the subject id absent.",
+      "why": "This keeps subject_id trustworthy: it only ever holds a verified subject id.",
+      "check": "Look for failure-path audit events that set SubjectId from a user name, login hint or other caller input that was not authenticated.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an audit or event handler throws, the exception must not fail the audited operation or stop the other handlers from running. The publisher isolates each handler's exceptions.",
+      "why": "Observation must not change the outcome of the operation being audited (ADR-0047).",
+      "check": "Look for event-publishing loops that let one handler's exception propagate to the caller or skip the remaining handlers.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Capture the request context (trace id, request id, source IP, tenant) when an audit event is published. A handler that may run in the background must not read it later from HttpContext or the ambient Activity.",
+      "why": "A sink that runs in the background after the request has completed must still see the request context.",
+      "check": "Look for audit sinks or background event handlers that read IHttpContextAccessor, HttpContext or Activity.Current rather than the context captured on the event.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log audit entries at a level that matches the event's severity: info maps to Information, warning to Warning and critical to Critical. Do not log every audit entry at one fixed level.",
+      "why": "A category filter at Warning then keeps failures and critical events and drops routine successes.",
+      "check": "Look for audit logging calls that use a hard-coded log level instead of one mapped from the event's severity.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When flattening structured records into log state or span tags, write arrays and nested values as raw JSON text, flatten only one level, and leave out null members. This keeps the number of index fields an event can create bounded.",
+      "why": "Arrays and nested details stay raw JSON text so the number of index fields an event can create is bounded.",
+      "check": "Look for log-state or tag flattening code that expands arrays element by element or recurses without limit into nested details objects, or that emits null-valued keys.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

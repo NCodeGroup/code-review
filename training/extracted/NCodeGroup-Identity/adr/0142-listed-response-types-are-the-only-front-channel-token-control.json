@@ -1,0 +1,87 @@
+{
+  "hash": "3f3e8a2d08595e47",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0142",
+  "rules": [
+    {
+      "statement": "Do not add a separate boolean or flag to control a capability that a supported-values list (such as `response_types_supported`) already governs; discovery, registration and request validation must all read that one list.",
+      "why": "A second switch can disagree with the list, so a flow ends up advertised and registrable but refused at every request, which breaks the rule that advertisement and enforcement share one source.",
+      "check": "Look for new settings, options or checks that allow or block a protocol capability that a supported-values list also covers, or for code paths where discovery, registration and enforcement read different settings for the same capability.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the authorization endpoint refuses a response type, return `unsupported_response_type` if the server or tenant list forbids it, and `unauthorized_client` only if just the client's list forbids it.",
+      "why": "RFC 6749 §4.1.2.1 calls for `unsupported_response_type` when the server side does not support the response type, and the error code should show which scope imposed the restriction.",
+      "check": "Look for authorization-request validation that returns `unauthorized_client` for every response-type refusal, or that does not tell a tenant/server-level refusal apart from a client-level one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the secure-by-default supported response types at `code` only, so that by default the authorization endpoint returns no access token in the authorization response.",
+      "why": "RFC 9700 §2.1.2 says clients SHOULD NOT use response types that issue access tokens in the authorization response.",
+      "check": "Look for default or baseline `response_types_supported` values that include any response type containing `token`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you retire a persisted setting, add a one-time data migration that rewrites each stored document into an equivalent expression of what the setting meant; do not just delete the setting, and do not translate it at read time.",
+      "why": "Dropping a restrictive value would silently loosen what the document allowed. A one-time rewrite also keeps the retired name out of the runtime entirely.",
+      "check": "Look for a removed setting descriptor or key that has no matching migration, for a migration that deletes the setting without carrying its restrictive values into the remaining settings, or for read-time compatibility code that keeps interpreting the retired name.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A migration that retires a setting must leave documents with invalid values for that setting unchanged, so they keep failing when read; it must not guess what the operator meant.",
+      "why": "Guessing what the operator intended could change behavior silently. Leaving the document failing makes an operator correct it.",
+      "check": "Look for migration code that coerces, defaults or drops values that were already invalid under the old model instead of skipping those documents.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Any migration that rewrites stored settings documents must give each rewritten document a new concurrency token, the same as any other settings write.",
+      "why": "A rewritten document is a settings write, and keeping the old token would defeat optimistic concurrency checks.",
+      "check": "Look for data migrations that update settings documents without regenerating their concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "If configuration names a retired or unknown setting, stop the host at startup with an error that names the configuration path; do not ignore the setting.",
+      "why": "Setting names are a closed vocabulary. Silently ignoring a retired setting could loosen restrictions the operator expects to be in force.",
+      "check": "Look for setting-binding code that skips unknown or retired setting names, or that fails without naming the configuration path.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

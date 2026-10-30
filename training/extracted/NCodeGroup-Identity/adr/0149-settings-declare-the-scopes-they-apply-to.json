@@ -1,0 +1,106 @@
+{
+  "hash": "2d4ce90d53b06f1c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0149",
+  "rules": [
+    {
+      "statement": "Reject a configuration or settings entry placed at a level or entity that never reads it, the same way an unknown name or an out-of-domain value is rejected, instead of accepting and storing it with no effect.",
+      "why": "A setting accepted where nothing reads it is a silent failure: the operator thinks it governs behavior, but it does nothing.",
+      "check": "Look for settings or configuration validation that checks names and values but accepts any registered setting at any scope or entity, or that skips or ignores entries that don't apply instead of reporting an error.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not normalize a write by silently dropping input it does not support; reject the request with an error that names the offending entry.",
+      "why": "A write that drops part of its input but still reports success hides a configuration mistake from the caller.",
+      "check": "Look for create/update/patch handlers that filter out unsupported or out-of-scope fields and then return success, where they should return a validation error (for example 400 keyed by field name).",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a stored document holds an entry that is invalid for where it is stored, fail closed when the document is loaded rather than loading the rest and skipping the bad entry.",
+      "why": "The entry is configuration someone made, and loading the document without it hides the problem.",
+      "check": "Look for load or deserialize paths that log and skip invalid or out-of-scope entries instead of failing the load.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every setting descriptor must state the scopes that read it through a required `AppliesTo` list, with no default that means 'everywhere'. Acceptance at ancestor scopes should be worked out from the registered scope cascade, not listed again in each descriptor.",
+      "why": "Stating one fact per descriptor and deriving the rest from the topology means the two can never contradict each other. A required property also means an author can't leave the scopes unstated.",
+      "check": "Look for new SettingDescriptor registrations that leave out AppliesTo, list ancestor scopes by hand, or use a wildcard or 'all scopes' default. Discoverable settings must include the tenant scope.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every settings entry point (deserialize, validate, security-profile expand) must pass the registered scope name of the document it reads. An unregistered scope name is an argument error, and a rejection message names the scopes the setting applies to.",
+      "why": "Validation can only reject out-of-scope settings if it knows which scope it is validating, and the error tells operators where the setting belongs.",
+      "check": "Look for calls to DeserializeSettings, ValidateSettings or Expand that pass a hard-coded or wrong scope, or for new entry points that validate settings without a scope.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a setting is meaningful at a narrower scope but is only read at its parent, move the reader so it enforces the setting against the narrower scope's effective settings, rather than rejecting the setting at that scope.",
+      "why": "Otherwise a narrower per-client value, or a ceiling from a selected security profile, is stored but never enforced.",
+      "check": "Look for enforcement code that reads tenant-level settings for a per-client check, such as an allowed-algorithms list, when the client's effective settings should be used.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Effective-settings previews must list only the settings that apply within the previewed scope, and leave out inherited settings that the scope never reads.",
+      "why": "A preview that shows inherited but unread settings suggests they govern the scope when they don't.",
+      "check": "Look for preview endpoints that return the whole merged collection without filtering by scope.",
+      "scope": "repository",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Any change that narrows the scopes a setting applies to must ship with a data migration that removes the setting from stored documents at scopes that no longer accept it. Remove it rather than translating it or moving it to a parent.",
+      "why": "Stored documents would otherwise fail to load. The setting never had an effect there, and moving it to a parent would change every sibling.",
+      "check": "Look for AppliesTo narrowing or reader moves with no matching migration, or migrations that move such settings up to the tenant.",
+      "scope": "repository",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not let resource servers select security profiles. Constraints on the tokens issued for a resource server go in its own settings, which are combined with the client's settings at issuance using a lattice merge.",
+      "why": "Profile requirements check a client's request, and profile ceilings limit client and discovery settings that a resource server never reads.",
+      "check": "Look for code or descriptors that accept security_profiles at the resource-server scope, or new resource-server settings that lack a lattice merge.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

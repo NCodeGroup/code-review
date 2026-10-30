@@ -1,0 +1,43 @@
+{
+  "hash": "223ddfa793e86df4",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0295",
+  "rules": [
+    {
+      "statement": "Do not register or implement the JWS `none` (unsecured) signature algorithm in a default algorithm registry or through any built-in registration method.",
+      "why": "An unsecured JWS proves nothing about who produced it. RFC 8725 and draft-ietf-jose-deprecate-none-rsa15 ask libraries to disable it by default, and a registered `none` is one empty-key call away from accepting a forged token.",
+      "check": "Look for a `none` signature algorithm being added to a default algorithm data source, or a registration or extension method that enables it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Components that validate, advertise or accept JWS algorithms must refuse `none` by its name, not only rely on it being absent from the registry or failing verification.",
+      "why": "A host can register its own unsecured algorithm, so a guard on the name is what stops a provider, validator or client from advertising or accepting unsigned tokens.",
+      "check": "Look for algorithm policy, validator or options-validation code that accepts any registered signature algorithm without explicitly rejecting the `none` alg value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests of a `none` refusal guard must register a viable `none` algorithm, so the test passes only because of the rule on the name.",
+      "why": "If no `none` is registered, the test passes because the algorithm is unknown and never shows that the name guard works.",
+      "check": "Look for tests asserting that `none` tokens are rejected where `none` is not registered, so the rejection could come from an unsupported-algorithm error instead of the guard.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "hash": "23382f8961b2ec5d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0137",
+  "rules": [
+    {
+      "statement": "Bind every options type from configuration with `BinderOptions.ErrorOnUnknownConfiguration = true`, applied at every nesting depth, so a key that maps to no property fails instead of being silently ignored.",
+      "why": "The default binder ignores unknown keys, so misspellings, misplaced sections and keys left behind by refactors are discarded silently and look the same as absent keys.",
+      "check": "Look for `Bind`, `Configure<T>(section)`, `BindConfiguration` or `Get<T>` calls on configuration sections that don't set `ErrorOnUnknownConfiguration` (or don't go through the shared strict-binding helper).",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each options type bound from configuration with `ValidateOnStart()` so binding and validation run when the host starts, not on first use.",
+      "why": "Errors found on first use show up only on live traffic, after readiness checks have already reported the instance healthy.",
+      "check": "Look for `AddOptions<T>()` or `Configure<T>` registrations of configuration-bound options that have no `.ValidateOnStart()`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give an options type whose values can be invalid (unknown strategy codes, malformed patterns, relative URLs, missing route parameters) an `IValidateOptions<T>` validator that rejects values the code cannot honor at startup.",
+      "why": "A value the server cannot honor should stop the host from starting rather than fail on the first request that uses it.",
+      "check": "Look for new options with constrained values (URLs, patterns, routes, enum-like codes) that are registered without an `IValidateOptions<T>` or validation delegate.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When options select one of several alternatives (e.g. a strategy), validate only the selected alternative's options and don't reject configuration sections for the alternatives that aren't selected.",
+      "why": "JSON configuration layers cannot delete a key from a lower layer, so rejecting an unselected alternative's section would make it impossible for an environment overlay to switch alternatives.",
+      "check": "Look for validators that fail when a section for an unselected strategy or mode is present, or that validate every alternative instead of only the selected one.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a single owner declare the whole shape of a configuration section and reject unknown subsections there, and have extensions bind their own options from their own section rather than add keys under a section another component binds.",
+      "why": "Under strict binding, keys added to a section someone else owns break startup, and splitting a section's binding across packages lets a host's chosen section name apply inconsistently.",
+      "check": "Look for extension or plugin code that reads or binds keys from inside another component's configuration section, or for a section that more than one package binds.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a configuration key alias that gives an existing key a second meaning; fix the configuration to use the canonical key instead.",
+      "why": "An alias gives one key two meanings and leaves every other misplaced key silent.",
+      "check": "Look for code that falls back to reading a different, already-meaningful section or key as an alternate name for a setting.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make configuration binding and validation errors name the offending section, the options type and the key.",
+      "why": "Operators need to find and fix the misspelled or misplaced key that stopped the host.",
+      "check": "Look for binding or validation failures that throw or return generic messages without the configuration path and options type.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

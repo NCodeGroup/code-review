@@ -1,0 +1,553 @@
+{
+  "hash": "ea280e28b2931949",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-production.instructions.md",
+  "rules": [
+    {
+      "statement": "Never disable warnings-as-errors (`TreatWarningsAsErrors=false`) in any project, tests and hosts included; relax a single rule with a justified `.editorconfig` entry or a narrowly scoped `#pragma`.",
+      "why": "Warnings-as-errors covers all code we maintain, not only code we ship.",
+      "check": "Diffs to project files or Directory.Build.props that set TreatWarningsAsErrors to false or add NoWarn broadly; a `#pragma warning disable` that covers more than the offending lines or has no justification.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.cs",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `System.Text.Json` rather than `Newtonsoft.Json`, `JsonWebTokenHandler` rather than `JwtSecurityTokenHandler`/`JwtSecurityToken`, and never block on async code.",
+      "why": "These APIs are banned house-wide through BannedSymbols.txt (RS0030).",
+      "check": "References to Newtonsoft.Json, JwtSecurityTokenHandler, or `.Result` / `.Wait()` on tasks.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "A change to an EF Core entity, entity type configuration or model contributor that changes a DbContext model must come with a new migration in the same change.",
+      "why": "Model drift that has no migration fails at runtime. The Definition of Done gate catches it before push.",
+      "check": "Entity or configuration edits in a diff that has no new migration files.",
+      "scope": "domain",
+      "domain": "ef-core",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "A migration only expands the schema (new tables, nullable or defaulted columns, indexes). It never drops, renames or tightens anything the previous release reads unless it is marked as a deliberate contract step, and raw SQL or seed-data changes must be classified as expand or contract.",
+      "why": "The previous release keeps serving while the migration runs and after a rollback. Making a column required or adding a unique index, constraint or foreign key to an existing table breaks it.",
+      "check": "A migration that drops or renames a column or table, makes a column non-nullable, or adds a unique, check, PK or FK constraint to an existing table without a contract marker; raw SQL or seed data with no expand/contract classification.",
+      "scope": "domain",
+      "domain": "ef-core",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Remove the UTF-8 BOM from generated EF Core migration files, and revert a model snapshot whose only change is a BOM.",
+      "why": "Repository files are BOM-less (`charset = utf-8`), but `dotnet ef migrations add` writes BOMs and re-saves the snapshot even when nothing changed.",
+      "check": "New migration files that start with a BOM; snapshot files whose diff is only the BOM.",
+      "scope": "domain",
+      "domain": "ef-core",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put identifiers in double quotes inside hand-written SQL fragments in the EF model (`HasFilter`, `HasComputedColumnSql`, `HasDefaultValueSql`, and similar).",
+      "why": "Postgres folds unquoted identifiers to lower case, so a PascalCase column fails at runtime against Postgres even though SQLite tests and the drift gate pass.",
+      "check": "SQL string fragments in EF configuration that reference column or table names without escaped double quotes.",
+      "scope": "domain",
+      "domain": "ef-core",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep hand-written code out of the `Migrations/` folder.",
+      "why": "`.editorconfig` treats `Migrations/` as generated code, so analyzers skip it.",
+      "check": "Non-generated helper classes or rules added under a Migrations folder.",
+      "scope": "domain",
+      "domain": "ef-core",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set package versions centrally in Directory.Packages.props, and never give a `PackageReference` an inline `Version`.",
+      "why": "The repository uses Central Package Management and lockstep versioning.",
+      "check": "`<PackageReference ... Version=` in project files.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Every CI workflow that builds or tests a .NET project checks out the full history (`fetch-depth: 0`).",
+      "why": "Nerdbank.GitVersioning computes the version from commit height, and the build fails on a shallow clone.",
+      "check": "An `actions/checkout` step without `fetch-depth: 0` in a workflow that builds or tests.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep functions small, doing one thing at a single level of abstraction, with at most 2–3 parameters. Turn a recurring group of parameters into a type. A trailing CancellationToken and a Try-pattern `out` don't count toward the limit.",
+      "why": "Clean Code: small, focused functions with few parameters are easier to read and test.",
+      "check": "Long, multi-purpose methods; methods with more than 3 data parameters; the same parameter group repeated across methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Follow Command–Query Separation: a method either performs an action or returns an answer, and a query never mutates state.",
+      "why": "Mixing the two hides side effects.",
+      "check": "Getter-like or query methods that also modify state.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a caller needs a filtered subset of stored entities, call an intent-named store method that pushes the filter to the database and projects only the needed columns. Never page the whole set and filter in memory, and never expose `IQueryable`/`Expression` in the store contract.",
+      "why": "Filtering in the DBMS avoids loading every row, and the store contract stays ORM-agnostic.",
+      "check": "A `GetPageAsync` loop followed by in-memory filtering; `IQueryable` or `Expression` parameters in store interfaces.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't pass or return `null` where an empty or absent form exists, such as an empty collection.",
+      "why": "Null returns force null checks on every caller and invite NullReferenceExceptions.",
+      "check": "Methods returning null for collections, or null arguments where an empty value would do.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use intention-revealing, searchable names, with no `Manager`/`Helper` catch-all names and no type encodings.",
+      "why": "Honest names make the code readable and searchable.",
+      "check": "New types named *Manager or *Helper; Hungarian-style prefixes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a string literal used in more than one place (claim type, algorithm code, dictionary key) as a named `const` in one place, and give sentinel keys in shared dictionaries such as `HttpContext.Items` or `AuthenticationProperties.Items` a package prefix.",
+      "why": "Repeated literals drift apart, and unprefixed keys in shared dictionaries can collide.",
+      "check": "The same string literal in several places; un-namespaced keys written to HttpContext.Items or AuthenticationProperties.Items.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report failures with typed exceptions that carry context rather than error codes, and never write an empty `catch` or an `async void` method.",
+      "why": "Empty catches swallow failures, and async void exceptions cannot be observed.",
+      "check": "`catch { }` blocks, `async void` methods, methods returning status codes for errors.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write comments that explain why, not comments that restate what the code does, and never leave commented-out code.",
+      "why": "Git keeps the history, and restating comments add noise.",
+      "check": "Comments that paraphrase the code; blocks of commented-out code.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a concept that carries invariants as its own type rather than a bare `string`, `bool` or `int`.",
+      "why": "Primitive obsession spreads validation around and lets invalid values through.",
+      "check": "Bare primitives with implied invariants passed through many APIs.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Talk only to immediate collaborators, and avoid `a.B().C().D()` chains and feature envy.",
+      "why": "Law of Demeter: long chains couple code to distant structure.",
+      "check": "Long member-access chains that reach through several objects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never nest a function call inside another call's arguments. Assign the inner call's result to an intention-revealing local first.",
+      "why": "Each step is then named, debuggable and readable.",
+      "check": "Calls like `Process(GetValue(), ...)` with a method invocation as an argument.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose every local `IDisposable`/`IAsyncDisposable` you own with a `using var` / `await using var` declaration rather than a nested block or try/finally, unless ownership is deliberately transferred. Never leave an `HttpResponseMessage`, `Stream` or factory-created HttpClient undisposed.",
+      "why": "Undisposed resources leak, and the declaration form is the house style.",
+      "check": "Disposable locals without `using`, `using (...) { }` blocks, or try/finally Dispose patterns.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse JSON into a detached `JsonElement` (`JsonElement.Parse`/`ParseValue`, or `JsonSerializer.Deserialize<JsonElement>` for streams), never into a `JsonDocument`.",
+      "why": "A JsonDocument rents pooled buffers that leak if it is not disposed, and elements read from it fail once it is disposed. JsonDocument parse APIs are banned.",
+      "check": "Calls to `JsonDocument.Parse`, `ParseAsync`, `ParseValue` or `TryParseValue`.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Name a parsed `JsonElement` for what it holds, or `jsonElement`, never `document`.",
+      "why": "`document` names a JsonDocument and misleads the reader.",
+      "check": "JsonElement variables named `document` or `doc`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read `JsonElement` members with the `NCode.Json` extension methods (`TryGetPropertyValue<T>`, `TryGetValue<T>`, `IsNullOrUndefined()`, `EmptyObject`/`OrEmptyObject()`) instead of hand-rolled `TryGetProperty` + `ValueKind` + `GetString()`/`GetInt64()` chains or re-parsing `\"{}\"`.",
+      "why": "The shared helpers convert by ValueKind and never throw, while the bare getters throw on a mismatched kind.",
+      "check": "Manual TryGetProperty/ValueKind/Get* chains, `ValueKind == JsonValueKind.Null` checks, or parsing \"{}\".",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reading members of JSON parsed from wire input, reject it unless `ValueKind == JsonValueKind.Object`.",
+      "why": "`JsonElement.TryGetProperty` throws InvalidOperationException on a non-object, so hostile input could fault the caller.",
+      "check": "Property reads on parsed request bodies or token headers/payloads without a prior object-kind check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse a date/time string with `NCode.Json.DateCoercion` (`TryParseDateTimeOffset`/`TryParseDateTime`), never a hand-rolled `DateTime(Offset).TryParse`, and only when the value is declared to be a date. Never use it to guess whether an arbitrary string looks like a date.",
+      "why": "There is one invariant-culture date policy for all packages, and lenient sniffing would turn strings like \"1.2\" or \"10:30\" into dates.",
+      "check": "DateTime.TryParse or DateTimeOffset.TryParse calls; date parsing applied to untyped string values.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read an RFC 7519 NumericDate strictly and with range guards through the NCode.Json helpers (`TryGetNumericDate`, `TryGetPropertyNumericDate`, `DateCoercion.TryParseNumericDate`/`TryFromNumericDate`), never through `DateTimeOffset.FromUnixTimeSeconds`/`FromUnixTimeMilliseconds`.",
+      "why": "The BCL methods throw on out-of-range input, so wire input could fault the caller.",
+      "check": "FromUnixTimeSeconds/Milliseconds calls; NumericDate read from a JSON string.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Treat a time claim that is present but invalid as a validation failure, never as an absent claim, and saturate or compare elapsed time instead of adding a margin that can overflow near `DateTimeOffset.MaxValue`.",
+      "why": "Reading a malformed claim as absent weakens validation, and margin arithmetic can overflow.",
+      "check": "Code that ignores an unparseable exp/nbf/iat; `instant + skew` additions without saturation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a count of seconds sent by a remote party (`expires_in`, `interval`) with `TryGetWholeInt32`/`TryGetPropertyWholeInt32` or `WholeInt32JsonConverter`, never `JsonElement.TryGetInt32` or the serializer's default int handling.",
+      "why": "Peers may write whole numbers as `60.0` or `6e1`, which the BCL readers reject.",
+      "check": "TryGetInt32 or plain int-typed serialized members for peer-sent second counts.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Stamp instants that a JWT or stored grant carries with NCode.Time's whole-second helpers (`GetUtcNowWithPrecisionInSeconds()`, `GetTimestampWithPrecisionInSeconds()`, `WithPrecisionInSeconds()`).",
+      "why": "A stored time must equal the NumericDate it round-trips through.",
+      "check": "`TimeProvider.GetUtcNow()` used for token or grant timestamps without truncation to whole seconds.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put a helper with a method body in an `*.Abstractions` package.",
+      "why": "Abstractions packages stay contract-only, and general helpers live in dependency-free packages.",
+      "check": "Classes with implementation code added to *.Abstractions projects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cap the lifetime of a client-supplied JWT through the validator's lifetime requirement (a max-lifetime option), never with ad-hoc `exp` arithmetic, and keep its replay record until `exp` plus the effective clock skew.",
+      "why": "The lifetime requirement measures from the earliest asserted iat/nbf, so the client cannot game it.",
+      "check": "Manual comparisons of exp against now plus a constant; replay retention set with a fixed margin.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a received JWT with an explicit algorithm allow-list for signature, key management, content encryption and compression, where an unset list permits nothing, and with decryption keys named explicitly as the recipient's. Never re-check `alg` by hand after validation in place of the allow-list.",
+      "why": "A check after decoding runs after the cryptography it must precede, and unset-means-all opens algorithm confusion.",
+      "check": "Validation without allowed-algorithm lists; unset settings treated as permit-all; post-validation alg checks; signer keys used for decryption.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Branch on why validation failed using the machine-readable failure code, never the message text.",
+      "why": "Message text is not a stable contract.",
+      "check": "String matching on exception or failure messages.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign and encrypt a JWT addressed to a client with the algorithms and public keys the client registered. Fail with `server_error` rather than substitute an algorithm, never take the first listed algorithm, never encrypt to a shared or tenant key, and never compress a server-produced JWT.",
+      "why": "The client's registered metadata governs, and RFC 8725 §3.6 forbids compression.",
+      "check": "Picking algorithms[0]; tenant keys used for client encryption; a `zip` header set on produced tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a key embedded in a JOSE header (`epk`, DPoP `jwk`) with only its public members, and refuse a received one that carries private members.",
+      "why": "Anyone holding the token can read the header, so a private member there discloses key material.",
+      "check": "Header keys serialized with private parameters (d, p, q, etc.); tests reading private members from produced tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a client's public keys from a single source (stored keys or `jwks_uri`, never both), import them under one policy (public only, consistent `use`/`key_ops`/`alg`, unique `kid`), and never use a `kid` as a globally unique secret identifier.",
+      "why": "A kid is the owner's name for a key, not a unique identifier, and every entry point must enforce the same import policy.",
+      "check": "Merging stored keys with jwks_uri keys; imports that skip the policy checks; a kid used as a storage id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a client certificate through one resolver that trusts only the configured forwarded header behind a proxy, never `HttpContext.Connection.ClientCertificate` or the header directly, and treat an undecodable forwarded value as `invalid_request`, never as an absent certificate.",
+      "why": "Behind a proxy the connection certificate belongs to the proxy, and a malformed credential must fail visibly.",
+      "check": "Direct reads of Connection.ClientCertificate or certificate headers; decode failures treated as no certificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a typed `Claim` its value in the declared type's XML Schema lexical form, formatting numbers with `CultureInfo.InvariantCulture`.",
+      "why": "A culture-formatted value such as \"1,000\" does not parse strictly as its declared type.",
+      "check": "Claim values built with ToString() without InvariantCulture.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prefer instance members behind an interface, registered as a DI singleton, over static utility classes, and never keep static mutable or ambient state.",
+      "why": "A singleton performs like a static and stays mockable, while static state hurts testability.",
+      "check": "New static classes with logic that has dependencies; mutable static fields.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never store a captured `HttpContext`, request-scoped `IServiceProvider` or `ClaimsPrincipal` in a field or property. Use a live view over `IHttpContextAccessor`, or take the dependency as a method parameter.",
+      "why": "Captured request state goes stale and causes use-after-request bugs.",
+      "check": "Fields or properties holding HttpContext, scoped providers or principals.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Constructor-inject every dependency, with no `new` of collaborators and no service location. The exception is a singleton resolving scoped or generically selected services at the point of use, and a closed set of singletons is injected as `IEnumerable<T>`.",
+      "why": "Injected dependencies keep the code testable.",
+      "check": "`new` of service collaborators inside methods; GetService calls where injection was possible.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap dependencies that can't be mocked (clock, `Guid.NewGuid()`, crypto RNG, `Activity`) in a thin internal interface facade with an internal sealed forwarding implementation marked `[ExcludeFromCodeCoverage]`, registered in DI.",
+      "why": "Callers become unit-testable by mocking the facade.",
+      "check": "Direct `DateTimeOffset.UtcNow`, `Guid.NewGuid()` or RNG calls in production logic.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `internal virtual` for one-off override seams, leave internal implementation classes unsealed for mocking, and never make public members `virtual` just for testability. Mock the interface instead.",
+      "why": "A public virtual member is a permanent SemVer-bound override point that a subclass can use to weaken security controls.",
+      "check": "New `public virtual` members added for tests; sealed internal implementations that tests need to mock.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose internals to tests through `InternalsVisibleTo` (plus `DynamicProxyGenAssembly2`), and never widen the public surface for tests.",
+      "why": "Test-only access stays internal.",
+      "check": "Members made public solely for tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test units through their public surface rather than private methods. Delete private branches the tests can't reach, or extract complex privates into a collaborator.",
+      "why": "Private methods are not seams, and an unreachable branch is dead code.",
+      "check": "Reflection used to call privates; unreachable private branches.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every type or member is either covered by tests or annotated `[ExcludeFromCodeCoverage]`, and only thin passthroughs, DI wiring and framework adapters are excluded.",
+      "why": "Code with behavior must be tested.",
+      "check": "New untested behavioral code; ExcludeFromCodeCoverage on code with logic.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record consumer-visible changes in CHANGELOG.md under `## [Unreleased]`.",
+      "why": "Consumers rely on the changelog to see what changed.",
+      "check": "PRs that change public behavior or surface without a changelog entry.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

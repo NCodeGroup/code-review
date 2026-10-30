@@ -1,0 +1,95 @@
+{
+  "hash": "87f8f8cdaa1c67b3",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0253",
+  "rules": [
+    {
+      "statement": "When JSON is embedded in an HTML `<script type=\"application/json\">` block, serialize it with an encoder that escapes `<`, `>` and `&` (such as the default encoder of `JsonSerializerOptions.Web`), never with `JavaScriptEncoder.UnsafeRelaxedJsonEscaping` or hand-built strings.",
+      "why": "Escaping those characters means no value, such as a display name containing `</script>`, can close the block and inject markup.",
+      "check": "Look for JSON written into script blocks of server-rendered HTML that uses a relaxed or custom encoder, string concatenation, or otherwise does not escape `<`, `>` and `&`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client bundle progressively enhances a server-rendered page, embed the data the server already knows (such as tenant branding) in the page and read it synchronously at mount, instead of fetching it before or after mounting.",
+      "why": "Fetching before mounting leaves the server page in place, so whatever the user types or autofills in that time is lost when the page is replaced. It also needs a time-out that a slow network always exceeds. Fetching after mounting paints the page with a second theme.",
+      "check": "Look for a network request or time-out that gates or follows the first render of an enhanced page for data the host could have embedded, or for a new endpoint added only to serve such data to the bundle.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before a bundle replaces a server-rendered form, read the form's state (non-empty input values, unchecked choices, the focused field) and carry it into the first render of the replacement.",
+      "why": "Otherwise the end-user loses what they typed or autofilled, where the focus was, and the scopes they cleared.",
+      "check": "Look for code that mounts over a server-rendered form without reading the existing input values, checkbox state and focused element.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a carried-over or sensitive value such as a password into an input by assigning the DOM `value` property through a ref, and only while the input is empty. Never use React's `defaultValue` or the `value` attribute for it.",
+      "why": "`defaultValue` writes the `value` attribute, which would put the password into the markup.",
+      "check": "Look for password or other carried credential values passed through `defaultValue` or a `value` attribute, or written without checking that the input is empty.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the element ids, field names and `autocomplete` values of server-rendered pages the same in the client components that replace them, and treat them as a contract.",
+      "why": "The bundle finds the state to carry by these ids, automation reads the same page with or without the bundle, and the browser's autofill relies on the same names and `autocomplete` values.",
+      "check": "Look for changes to ids, names or `autocomplete` values on a server page or on the matching client component that are not made on both sides.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client router enhances server-rendered pages, detect page states the server reports, such as an error page served at a protocol endpoint, before matching paths, so that a path fallback cannot replace them.",
+      "why": "The error page is served at a path outside the surface's routes, so the path fallback replaced it with a login form (issue #211).",
+      "check": "Look for client routing that picks a component by path alone, with a catch-all fallback that could replace a server-reported error page.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use `flushSync` for the first render of a React root.",
+      "why": "A root's first render commits in the next task anyway, so `flushSync` is not needed there.",
+      "check": "Look for `flushSync` calls in mount code.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

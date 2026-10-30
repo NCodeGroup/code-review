@@ -1,0 +1,110 @@
+{
+  "hash": "b0cf8ea6a3928a74",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0195",
+  "rules": [
+    {
+      "statement": "When a lookup by a key that is meant to identify exactly one record finds more than one match, return no result instead of picking one or throwing.",
+      "why": "Picking one could route a request to the wrong owner, and throwing would turn every request for that key into a server error because of one bad row; returning nothing fails closed as 'unknown'.",
+      "check": "Look for lookups that use FirstOrDefault/First or throw on multiple matches for keys that must be unique (e.g. a host used for routing); they should detect more than one match and return null/none.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Uniqueness validation must use a query that returns every current holder of the key, not the fail-closed routing lookup, so a key that is already ambiguous still counts as taken.",
+      "why": "A routing lookup that returns nothing on ambiguity would make a conflicting key look free and let a new write add another conflict.",
+      "check": "Check that write-time uniqueness checks call a list-all-holders query and reject the key when any other record holds it, rather than reusing a single-result lookup.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a normalized, indexed lookup column from its source value on every write, and never let it be set on its own.",
+      "why": "Deriving it on write means the indexed value cannot drift from the value that is published.",
+      "check": "Look for normalized/derived columns (e.g. Normalized*Host) that are assigned from input or left unchanged when the source value changes; they must be recomputed from the source property on every write.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a write leaves out an optional value that has a configuration-derived default, apply the default (`value ??= default`), validate the result, and store the derived value instead of resolving it at read time.",
+      "why": "A stored value does not move when configuration changes later, and validating after the default is applied checks the value that will actually be served.",
+      "check": "Look for defaults computed on read from configuration, or validation that runs before the default is applied; also check that clearing the value on update restores the derived default.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured URL templates and authorities used to build addresses at startup: check scheme, required placeholders, and that each expanded value is consistent with the routing rules.",
+      "why": "A bad template would otherwise give tenants addresses that cannot be routed or that collide, and the problem would only show up at request time.",
+      "check": "New configuration options holding URL templates or authorities should have startup (options) validation checking https scheme, required placeholders such as {tenantId} in the host, round-trip routing and non-collision with other templates.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a value that routes requests to exactly one tenant as a first-class, indexed tenant property, not as an inherited or merged setting.",
+      "why": "Routing needs an indexed lookup across tenants before any tenant is known, and an inherited value would route every tenant to the same place.",
+      "check": "Flag new per-tenant hosts, origins or routing keys added as merged/inherited settings instead of tenant properties with an index.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An RFC 8705 mTLS endpoint alias must be an `https` origin (scheme, host, optional port, no path), and its host must differ from the issuer's host.",
+      "why": "Endpoints are rewritten onto the alias origin, and one host cannot both ask for and skip a client certificate.",
+      "check": "Check that validation of mtls_endpoint_aliases authorities rejects non-https values, values with a path, and a host equal to the issuer host.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every additional origin a tenant publishes (such as an mTLS endpoint alias) must pass the same host validation as the issuer: it must route back to that tenant, and no other tenant may serve it.",
+      "why": "Without this, a tenant could advertise endpoints it cannot serve, or collide with another tenant's host.",
+      "check": "When a published origin is added or changed, verify that host-pattern round-trip and cross-tenant uniqueness checks run on it, and that updates re-check the address when either the issuer or the alias changes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The published `issuer` must stay the tenant's configured authoritative origin and must never be derived from the request host, even when the request arrives on an alias host.",
+      "why": "The issuer is the single authoritative origin that every published URL and token is anchored to; an alias is a second origin for endpoints only.",
+      "check": "Flag code that builds the issuer or token `iss` from HttpContext.Request.Host or the alias authority.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

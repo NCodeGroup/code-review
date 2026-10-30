@@ -1,0 +1,124 @@
+{
+  "hash": "4e1876b015a49881",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0260",
+  "rules": [
+    {
+      "statement": "Cloud service adapters must take credentials from the vendor SDK's keyless credential chain (e.g. DefaultAzureCredential, Google Application Default Credentials) and must never accept a client secret, certificate or service-account key through options or configuration.",
+      "why": "Stored, long-lived credentials are ruled out; the SDK chains already resolve keyless workload identity, so options name the resource and nothing else.",
+      "check": "Look for options properties or configuration keys holding secrets, certificates, key files or connection credentials for a cloud SDK client, or code constructing ClientSecretCredential/service-account-key credentials from config.",
+      "scope": "domain",
+      "domain": "cloud-integrations",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An optional, selectable provider that is registered but not selected must stay inert: its start-up validator skips validation, and it creates no client or credential until its first real operation.",
+      "why": "Registering several providers, such as all the cloud providers in one host, must not require their configuration or open connections unless that provider is selected.",
+      "check": "Look for provider validators that validate unconditionally regardless of the selector setting, or constructors/DI factories that eagerly create SDK clients or credentials.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A lazily created, shared client must be published with Volatile.Read and Interlocked.CompareExchange, without caching a failed creation, so the next call tries again.",
+      "why": "A transient failure while creating the client must not permanently break the component.",
+      "check": "Look for Lazy<T> or cached Task fields that hold onto a faulted creation, or unsynchronized lazy initialization of shared clients.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero buffers holding plaintext key material once they have been copied or used. If an SDK demands an exact-length array, copy the key into a pinned array and zero it after the call.",
+      "why": "Plaintext key material must not linger in managed memory after use.",
+      "check": "Look for decrypted/unwrapped key arrays or temporary plaintext arrays passed to SDKs that are not cleared (e.g. CryptographicOperations.ZeroMemory) in a finally block, or that are not pinned when copied for an SDK call.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In key wrap/unwrap adapters, only map the service's specific 'wrong key or ciphertext' failure to CryptographicException. Report a response integrity failure as a retryable IOException, and let every other service exception (outages, auth, throttling) propagate unchanged.",
+      "why": "Callers prune keys on CryptographicException, so an outage mistaken for a wrong key could cause key material to be discarded.",
+      "check": "Look for catch blocks that convert broad RpcException/RequestFailedException or generic exceptions into CryptographicException, or that swallow service errors.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When calling Google Cloud KMS, send CRC32C checksums on every request and verify the checksums and the 'verified' flags on every response, computing CRC32C with System.Numerics.BitOperations.Crc32C instead of adding a dependency.",
+      "why": "Google documents CRC32C as the end-to-end integrity check. Without it, a corrupted plaintext is wrapped and stored, and the problem only surfaces later as a wrong key.",
+      "check": "Look for Cloud KMS Encrypt/Decrypt calls that omit PlaintextCrc32C/CiphertextCrc32C/AAD checksums or do not verify response checksums, or new CRC32C NuGet dependencies.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a KMS wrap or encrypt call, check that the key or key version the response reports belongs to the configured key, and record that versioned identifier so unwrap names the exact version.",
+      "why": "Checking the reported resource confirms the intended key was used. Recording the version means rotation leaves older wrapped keys unwrapping and a wrapped key is never decrypted under another key.",
+      "check": "Look for wrap code that ignores the response's key name/kid, accepts a versionless result, or stores the configured identifier instead of the reported versioned one.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the key service supports associated data for a wrap, send the binding context as additional authenticated data so the service refuses to unwrap under any other context.",
+      "why": "Binding everything the service allows lets the service itself reject a wrapped key presented for another owner.",
+      "check": "Look for symmetric KMS encrypt/decrypt calls that omit AdditionalAuthenticatedData when a context is available.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "RSA key wrapping of long-lived keys must use RSA-OAEP-256 and refuse RSA keys with a modulus under 3072 bits, for example by rejecting wrapped outputs shorter than 384 bytes.",
+      "why": "Root keys protect master keys for as long as the data lives, so they need 128-bit security, and RSA-OAEP-256 is the algorithm Microsoft recommends that every Key Vault tier supports.",
+      "check": "Look for RSA wrap calls using RSA1_5 or RSA-OAEP (SHA-1), or no check on key or wrapped-key size.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not retry a KMS decrypt more than a bounded number of times on an ambiguous error status, and convert the final failure to CryptographicException.",
+      "why": "Cloud KMS uses InvalidArgument both for checksum failures and for a wrong ciphertext or AAD, so one retry separates transient corruption from a genuinely wrong key.",
+      "check": "Look for unbounded retry loops on InvalidArgument, or no retry at all, around Cloud KMS Decrypt.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

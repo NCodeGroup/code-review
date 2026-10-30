@@ -1,0 +1,121 @@
+{
+  "hash": "164c9f6b201baafe",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/api-compatibility.md",
+  "rules": [
+    {
+      "statement": "Do not change the signature (parameters, return type, nullability) of an existing public method; add a new overload instead.",
+      "why": "Shipped public surface is a contract consumers depend on, and changing a signature breaks them. Only additive changes are allowed without a major version bump.",
+      "check": "Diffs that modify parameters, return type or nullability of an existing public/protected member in place, rather than adding an overload.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add new optional inputs to public types as nullable `init` properties, with the default resolved inside the library (fail-closed), never as new constructor parameters.",
+      "why": "A new constructor parameter is a binary-breaking signature change that breaks every call site and serializer. A nullable init property is additive.",
+      "check": "New parameters (even ones with defaults) added to existing public constructors for optional values, or optional init properties whose default the consumer is expected to supply.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Public configuration callbacks take a single growable options type (e.g. `Action<TOptions>`), and new settings are added as properties on that type rather than as additional callback parameters.",
+      "why": "A new bare callback parameter breaks every caller. An options type can grow additively.",
+      "check": "Public methods adding a new delegate/callback parameter or extra delegate arguments instead of extending the options type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Append new members to public or serialized enums; never reorder or renumber existing members.",
+      "why": "Reordering or renumbering changes serialized and wire values.",
+      "check": "Enum diffs that insert members in the middle without explicit values, or change existing explicit values or order.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove shipped public API only across a major version: first mark it `[Obsolete(\"…\", error: false)]` in a minor release and keep it working.",
+      "why": "Removing surface in a minor or patch release breaks consumers without warning.",
+      "check": "Deletions of shipped public types or members without a prior Obsolete stage or a major version bump, and Obsolete attributes with error: true added in a minor release.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not share a public type between two independently-versioned packages; keep it in a single owning package or duplicate it deliberately.",
+      "why": "A type used by two packages that can version apart creates a diamond dependency conflict.",
+      "check": "New public types placed in a shared package and consumed in the public surface of multiple independently-versioned packages.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a nullability change on public surface (`string` ↔ `string?`) as a signature change that needs the same compatibility review as any other signature change.",
+      "why": "Nullability is part of the public signature and can break consumers.",
+      "check": "Diffs that toggle `?` on public parameters, returns or properties, and the matching changed lines in PublicAPI files.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record every public API addition in `PublicAPI.Unshipped.txt`, and mark removals by prefixing the line with `*REMOVED*` there; never edit `PublicAPI.Shipped.txt` outside a release.",
+      "why": "The Unshipped diff makes surface changes visible and intentional, and Shipped is the baseline the next release diffs against.",
+      "check": "PRs that change public surface without an intentional PublicAPI.Unshipped.txt diff, delete lines instead of marking them *REMOVED*, or modify Shipped.txt outside a release.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bump the major version whenever a change removes public API or alters an existing public signature.",
+      "why": "After GA, only additive changes are compatible, so breaking changes need a major version.",
+      "check": "PRs with *REMOVED* entries or changed signature lines in PublicAPI files that don't include a major version bump.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt",
+        "**/*.csproj",
+        "**/*.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In PublicAPI files, write interface type parameters without variance annotations, include `Type.Type() -> void` for non-positional readonly record structs but not for non-positional record classes, never list compiler-synthesized record members, and include the `extension(Receiver!)` block marker line for C# extension members.",
+      "why": "Wrong entries cause RS0016/RS0017 analyzer errors.",
+      "check": "PublicAPI.*.txt lines containing `<in ` or `<out `, record class parameterless ctor lines, synthesized Equals/ToString/etc. lines, or extension members missing their block marker.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

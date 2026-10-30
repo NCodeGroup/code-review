@@ -1,0 +1,107 @@
+{
+  "hash": "4ab894cc8135b58c",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0199",
+  "rules": [
+    {
+      "statement": "Never add a tenant id, or any other unbounded identifier, as a metric attribute or dimension; per-tenant usage goes in a durable store that an API reads.",
+      "why": "A tenant attribute on a metric creates a separate series for every tenant.",
+      "check": "Look for metric recordings (Counter.Add, Histogram.Record, TagList) that include a tenant id or similar per-entity tag.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record high-frequency counts on the request path as an in-memory increment, and have a background service write them to the database in batches, rather than doing database I/O or writing a row per request.",
+      "why": "A row per request puts log-level write load on the database. An in-memory increment costs no I/O on the request path, and the database sees one small unit of work per replica per interval.",
+      "check": "Look for request handlers or filters that insert or update a database row (or publish an event) for every request just to count usage.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In code meant to run on any Entity Framework provider, do not increment shared counters with bulk update statements (ExecuteUpdate/ExecuteUpdateAsync); read the row, change it, and save it under a concurrency token, retrying on conflict.",
+      "why": "Not every Entity Framework provider supports bulk updates, and a concurrency token gives the same correctness with a retry.",
+      "check": "Look for ExecuteUpdate/ExecuteUpdateAsync or raw UPDATE ... SET x = x + n in provider-agnostic persistence code, and for rows that several replicas update but that have no concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write background batches in bounded chunks. Save each chunk as its own unit of work, and read it just before saving so the time between read and save stays short however much data is pending.",
+      "why": "Bounded batches keep the window between read and save short, which limits concurrency conflicts between replicas however many entities are active.",
+      "check": "Look for flush or prune jobs that load and save all pending rows in one unbounded SaveChanges or transaction.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a background flush fails, including when a save's outcome is unknown, keep the batch and retry it on the next run before draining new data, and make sure the retry cannot apply the same batch twice.",
+      "why": "A conflict, an unreachable database or an unknown save outcome must not lose the data or count it twice.",
+      "check": "Look for flush loops that drop the drained data when the save throws, or that retry in a way that could add the same batch twice.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted service that buffers data in memory must flush it one final time when the host stops gracefully.",
+      "why": "A final flush on a graceful stop means only an abrupt stop can lose data, and then at most one interval.",
+      "check": "Look for buffering IHostedService/BackgroundService implementations whose StopAsync or cancellation path does not flush the buffer.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check a value that will be stored later (for example a meter or key name) when it is first accepted, and throw to the caller there rather than letting it fail at a later background flush.",
+      "why": "A bad name then fails at its caller rather than at every flush.",
+      "check": "Look for record/enqueue APIs that accept names or keys without checking them against the storage constraints (length, characters).",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not keep durable or billing data in the shared-state cache store (such as Valkey or Redis); keep it in the database with the other durable records.",
+      "why": "Shared state is for short-lived coordination and may be evicted.",
+      "check": "Look for billing, usage history or other must-keep records written to a distributed cache or shared-state store.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give records that must outlive a tenant's deletion (such as usage kept for billing) a plain tenant id column, with no foreign key and no tenant query filter.",
+      "why": "The usage of a deleted tenant must survive for its final bill.",
+      "check": "Look for usage or billing entities configured with a cascading foreign key to the tenant, or with a global tenant query filter.",
+      "scope": "domain",
+      "domain": "multi-tenant-billing",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

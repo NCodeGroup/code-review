@@ -1,0 +1,208 @@
+{
+  "hash": "5a5eaf8d8854c376",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0047",
+  "rules": [
+    {
+      "statement": "Model a notification that only observes an operation (audit, log, metric, notify) as a fault-isolated event published through the event publisher, not as a void NCode.Mediator ICommand; use a mediator command only when a handler can reject, mutate state the caller reads, or return a value the caller uses.",
+      "why": "On the mediator, the first handler that throws aborts the others and fails the request. The type should also show at a glance whether a seam can change the outcome.",
+      "check": "Look for void ICommand types or handlers that only log, audit or notify, and for event handlers that try to reject an operation or return or mutate data the caller then uses.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A dispatcher that invokes observer handlers must call each handler inside its own try/catch, log or report the failure, and carry on, so that one failing handler never stops the rest and never reaches the caller.",
+      "why": "Observation must not change outcomes. Isolating each handler has to be the default behavior, not something a consumer must remember to configure.",
+      "check": "Look for a loop that awaits observer handlers with no per-handler try/catch, a single try/catch around the whole loop, or a catch that rethrows.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Event and audit payloads must carry only identifiers, hashes and metadata, never secret material such as raw access, refresh or ID tokens, client secrets, key material or authorization codes.",
+      "why": "Events go to logs, persistence and external sinks, so they must be safe to serialize anywhere. This is a hard data-minimization rule.",
+      "check": "Look for event or audit record properties that hold a token string, a SecurityToken object, a secret, a key or an authorization code instead of a jti or id plus metadata.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define event payloads as immutable `record` or `readonly record struct` types with typed fields, and do not add dynamic metadata bags such as `IDictionary<string, object>`, a property bag or a `[JsonExtensionData]` member.",
+      "why": "Object-valued bags make events mutable and compared by reference, can let secrets or PII slip past redaction, and weaken the typed, schema-versioned contract.",
+      "check": "Look for event types that are mutable classes or that expose object-valued dictionaries, property bags or JsonExtensionData members.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a call site publishes an event for a milestone or outcome, it must not also log the same fact next to it. Keep inline ILogger calls only for diagnostics and mechanics such as cache misses, retries or trace messages.",
+      "why": "A logging subscriber already turns events into log lines. Logging the same fact at the call site duplicates it and scatters message templates and EventIds.",
+      "check": "Look for a logger call next to a PublishAsync or Record*Async call that logs the same data, and for failure paths that catch and log where they should emit an outcome=failure audit event.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add metrics and tracing for domain events by registering an event handler that subscribes to the event stream, not by adding instrumentation code at each publishing site.",
+      "why": "The event stream is the single source for logging, audit, metrics and traces, so instrumentation never has to be re-plumbed at call sites.",
+      "check": "Look for Meter counter increments or similar instrumentation added beside an event publish for the same domain outcome.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A singleton service that dispatches to handlers must not cache resolved handler instances or resolve scoped services from the root provider. It may cache reflection results such as closed service types, but it must resolve instances from the current scope on every dispatch.",
+      "why": "Cached instances or root-provider resolution turn scoped dependencies (DbContext, tenant persistence) into captive dependencies.",
+      "check": "Look for singletons that store resolved handler instances in fields or caches, or that call GetService(s) on the root IServiceProvider for scoped services.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not rely on generic variance when resolving services from Microsoft.Extensions.DependencyInjection. To reach handlers registered for base event types, explicitly close the open generic over each type in the hierarchy.",
+      "why": "MS.DI ignores generic variance, so GetServices<IHandler<Derived>>() will not return a handler registered as IHandler<Base>.",
+      "check": "Look for code that expects handlers registered as an in-variant base generic to be returned when resolving the derived closed type.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register multi-subscriber handler implementations with `TryAddEnumerable` so that several subscribers can coexist and consumers can add their own without changing framework code.",
+      "why": "Handlers form a strategy collection that consumers extend just by registering more of them.",
+      "check": "Look for handler registrations that use AddSingleton, AddScoped or TryAdd, which either replace other subscribers or allow duplicates.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark code paths that build generic types at runtime with MakeGenericType with `[RequiresDynamicCode]` and `[RequiresUnreferencedCode]`, and give AOT or trimmed hosts a switch that falls back to a non-reflective path.",
+      "why": "Runtime generic construction is not safe under AOT or trimming.",
+      "check": "Look for MakeGenericType or similar reflection without those attributes or without an AOT fallback.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Work deferred past the request boundary must use a snapshot of the request context (correlation id, tenant, actor, client) captured at enqueue time, run in a fresh IServiceScopeFactory scope, and use an application-lifetime CancellationToken, never the request token.",
+      "why": "By the time background work runs, the HttpContext and the request scope are gone and the request token is already cancelled.",
+      "check": "Look for background handlers that read HttpContext or ambient request state, resolve services from the request scope, or pass the request CancellationToken.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Background queues must be bounded with an explicit full-queue policy. Best-effort items may be dropped, but each drop must be counted or logged. Compliance-grade audit records must never be dropped; they block or spill to durable storage instead.",
+      "why": "Back-pressure has to be an explicit decision, and compliance audit needs at-least-once delivery.",
+      "check": "Look for unbounded channels or queues, drops that are not logged or counted, and audit paths that can drop records when the queue is full.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish an event only as the last, side-effect-only step after the operation has completed, never as a gate before the operation or partway through it.",
+      "why": "Events observe outcomes and must not affect them.",
+      "check": "Look for PublishAsync calls placed before the main operation finishes, or whose result or failure controls whether the operation continues.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish plain events directly with `PublishAsync(new FooEvent(...))`. Do not add a public helper whose only job is to construct and publish an event; add a typed helper only when it builds a shared envelope or uses a subscriber short-circuit.",
+      "why": "A trivial wrapper adds tracked public API surface and ceremony and gives nothing in return.",
+      "check": "Look for new public extension or helper methods that only do `new XEvent(args)` followed by PublishAsync.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check `HasSubscribers<TEvent>()` (in the same way as `ILogger.IsEnabled`) before assembling an expensive event payload or envelope.",
+      "why": "It avoids doing work when nothing is listening.",
+      "check": "Look for expensive payload or envelope construction before a publish without a subscriber check.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every audit event must carry the common envelope: a unique GUID event id separate from the correlation or trace id, a UTC timestamp, correlation or trace id, tenant, actor, client, action, outcome with reason, and a schema version. Build this envelope in one central recorder, not at each call site.",
+      "why": "The unique id allows de-duplication under at-least-once delivery, the schema version keeps the external wire contract stable, and building the envelope in one place keeps it consistent and testable.",
+      "check": "Look for audit events that lack these fields, reuse the correlation id as the event id, use local time, or are assembled by hand at call sites.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an event type is added or renamed, update the shipped event catalog and name its action using the dotted taxonomy (for example `token.issued` or `auth.failed`).",
+      "why": "The event set is a governed contract that sinks, dashboards and alerts are built against, so changes to it must be deliberate and reviewed.",
+      "check": "Look for new or renamed event types or action names with no catalog change, or action names outside the dotted taxonomy.",
+      "scope": "domain",
+      "domain": "auditing",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test that a publishing site emits its event by registering a recording event handler and asserting on the captured event and its envelope, not by mocking the publisher or inspecting log output. Each new event should come with such a test.",
+      "why": "Recording sinks are hermetic, do not depend on background-delivery timing, and pin the event's contract.",
+      "check": "Look for tests that mock the event publisher or assert on log output to confirm an event was emitted, and for new events with no recording-sink test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "hash": "395a3ea7a0f09c00",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0172",
+  "rules": [
+    {
+      "statement": "Model a set of formats or strategies that deployments or packages may extend as an open vocabulary: string-named strategies registered in DI and selected by a string option, not a closed enum decoded by a switch.",
+      "why": "A closed enum means supporting another variant (for example a new reverse proxy) requires editing the library, which is lock-in.",
+      "check": "Look for new or extended enums with a matching switch that pick a pluggable behavior such as an encoding, format or provider, where a third party could reasonably need to add a variant.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When strategies are selected by name from configuration, fail host startup if the configured name has no registered strategy, and reject two registered strategies that claim the same name.",
+      "why": "Startup validation catches a misconfigured name before any request is served. Duplicate claims make it unclear which strategy runs.",
+      "check": "Look for a name-keyed strategy lookup that is only resolved at request time with no startup validator, or that silently picks the first or last of several strategies registered under one name.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode a forwarded client-certificate header as a list: return the client's leaf certificate plus the other presented certificates as ordered intermediates, and use intermediates only as untrusted chain-building hints, never as trust anchors.",
+      "why": "Proxies such as Traefik, AWS ALB and Envoy forward the whole chain, and chain validation needs the intermediates. They come from the client, so they cannot be trusted.",
+      "check": "Look for forwarded-certificate decoders that parse only one certificate, drop the chain, or add presented intermediates to a trusted root or custom trust store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode forwarded certificate values all-or-nothing: reject the whole value if it has text around PEM blocks, empty list entries, blocks of a non-CERTIFICATE type, or repeated keys.",
+      "why": "Lenient partial parsing of security-relevant input can accept malformed or smuggled values.",
+      "check": "Look for decoders that skip unparseable entries, ignore surrounding text, accept non-CERTIFICATE PEM blocks, or let a repeated key overwrite an earlier one instead of failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When parsing an Envoy X-Forwarded-Client-Cert header, read only the first element (the one added by the proxy closest to the client), honor quoted values and backslash escapes, prefer Chain, and require Cert to be the leaf of Chain when both are present.",
+      "why": "The first element identifies the actual client. A Cert that disagrees with Chain is inconsistent input.",
+      "check": "Look for XFCC parsing that takes the last element, splits on commas or semicolons without handling quotes and escapes, or accepts a Cert that differs from Chain's leaf.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a forwarded client-certificate header is configured, use only that header as the certificate source and never fall back to the TLS connection's certificate when the header is absent.",
+      "why": "Behind a proxy, the connection's certificate is at most the proxy's own, so falling back would authenticate the wrong party.",
+      "check": "Look for certificate resolution that reads HttpContext.Connection.ClientCertificate (or GetClientCertificateAsync) after a configured forwarded header turned out missing or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a forwarded client-certificate value that cannot be decoded as an invalid_request (400) error, and log a warning naming the header and the format. Never treat it as \"no certificate\", and never return a tri-state status for callers to handle.",
+      "why": "Reading it as absent hides proxy misconfiguration and lets consumers with optional certificates silently issue unbound tokens. A status result invites callers to forget the malformed case.",
+      "check": "Look for catch blocks or TryParse failures that return null or no certificate for a present but malformed header, or result enums like Decoded/Absent/Malformed passed to consumers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve the client certificate once per request and cache it in the request's items so every consumer sees the same certificate. Dispose certificates the resolver decoded when the request ends, but never dispose the connection's own certificate.",
+      "why": "Client authentication and token binding must agree on the certificate. Decoded X509Certificate2 instances belong to the request, while the connection's certificate belongs to the connection.",
+      "check": "Look for repeated decoding of the certificate header within one request, decoded X509Certificate2 instances that are never disposed (for example via HttpResponse.RegisterForDispose), or disposal of HttpContext.Connection.ClientCertificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

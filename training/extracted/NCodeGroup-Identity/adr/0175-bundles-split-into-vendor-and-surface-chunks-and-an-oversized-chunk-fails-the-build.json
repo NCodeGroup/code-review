@@ -1,0 +1,74 @@
+{
+  "hash": "2eb09ca48abac435",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0175",
+  "rules": [
+    {
+      "statement": "Do not raise Vite's `build.chunkSizeWarningLimit` (or the build's chunk size limit) to get past an oversized chunk; split the chunk with a new vendor code-splitting group or a lazy boundary instead.",
+      "why": "Raising the limit hides the problem without fixing it: one large chunk makes the browser download and parse the whole app before it paints, and any app change invalidates the cached libraries.",
+      "check": "Look for diffs that increase `chunkSizeWarningLimit` or a chunk size limit constant, or that disable or bypass the oversized-chunk check, in Vite configs.",
+      "scope": "domain",
+      "domain": "frontend-vite-react",
+      "topic": "performance",
+      "applies_to": [
+        "**/vite.config.*",
+        "**/*.ts",
+        "**/*.mts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import route-level React containers through `React.lazy` inside a `Suspense` boundary, not with static imports in the app entry component.",
+      "why": "The shell paints before the surface loads, and a surface that is never visited is never downloaded.",
+      "check": "Look for top-level `App.tsx` or router files that statically import route or surface container components rather than using `React.lazy(() => import(...))` wrapped in `Suspense`.",
+      "scope": "domain",
+      "domain": "frontend-vite-react",
+      "topic": "performance",
+      "applies_to": [
+        "**/App.tsx",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure vendor chunk splitting with Rolldown's `output.codeSplitting.groups`, not the deprecated `manualChunks`, and keep vendor packages in stable groups apart from application code.",
+      "why": "`manualChunks` is deprecated in Vite 8. A vendor chunk changes only when its packages are upgraded, so it stays cached across application releases.",
+      "check": "Look for new uses of `manualChunks` in Vite or Rollup config, or chunking rules that mix application modules into vendor groups.",
+      "scope": "domain",
+      "domain": "frontend-vite-react",
+      "topic": "performance",
+      "applies_to": [
+        "**/vite.config.*",
+        "**/*.ts",
+        "**/*.mts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set bundle build options (chunking, size limits, build plugins) in the shared Vite preset, not as overrides in a single app's Vite config.",
+      "why": "The shared preset sets build options for every surface, so the rules apply to every bundle and live in one place.",
+      "check": "Look for per-app Vite configs that add or override `build` options, chunking groups or the chunk size limit when the shared preset should carry them.",
+      "scope": "domain",
+      "domain": "frontend-vite-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test that asserts on a lazily loaded component must wait for it with an async query (`findBy…` or `waitFor`), not query it synchronously with `getBy…`/`queryBy…`.",
+      "why": "Lazily loaded containers render only after their chunk loads, so a synchronous query runs before the component exists.",
+      "check": "In frontend tests that render components containing `React.lazy` routes, look for synchronous `getBy`/`queryBy` assertions on content from the lazy component.",
+      "scope": "domain",
+      "domain": "frontend-vite-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.tsx",
+        "**/*.test.ts",
+        "**/*.spec.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

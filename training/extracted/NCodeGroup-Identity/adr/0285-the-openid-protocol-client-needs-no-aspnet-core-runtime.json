@@ -1,0 +1,74 @@
+{
+  "hash": "ae6814dc30798ad7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0285",
+  "rules": [
+    {
+      "statement": "A library that does no ASP.NET Core work must not take a `Microsoft.AspNetCore.App` framework reference; reference the specific `Microsoft.Extensions.*` packages it needs instead.",
+      "why": "The framework reference makes every console app or worker that uses the library install the ASP.NET Core runtime, just to get a constants class or a helper.",
+      "check": "Look for a `<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />` added to a project whose code uses no ASP.NET Core HTTP types, or `using Microsoft.AspNetCore.*` added to such a library only for helpers like `StatusCodes` or `QueryHelpers`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a library replaces a shared framework reference with package references, reference directly exactly the `Microsoft.Extensions.*` packages its `using` directives name, and no others.",
+      "why": "The direct references should match what the code actually uses. They also make the build refuse a reintroduced framework reference, which fails with NU1510 because the references would no longer be pruned.",
+      "check": "Look for `Microsoft.Extensions.*` PackageReferences whose namespaces the project never uses, or for namespaces the project uses that come only through a transitive or framework reference.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express HTTP status codes as named `int` constants (named the way ASP.NET Core's `StatusCodes` names them, e.g. `Status200OK`), not as enum casts like `(int)HttpStatusCode.OK` or bare numeric literals.",
+      "why": "Reviewers asked for named constants instead of enum casts. Typing the value as `HttpStatusCode` would only cast straight back to the public `int` status code.",
+      "check": "Look for `(int)HttpStatusCode.X` casts or magic numbers like `200` or `201` in status-code comparisons where a named constant should be used.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When building a URL query string by hand, percent-encode each name and value with `Uri.EscapeDataString` (RFC 3986 unreserved set), and join them to the endpoint with `?`, or with `&` when the endpoint already has a query.",
+      "why": "This gives RFC 3986-correct encoding without the ASP.NET Core `QueryHelpers` dependency, and every decoded value stays the same.",
+      "check": "Look for query parameters concatenated without encoding, encoded with `HttpUtility`/`WebUtility.UrlEncode`, or always joined with `?` even when the base URI may already contain a query.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read and write text files only through overloads that take an explicit strict encoding (e.g. `File.ReadAllText(path, SecureEncoding.UTF8)`), never through the encoding-less overloads.",
+      "why": "The banned-API analyzer forbids the encoding-less overloads so that text is decoded only through strict encodings.",
+      "check": "Look for `File.ReadAllText(path)`, `File.WriteAllText(path, text)` or similar calls that pass no encoding argument.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Do not add `ConfigureAwait(false)` to awaits in library code whose callers are server-side hosts without a `SynchronizationContext`.",
+      "why": "Server-side hosts have no `SynchronizationContext`, so `ConfigureAwait(false)` adds only noise, and the family's no-`ConfigureAwait(false)` rule still holds.",
+      "check": "Look for `.ConfigureAwait(false)` added to awaits in server-side library code.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

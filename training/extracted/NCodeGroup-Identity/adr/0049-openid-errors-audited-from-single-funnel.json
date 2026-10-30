@@ -1,0 +1,89 @@
+{
+  "hash": "3a08bfdc6e7690ac",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0049",
+  "rules": [
+    {
+      "statement": "Publish the protocol-error audit event from the single endpoint filter that wraps the OpenID endpoint group, and never from the individual sites that create or throw an error.",
+      "why": "Only a central funnel guarantees every error is covered, and covered exactly once. Publishing at each call site leaves a silent gap at the first forgotten site and can publish twice when an error is both created and thrown.",
+      "check": "Look for audit/event publish calls for error events added next to code that builds an OpenID error, returns error.AsHttpResult(), returns an error AuthorizationResult, or throws OpenIdException, rather than in the endpoint filter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish audit events for state-changing successes at their call site, because no central funnel sees those responses.",
+      "why": "Successful responses such as a 204 never pass through an error funnel, so the call site is the only place that can record them.",
+      "check": "Look for a state-changing success path (create/update/delete/revoke) that has no audit publish at the call site, or that expects the error filter to record it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an error audit must happen once per request, enforce it with a constant sentinel key in HttpContext.Items, not by keying on the error instance's reference or hash.",
+      "why": "The invariant is one audit per errored request. Keying on the error object weakens that to one per object, and a hash key could wrongly suppress a different error.",
+      "check": "Look for dedup logic keyed on an error object, its reference or its hash code, or a non-constant Items key, used to stop duplicate audit publishes.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap audit/event publishing so that a recorder failure is logged and swallowed and never changes the HTTP response.",
+      "why": "Auditing is an observation layer and must not affect the response the client gets.",
+      "check": "Look for audit or event publish calls on a request path that are not wrapped in a try/catch that logs the failure, so a recorder exception could escape or change the response.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On a thrown-error path, publish the audit from the exception's error before rendering the response, so the record survives if rendering throws.",
+      "why": "An eager publish means the audit record exists even when response rendering fails.",
+      "check": "Look at exception filters or handlers that publish the error audit only after rendering the error response, or only on a successful render.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not make a generic result wrapper implement an error marker interface. Decide whether a result is an error from the wrapped value at runtime, through a non-generic accessor, and keep marker interfaces for types that model an optional error by design.",
+      "why": "A wrapper that holds any response would advertise success results as error-bearing in the type system and pollute generic `where T : Marker` constraints.",
+      "check": "Look for a generic wrapper type (such as OpenIdResult<T>) that adds an error marker interface such as ISupportOpenIdError, or for filters that test error-ness by type instead of checking whether the wrapped response is an IOpenIdError.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A new non-protocol result type that carries an error must expose it to the error funnel, either by wrapping an IOpenIdError behind IOpenIdResult or by implementing ISupportOpenIdError.",
+      "why": "Otherwise the central filter cannot see the error and it goes unaudited.",
+      "check": "Look for new result types that carry an error but neither expose an IOpenIdError through IOpenIdResult nor implement ISupportOpenIdError.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

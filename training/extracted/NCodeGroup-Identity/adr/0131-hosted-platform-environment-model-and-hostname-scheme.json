@@ -1,0 +1,44 @@
+{
+  "hash": "4b6073ea5e824346",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0131",
+  "rules": [
+    {
+      "statement": "Make session cookies host-only: give them the `__Host-` name prefix, set Secure and Path=/, and never set a `Domain` attribute.",
+      "why": "Tenants live on subdomains of one registrable domain, so a cookie scoped to a parent domain would be shared across tenants.",
+      "check": "Look for session or auth cookie options (CookieOptions, CookieAuthenticationOptions.Cookie, SessionOptions.Cookie) that set `Domain`, or whose cookie name lacks the `__Host-` prefix.",
+      "scope": "domain",
+      "domain": "multi-tenant-web-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name platform environments only `production`, `lab` and `ci`, and never use `dev`, `test` or `staging` for a platform environment, host, tag or root, because those words belong to customer tenants.",
+      "why": "Platform environment names and tenant environment names must never overlap, so conversations, support tickets and hostnames can't be misread.",
+      "check": "Look for new deployment config, OpenTofu or Helm values, hostnames or tags that name a platform environment `dev`, `test`, `staging`, `sandbox` or similar.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep platform DNS records DNS-only (never Cloudflare-proxied), leave Cloudflare Universal SSL off, and have CAA records allow only Let's Encrypt.",
+      "why": "TLS has to reach the platform's own proxy untouched, and Universal SSL would publish CAA records for Cloudflare's own CAs.",
+      "check": "In OpenTofu DNS resources, look for `proxied = true`, Universal SSL being turned on, or CAA records that allow CAs other than Let's Encrypt.",
+      "scope": "repository",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

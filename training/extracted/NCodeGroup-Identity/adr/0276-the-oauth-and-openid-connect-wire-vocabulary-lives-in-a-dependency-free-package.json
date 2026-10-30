@@ -1,0 +1,79 @@
+{
+  "hash": "a3de350ba23b4c0d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0276",
+  "rules": [
+    {
+      "statement": "Reference OAuth 2.0 and OpenID Connect wire names (parameter names, error codes, grant types, response types, discovery metadata names, media types and so on) through the shared protocol vocabulary constants instead of repeating them as string literals or redefining them in a local constant class.",
+      "why": "Every protocol name should exist in exactly one copy. Duplicated literals and partial constant classes drift apart and caused the duplication the ADR fixes.",
+      "check": "Look for string literals such as \"client_id\", \"invalid_grant\", \"authorization_code\" or \"application/x-www-form-urlencoded\", and for new constant classes that redefine wire names already in the shared protocol vocabulary.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take JWT/JOSE claim names from the JOSE claim-name constants (e.g. `JoseClaimNames.Payload.*`) and do not duplicate them in OAuth/OIDC protocol constant classes.",
+      "why": "A claim name is JOSE vocabulary, so it should be defined once, in the JOSE stack.",
+      "check": "Look for new constants or literals for claim names such as \"events\", \"sub\" or \"iss\" in OAuth/OIDC constant classes or client code, where a JoseClaimNames member already exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep names that never cross the wire, such as server-only endpoint names and internal `$`-prefixed parameters, out of the wire-protocol vocabulary, and put new wire names in the protocol vocabulary rather than in server-only constants.",
+      "why": "The wire vocabulary package is shared with relying parties, so server-internal names don't belong in it, and wire names placed in server-only constants can't be reached by clients.",
+      "check": "Look for internal or server-only constants added to the protocol vocabulary class, or for new wire parameter, error or metadata names added to a server-only constants class.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define server endpoint and setting names that are also discovery metadata members from the matching protocol metadata-name constant, not from a separate literal with the same value, but don't alias names that are only spelled the same and mean something different.",
+      "why": "This leaves one copy of each discovery name without merging unrelated concepts that happen to share a spelling.",
+      "check": "Look for discovery member names such as \"token_endpoint\" or \"jwks_uri\" assigned as literals in server constants or settings where a protocol MetadataNames constant exists, and for a different concept wrongly aliased to such a constant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat protocol vocabulary constants (grant types, client-authentication methods, response types and so on) as the well-known members of an open vocabulary, and don't use them as a closed set that rejects values a consumer or sibling package registers.",
+      "why": "Protocol vocabularies are open unless provably closed, and consumers must be able to register their own members.",
+      "check": "Look for switch statements or validation that reject any value not among the predefined constants, or for enums that replace an open string vocabulary.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Relying-party code (protocol clients, backend-for-frontend) must not reference OpenID Provider packages, and the wire-vocabulary package must have no project or framework references.",
+      "why": "Relying parties are not part of an OP, and the shared vocabulary must be usable without pulling in persistence, ASP.NET Core or other server abstractions.",
+      "check": "Look for ProjectReference or FrameworkReference entries added to the protocol vocabulary project, or OP package references added to client or BFF projects.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

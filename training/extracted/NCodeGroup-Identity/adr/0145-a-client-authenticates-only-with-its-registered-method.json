@@ -1,0 +1,114 @@
+{
+  "hash": "9ee427b1e8263596",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0145",
+  "rules": [
+    {
+      "statement": "Authenticate a client only with its registered token_endpoint_auth_method at every endpoint that authenticates clients, and reject with invalid_client a confidential client presenting only client_id or another method's credential, and a public client presenting a secret.",
+      "why": "A confidential client could otherwise be served as public or use a method other than the one it registered.",
+      "check": "Look for client authentication code that accepts any method in token_endpoint_auth_methods_supported without comparing it to the client's registered method, or that treats a missing secret as a public client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an unset token_endpoint_auth_method as client_secret_basic (the RFC 7591 default), never as public/none, so a client without a method fails closed.",
+      "why": "Treating unset as public would let a client provisioned without a method authenticate with no credential, which fails open.",
+      "check": "Look for code that defaults a missing or empty auth method to none or public, or treats it as permitting any method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an empty *_supported list (such as token_endpoint_auth_methods_supported) as permitting nothing, and treat only an unset list as unrestricted.",
+      "why": "Two disjoint ceilings intersect to an empty list, and reading that as unrestricted fails open.",
+      "check": "Look for checks like `list.Count == 0 || list.Contains(x)` or other code that reads an empty supported list as allow-all.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make each client-authentication handler handle only clients registered for its own method, and also enforce the registered method and ceiling centrally in the authentication service, so custom handlers are covered too.",
+      "why": "Handler-level checks give precise errors (401 with a WWW-Authenticate challenge for Basic) and avoid comparing secrets for methods the client did not register. The central check is the backstop for any handler.",
+      "check": "Look for handlers that validate credentials without checking the client's registered method, or a service that accepts handler results without checking the method against the registration and ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a failed client_secret_basic authentication as 401 with a WWW-Authenticate challenge (RFC 6749 §5.2), and reject Basic credentials without a colon as malformed (RFC 7617 §2).",
+      "why": "RFC 6749 §5.2 requires the challenge, and RFC 7617 §2 defines the user-pass format.",
+      "check": "Look for Basic auth failures returned as 400 or without a WWW-Authenticate header, or Basic parsing that accepts credentials with no colon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, identify the client by client_id without authenticating it, reject any request carrying client_secret with invalid_request, and make type-dependent rules read the client's registered type.",
+      "why": "The front channel does not authenticate clients, and RFC 6749 §2.3.1 confines client_secret to back-channel request bodies.",
+      "check": "Look for authorization-endpoint code that calls client authentication or accepts a client_secret parameter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, refuse an auth method excluded by the tenant's effective ceiling with invalid_client_metadata, and require the material the method verifies against: jwks or jwks_uri for private_key_jwt, certificates (x5c when jwks is given by value) for self_signed_tls_client_auth, and exactly one tls_client_auth_* subject parameter for tls_client_auth.",
+      "why": "This catches unusable or disallowed registrations when the client registers rather than at its first token request (RFC 7523 §2.2, RFC 8705 §2).",
+      "check": "Look for registration handlers that accept a method without checking the ceiling or the required keys/certificates/subject parameters, or that accept tls_client_auth_* parameters for other methods.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a client_secret only to clients registered for a shared-secret method (client_secret_basic, client_secret_post, client_secret_jwt), never to key- or certificate-based clients.",
+      "why": "A key- or certificate-based client must not hold a second, weaker credential.",
+      "check": "Look for registration code that generates a client_secret no matter which auth method the client registered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not accept the empty string as a value for an enumerated setting such as an auth method. Validate it against the domain of registered names instead.",
+      "why": "The setting's domain is the names of the registered method descriptors, and an empty value is ambiguous.",
+      "check": "Look for setting validation that lets an empty string through as a valid enumerated value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

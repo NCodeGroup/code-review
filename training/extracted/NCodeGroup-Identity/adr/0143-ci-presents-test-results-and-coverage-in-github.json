@@ -1,0 +1,105 @@
+{
+  "hash": "253d360f2610741a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0143",
+  "rules": [
+    {
+      "statement": "Every `actions/checkout` step in a workflow sets `persist-credentials: false`, so the job token is never written to `.git/config`.",
+      "why": "A persisted token in `.git/config` can be read by build, test and third-party action code running later in the job.",
+      "check": "Look for `actions/checkout` steps in workflow YAML that lack `persist-credentials: false`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep build and test jobs at `contents: read`, and give `id-token: write` only to a separate, dedicated job that uploads artifacts the gate job produced.",
+      "why": "If the gate job could mint OIDC tokens, third-party build and test code would be able to use that permission. An isolated upload job closes that gap.",
+      "check": "Look for `id-token: write`, or any write permission, on jobs that build or run tests, or for upload steps added inside the gate job.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate uploads to external services such as Codecov with OIDC (`use_oidc`), not with a long-lived token stored as a repository secret.",
+      "why": "A stored upload secret is a long-lived credential that third-party code in the job could reach. OIDC needs no stored secret.",
+      "check": "Look for upload steps that pass a `token:` taken from `secrets.*` where an OIDC path is available.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin third-party GitHub Actions to a full commit SHA, not to a tag or branch.",
+      "why": "The upload job holds the privileged OIDC permission, so the action code it runs must be pinned to an exact commit.",
+      "check": "Look for `uses: owner/action@vX` or `@main` references to third-party actions that are not a 40-character commit SHA.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Present CI test and coverage results with job summaries (`$GITHUB_STEP_SUMMARY`) and `::error` annotations, not with check-run or PR-comment actions that need `checks: write` or `pull-requests: write`.",
+      "why": "Pull requests from forks don't get those write permissions unless the workflow is split into a privileged `workflow_run` follow-up. Summaries and annotations need no write permission.",
+      "check": "Look for reporting actions such as `dorny/test-reporter` or `publish-unit-test-result-action`, or for new `checks: write` or `pull-requests: write` permissions added for reporting.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test-result and coverage reporting steps only present results. They never change the run's verdict, which stays the test runner's exit code.",
+      "why": "The gate's exit code is the single source of truth, and reporting must not mask a failure or invent one.",
+      "check": "Look for reporting scripts that set or override the exit code, or that swallow a test runner's failure.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**",
+        "**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Coverage services report but do not gate: keep their statuses informational, and don't let an upload failure fail the run.",
+      "why": "The required check stays the definition-of-done gate. Some runs, such as Dependabot runs, may not get an OIDC token and so may have no coverage data.",
+      "check": "Look for upload steps without fail-safe handling (for example `fail_ci_if_error: true`), or for Codecov project or patch statuses that aren't set to informational.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        "codecov.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write test results and coverage to a fixed output directory that is cleared before each run, and don't merge results with a recursive glob over accumulating per-project `TestResults/` folders.",
+      "why": "When results from past runs accumulate and get merged, a developer's coverage figure becomes a blend of every run ever made on that machine.",
+      "check": "Look for coverage merges over `**/coverage.cobertura.xml` or `TestResults/<guid>` paths, and for output directories that aren't cleared before tests run.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**",
+        "**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "hash": "0c8fde8eec313a10",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0021",
+  "rules": [
+    {
+      "statement": "Realize development-time seed data (such as a developer signing key) by writing it through the normal persistence path and reading it back through the unmodified production read path, not by overriding a read method to return an in-memory value.",
+      "why": "A read-path override creates two sources of truth: the runtime uses a value the persistence layer and management API never see, and the value regenerates on every materialization, so it doesn't survive a restart.",
+      "check": "Look for dev-only registrations or factory overrides that return static or in-memory data from a method that normally loads persisted state (for example overriding GetTenantSecretsAsync), when that code isn't limited to test hosts.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never create development signing keys or other dev-only credentials from the default service registrations; they must come only from an explicit, development-only opt-in extension method.",
+      "why": "A signing key that works out of the box has to be a deliberate development opt-in, never a silent default that could reach production.",
+      "check": "Check for default AddXxx registrations that generate or register signing keys or secrets without the caller explicitly opting in to a developer-keys method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When dev seeding ensures that a persisted secret exists, treat a stored secret that can't be unprotected (for example after the Data Protection key ring was purged) as absent and regenerate it, instead of failing.",
+      "why": "Ensuring the key each time the tenant is loaded, and regenerating it when it can't be decrypted, recovers from every combination of deleting the database or the key ring, so the dev server stays runnable.",
+      "check": "Look at dev seed handlers that check whether a secret exists: do they throw or skip when unprotecting fails, rather than replacing the secret?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Select local-development-only modes through the host's launchSettings.json (or another source test hosts don't load), not shared configuration such as appsettings.json, so tests keep their default behavior without special-casing.",
+      "why": "Test hosts don't load launchSettings.json, so the test default stays hermetic and the test host needs no special-case code.",
+      "check": "Look for dev-only mode switches (for example persistent developer keys) added to appsettings*.json or shared configuration, or for test hosts that override such a switch explicitly.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/appsettings*.json",
+        "**/launchSettings.json",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Unit and integration tests that need signing keys should use ephemeral in-memory keys with no database or filesystem footprint, and should not reuse the persistent developer-key mode.",
+      "why": "Tests need a hermetic environment that regenerates on every run, which is the opposite of what persistent local development needs, so the two get separate opt-ins.",
+      "check": "Look for test hosts or fixtures that enable persistent developer keys, write key rings to disk, or depend on a persisted signing key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

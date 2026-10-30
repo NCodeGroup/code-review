@@ -1,0 +1,98 @@
+{
+  "hash": "534d1c84dd7ca063",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0165",
+  "rules": [
+    {
+      "statement": "Never derive an issuer, base address or any published absolute URL from the incoming request (scheme, `Host` header, path base or route); build them only from the configured or stored issuer.",
+      "why": "A request-derived origin lets a caller's `Host` header choose where the server tells clients to send their credentials, and keeps a second materialization path alive.",
+      "check": "Look for `HttpRequest.Host`, `Scheme`, `PathBase` or `UriHelper.BuildAbsolute`/`GetDisplayUrl` used to build issuer values, discovery metadata, endpoint URLs, redirect targets or bootstrap documents.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a public option, flag or opt-in that weakens a security control below its safe baseline, not even one meant only for development; the default must be safe and must not be configurable down.",
+      "why": "Correct-by-default: every library consumer inherits an unsafe fallback until they configure otherwise, and a production-safety gate that reads configuration cannot see runtime-written data.",
+      "check": "Look for new options such as `AllowX`, `UseRequestHost`, `DisableValidation` or development-only switches that bypass a security check or fall back to an insecure behavior.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a stored entity is missing a value its security identity depends on (such as a tenant's issuer), fail closed instead of filling it in from the request or some other ambient fallback.",
+      "why": "An entity with no authoritative identity must not be served under an address someone else picked.",
+      "check": "Look for null-coalescing or fallback branches that replace a missing stored identity value with a request-derived or ambient value at serve time.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist a defaulted identity value (such as an issuer expanded from a template) when the entity is written; do not re-derive it each time it is read or each time a request arrives.",
+      "why": "Relying parties configure the issuer, so re-deriving it would move every existing entity whenever a template or default changed.",
+      "check": "Look for code that computes an issuer or other identity value from a template or option on each read or request instead of reading the stored value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On every write path (create, update, provisioning), apply the default for an omitted value first and then run the same validation used for explicit values, so a derived value is judged exactly like a supplied one.",
+      "why": "If a derived value skipped validation, it could produce an address the strategy cannot serve or one that collides with a reserved address.",
+      "check": "Look for write paths that fill a default after validation runs, that skip validation for defaulted values, or that apply defaulting on some write paths but not others.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured URI templates and the addresses they expand to when the host starts (for example with `ValidateOnStart`), not when they are first used.",
+      "why": "A malformed template, or one whose expansion its strategy cannot serve, should stop the host at startup and not show up later as a tenant that cannot be written or served.",
+      "check": "Look for new template or address options that do not have startup validation of their syntax (such as an exact single variable) and of a probe expansion.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add literal action segments under a collection route whose next segment is a resource identifier (such as `/api/tenants/check-address`); expose the operation as a sub-resource of the resource it describes.",
+      "why": "A literal segment under the collection collides with a resource of that name, and a sub-resource cannot collide.",
+      "check": "Look for new routes of the form `/api/{collection}/{literal}` next to an existing `/api/{collection}/{id}` route.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A preview or dry-run endpoint must call the same validation seam as the write it previews, and must authorize as a read when the resource exists and as a create when it does not.",
+      "why": "Then the preview's verdict matches what the write will decide, and the preview cannot be used to bypass create authorization.",
+      "check": "Look for preview endpoints that duplicate validation logic instead of calling the write path's validator, or that use one fixed authorization policy whether or not the resource exists.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

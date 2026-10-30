@@ -1,0 +1,79 @@
+{
+  "hash": "bef64a31834ba24f",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0061",
+  "rules": [
+    {
+      "statement": "Put an optional capability in its own package that depends only on the general slice's abstractions package, and never let the general slice, or its abstractions, depend on that capability's packages.",
+      "why": "If a general slice is coupled to one optional capability, every host has to carry that capability whether it wants it or not, and the general abstractions end up knowing the shapes of features outside their slice.",
+      "check": "Look for project or package references from a general/base package to an optional feature's packages. Also look for an optional-capability package that references the base slice's implementation package instead of its abstractions.",
+      "scope": "domain",
+      "domain": "aspnetcore-modular-libraries",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A capability package adds endpoints or services to a composition point it does not own by registering them as keyed services under the owner's published well-known key, not by changing the owning group.",
+      "why": "Keyed registration lets capabilities plug in without the owner knowing about them, so the owning group maps only its own families.",
+      "check": "Look for a diff that edits an owning route group or registry to reference a capability's handler directly, or that hard-codes a group-name string instead of using the published key constant.",
+      "scope": "domain",
+      "domain": "aspnetcore-modular-libraries",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Shared abstractions such as audit recorders expose one generic, capability-agnostic entry point that takes a caller-defined event subtype. Do not add a method on the shared abstraction for each capability.",
+      "why": "A per-capability method puts one capability's shape on a general abstraction. A single generic seam serves every capability without that coupling, and each capability owns its own event types.",
+      "check": "Look for new methods on a shared abstraction interface that are named after, or typed to, one specific feature's event or resource. Also look for capability-specific event types or resource-type constants defined in the base abstractions package.",
+      "scope": "domain",
+      "domain": "aspnetcore-modular-libraries",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add runtime or per-request checks of whether a library or capability is registered or configured (for example, returning 501 Not Implemented when a store is missing). Whether the capability is present is decided only by whether its registration method was called.",
+      "why": "Once the endpoints are an opt-in package, a library checking whether it is itself wired up tells you nothing: the package's presence already answers that question, so the marker and its guards are dead weight.",
+      "check": "Look for handlers that test for an optional service or marker and return 501 (or a similar response), and for capability-marker services that exist only so the library can feature-detect itself.",
+      "scope": "domain",
+      "domain": "aspnetcore-modular-libraries",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce a registration prerequisite at compile time: the prerequisite's registration method returns a typed builder, and the dependent registration method takes that builder as a required parameter.",
+      "why": "This way a capability cannot be written without its prerequisite, and a missing dependency is a compile error rather than a failure at startup or when the service is resolved.",
+      "check": "Look for a new Add* registration method that needs another registration (such as a store) but does not take that registration's returned builder as a required parameter. Also look for one that discovers the missing dependency at resolution time instead.",
+      "scope": "domain",
+      "domain": "aspnetcore-modular-libraries",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When another package needs shared base-class plumbing, promote the shared base into the public abstractions package and derive the internal base from it. Do not copy the plumbing.",
+      "why": "Duplicated endpoint plumbing drifts apart over time. One shared public base is the cohesive model.",
+      "check": "Look for a new base class or helper set that reimplements logic already in an internal base in another package, such as authorization, paging clamps, or error mapping.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

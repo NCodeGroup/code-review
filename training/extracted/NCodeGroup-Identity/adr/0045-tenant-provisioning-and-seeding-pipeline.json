@@ -1,0 +1,66 @@
+{
+  "hash": "d6338a9ca9649172",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0045",
+  "rules": [
+    {
+      "statement": "Make every tenant seed contributor idempotent: check whether its reserved data already exists before writing, so the tenant can be seeded again safely.",
+      "why": "Tenants are re-seeded, for example after a deploy adds a new contributor. Idempotent handlers let new reserved data reach tenants that already exist without creating duplicates.",
+      "check": "Look for a seed handler that inserts reserved rows (clients, resource servers, keys, scopes) without first looking them up, or that only runs when the tenant is newly provisioned.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A tenant seed contributor must write through the shared unit of work it is given in the seed context, and must not open its own store manager or transaction.",
+      "why": "When provisioning and seeding are split across several transactions, a partial failure leaves a half-seeded tenant. All seeded data has to commit together.",
+      "check": "Look for seed handlers that create or resolve their own IStoreManager, unit of work or DbContext, or that call commit/save themselves, instead of using the one on the context.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether a tenant is the root (control-plane) or a workload tenant once, in the provisioning coordinator, and have contributors read the plane from their context instead of comparing the tenant id to the root tenant id themselves.",
+      "why": "Re-implementing \"skip root\" or \"is this the root tenant?\" logic in many places scattered the plane rules and made them inconsistent.",
+      "check": "Look for seed or provisioning contributors that compare tenantId to a root tenant id constant, or keep their own skip-root rule, when a plane value is available on the context.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep tenant seeding out of tenant resolution strategies and tenant read/materialization paths; strategies only resolve, and must call the single provisioning coordinator to bring a tenant into a seeded state.",
+      "why": "When seeding lived inside one strategy or a read-path factory override, seeding behavior silently depended on the tenancy strategy. There must be exactly one way to seed a tenant.",
+      "check": "Look for tenant strategies or tenant factory subclasses that write seed data directly or override read paths to seed or heal data, instead of calling the provisioner.",
+      "scope": "domain",
+      "domain": "multi-tenancy",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement single-dispatch orchestration (such as owning the unit of work, ordering steps and committing) as a replaceable scoped service, and implement an open-ended set of contributors as a mediator command fan-out ordered by priority; do not build bespoke provider/descriptor/seeder interfaces for the same kind of contribution.",
+      "why": "Several structurally different extension mechanisms for one concept are incoherent. One orchestration service plus one fan-out seam gives contributors a single pattern and a single lifecycle rule.",
+      "check": "Look for new ad-hoc contributor interfaces (IXxxProvider/IXxxSeeder collections) where a mediator command handler fan-out would fit, or for orchestration modeled as a mediator command.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

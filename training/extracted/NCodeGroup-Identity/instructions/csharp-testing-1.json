@@ -1,0 +1,406 @@
+{
+  "hash": "7d7f9c27b5e8070b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-testing.instructions.md",
+  "rules": [
+    {
+      "statement": "Mirror the folder structure and namespace of the code under test in test files, adding a `.Tests` suffix to the namespace and a `Tests` suffix to the class name.",
+      "why": "Tests are easy to find from the production type they cover.",
+      "check": "A new test file whose path or namespace doesn't match the production type's, or that lacks the `.Tests` namespace suffix.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name test methods with the `Method_State_Expected` underscore idiom.",
+      "why": "Each name records the member under test, the condition and the expected outcome.",
+      "check": "Test methods named in other styles, such as `TestEncode` or `EncodeWorks`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not set `TreatWarningsAsErrors=false` or a project-level `NoWarn` in test projects; relax a noisy rule in the `.editorconfig` tests block with a one-line justification, or with a tight `#pragma warning disable/restore` that gives a reason for one site.",
+      "why": "Test code is code we maintain, and analyzer warnings such as the xunit.analyzers ones report real defects in the tests themselves.",
+      "check": "`TreatWarningsAsErrors` false or `NoWarn` added to a test csproj; an editorconfig suppression with no justification; a pragma with no reason or no restore.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*Tests/**/*.csproj",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests, fix nullable warnings properly: give a `[MaybeNullWhen(false)]` out argument a nullable local, and narrow a maybe-null result with `Assert.NotNull` before dereferencing it, rather than using `!`.",
+      "why": "A real fix is preferred over a suppression, even though tests are allowed to use the null-forgiving operator.",
+      "check": "`!` or `null!` used in tests to silence a nullable warning on an out argument or a result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Group tests in `#region` blocks by the member under test: `Constructor Tests`, `{MethodName} Tests`, `{PropertyName} Property Tests` and `Generic Type Tests`.",
+      "why": "This gives test files a consistent organization.",
+      "check": "New tests outside any region, or regions not named after the member under test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not write `// Arrange`, `// Act` or `// Assert` comments; separate a test's sections with blank lines, and test one behavior per test.",
+      "why": "This keeps tests concise and focused.",
+      "check": "Arrange/Act/Assert comments, or one test asserting several unrelated behaviors.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the production code style in tests (collection expressions, `const` for literals, UTF-8 string literals such as `\"x\"u8.ToArray()`), except that literal arrays passed straight to assertion helpers stay inline.",
+      "why": "The production style rules apply in tests too.",
+      "check": "`new byte[] { ... }` where a collection expression fits, a non-const local holding a literal, or `Encoding.UTF8.GetBytes(\"literal\")` in tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `Assert.Empty` for a count of 0 and `Assert.Single` for a count of 1, not `Assert.Equal(0, x.Count)` or `Assert.Equal(1, x.Count)`.",
+      "why": "The size-specific xUnit assertions are clearer and give better failure messages.",
+      "check": "`Assert.Equal(0, ...Count)` or `Assert.Equal(1, ...Count)`, or the `Length` equivalents.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare an `ImmutableArray<T>` by its elements with `Assert.Equal<T>(expected, actual)`.",
+      "why": "`ImmutableArray<T>` equality compares the backing array by reference, so a collection-expression expected value fails even when the elements are equal.",
+      "check": "`Assert.Equal([..], immutableArray)` without the explicit element type argument.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the concrete exception type depends on the platform or provider, assert the documented base type with `Assert.ThrowsAny<T>`; keep `Assert.Throws<T>` for when the exact type is the contract.",
+      "why": "`Assert.Throws` requires an exact type match, so it fails on platforms that throw a derived type. For example, OpenSSL throws a subclass of `CryptographicException`.",
+      "check": "`Assert.Throws<CryptographicException>` or another platform-variable exception type asserted exactly.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test that shows a rule refuses a fallback must arrange the fallback so it would succeed, and must be paired with a control test where the same fallback succeeds because the rule doesn't apply.",
+      "why": "Otherwise the refusal also happens because the fallback itself fails, and the test still passes with the rule removed.",
+      "check": "A refuse-instead-of-fallback test where the fallback path is not viable, or where no matching control test exists.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test a check that runs after earlier checks with input that passes all the earlier checks, such as testing a curve binding with a key whose size the algorithm accepts, using a same-size curve or a stub key.",
+      "why": "An earlier check, such as the key-size check, would refuse the input anyway, so the test passes even with the rule under test removed.",
+      "check": "A negative test whose input is also refused by an earlier validation step, for example a wrong-curve key of the wrong size.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When testing an extension point's own rule, use input that the built-in rules don't already catch, and assert the specific error text when a later check would refuse the same input with a different message.",
+      "why": "Built-in rules, or a later check, would produce the refusal anyway, so the test would pass with the extension's rule removed.",
+      "check": "A test of a contributed type's rule that uses standard names or values the default rules already reject, or that asserts only failure without the message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove a fix that moves a refusal earlier with a request the old code accepted and deferred, not one the old code also refused later.",
+      "why": "A request the old code also refused at the end passes even with the fix removed.",
+      "check": "A regression test for an earlier refusal whose input would also have been refused by the old code path.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode text in tests only through strict encodings (`SecureEncoding.UTF8` and `SecureEncoding.ASCII`, or a constructed encoding with `throwOnInvalidBytes: true`).",
+      "why": "Strict encoding is required everywhere, and the build enforces it with `RS0030`.",
+      "check": "`Encoding.UTF8` or `Encoding.Unicode` used in tests.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Write true unit tests that mock external collaborators with Moq, but drive the composition through the real DI container, using shared builders, when the wiring itself is under test.",
+      "why": "The unit stays isolated, while registration, dispatch and serialization are tested end to end where they are the unit.",
+      "check": "Tests that use real external collaborators, or that mock the DI wiring under test, or that rebuild the container in every test with no shared builder.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End every Moq setup with `.Verifiable()`, use `x` as the lambda parameter, and create mocks from a `MockRepository(MockBehavior.Strict)` that the test base verifies on dispose, instead of calling `mock.Verify(...)` by hand.",
+      "why": "An unmet or unexpected call then fails the test automatically.",
+      "check": "A setup without `.Verifiable()`, a lambda parameter other than `x`, `new Mock<T>()` outside the repository, or manual `Verify` calls.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `MockBehavior.Strict` by default; use Loose only through shared helpers, and only for a partial mock of an abstract base class or for a value-provider stub whose values the test never asserts on.",
+      "why": "Strict mocks fail loudly on unexpected calls, which is a real isolation guarantee.",
+      "check": "`MockBehavior.Loose`, or a loose mock, used outside those two cases.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep tests hermetic: no network and no ambient host. Use `DefaultHttpContext` with test `RequestServices`, in-memory fakes and constructed principals, and declare a single-use stub as a small `private sealed` type in the test file.",
+      "why": "Tests must be isolated and deterministic.",
+      "check": "Real HTTP calls, host startup or external resources in unit tests; one-off stubs that are public or placed in shared files.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test listens to a shared or framework meter, assert the property on every collected point and find the test's own point with `Assert.Contains`, never with `Assert.Single`.",
+      "why": "Tests running in parallel record to the same process-wide instruments.",
+      "check": "`Assert.Single` over measurements collected from a shared meter name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test class that owns a real service provider holding `IAsyncDisposable`-only services must implement `IAsyncLifetime` and await `DisposeAsync()`, not dispose the provider synchronously.",
+      "why": "A synchronous `ServiceProvider.Dispose()` throws `InvalidOperationException` when a service implements only `IAsyncDisposable`.",
+      "check": "A test class that builds a real container and disposes it through `IDisposable`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give tests access to internal members through `InternalsVisibleTo` (the test assembly, plus `DynamicProxyGenAssembly2` for Moq), never by widening the production API.",
+      "why": "Test needs must not grow the public surface.",
+      "check": "Production members made public or protected only so tests can use them.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "If a strict `.Verifiable()` setup in a shared fixture is used on only some code paths, move it into the tests that exercise those paths instead of dropping `.Verifiable()`.",
+      "why": "Dropping `.Verifiable()` to avoid unmet-setup failures throws away the isolation guarantee.",
+      "check": "`.Verifiable()` removed from a shared setup, or a shared setup that some tests never consume.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a loose mock for a source-generated `ILogger<T>`, unless the log entry is the behavior under test; in that case use a strict mock with `IsEnabled` returning true and a verifiable `Log` setup that uses `It.IsAnyType`.",
+      "why": "`[LoggerMessage]` methods check `IsEnabled` first, so a loose mock never logs and needs no setup.",
+      "check": "Strict logger mocks with unneeded setups, or tests asserting that something is logged without a verifiable `Log` setup.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the code enumerates a mocked collection with `OfType<T>()` or `Cast<T>()`, set up the non-generic `IEnumerable.GetEnumerator()` with `mock.As<IEnumerable>()`.",
+      "why": "These operators call the non-generic enumerator, so a generic setup is never hit and the strict mock throws.",
+      "check": "Only a generic `GetEnumerator` setup on a collection mock consumed through `OfType` or `Cast`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Exercise code that calls a span-taking collaborator member through an integration test against the real collaborator, rather than widening the member's signature so it can be mocked.",
+      "why": "Moq cannot match `Span<T>` or `ReadOnlySpan<T>` arguments.",
+      "check": "Production signatures changed from span to array only to make them mockable.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a Moq setup's expected argument in a local outside the setup expression.",
+      "why": "Expression trees cannot contain ref structs or expanded `params ReadOnlySpan` calls, and the local keeps the matched value visible.",
+      "check": "Complex value construction inline inside a `Setup(x => ...)` lambda.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To inspect a command the unit sends partway through its work, capture it in the setup's callback and return `ValueTask.FromException(...)` so the unit stops there.",
+      "why": "The test then has to mock nothing after that point.",
+      "check": "Tests that mock the whole downstream flow only to inspect an intermediate command.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a collaborator calls a function argument the unit passes it, run that function in the strict setup's `.Returns` delegate through a static async helper, not an async lambda.",
+      "why": "The delegate then returns the member's own `ValueTask<T>`.",
+      "check": "An async lambda inside `.Returns` for a `ValueTask`-returning member that takes a callback.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Match a `JsonElement` mock argument by its content through a static helper called in `It.Is`.",
+      "why": "`JsonElement` equality compares document references, and matcher expression trees cannot contain `out _`.",
+      "check": "A `JsonElement` matched by equality or by a specific instance in a setup.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To make one call of a strict setup fail, add a narrower `.Throws` setup after the general one.",
+      "why": "Moq uses the last matching setup, so both setups are consumed.",
+      "check": "Workarounds such as call counters or loose mocks used to fail one specific call.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Capture an event handler on a strict mock with `SetupAdd(...).Callback`, invoke it directly, and add a `SetupRemove` when the unit detaches it.",
+      "why": "This drives events deterministically under strict mocking.",
+      "check": "Event subscription on a strict mock without a `SetupAdd`, or detachment without a `SetupRemove`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test's change-token producer must swap in a new `CancellationTokenSource` before cancelling the old one, so it returns a fresh token after each change.",
+      "why": "`ChangeToken.OnChange` asks for a new token after each callback, and returning the cancelled token again fires forever.",
+      "check": "A test producer that returns the same token after cancelling it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test a component that consumes a catalog of data with the test's own mocked entries, test the built-in data only in that data source's own tests, and match collection arguments by sequence equality.",
+      "why": "This keeps the unit isolated from the shipped data.",
+      "check": "Component tests that depend on a built-in default table, or collection arguments matched by reference.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove that concurrent callers share one retrieval with a stub handler gated on a `TaskCompletionSource`: start two calls, release the gate, assert a single request, and cancel the first caller and dispose its input to show the retrieval runs on its own token and its own copy.",
+      "why": "The gate makes the overlap deterministic, without timing-based tests.",
+      "check": "Concurrency or dedup tests that rely on `Task.Delay` or timing, or that don't cover cancellation of the first caller.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test database migration rules with synthetic private sealed `Migration` subclasses that need no database, plus a theory over the host's real migrations that shows each one is classified.",
+      "why": "The rule is tested hermetically, while the real migrations are still covered.",
+      "check": "Migration-rule tests that need a database, or no coverage of the real migrations.",
+      "scope": "domain",
+      "domain": "ef-core-migrations",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

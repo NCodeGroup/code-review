@@ -1,0 +1,79 @@
+{
+  "hash": "a593b5972bd6e256",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0124",
+  "rules": [
+    {
+      "statement": "When validating a JWT's lifetime, validate a present `iat` claim the same way as `nbf`: it must be a well-formed NumericDate, the check fails closed if it is not, and the token is rejected if `iat` is more than the clock skew in the future.",
+      "why": "An unvalidated `iat` let garbage or far-future values through, made `iat`-based caps gameable, and left the `iat` half of FAPI 2.0 §5.3.2.1 unenforced.",
+      "check": "Look for lifetime validation that reads only `nbf`/`exp`, or that ignores or skips an `iat` it cannot parse instead of rejecting the token, or that has no future-skew check on `iat`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Measure a JWT's maximum-lifetime bound as `exp` minus the earliest asserted start (the earlier of `iat` and `nbf`, or validation time plus clock skew when the token has neither), and require `exp` whenever a maximum lifetime is configured.",
+      "why": "`exp − iat` alone can be gamed by the client and ignores an earlier `nbf`, and `exp − now` alone accepts stale pre-minted tokens. A token with no `exp` has no upper bound on its lifetime.",
+      "check": "Look for max-lifetime checks that use only `iat`, only `now`, or ignore `nbf`, or that accept a token with no `exp` when a maximum is set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound the lifetime of JWT client assertions (`private_key_jwt`/`client_secret_jwt`) with a configurable maximum that defaults to five minutes and merges as a minimum ceiling, so tenant or client settings can only shorten it. Reject an over-long assertion as `invalid_client`.",
+      "why": "An unbounded `exp` kept the assertion usable, and its `jti` in the replay cache, for as long as the signer chose. RFC 7523 §3 allows rejecting such assertions, and five minutes matches Auth0.",
+      "check": "Look for client-assertion validation with no maximum lifetime, a default above five minutes, a lower-level setting that can raise the server value, or an error code other than `invalid_client` for this failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a JWT replay-cache (`jti`) record until `exp` plus the effective configured clock skew, floored at zero and saturating at `DateTimeOffset.MaxValue`, and never for a fixed margin past `exp`.",
+      "why": "A fixed margin shorter than the configured skew left a window where the replay record was gone but the token still validated.",
+      "check": "Look for replay-record expiry computed as `exp` plus a hard-coded duration, or an addition with no overflow guard and no clamp for negative skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement JWT lifetime policy, including max-lifetime caps, in the shared JWT validation requirement and its handler, and have callers pass parameters to it instead of re-checking lifetime in a feature-specific handler.",
+      "why": "Putting the policy in the validation requirement lets every JWT consumer, such as request objects, reuse it consistently.",
+      "check": "Look for `exp`/`iat`/`nbf` lifetime arithmetic added directly in a client-authentication or other feature handler instead of configuring the shared lifetime requirement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a security profile such as FAPI 2.0 has to pin a security-relevant setting, inject it as a merge-lattice ceiling, so that raising the server-wide value never loosens it for profile clients, and do not set it tighter than the specification requires.",
+      "why": "Raising a server-wide value for other clients must not extend to FAPI clients, and going below what the spec requires would reject conformant clients with no normative basis.",
+      "check": "Look for profile settings applied as plain overrides that a server-wide raise could exceed, or profile values stricter than the specification requires.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

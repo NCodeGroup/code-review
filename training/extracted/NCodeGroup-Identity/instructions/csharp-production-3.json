@@ -1,0 +1,683 @@
+{
+  "hash": "82693c3239dfe867",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-production.instructions.md",
+  "rules": [
+    {
+      "statement": "Keep a host's Program.cs composition-only: a flat list of single `AddX`/`UseX`/`MapX` calls with no inline `if`, loops, policy builders, `new`-ed options, configuration-section parsing, consts or dev/test helpers; move such logic into the owning package as an extension.",
+      "why": "This is the most-repeated review miss. Reusable startup logic in a host can't be reused and makes composition hard to read.",
+      "check": "A Program.cs diff that adds conditionals, loops, `new` options, CORS/auth policy builders, `configuration.GetSection` reads or helper methods instead of a single extension call. Only host-specific unsafe-to-default inputs (database provider/connection string, production signing key, Kestrel HTTPS defaults) may stay.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never call Kestrel's `ConfigureHttpsDefaults` from a package; the host makes one `ConfigureKestrel(k => k.ConfigureHttpsDefaults(...))` call that holds every HTTPS default.",
+      "why": "`ConfigureHttpsDefaults` keeps only its last action, so a package call would silently replace the host's TLS settings, or be replaced by them.",
+      "check": "`ConfigureHttpsDefaults` in library code, or more than one call to it in a host.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write extension methods with C# 14 `extension(ReceiverType r) { … }` blocks, not classic `this`-parameter static methods.",
+      "why": "It matches the repository's composition pattern and keeps extensions uniform.",
+      "check": "New `static ... Foo(this T x, ...)` extension methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put only one receiver type per static extension class, and split classes whose `extension(...)` blocks have different receiver types.",
+      "why": "Mixed receiver types trip CA1708 and break the one-type-per-file rule.",
+      "check": "A static class with `extension(...)` blocks for more than one receiver type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When a concrete type implements two unrelated receiver interfaces (such as `IDictionary<,>` and `IReadOnlyDictionary<,>`), write one extension on their common base and fast-path the specific interfaces inside it, not one overload per interface.",
+      "why": "An overload on each interface makes every call on the concrete type a CS0121 ambiguity, and moving the overloads into separate classes doesn't fix it.",
+      "check": "Parallel extension overloads on `IDictionary<,>` and `IReadOnlyDictionary<,>` (or similar unrelated interface pairs).",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Null-guard the receiver of an extension member.",
+      "why": "Extension members can be invoked on a null receiver.",
+      "check": "An extension member that dereferences its receiver without `ArgumentNullException.ThrowIfNull` or an equivalent guard.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an extension-block member throws an `ArgumentException` about its receiver, pass `nameof(receiver)` as paramName and suppress CA2208 with a tight `#pragma warning disable/restore` and a one-line reason; never drop the paramName.",
+      "why": "The receiver is the offending argument, but CA2208 doesn't yet treat an extension-block receiver as a parameter.",
+      "check": "A receiver-argument exception with no paramName, or a broad or unexplained CA2208 suppression.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Choose the DI shape deliberately: a service (`TryAddSingleton<IFoo, DefaultFoo>`) for a capability you call for an answer, a strategy collection (`TryAddEnumerable`) for many implementations the caller iterates or selects, and a mediator command only for a genuine pipeline seam where the sender must not know the handlers.",
+      "why": "Using the wrong shape couples senders to handlers, or hides simple calls behind a mediator.",
+      "check": "Mediator commands used for simple query services, or single services where several implementations are iterated.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make each built-in strategy registered with `TryAddEnumerable` its own class; never register several instances of one class.",
+      "why": "`TryAddEnumerable` keeps one registration per implementation type, so only the first of several instances of the same class survives.",
+      "check": "Several `TryAddEnumerable` registrations whose instances or factories share one implementation type.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never resolve a strategy that has dependencies inside options validation (`IValidateOptions<T>`) or anything it consults; build those catalogs from dependency-free registrations, with a descriptor registered beside each strategy.",
+      "why": "Resolving a dependency graph inside `IOptions<T>.Value` deadlocks composition when a constructor on that path reads `Value`.",
+      "check": "An `IValidateOptions<T>` that injects or resolves services with their own dependencies.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order mediator handlers that depend on each other's effects with explicit priorities (`ISupportMediatorPriority`: High for observers and repairers, Low for consumers), never with registration order.",
+      "why": "Registration order is fragile and implicit. Priorities state the dependency explicitly.",
+      "check": "A handler that relies on another handler's effect but sets no priority, or a comment relying on registration order.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Announce a change other replicas must observe through a replica broadcast: apply it locally first, publish after, log rather than throw on a failed publish once the write has committed, and have each handler invalidate everything a missed message could have made stale when it resubscribes.",
+      "why": "In-process caches on other replicas go stale otherwise, and a failed publish must not fail a write that has already committed.",
+      "check": "A cache or materialized object invalidated only locally, a publish before the local apply, or a publish failure that is thrown after the commit.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never run work proportional to the deployment (a pass over every tenant or client) inside a request or on a bounded in-process job dispatcher; run it as a background reconciliation over an untracked, secret-free projection that skips what the change cannot affect.",
+      "why": "Such passes make request latency unbounded and hold the dispatcher's bounded workers.",
+      "check": "A request handler or queued job that loops over every tenant, client or other unbounded entity set.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make state derived from settings converge by reconciliation (read the current state, repair the differences, and durably record the input reconciled against), not by replaying a queued event.",
+      "why": "A restart loses queued jobs. A reconciliation that a restart interrupted can simply run again.",
+      "check": "Derived state kept in sync only by enqueueing a one-off job on change, with no durable reconciled-input record or rerunnable pass.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a protocol endpoint as a thin orchestrator: guard verb and content type, authenticate the client through the shared service, load a strongly-typed request message (never hand-rolled `form.TryGetValue`), dispatch validation and replaceable steps as mediator commands, and render. Keep side-effecting transports as injectable services called from handlers.",
+      "why": "The canonical shape keeps protocol steps replaceable and validated in one way.",
+      "check": "Endpoint code that parses form fields by hand, validates inline, or models a notification transport as a mediator command.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never hard-code an absolute route path into a URL that leaves the process; generate it through link generation that carries the current route values, and never pass the request's live `RouteValues` to a template binder (bind a copy).",
+      "why": "Endpoints may be served under a configurable route prefix, and template binders consume the values they are given.",
+      "check": "String-concatenated absolute paths in published URLs, or `httpContext.Request.RouteValues` passed directly to a binder.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fix a minimal-API handler shape the Request Delegate Generator can't produce instead of suppressing the diagnostic. A project with `[FromForm]`, `IFormFile` or `IFormCollection` endpoints sets `<EnableRequestDelegateGenerator>false</EnableRequestDelegateGenerator>`, and each such endpoint has a test that a POST without the antiforgery token answers 4xx and changes nothing.",
+      "why": "Generated form binding ignores a failed antiforgery validation and answers 500.",
+      "check": "Suppressed RDG diagnostics, form-bound endpoints in a project with the generator enabled, or a missing antiforgery-rejection test.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate a client only with its registered `token_endpoint_auth_method` (default `client_secret_basic`), treat `token_endpoint_auth_methods_supported` only as a ceiling, have every provisioner register the method explicitly (`none` for public clients), and never treat a client registered as confidential as authenticated.",
+      "why": "Accepting any supported method lets an attacker downgrade how a client authenticates (RFC 7591 §2).",
+      "check": "Client authentication that accepts any supported method, provisioning without an explicit auth method, or authorization-endpoint logic that equates confidential registration with authentication.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind options from configuration strictly (`ErrorOnUnknownConfiguration`, for example through `NCode.Registration`'s `BindStrictly`), register them with `ValidateOnStart`, and express rules the binder can't as `IValidateOptions<T>`.",
+      "why": "A misspelled or misplaced key is otherwise indistinguishable from an absent one.",
+      "check": "`Configure<T>(section)` or `Bind` without strict binding, or options registered without `ValidateOnStart`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a whole configuration section owned by one component rather than reading single keys with `configuration[\"A:B\"]`, and have an extension bind its own section instead of adding keys to another owner's section.",
+      "why": "Single-key reads leave a misspelled sibling key unnoticed.",
+      "check": "Indexer reads of configuration keys, or a package adding keys to a section owned by another package.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Start a collection option that the configuration binder fills empty, and apply its default only when nothing is configured; never set the default in the initializer.",
+      "why": "The binder appends to an existing collection, so configuration could never narrow an initializer default.",
+      "check": "An options property initialized to a non-empty array or list that is also bound from configuration.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a configured value the way it will be used and reject anything that parses to something other than what was written; avoid lenient parsers such as `IPAddress.TryParse`, `IPNetwork.TryParse` masking or `Uri.TryCreate(..., UriKind.Absolute, ...)` alone for absolute URIs.",
+      "why": "Lenient parsers turn typos into different values (`10.0.0` becomes `10.0.0.0`, `/path` becomes a file URI on Linux), and verbatim-compared values must already be in their compared form.",
+      "check": "Validation that relies only on a lenient `TryParse` with no round-trip or exact-form check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an enum option whose value `Enum.IsDefined` refuses, in its options validator.",
+      "why": "The binder accepts numbers that name no member, such as \"7\".",
+      "check": "A bound enum option with no `Enum.IsDefined` validation.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a setting the server can't honor in its environment (such as a development-only section in Production) a startup error, not an inert key, and validate only the options that are in force.",
+      "why": "Silently ignored settings hide misconfiguration, and a JSON overlay can't delete a lower layer's key.",
+      "check": "Dev-only configuration that is ignored rather than refused outside Development, or validation of options belonging to an unselected strategy.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retire or rename a stored key over two releases (expand then contract): keep it readable while copying its value in an expand migration, and remove it in a later release's contract migration. A data migration translates the old meaning rather than dropping it, leaves already-invalid documents untouched, and gives each rewritten row a new concurrency token.",
+      "why": "The previous release must keep working, and dropping a restriction silently loosens a document.",
+      "check": "A migration that deletes a stored key in one step, drops a restrictive value, or rewrites rows without bumping their concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a narrowed domain strips values from a stored list, leave the list empty (`[]`, which permits nothing) rather than unset (unrestricted).",
+      "why": "Unsetting the list would silently loosen the restriction.",
+      "check": "A migration or normalizer that removes a list setting once all its values are stripped.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store, advertise and compare an unordered multi-part protocol value (such as `response_type` `code id_token`) as one whole value in one canonical form (parts in ordinal order, single-space separated); canonicalize wire input at the protocol boundary and never enforce it piecewise.",
+      "why": "Comparing the parts piecewise or leniently admits combinations that were never permitted.",
+      "check": "Splitting `response_type` and checking its parts individually, or comparing a value without canonicalizing it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a capability the server advertises and a requirement a client registers as two separate settings; name the requirement `require_` plus its RFC client metadata member, and refuse the requirement with a coherence rule where support is off.",
+      "why": "Advertised support must never force every client to use the capability.",
+      "check": "A single setting used both to advertise support and to force clients, or a requirement setting not named `require_<member>`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never fall back to a weaker or different credential when the combined bounds on a token can't be met; refuse with `invalid_request` when the request could avoid it, or `server_error` when the configuration can't be satisfied.",
+      "why": "A fallback silently defeats the security constraints that were set.",
+      "check": "Code that downgrades token binding or credential type when the constraints are unsatisfiable.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a package's services from a class named `DefaultRegistration` using `extension(IServiceBuilder<TMarker>)` and `TryAdd*`. A bolt-on that replaces, hooks or consumes another library's services extends that library's marker builder, never a naked `IServiceCollection`; a helper shared across libraries takes the non-generic `IServiceBuilder`.",
+      "why": "`TryAdd*` lets consumers override defaults, and marker receivers make it impossible at compile time to add a capability without its prerequisite library.",
+      "check": "Package registrations on a naked `IServiceCollection` that are not chain roots, generic utilities or foundational infrastructure; `Add*` instead of `TryAdd*` for defaults; registration classes not named `DefaultRegistration`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/DefaultRegistration.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a stateless capability as a singleton and a long-running loop as `AddHostedService<T>` over a `BackgroundService`, keeping the wire-up out of the type that does the work.",
+      "why": "The work stays constructor-injectable and testable.",
+      "check": "Worker types that register themselves or resolve services from a provider, or loops not hosted as a `BackgroundService`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the package that owns a consumer register that consumer's framework dependencies (routing, `IHttpClientFactory`, `AddAuthentication()` and similar) through `TryAdd*` as overridable defaults, so a host wires no framework plumbing.",
+      "why": "Composition stays turnkey, and host wiring that works only by accidentally pulling in a framework service is fragile.",
+      "check": "Hosts adding plumbing a package needs, or packages relying on the host to register a framework service.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never memoize per-request state in an instance field of a singleton; store it on the request (`HttpContext.Items` or a request context) instead.",
+      "why": "A cached result on a shared instance leaks one request's answer, such as an authentication result, to every later request. Making the service scoped doesn't help when a singleton consumer captures it.",
+      "check": "Patterns like `_field ??= await ...` or mutable instance fields set during a request in a singleton-registered type.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never let correctness depend on process-local state: state that must outlive a request or be seen by another replica goes to the database or a shared-state store, in-memory caches hold only data that can be rebuilt on a miss, and durable data is never written to the local filesystem.",
+      "why": "The host runs as interchangeable, disposable replicas, and any one of them may serve the next request.",
+      "check": "Static or singleton fields, or `IMemoryCache` entries, that hold authoritative state; file writes of durable data.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted service whose `StopAsync` does work runs that work once (memoize the stop task under a `Lock`, serialized with its periodic work), never throws, and logs what it couldn't finish.",
+      "why": "A host can be stopped twice at once, and the first stop to return lets its caller dispose the provider under the other's work.",
+      "check": "A `StopAsync` with real work and no memoized task or lock, or one that can throw.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a single-use or freshness check (a replay `jti`, a nonce, any accept-once record) as an atomic add-if-absent on a shared expiring key set, never as a get-then-set or through `IDistributedCache`; build the key from the tenant and a digest of the length-prefixed, request-supplied components.",
+      "why": "A read followed by a write lets two concurrent requests both pass, and unhashed attacker-supplied values can make keys collide across tenants, become ambiguous, or grow without bound.",
+      "check": "A replay or nonce check written as a cache Get followed by a Set, or keys concatenated from raw request input.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library never registers a host-wide cache.",
+      "why": "The composition root chooses the cache adapter.",
+      "check": "Library registrations calling `AddDistributedMemoryCache`, `AddStackExchangeRedisCache` or similar.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a shared single-use record with an atomic take, never a get then a remove, and update a shared record with a compare-and-replace that names the version read, reloading on a lost race rather than overwriting. Encrypt values that hold secrets, and fail closed when the store fails.",
+      "why": "Non-atomic sequences lose concurrent updates or let a record be used twice.",
+      "check": "`GetAsync` followed by `RemoveAsync` or `SetAsync` on shared state, or an unconditional overwrite after a failed replace.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Spend a single-use credential (an authorization code, device code or refresh token) only after every check passes and before its effect, atomically, so a refused request leaves it usable; rotate a refresh token by spending it and storing its successor in one unit of work.",
+      "why": "Spending too early lets a refused request burn a valid credential. A successor stored in a later unit of work can escape the revocation of its lineage.",
+      "check": "Credential consumption before validation completes, or a refresh-token successor saved separately from the spend.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have every grant that issues tokens for a subject validate the subject's authentication and standing (blocked, disabled or deleted) before it spends its credential, and redeem a stored credential only by the client it was issued to.",
+      "why": "Otherwise a refused end user or another client can still obtain tokens.",
+      "check": "A new grant type or redemption path that skips subject validation or the client-binding check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a lost optimistic-concurrency race from a store as a store-neutral exception, never an Entity Framework type, so callers never reference EF to handle it; answer it centrally (for example 412 via an endpoint filter) rather than catching it in each handler.",
+      "why": "Persistence details stay behind the store abstraction, and race handling stays uniform.",
+      "check": "`DbUpdateConcurrencyException` caught or leaked outside a store, or management handlers catching the concurrency exception themselves.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change a stored record's payload with a read-modify-write whose update function decides from its argument (and returns null when no change is needed) and is reapplied after a lost race, never by writing a payload computed from an earlier read.",
+      "why": "Writing a payload computed from a stale read overwrites concurrent changes.",
+      "check": "Code that reads a record, computes a new payload, and later writes it without reapplying the change to the current stored state.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retry a revocation in a fresh unit of work when it loses a concurrency race, instead of failing it.",
+      "why": "A revocation doesn't depend on what its caller read, so it must win the race.",
+      "check": "A revocation path that surfaces a concurrency failure (such as 412) instead of retrying.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request and a background pass can both act on one record, only the caller whose write claims it (for example a revoke-once that returns the record only to its winner) performs the follow-up effects, using the state the claim returned rather than an earlier read.",
+      "why": "This prevents double processing and acting on a stale list.",
+      "check": "Follow-up effects (notifications, terminations) triggered without an atomic claim, or based on data from an earlier read.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a security effect that follows a committed change (ending sessions after a password change, a disable or a block) with `CancellationToken.None`, and likewise an operation guarded by a won single-use lease and its write-back; a step before the commit keeps the request token.",
+      "why": "A client disconnect must not leave the change committed without its security effect.",
+      "check": "Post-commit security effects passed the request's cancellation token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a cookie authentication handler authenticate the cookie only on endpoints its guard checked, returning no result elsewhere.",
+      "why": "A cookie the browser attaches automatically to an unguarded endpoint must never act as a credential there (CSRF).",
+      "check": "A cookie handler that authenticates on every request regardless of endpoint guards.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Embed the initial state a client-side bundle needs in the rendered page as a `<script type=\"application/json\">` block serialized with an encoder that escapes `<`, `>` and `&` (such as `JsonSerializerOptions.Web`), rather than adding an endpoint the bundle must call before it can render.",
+      "why": "It avoids an extra round trip before render and prevents script injection.",
+      "check": "Inline JSON written without escaping HTML-significant characters, or a new bootstrap endpoint called before render.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve content-hashed static files from a restricted root only, with `Cache-Control: public, max-age=31536000, immutable`, and with no per-tenant resolution.",
+      "why": "Hashed files never change, and the restricted root keeps other files, such as index.html, from being served.",
+      "check": "Hashed asset routes that serve outside their asset root, resolve a tenant, or omit the immutable cache header.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every server-written HTML page a strict Content-Security-Policy (`default-src 'none'`, `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'none'` plus `X-Frame-Options: DENY`) that lists only the sources it needs, by hash or nonce and never `'unsafe-inline'`. Use no `style` attributes, and don't rely on antiforgery to add `X-Frame-Options`.",
+      "why": "A strict CSP limits XSS and clickjacking, and antiforgery adds `X-Frame-Options` only when it stores its cookie.",
+      "check": "An HTML response without the shared security-header helper, with `'unsafe-inline'`, with inline `style` attributes, or with loosened framing or form-action without justification.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.cshtml",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run background work that needs scoped services in its own DI scope, and dispose any context it creates before the scope.",
+      "why": "Background work has no request scope, and capturing a request scope leaks or misuses scoped services.",
+      "check": "Hosted services resolving scoped services from the root provider, or contexts outliving their scope.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fetch a URL that a tenant, client or certificate supplies only through a named `HttpClient` whose primary handler has a server-side request forgery guard connect callback, and configure `X509Chain` with `RevocationMode.NoCheck` and `DisableCertificateDownloads`, doing revocation checks through a dedicated checker.",
+      "why": "Otherwise attacker-supplied URLs, including certificate AIA and CRL endpoints, can reach internal networks.",
+      "check": "`HttpClient` calls to externally supplied URLs without the forgery guard, or `X509Chain` builds that allow online revocation or certificate downloads.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a retrieval that concurrent requests share once: key it in a `ConcurrentDictionary` of `Lazy<Task<T>>` that removes itself, bound it by its own timeout rather than a caller's token (callers use `WaitAsync`), give it its own copy of disposable inputs, and remember a failure for a configured time.",
+      "why": "Otherwise one caller's cancellation aborts everyone's retrieval, and an unreachable source costs every request a timeout.",
+      "check": "Shared fetches that use the caller's cancellation token, share caller-owned disposables, or retry a failing source on every request.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Increment a count that every replica must agree on with an atomic increment on a shared counter store, never a get-then-set, and count what is requested rather than what later succeeds.",
+      "why": "A read followed by a write loses concurrent increments.",
+      "check": "Counters read, incremented in memory and written back, or rate counters incremented only on success.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge, hash and verify a password in Unicode NFC form, and when no verifiable hash exists (unknown user, no password, lockout, attempt limit) verify against a dummy hash through the same code path so a failure takes the same time. Never set a password through `UserManager<TUser>.CreateAsync(user, password)` or `ResetPasswordAsync`.",
+      "why": "Normalization makes equivalent inputs match. The equal timing prevents account enumeration, and those `UserManager` APIs run the host's own validators instead of the shared policy.",
+      "check": "Password hashing without NFC normalization, early returns that skip hashing for a missing account, or use of those `UserManager` password APIs in a store.",
+      "scope": "domain",
+      "domain": "identity-authentication",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge every password through one shared password policy at every entry point that sets it (create, reset, change, seeding) before hashing it, and add further refusals as registered blocklists, never as a check in one caller.",
+      "why": "A check in one caller leaves the other entry points unprotected.",
+      "check": "Password-setting paths that skip the policy, or ad-hoc password checks in a single caller.",
+      "scope": "domain",
+      "domain": "identity-authentication",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a write that a background loop retries idempotent: give it an identity the store records in the same unit of work, and skip the write when that identity is already present.",
+      "why": "A save can commit and still fail at its caller (a lost acknowledgement, a timeout, a shutdown).",
+      "check": "Retried background writes with no idempotency key recorded in the same transaction.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deleting an owner, remove what it owns in the same unit of work through the change tracker, keeping foreign keys `Restrict` rather than relying on cascade delete.",
+      "why": "Owned data never outlives its owner, and the deletion stays explicit.",
+      "check": "Owner deletions that leave dependents or rely on `OnDelete(Cascade)`.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never issue `ExecuteUpdate`/`ExecuteDelete` from an Entity Framework store; stage bulk removals in bounded batches, and save each batch as one unit of work.",
+      "why": "EF InMemory doesn't support them, and they bypass the concurrency-token interceptor.",
+      "check": "`ExecuteUpdate`, `ExecuteDelete` or their async forms in store code.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Exempt public metadata endpoints that anonymous callers or caches fetch (discovery, the JSON Web Key Set) from daily quotas and billable usage metering; apply only the per-minute limits.",
+      "why": "Anonymous or cached fetches must not consume a tenant's quota or bill.",
+      "check": "Discovery or JWKS endpoints that are metered toward quota or usage.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an `IServiceCollection` `serviceCollection` (parameter, local or extension receiver) and a builder property `ServiceCollection`, never `services` or `service`, including in tests.",
+      "why": "It keeps naming uniform with the `NCode.Registration` builder shape.",
+      "check": "An `IServiceCollection` variable, parameter or receiver named `services`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

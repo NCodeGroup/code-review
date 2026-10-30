@@ -1,0 +1,95 @@
+{
+  "hash": "ae420a42a10ea48d",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0209",
+  "rules": [
+    {
+      "statement": "Make a save that adds counts or other non-idempotent increments idempotent: give each batch a sequence number and record the last applied number in the same unit of work as the data, so the store skips any batch at or below it.",
+      "why": "A save can commit and still fail at its caller (a dropped connection, a timeout, a cancelled shutdown), so retrying it without such a check counts the data twice.",
+      "check": "Look for a catch path that puts failed-save data back in memory, or retries a save that increments counts, with no per-source sequence number or checkpoint written in the same transaction.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retry numbered batches strictly in order, keeping a failed batch at the head of the queue under its original number, and don't number or commit new batches until the earlier ones are applied.",
+      "why": "The store skips any number at or below the last one applied, so if a later batch commits before an earlier one, the earlier one is lost. Holding new data back also keeps memory bounded.",
+      "check": "Look for code that renumbers a failed batch, drops it, or lets later batches flush or commit while an earlier failed batch is still pending.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prune an idempotency checkpoint only together with, or after, the data it guards, never before it.",
+      "why": "If the checkpoint is pruned first, a later retry of an already-applied batch is no longer recognized and gets counted twice.",
+      "check": "Look at retention or prune code that deletes checkpoint, marker or dedup rows with an earlier cutoff than the data they protect, or that doesn't remove them along with expired data.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use conditional upserts or set-based increments that bypass the entity's concurrency token; update through the tracked entity so that conflicting units of work can't both commit.",
+      "why": "Not every provider supports them (Entity Framework InMemory doesn't), and they skip the concurrency token that makes conflicting writes fail.",
+      "check": "Look for ExecuteUpdate or ExecuteUpdateAsync, raw SQL increments, or upserts on rows that carry a concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a hosted service whose StopAsync does final work, memoize the stop task under a lock so that every concurrent or later caller awaits the same task, and no stop returns while that work is still running.",
+      "why": "A host can be stopped twice at once (WebApplicationFactory alongside RunAsync, or StopAsync during RunAsync). The stop that returned first let its caller dispose services, including logging providers, while the other stop's final work was still using them.",
+      "check": "Look for a StopAsync that starts a final flush or cleanup every time it's called, or returns early on a second call without awaiting the work already in progress.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A final flush at shutdown must never throw: log anything it can't persist as a discarded-data warning with a dedicated event ID, and when the stop token ends its wait, log the held data as discarded and return without flushing.",
+      "why": "An exception during shutdown breaks host disposal, and logging is the only record of the data that was lost.",
+      "check": "Look for a shutdown flush that can let exceptions escape, or that drops data it couldn't persist without a warning log.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serialize a periodic background flush and the final shutdown flush with a semaphore, so the two never run at the same time.",
+      "why": "Running both at once could apply or discard the same data twice, or out of order.",
+      "check": "Look for a periodic timer flush and a StopAsync flush that touch the same queue or state without shared synchronization.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't log a periodic flush that was cancelled as a failure; log nothing and leave its batch for the next or final flush to retry.",
+      "why": "Cancellation during shutdown isn't an error, and the data is still retried, so a warning would be noise.",
+      "check": "Look for catch blocks that log OperationCanceledException from a cancelled flush as a warning or error.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

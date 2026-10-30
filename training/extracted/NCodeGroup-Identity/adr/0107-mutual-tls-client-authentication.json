@@ -1,0 +1,112 @@
+{
+  "hash": "1b9fba87b369ec95",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0107",
+  "rules": [
+    {
+      "statement": "A client authentication handler takes ownership of a token request only when the resolved client's registered `token_endpoint_auth_method` equals that handler's method. A client certificate that happens to be present must not count as an authentication attempt.",
+      "why": "Otherwise a certificate presented only for token binding by a client that authenticates some other way (for example `client_secret`) is mistaken for mutual-TLS authentication, and the two RFC 8705 methods collide with each other.",
+      "check": "Look for client-auth handlers that claim a request just because a client certificate or credential is present, without checking that the client's registered auth method matches the handler's method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Once a client authentication handler owns a request, a missing or non-matching credential must produce a conclusive `invalid_client` failure. It must not fall through to other handlers or to anonymous handling.",
+      "why": "The client registered for this method, so any failure under it is a definitive authentication failure.",
+      "check": "Look for owned-request code paths where a missing or mismatched certificate or credential returns 'not handled' or continues, instead of failing with `invalid_client`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare certificate thumbprints such as `x5t#S256` against registered values with a constant-time comparison (for example `CryptographicOperations.FixedTimeEquals`).",
+      "why": "Credential comparisons must not leak timing information.",
+      "check": "Look for thumbprint or credential byte comparisons that use `SequenceEqual`, `==` or string equality instead of a fixed-time comparison.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When computing thumbprints of stored certificates, hash the raw DER bytes directly into `stackalloc` buffers. Do not build an `X509Certificate2` for each candidate.",
+      "why": "Building a certificate object for every candidate costs allocations and native resources that a thumbprint check does not need.",
+      "check": "Look for loops over registered certificates that create `X509Certificate2` instances, or allocate hash arrays, just to compute or compare a thumbprint.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Match a certificate subject distinguished name against a configured value using RFC 4517 `distinguishedNameMatch` semantics. Do not compare DN strings directly.",
+      "why": "With `distinguishedNameMatch`, the string encoding, letter case and spacing of DN attribute values do not change the result.",
+      "check": "Look for subject DN checks done by string equality (ordinal or case-insensitive) on `Subject` or `SubjectName.Name`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For PKI mutual-TLS client authentication (`tls_client_auth`), first validate the presented certificate's chain against the client's configured trust anchors, then match identity. A client with no configured certificate identity (subject DN or SAN) must never match.",
+      "why": "Matching a subject or SAN without chain validation, or treating an empty identity as a wildcard, would let any certificate authenticate as the client.",
+      "check": "Look for `tls_client_auth` code that matches subject or SAN before validating the chain, or skips chain validation, or returns success when no identity setting is configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `tls_client_auth` client registration must configure exactly one identity setting: subject DN, or one of SAN DNS, URI, IP or email (RFC 8705 §2.1.2).",
+      "why": "RFC 8705 expects exactly one expected certificate identity per client, and ambiguous registrations must not authenticate.",
+      "check": "Look for validation or matching logic that accepts several identity settings at once, or that ORs across them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read X.509 subject alternative names through the BCL's typed `X509SubjectAlternativeNameExtension` accessors where they exist. Decode ASN.1 by hand only for GeneralName choices the BCL does not expose, such as URI and rfc822Name.",
+      "why": "The typed BCL accessors are safer and simpler than hand parsing, so manual ASN.1 decoding is kept to the gaps they leave.",
+      "check": "Look for SAN DNS or IP values extracted by hand-parsing the extension, or by parsing the formatted `Format()` string, instead of using `X509SubjectAlternativeNameExtension`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive discovery metadata such as `token_endpoint_auth_methods_supported` from the registered handlers rather than hard-coding the list.",
+      "why": "Registering a handler should advertise its method with no extra wiring, so discovery cannot drift out of sync with what the server actually supports.",
+      "check": "Look for hard-coded auth-method lists in discovery metadata, or new handlers added together with manual edits to an advertised list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

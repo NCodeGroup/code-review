@@ -1,0 +1,155 @@
+{
+  "hash": "7a11a8830865c458",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0288",
+  "rules": [
+    {
+      "statement": "When a caller's behaviour depends on a trait of a pluggable strategy, have the strategy declare that trait through a member, and never infer it from the strategy's name or identifier.",
+      "why": "A closed list of names keeps third-party strategies from getting the same behaviour; vocabularies stay open unless provably closed.",
+      "check": "Look for code that switches on or compares a method/strategy name string (e.g. `MethodName == \"tls_client_auth\"`) to decide transport or behaviour, where the strategy interface could expose a property instead.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each distinct TLS client certificate its own HttpClient handler, for example a named IHttpClientFactory client keyed by the certificate's hash. Never make one handler pick the certificate per request.",
+      "why": "SocketsHttpHandler pools connections per host, not per certificate, so a connection opened with one certificate would serve a request that needs another.",
+      "check": "Look for a shared handler or HttpClient whose client certificate is chosen per request, or for different certificates sharing one named client.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate inputs and configuration, and materialize resources, before asking IHttpClientFactory for a named client, so that nothing in handler construction can throw a configuration error.",
+      "why": "IHttpClientFactory caches an exception thrown while it builds a handler for a name, so the error would outlive its fix.",
+      "check": "Look for code in a handler-building callback (ConfigurePrimaryHttpMessageHandler, IConfigureNamedOptions<HttpClientFactoryOptions>) that can throw on bad configuration instead of only looking up values already validated.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you choose a TLS client authentication certificate from a key set, skip keys whose use is `enc`, keys without a private key, keys whose certificate is outside its NotBefore..NotAfter window, and keys whose EKU or KeyUsage extensions are present but lack clientAuth (1.3.6.1.5.5.7.3.2) or DigitalSignature.",
+      "why": "This keeps an encryption key from ever being presented and skips staged certificates until they become valid.",
+      "check": "Look for certificate selection that takes the first key with a certificate without checking key use, private-key presence, validity period, EKU and KeyUsage.",
+      "scope": "domain",
+      "domain": "tls-mtls",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you export private key parameters (for example RSA/ECDsa ExportParameters(true)) only to probe or check a key, zero the private parameter arrays afterwards.",
+      "why": "It keeps private key material from lingering in managed memory.",
+      "check": "Look for ExportParameters(true) calls with no CryptographicOperations.ZeroMemory or Array.Clear on the private fields (D, P, Q, DP, DQ, InverseQ).",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure a TLS client certificate through SslOptions.ClientCertificateContext built with SslStreamCertificateContext.Create(certificate, issuers, offline: true), so the certificate and its issuing CA chain are always presented.",
+      "why": "The certificate is then sent whatever CA list the server asks for, and certificates from an intermediate CA arrive with their chain.",
+      "check": "Look for client certificates set with ClientCertificates collections or a selection callback, or for a context built without the issuer certificates.",
+      "scope": "domain",
+      "domain": "tls-mtls",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On Windows, re-import a certificate with an ephemeral private key through PKCS#12 before you use it for TLS client authentication.",
+      "why": "SChannel cannot use an ephemeral private key for TLS.",
+      "check": "Look for certificates built with CopyWithPrivateKey or from in-memory keys and passed to TLS without a PKCS#12 re-import on Windows.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not dispose a cached certificate while a live HTTP handler may still use it. Dispose such caches only with their owning singleton or container.",
+      "why": "Disposing a certificate under a live handler breaks its handshakes.",
+      "check": "Look for eviction or disposal of cached X509Certificate2 instances that are referenced by pooled handlers.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client authenticates with mutual TLS and the provider publishes mtls_endpoint_aliases (RFC 8705 §5), send the request to the alias and use the alias URL for everything tied to the endpoint: the DPoP `htu`, the DPoP nonce cache key, and the authentication context's endpoint.",
+      "why": "Those values must match the URL actually called.",
+      "check": "Look for mTLS requests that ignore the alias map, or for DPoP htu, nonce caching or auth context that still use the non-alias endpoint.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every mtls_endpoint_aliases entry at discovery with the same rule as other provider endpoints (https, or http only on loopback), and fail discovery if any alias does not pass.",
+      "why": "An alias is an endpoint the client sends credentials to, so it needs the same transport guarantees.",
+      "check": "Look for parsing of mtls_endpoint_aliases that accepts entries without the https/loopback check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always send client_id in requests that use tls_client_auth or self_signed_tls_client_auth.",
+      "why": "RFC 8705 §2 requires it.",
+      "check": "Look for mTLS client authenticators that leave out the client_id parameter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove that TLS-level behaviour such as client certificate presentation reaches the wire with a real handshake against a server bound to loopback on an ephemeral port, not only with in-memory test servers that terminate no TLS.",
+      "why": "A loopback server on an ephemeral port is hermetic, and TestServer does not terminate TLS, so it cannot show the certificate reaches the wire.",
+      "check": "Look for TLS or mTLS features tested only through TestServer or mocks, or for test listeners on fixed ports or non-loopback addresses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw InvalidOperationException when no usable credential is configured or a credential is inconsistent (for example a certificate that does not match its private key).",
+      "why": "These are configuration errors, not runtime input errors.",
+      "check": "Look for missing or mismatched credential configuration that is reported with another exception type or silently ignored.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

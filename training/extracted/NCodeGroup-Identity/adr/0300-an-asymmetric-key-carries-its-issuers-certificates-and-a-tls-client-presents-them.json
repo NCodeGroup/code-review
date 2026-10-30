@@ -1,0 +1,41 @@
+{
+  "hash": "08b36c5e76475ed7",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0300",
+  "rules": [
+    {
+      "statement": "When building an `SslStreamCertificateContext` for a TLS client certificate, pass the certificate's issuer (intermediate) certificates as additional certificates and use `offline: true`, so the handshake carries the chain without depending on machine certificate stores or downloading intermediates through Authority Information Access.",
+      "why": "A peer that trusts only the root rejects a leaf sent on its own. Relying on machine stores fails silently where no operator installed the intermediate, such as a container or a key-management service. Online AIA fetching makes an outbound request to a URL taken from the certificate during the handshake, and it fails where egress is restricted.",
+      "check": "Look for `SslStreamCertificateContext.Create(cert, null, ...)` or calls with no additional certificates when the key has an issuer chain. Also look for `offline: false` or an omitted offline argument on a client-certificate context.",
+      "scope": "domain",
+      "domain": "tls-mutual-tls",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When taking a key's certificate from a certificate collection (for example one loaded from PKCS#12), pick the single certificate that has a private key instead of relying on position. Treat every other certificate, apart from duplicates of that one, as an issuer in the order given, and throw `ArgumentException` when no certificate or more than one certificate has a private key.",
+      "why": "PKCS#12 does not order its bags, and the key signs with the certificate that holds the private key. With zero or several private keys, it is ambiguous which certificate belongs to the key.",
+      "check": "Look for code that uses `collection[0]`, `First()` or similar as the key's own certificate without checking `HasPrivateKey`. Also flag code that silently accepts collections with zero or several private-key certificates.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Methods that materialize certificates as `X509Certificate2`/`X509Certificate2Collection` hand ownership to the caller, and a component that caches certificates (including issuer certificates) must dispose them when it is disposed.",
+      "why": "Certificates hold native resources. Issuer certificates cached alongside a client certificate are disposed with their provider, the same way the certificates are.",
+      "check": "Look for certificate collections that are cached in a disposable component but never disposed in its Dispose, and for exported certificates that the caller never disposes.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

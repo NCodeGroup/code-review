@@ -1,0 +1,102 @@
+{
+  "hash": "f9ac3188cf499095",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0144",
+  "rules": [
+    {
+      "statement": "Require a PKCE code_challenge for every authorization request whose response type issues a code, and exempt a request only when the client is confidential, an administrator has attested it implements the OpenID Connect nonce correctly, and the request carries the openid scope and a nonce.",
+      "why": "OAuth 2.1 makes the server enforce PKCE for every client. Its only exception needs per-client, per-request assurance that the nonce mechanism is used, and a request with neither PKCE nor a nonce has no protection against code injection.",
+      "check": "Look for PKCE enforcement that defaults to off, exempts clients from a deployment-wide switch or a self-registered flag, exempts requests that lack openid or nonce, or exempts public clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never let a dynamic client registration request set a security exemption flag such as a PKCE or nonce attestation; only an administrator may set it.",
+      "why": "A self-registered client must not be able to claim the assurance that OAuth 2.1 requires to come from the deployment.",
+      "check": "Look for registration request mapping that copies exemption or attestation properties from client-supplied metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the token endpoint redeems a code that has no PKCE binding, require that the token request itself authenticated the client (not `none`) and is effectively for the openid scope.",
+      "why": "Otherwise anyone who knows the client_id of a client allowed to use `none` could redeem a code with no PKCE binding, and dropping openid would remove the ID Token that returns the nonce.",
+      "check": "Look for token-endpoint PKCE checks that read only a configuration flag and ignore how the request authenticated or which scopes it is for.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not support or offer the PKCE `plain` method, and do not apply a default method when a code_challenge arrives without a code_challenge_method.",
+      "why": "OAuth 2.1 forbids `plain` and requires code_challenge_method, and RFC 9700 calls `plain` a downgrade vector.",
+      "check": "Look for `plain` constants, transformations or metadata values, or code that falls back to a default method when code_challenge_method is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default code_challenge_methods_supported to `S256` alone, and offer any other registered transformation only when an operator lists it explicitly.",
+      "why": "Registering a transformation describes a capability, and offering it is an operator decision. The interface cannot guarantee that a transformation keeps the verifier secret.",
+      "check": "Look for discovery metadata or settings defaults that list every registered strategy, or any method other than S256 by default.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate code_challenge and code_verifier against the RFC 7636 syntax (43 to 128 unreserved characters). Reject a malformed challenge or a missing challenge as invalid_request. Reject a malformed, missing or mismatched verifier, or a verifier presented for a code with no PKCE binding, as invalid_grant.",
+      "why": "RFC 7636 §4.4.1 specifies invalid_request for the authorization request. A verifier sent for a code with no binding is the PKCE downgrade described in RFC 9700 §4.8.2.",
+      "check": "Look for PKCE handling that skips the length or character-set check, returns unauthorized_client, or ignores a verifier sent for a code that has no challenge.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an OAuth protocol error that does not specify a status code as 400 Bad Request, never 200 OK.",
+      "why": "RFC 6749 §5.2 and RFC 9126 §2.3 require 400 for error responses, including those from the pushed authorization request endpoint.",
+      "check": "Look for error-response or exception-handler code paths where a protocol error without an explicit status is written with 200 or the framework default.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change narrows the set of allowed values for a persisted setting, include a data migration that removes the values that are no longer allowed from stored data.",
+      "why": "Stored values outside the new domain would otherwise stay in effect or fail validation. The ADR does this for the retired `plain` method.",
+      "check": "Look for diffs that remove an allowed setting value or constant but add no migration to clean up persisted data.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "hash": "083be314cd41e847",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0150",
+  "rules": [
+    {
+      "statement": "Model a vocabulary that a consumer, deployment or sibling package could ever need to extend as `public const string` names in a static class, compared ordinally and documented as the known values, not as an `enum`.",
+      "why": "Open vocabularies keep the library extensible; an enum fixes its members at compile time, and only editing the defining package can open it again.",
+      "check": "Look for a new public `enum` whose members a different package could reasonably want to add to, such as reasons, formats, entity kinds or scopes. Also flag name comparisons that are not ordinal.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Introduce an `enum` only when its members are fixed by something outside extension: a finite enumeration of an external specification implemented in full, the outcome set of one library-owned operation, or a mirror of a framework type. No other package could need another member, and a new member would require a library change anyway.",
+      "why": "Asking whether the package owns today's members misleads authors. The test is whether a package that is not this one could ever need to add a member.",
+      "check": "For each new enum, check whether the PR or its docs give the three-part justification. Flag enums justified only by the library owning the current members.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use `[Flags]` for a vocabulary that may grow.",
+      "why": "A flags enum fixes the bit space and the meaning of every combination, which closes the vocabulary even further.",
+      "check": "Flag new `[Flags]` enums whose members represent extensible concepts, such as scopes, entity types or capabilities.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never encode relationships among a vocabulary's members (hierarchy, cascade, compatibility, order) in a `switch`, bit mask or hard-coded chain. Declare them as registered data and let a catalog derive them.",
+      "why": "Hard-coded relationships close the behavior and topology even when the member names are strings, so extensions cannot take part.",
+      "check": "Look for a `switch` statement or expression, a mask, or an if-chain over vocabulary members that returns a parent, a next item, an order or a compatibility answer.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not choose behavior with an exhaustive `switch` over an open vocabulary. Dispatch to a strategy registered by name through a DI strategy collection or `ICollectionDataSource<T>`.",
+      "why": "Hard-coded dispatch means a member added by another package has no behavior and cannot get any.",
+      "check": "Flag a `switch` over string-name constants or a growable enum that picks an implementation. Expect a lookup by name in a resolved collection instead.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When vocabulary members carry behavior or relationships, resolve them through a catalog that validates the whole registered set when it is composed: duplicate names, dangling references and cycles.",
+      "why": "Registered data from many packages can conflict or form invalid graphs, and composing the catalog is when to catch that.",
+      "check": "Look at a new catalog or registry built from registered descriptors. Flag one that does not check for duplicate names, references to unregistered members, or cycles.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject input that names an unregistered vocabulary member instead of ignoring it or falling back to a default.",
+      "why": "An open vocabulary is still closed to unregistered input. Silently ignoring an unknown name hides errors and fails open.",
+      "check": "Flag a name lookup that skips unknown names, returns null without raising an error, or uses a default branch for an unrecognized value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist or send a vocabulary value as its name, never as an enum ordinal or integer value.",
+      "why": "An older node that meets a newer member then fails closed by name instead of misreading a number.",
+      "check": "Flag enum values stored in database columns or JSON as integers, `(int)` casts written to storage, and serializers set up without string enum conversion for persisted or wire data.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

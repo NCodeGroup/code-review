@@ -1,0 +1,87 @@
+{
+  "hash": "8ae0e0b81fde2caf",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0245",
+  "rules": [
+    {
+      "statement": "When an HTTP API request cannot proceed because stored server-side state is invalid and the caller can repair it, answer 409 Conflict with an RFC 9457 `application/problem+json` body, not 500 or 422.",
+      "why": "RFC 9110 §15.5.10 defines 409 as a conflict with current resource state that the user might resolve. A 500 means an unexpected server failure, and a 422 concerns the request content, which is fine in this case.",
+      "check": "Look for invalid stored data (for example a JsonException from parsing a persisted document) that escapes as a 500 or is mapped to 422, or a 409 that is returned without a problem-details body.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A problem response for unusable stored state names the offending resource in `detail`, tells the caller how to fix it, and carries the identifiers (scope, owner id, underlying error) as problem extensions.",
+      "why": "The caller and operator learn from the answer which document to replace, and the log carries the same names.",
+      "check": "Look for problem responses with a generic detail, no remedy, or no machine-readable extensions identifying the resource.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a cross-cutting exception to an HTTP response in one endpoint filter installed on the shared route group, not in try/catch blocks in each handler.",
+      "why": "Per-handler catches let the answers drift apart, and a handler added later would forget the catch.",
+      "check": "Look for new handlers that catch a domain exception and build the error response themselves when a filter for it exists, or for new exception mappings spread across handlers instead of a group-level filter.",
+      "scope": "domain",
+      "domain": "aspnetcore-minimal-apis",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A more specific exception added to an existing contract derives from the exception type the contract already throws, carries the identifying data as properties, and keeps the original exception as its inner exception.",
+      "why": "Existing `catch` blocks for the base type keep working, and the contract stays unchanged, while callers that need the details can read them.",
+      "check": "Look for a new exception that replaces a documented exception type without deriving from it, drops the inner exception, or puts the identifying data only in the message.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize the caller before loading or resolving state whose failure could produce an error response describing that state.",
+      "why": "A caller who may not make the request must learn nothing about the stored documents it would need.",
+      "check": "Look for resolution, parsing or loading of stored data that runs before the authorization check, so an error about that data can reach an unauthorized caller.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not silently skip stored data a request needs to compute its result; skipping is acceptable only for a write that replaces that data.",
+      "why": "A silent skip would answer with values the owner does not actually have.",
+      "check": "Look for catch-and-continue around reading stored data whose result feeds a read response, a policy decision or a dependent write.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint filter turns a known failure into an error response, log it once at Warning through a source-generated log message that has a stable event ID and the identifying fields.",
+      "why": "An operator should be able to find the same document names in the log that the caller received in the answer.",
+      "check": "Look for exception-to-response mappings that log nothing, log at Error for a known condition, or log without an event ID or identifying fields.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

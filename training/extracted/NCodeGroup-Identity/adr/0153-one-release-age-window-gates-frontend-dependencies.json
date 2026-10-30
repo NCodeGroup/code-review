@@ -1,0 +1,58 @@
+{
+  "hash": "8e599916a205b9bb",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0153",
+  "rules": [
+    {
+      "statement": "A pnpm workspace sets a `minimumReleaseAge` release-age gate in `pnpm-workspace.yaml` (three days, 4320 minutes), so every resolution a person runs is gated the same way Dependabot's is.",
+      "why": "Most compromised npm releases are found and unpublished within days. Without a workspace gate, people lock the newest version, and a version locked while still younger than Dependabot's cooldown makes every Dependabot npm version update fail.",
+      "check": "Look for diffs to `pnpm-workspace.yaml` that remove `minimumReleaseAge`, lower it, or set it to a value that no longer matches the Dependabot npm cooldown.",
+      "scope": "domain",
+      "domain": "frontend-dependencies-pnpm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "State the Dependabot npm `cooldown` explicitly in `dependabot.yml`, never set it to 0, and never make it longer than pnpm's `minimumReleaseAge` window.",
+      "why": "Relying on the unstated default would reopen a gap between the two windows if GitHub changed it. A longer cooldown lets pnpm lock versions that Dependabot then rejects. Turning the cooldown off removes a supply-chain control just to hide the mismatch.",
+      "check": "Flag an npm ecosystem entry in `dependabot.yml` that has no `cooldown`, has `default-days: 0`, or has a cooldown longer than the workspace `minimumReleaseAge`. Also flag a change to one window that isn't matched in the other.",
+      "scope": "domain",
+      "domain": "frontend-dependencies-pnpm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.github/dependabot.yml",
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a package version is needed before it passes the release-age window, add it to `minimumReleaseAgeExclude` with a comment saying why, and remove the entry once that version has aged past the window.",
+      "why": "Urgent versions should bypass the gate deliberately and only for a limited time, so the lockfile can't quietly gain versions that Dependabot's gate rejects.",
+      "check": "Flag a new `minimumReleaseAgeExclude` entry that has no explanatory comment, an exclusion that is broader than the specific version needed, and stale entries for versions that are already older than the window.",
+      "scope": "domain",
+      "domain": "frontend-dependencies-pnpm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `engines.node` advisory: do not set `engineStrict` (or `engine-strict`) in a pnpm workspace that Dependabot updates.",
+      "why": "Dependabot's updater runs a Node version of its own choosing, which may not satisfy `engines.node`. Strict engine checks would break its updates.",
+      "check": "Flag a diff that adds `engineStrict: true` to `pnpm-workspace.yaml` or `engine-strict=true` to `.npmrc`.",
+      "scope": "domain",
+      "domain": "frontend-dependencies-pnpm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/pnpm-workspace.yaml",
+        "**/.npmrc",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

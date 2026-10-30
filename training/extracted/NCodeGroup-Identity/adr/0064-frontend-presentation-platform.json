@@ -1,0 +1,120 @@
+{
+  "hash": "73407687ae2aa645",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0064",
+  "rules": [
+    {
+      "statement": "Keep presentational UI components stateless and prop-driven: they must not read from the Redux store, call RTK Query hooks or perform side effects, and may hold local state only when it is intrinsic to the control.",
+      "why": "Stateless presentational components render in Storybook and under React Testing Library without a store; putting state in them breaks that isolation and is a review failure.",
+      "check": "Look for useSelector/useDispatch, RTK Query hooks, fetch calls or effects with side effects inside shared design-system or presentational components rather than in a screen-level container.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put state and side effects in container components at the top of each screen, which wire Redux and RTK Query and pass data down to presentational components as props.",
+      "why": "Keeping state wiring in one place keeps the layers clean so each can be tested on its own.",
+      "check": "Look for store wiring spread across deeply nested components, or screens with no container that still manage server state below the top level.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Move non-trivial logic such as validation, transforms, PKCE, discovery parsing and boundary rules out of React components into UI-free service or helper modules that have their own unit tests.",
+      "why": "Logic kept in components cannot be unit-tested directly and breaks the stateless/stateful/service layering.",
+      "check": "Look for validation, parsing, crypto or transformation logic written inline in .tsx components, or new helper logic added with no direct unit tests.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use RTK Query endpoints for server state, with tag-based cache invalidation, and write hand-rolled thunks or ad-hoc fetch calls only when there is a clear exception.",
+      "why": "RTK Query gives one consistent model for server and client state, with cache tags and devtools.",
+      "check": "Look for new createAsyncThunk, raw fetch or axios calls that load or change server data and that could have been an RTK Query endpoint.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not bake environment or tier configuration (API base URLs, issuer, auth endpoints, feature flags) into the frontend bundle at build time; load it at runtime from the serving host's discovery or bootstrap document before the app renders.",
+      "why": "A bundle is built once and must run unchanged in sandbox, test and production, and build-time config invites mismatches between config and bundle.",
+      "check": "Look for import.meta.env / process.env tier values, hardcoded API or issuer URLs, or per-environment build modes used to pick endpoints.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import shared frontend workspace packages only through their public entry point (the package name), never through deep or relative paths into another package's source.",
+      "why": "Clean package boundaries let the packages be pulled out into another repository by moving folders, without rewriting source.",
+      "check": "Look for imports like '../../packages/x/src/...' or '@scope/pkg/src/internal' that cross a workspace package boundary.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take colors, typography and other brand values from the centralized theme provider tokens instead of hardcoding them in components.",
+      "why": "Theme tokens sit behind a provider so per-tenant branding can be injected later without changing components.",
+      "check": "Look for hardcoded color hex values, font families or spacing literals in components where a theme token should be used.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each shared presentational component a Storybook story.",
+      "why": "Storybook is how components are checked in isolation, and it depends on them being stateless.",
+      "check": "Look for new or changed shared presentational components that have no matching *.stories.tsx file.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the issuer in a frontend bootstrap or discovery document default to the serving tenant's configured issuer, never one taken from the request origin or Host header.",
+      "why": "Deriving the issuer from the request would let the caller control an authority value that must belong to the tenant.",
+      "check": "Look for bootstrap or discovery endpoints that build the issuer from HttpRequest.Host, Scheme or Origin instead of the tenant's issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

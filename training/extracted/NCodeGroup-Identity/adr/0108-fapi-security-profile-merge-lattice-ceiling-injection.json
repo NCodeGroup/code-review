@@ -1,0 +1,67 @@
+{
+  "hash": "b0ab31f86a33c92b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0108",
+  "rules": [
+    {
+      "statement": "Express a security profile's constraints as settings combined with commutative, idempotent merge operations (Intersect for allowed-value ceilings, Or for requirement floors, Min for lifetime ceilings), so a more specific scope in the settings cascade cannot loosen them.",
+      "why": "Because these operations are commutative and idempotent, it doesn't matter where a constraint enters the cascade, and a child tenant or client can never weaken a constraint its parent mandated.",
+      "check": "Look for profile or policy constraints applied with child-overrides-parent or last-wins merges, or written as separate imperative checks that a child scope's setting can override.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have discovery metadata and request-time enforcement read the same effective settings, not keep a separate copy of a profile's constraints for either one.",
+      "why": "With one source of truth, the advertised metadata and the enforced behavior cannot drift apart.",
+      "check": "Look for discovery documents built from hard-coded or duplicated values instead of the effective settings that the endpoints use to validate requests, or the reverse.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every load path for persisted scope settings (initial load, refresh and per-client resolution) through a single entry point that both deserializes the settings and applies any selected security profiles.",
+      "why": "With a single entry point, no load path can skip the profile and quietly run with loosened settings.",
+      "check": "Look for new or changed code that deserializes tenant or client settings directly without going through the shared deserialize-and-expand call.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under the FAPI 2.0 profile, limit signing algorithms to PS256, ES256 and Ed25519 (never the polymorphic EdDSA), client authentication to private_key_jwt, tls_client_auth and self_signed_tls_client_auth, response_type to code, and PKCE to S256; require PKCE and PAR; and cap authorization-code lifetime at 60 seconds and PAR request_uri lifetime at 90 seconds.",
+      "why": "These are the constraints the FAPI 2.0 Security Profile requires, so the OP can be configured to conform with a single switch.",
+      "check": "Check any change to the FAPI profile definition for permitted values or limits that are looser than these (for example client_secret_* or none auth, EdDSA, plain PKCE, or longer lifetimes).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the token endpoint, reject a client authentication whose method is not allowed by the client's effective token_endpoint_auth_methods_supported ceiling, and treat an empty ceiling as permitting no method.",
+      "why": "Enforcing the permitted methods makes the profile's client-authentication ceiling take effect: under FAPI 2.0 it rejects weak (client_secret_*) and public (none) authentication, and the amended decision says an empty ceiling permits nothing.",
+      "check": "Look for client authentication that accepts any method a handler can validate without checking it against the effective permitted set, or that treats an empty permitted set as unrestricted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

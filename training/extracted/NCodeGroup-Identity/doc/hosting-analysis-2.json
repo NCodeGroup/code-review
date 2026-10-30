@@ -1,0 +1,31 @@
+{
+  "hash": "f68e53a821e04ec5",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/hosting-analysis.md",
+  "rules": [
+    {
+      "statement": "Session and authentication cookies issued by a multi-tenant host must be host-only: use the `__Host-` prefix, set `Secure` and `Path=/`, and never set a `Domain` attribute.",
+      "why": "Tenants share one registrable domain, so a cookie scoped to the parent domain would let one tenant's host read or set another tenant's session.",
+      "check": "Look for cookie options (CookieOptions, CookieBuilder, cookie authentication setup) that set `Domain`, or session/auth cookie names that lack the `__Host-` prefix.",
+      "scope": "domain",
+      "domain": "multi-tenant-web-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the shared store backing replay protection (DPoP nonces, single-use proof or client-assertion `jti`s) can't be reached, the replay check must fail closed: reject the request and report not ready, never skip the check.",
+      "why": "Single-use state shared across replicas is what stops replays, so treating an unavailable store as success would let replayed proofs and assertions through.",
+      "check": "Look for catch blocks or fallbacks around shared-state or cache calls in replay or nonce validation that return success, skip validation, or fall back to in-process state when the store is unreachable, and for no health check covering that store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

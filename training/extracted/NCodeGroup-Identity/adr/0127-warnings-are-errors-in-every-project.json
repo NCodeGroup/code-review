@@ -1,0 +1,68 @@
+{
+  "hash": "37e6cee01bf66113",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0127",
+  "rules": [
+    {
+      "statement": "Never set `TreatWarningsAsErrors` to `false` in any project or `Directory.Build.props`, test projects included; every maintained project is held to zero warnings.",
+      "why": "The rule is 'code we maintain', not 'code we ship'. A build that always prints warnings teaches people to stop reading them, which hides xunit.analyzers correctness findings and NU190x vulnerability advisories.",
+      "check": "Look for `TreatWarningsAsErrors` set to false, or removed, in any .csproj or Directory.Build.props/targets, especially under tests/.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Build.props",
+        "**/Directory.Build.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not use a project-level `NoWarn` as a catch-all to silence warnings. Fix the code first. If a rule is noise for a whole tree (such as tests), add a per-rule `.editorconfig` entry with a one-line justification. For one isolated site, use a tight `#pragma warning disable`/`restore` pair with a reason.",
+      "why": "Making a relaxation name the rule and give a reason keeps the exception list auditable and reviewable, instead of hiding it in a disabled gate.",
+      "check": "Look for new `<NoWarn>` entries in project files, `.editorconfig` severity downgrades with no justification comment, and `#pragma warning disable` with no reason or no matching `restore`, or one that covers more than the offending lines.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/.editorconfig",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When calling a method whose `out` parameter is annotated `[MaybeNullWhen(false)]`, declare the receiving local as nullable. In tests, narrow a maybe-null value with `Assert.NotNull(x)` before dereferencing it, rather than using `!` or a non-nullable local.",
+      "why": "This fixes nullable warnings (CS8600/CS8602) at the source instead of suppressing them, and it removes `null!` usages.",
+      "check": "Look for non-nullable locals receiving `[MaybeNullWhen(false)]` out arguments, and for maybe-null results dereferenced in tests without a prior `Assert.NotNull`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `IDE0005` (unused `using` directives) enabled at warning severity for test code too. If a test project would otherwise need `GenerateDocumentationFile=false`, set it to `true` and suppress `CS1591` instead.",
+      "why": "Roslyn only evaluates IDE0005 when documentation file generation is on, and raises a hard error otherwise. Unused usings rot in tests just as they do in production code.",
+      "check": "Look for changes that disable IDE0005 for tests, or that set `GenerateDocumentationFile` to false in test projects.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.editorconfig",
+        "**/*.csproj",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After running `dotnet format` (for example `dotnet format style --diagnostics IDE0005`), re-run CSharpier before committing.",
+      "why": "The .NET formatter and CSharpier can disagree about the resulting layout.",
+      "check": "Look for mechanical `dotnet format` diffs whose layout CSharpier would rewrite, such as formatting that is not CSharpier-normalized.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

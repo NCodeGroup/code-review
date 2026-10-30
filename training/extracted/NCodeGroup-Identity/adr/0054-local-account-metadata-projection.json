@@ -1,0 +1,78 @@
+{
+  "hash": "059d6ca2a80ef397",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0054",
+  "rules": [
+    {
+      "statement": "By default, emit a free-form JSON metadata bag as one claim under a reserved claim type, with the whole JSON object as its value (value type `JsonClaimValueTypes.Json`). Never spread the bag's keys into top-level token or UserInfo claims.",
+      "why": "Spreading the keys of a user-writable bag lets an end user inject trusted claims such as `role` or `email_verified`, or shadow registered claims like `sub`/`aud`/`iss`. It also erases whether a value came from the owner or the server, and it loses nested JSON.",
+      "check": "Look for code that loops over a metadata JSON object's properties and adds each one as its own `Claim` to a token, ID-token or UserInfo claim set. Also look for metadata claims emitted with a plain string value type instead of the JSON value type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A custom claim-shaping handler that does flatten metadata into individual claims must namespace those claims, and must never output keys from a user-writable bag as bare top-level claims.",
+      "why": "Per-key flattening has to be a deliberate act that avoids collisions. Bare owner-writable keys could be mistaken by relying parties for server-vouched or registered claims.",
+      "check": "In claim-shaping handlers, look for claims built from user-editable profile data whose claim type is the raw key, with no namespace or prefix.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep user-asserted and server-managed metadata as separate, clearly named claims on the wire. Never merge them into one object or claim.",
+      "why": "Separate objects keep the owner-versus-server trust boundary visible, so a verifier can trust server metadata and treat user metadata as asserted only.",
+      "check": "Look for code that merges the user-writable and server-managed metadata into one dictionary or claim before emitting it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put each optional metadata or extra-claim projection into the access token, ID token or UserInfo behind its own boolean setting per destination, defaulting to `false`.",
+      "why": "Opt-in by default avoids accidentally leaking PII or authorization data. Separate booleans per destination follow the established `send_*_in_*` pattern and need no new value shape or merge rules.",
+      "check": "Look for new projections of account or profile data into tokens or UserInfo that happen unconditionally or default to `true`, or that use one combined setting listing destinations instead of per-destination booleans.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a claim type name that links the code writing a claim to the code reading it as a shared constant. Do not make it a configurable setting, and never one that can be overridden per client.",
+      "why": "The producer and the consumers read settings at different scopes (tenant versus client). A configurable name could have the producer write one name while a consumer looks for another, and the claim would silently not be emitted.",
+      "check": "Look for a reserved claim type read from options or settings, or written as a string literal repeated across several handlers instead of one shared constant.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce that server-managed metadata cannot be written by end users in the management or provisioning write path (the store layer). Do not rely on read or projection code to enforce it.",
+      "why": "Projection only reads data, so it cannot guarantee the bag is server-only. Server metadata may hold authorization-relevant data, so a user-reachable write would be a privilege escalation.",
+      "check": "In self-service or user-facing update endpoints, look for writes to server or system metadata, or for missing authorization checks that limit such writes to the server or administrators.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "hash": "6ce35c2cb3ad1db6",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0210",
+  "rules": [
+    {
+      "statement": "In a host's composition root, call `builder.Logging.ClearProviders()` and then add the logging providers explicitly (console to standard output plus EventSource), so the host does not depend on the platform-dependent defaults of `WebApplication.CreateBuilder` or `Host.CreateApplicationBuilder`.",
+      "why": "The default providers differ by platform. On Windows the Event Log provider fills the machine's Application log and throws when it is written to after disposal, which made test teardown fail at random. Logs belong on standard output.",
+      "check": "Look for a host Program.cs that uses the default builder without `ClearProviders()`, or that keeps or adds the Event Log or Debug provider as a default sink rather than the console and EventSource providers. Any extra sink must be added deliberately in that host's own composition root.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Library code must never register or remove logging providers (no `AddConsole`, `AddEventLog`, `ClearProviders` and similar in package extension methods); only the host's composition root chooses the logging sinks.",
+      "why": "When a library chooses the sinks, it takes that decision away from the host it runs in.",
+      "check": "Look for calls on `ILoggingBuilder` that add or clear providers inside library or package code (for example `IServiceCollection` or builder extension methods) rather than in a host's Program.cs.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "hash": "ead375558158d2da",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0129",
+  "rules": [
+    {
+      "statement": "Build every absolute URL the server publishes (discovery endpoints, jwks_uri, registration_client_uri, verification_uri, check_session_iframe, interaction URLs) from the tenant's configured issuer base address, never from the incoming request's scheme, Host or path base.",
+      "why": "A request with a foreign Host otherwise yields a discovery document with the correct issuer but attacker-controlled endpoints, which makes it easy to steal client secrets and authorization codes.",
+      "check": "Look for URL generation that uses HttpContext/Request (e.g. LinkGenerator.GetUriByName(httpContext, ...), Request.Host, Request.Scheme, GetDisplayUrl) to produce URLs that are published to clients, instead of going through the tenant-issuer-anchored URL seam.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive the tenant's routing host from the host component of its issuer, and don't store a separate, independently settable host or domain value for routing.",
+      "why": "OIDC Discovery §4.3 requires the issuer to be identical to the URL the document was fetched from. A second writable copy can drift from it through ordinary administration.",
+      "check": "Flag new tenant properties, columns or settings holding a routing host/domain that can be set independently of the issuer, or routing that matches against anything other than the issuer-derived host.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't persist a second independently writable copy of a value that can be derived from another stored value; compute it on write into a column that is never set on its own.",
+      "why": "A second stored copy of a derivable value is a drift hazard no matter what guards it. Having one source of truth is the only guarantee of consistency.",
+      "check": "Look for entities or schemas that add a column duplicating derivable data, with setters, API fields or migrations that let it be written independently of its source.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce tenant issuer uniqueness with a unique (filtered) database index on the normalized issuer.",
+      "why": "The issuer is the tenant's identity and is asserted in every token it mints, so a shared issuer makes two tenants' tokens indistinguishable to relying parties.",
+      "check": "Check that tenant schema or migration changes keep a unique index on the normalized issuer, and that issuers are normalized before they are stored or compared.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put a unique schema constraint on the issuer-derived tenant host; enforce host uniqueness through validation only when host-based tenant resolution is in use.",
+      "why": "Path-based tenants legitimately share a host, so a unique host index would make the path strategy unusable beyond one tenant.",
+      "check": "Flag a unique index on the derived host column, or host-uniqueness checks applied regardless of the active tenant resolution strategy.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model the tenant issuer as a first-class tenant property, not as a merged or inherited setting.",
+      "why": "A server-level issuer inherited by every tenant is meaningless. A value that has to opt out of the settings merge lattice is not a setting.",
+      "check": "Flag code that reads or writes the issuer through the settings/merge system (e.g. a tenant_issuer setting descriptor) instead of the tenant's own property.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests that assert on published URLs or Host-spoofing resistance must explicitly set a tenant issuer that differs from the request host.",
+      "why": "Without a pinned issuer, a test proving a spoofed Host cannot reach published URLs passes vacuously, because the request-derived value and the spoofed value are the same.",
+      "check": "Look for tests asserting discovery or endpoint URLs, or spoofed-Host behaviour, that don't configure an explicit issuer on the tenant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a migration replaces an independently stored value with a derived one, clear the old values instead of copying them into the new derived column.",
+      "why": "Copying keeps exactly the drift the change is meant to remove, such as rows that stay routable by a value they don't claim.",
+      "check": "Look for migrations that copy legacy column data into a new derived column instead of deriving it again from the source value or clearing it.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

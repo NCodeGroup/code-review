@@ -1,0 +1,68 @@
+{
+  "hash": "440461742fa44e8e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0302",
+  "rules": [
+    {
+      "statement": "Authenticate NuGet package publishing through nuget.org trusted publishing: exchange the job's OIDC token with `NuGet/login` for a short-lived key, and never use a long-lived NuGet API key stored as a secret.",
+      "why": "A trusted-publishing key only lasts for the job and is scoped to that workflow and environment. A long-lived key in a secret is not.",
+      "check": "Look for `dotnet nuget push` with `--api-key ${{ secrets.* }}`, or any NuGet API key secret, in a workflow. Flag a publish step that does not get its key from `NuGet/login`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split package publishing into a build job with read-only permissions, which builds, tests, packs and uploads the packages, and a separate publish job in a protected environment whose only write permission is `id-token: write`.",
+      "why": "Write-scoped credentials must stay out of the job that runs third-party build and test code.",
+      "check": "Look for a publish workflow where one job both builds or tests and pushes. Also flag a build job with write permissions, a publish job with permissions beyond `id-token: write`, or a publish job with no protected `environment:`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trigger package publishing only deliberately, from a version tag or a manual `workflow_dispatch` on `main`, never on every push or merge to `main`, and publish a tag only when the tagged commit is already on `main` or a release line.",
+      "why": "nuget.org versions are permanent, and a version per merge buries the ones a deployment needs. A tag on an unreviewed commit must publish nothing.",
+      "check": "Look for a publishing workflow triggered by `push` to branches or by `pull_request`. Also flag a tag-triggered publish that never checks the tagged commit is reachable from a protected branch.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before pushing, make the publish workflow check that all packed packages share one version, that a tag-triggered run's tag names exactly that version, and that a prerelease workflow refuses a release (non-prerelease) version.",
+      "why": "The family versions packages in lockstep, and the version that ships must be the one the tag names.",
+      "check": "Look for a publish workflow that pushes packages without checking that the package versions match each other and match the tag. Also flag a prerelease workflow that would push a stable version.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the publish job fail when every package of the version is already on nuget.org. Push with `--skip-duplicate` so a rerun completes a partial publish, and push each package's `.snupkg` symbols too.",
+      "why": "A run on an unchanged version must fail rather than report success for nothing, and a run that failed part way must be able to finish when run again.",
+      "check": "Look for `dotnet nuget push` without `--skip-duplicate`, and for no check that fails when every package of the version is already published. Also flag `.snupkg` files that are not pushed.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

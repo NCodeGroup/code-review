@@ -1,0 +1,81 @@
+{
+  "hash": "724560a225875132",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0083",
+  "rules": [
+    {
+      "statement": "By default, seed the OpenID Provider's grant-type settings with only authorization_code, refresh_token and device_code, and its response-type settings with only `code`, so that implicit and hybrid requests are rejected with `unsupported_response_type` unless an operator widens the settings.",
+      "why": "RFC 9700 and OAuth 2.1 remove or discourage implicit and hybrid front-channel-token flows, and the project is secure by default. Code paths that still exist must fail closed.",
+      "check": "Look for default settings, provider seeds or host appsettings that add `implicit` to grant_types_supported, or add `id_token`, `token` or hybrid combinations to response_types_supported. Also look for request validation that accepts these response types when they are not in the configured settings.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise and accept only `S256` as the PKCE code challenge method by default, and never offer or accept `plain`.",
+      "why": "`plain` gives weak protection. A later amendment says it cannot be re-enabled, and every authorization code is bound to an S256 challenge by default.",
+      "check": "Look for `plain` in code_challenge_methods_supported defaults or configuration, and for token or authorization validation that accepts the `plain` method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise only asymmetric signature algorithms for tokens that cross a trust boundary (ID token, UserInfo and access token signing), and exclude symmetric HS256/HS384/HS512. Keep symmetric algorithms only on the client-to-server legs (request object signing and token endpoint auth signing for client_secret_jwt).",
+      "why": "Tokens that cross a trust boundary must not be symmetrically signed. client_secret_jwt legitimately uses a symmetric key on the client-to-server leg.",
+      "check": "Look for id_token/userinfo/access_token signing algorithm lists built from all registered algorithms without filtering out symmetric keys, for any setting that lets HS* be used for these tokens, and for symmetric algorithms wrongly removed from token_endpoint_auth or request_object signing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build discovery metadata and request-time enforcement from the same settings source, so that whatever is advertised is exactly what is accepted.",
+      "why": "Using one source of truth means widening a setting both advertises and accepts a capability, with no second switch to forget. Conformance profiles fail on anything advertised that the OP will not deliver.",
+      "check": "Look for discovery fields hard-coded separately from the settings used in validation, and for validation that checks a different list or flag than the one discovery publishes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every metadata field that OpenID Connect Discovery requires (for example subject_types_supported) a default, so it is never omitted, and never advertise a capability the provider does not implement.",
+      "why": "A missing required field, or a capability that is advertised but not delivered, breaks OpenID Foundation Config OP conformance.",
+      "check": "Look for new or changed discovery settings where a required field has no default, and for advertised values (grant types, subject types, algorithms) that have no implementation behind them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship secure, narrow defaults through the settings defaults, and leave capabilities that are still permitted for operators to widen through host configuration. Do not hard-code a capability out or add a separate enable mechanism.",
+      "why": "Host configuration is applied last and overwrites defaults, so a narrower default keeps the capability available to operators without any new mechanism.",
+      "check": "Look for new feature flags or switches that duplicate settings overrides, and for code that removes a permitted capability outright when it should only narrow the default value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

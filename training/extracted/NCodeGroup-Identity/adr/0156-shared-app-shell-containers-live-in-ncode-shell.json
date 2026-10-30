@@ -1,0 +1,120 @@
+{
+  "hash": "47bff648319759ae",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0156",
+  "rules": [
+    {
+      "statement": "Keep the presentational component package stateless and free of store imports, and keep the state and configuration packages free of UI imports; put stateful containers that wire both into a dedicated shell package or into the app.",
+      "why": "Presentational components must render without a store in Storybook and unit tests, and a UI dependency in the state package would pull a UI framework into a UI-free layer.",
+      "check": "Look for store hooks, store providers or state-package imports added to the presentational UI package, and for Material UI or React component imports added to the store or config packages.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Move a stateful container into the shared shell package once a second app needs it, rather than copying it into each app, and leave a container only one app uses in that app.",
+      "why": "Copies of the same container drift apart, and their tests had already diverged, so a fix should only have to land once.",
+      "check": "Look for a new container, hook or bootstrap module in an app that duplicates one in another app or in the shell package, and for a single-use container moved early into a shared package.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a container its async dependencies, such as a loader function taking an AbortSignal, as props instead of having it import and call a module function directly.",
+      "why": "Tests can then pass their own loader instead of mocking a module, and callers that load differently can still use the container.",
+      "check": "Look for shared containers that call a fetch or loader module function directly inside an effect, and for tests that use module mocking (vi.mock/jest.mock) to control such a load.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a React effect that runs an async load, list the loader as an effect dependency, abort the in-flight load when the effect re-runs or the component unmounts, and drop any result or error that settles after it is no longer the current load.",
+      "why": "Only the current load may report state. A load that ignores its abort signal and settles late, or a StrictMode remount, must not overwrite newer state.",
+      "check": "Look for async effects that leave the loader out of the dependency list, have no AbortController or cleanup, or call setState or dispatch without checking that the load is still current.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tie an error from an async load to the loader that produced it, so that replacing the loader clears the error without a separate state reset, and let state that arrives by another route win over a load that is in flight or has failed.",
+      "why": "A failure belongs to the loader that caused it, and configuration already in the store should not be hidden by a stale loading or error state.",
+      "check": "Look for error state that stays visible after the loader prop changes, or that is cleared only by an explicit reset, and for load results that overwrite state that has already been populated.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Render a stateful container's loading and error views through a stateless presentational component that has Storybook stories, instead of building them inline in the container.",
+      "why": "This matches the container/screen split, so the views can be shown and tested without a store.",
+      "check": "Look for gate or container components that build loading or error markup inline, or new screen components added without stories.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep each app's main.tsx as its explicit composition root, with createRoot, the store Provider and the root gates written out there, and do not hide them inside a mount helper.",
+      "why": "Hiding the Provider would hide the requirement that the gate sits inside it, just to save a few lines per app.",
+      "check": "Look for helpers that wrap createRoot together with the Provider and gates, and for app-identity bindings (surface name, origin) placed in separate per-app modules instead of main.tsx.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/main.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a library default environment values such as the page origin (location.origin) and the global fetch, rather than making every app write a binding module that only passes them in.",
+      "why": "Per-app binding modules that differ by one string are duplication, and the page origin is the serving host for every bundle.",
+      "check": "Look for app modules that only wrap a library function to supply location.origin, fetch or a constant name.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Type a string vocabulary that the host side treats as open as the known literals plus `(string & {})`, not as a closed union, unless it is provably closed.",
+      "why": "A closed union makes every new value an edit to the library, while the open form still autocompletes the known names.",
+      "check": "Look for TypeScript string literal unions for names that the backend maps through an open dictionary (surfaces, kinds, types) and that have no `| (string & {})`.",
+      "scope": "domain",
+      "domain": "typescript",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

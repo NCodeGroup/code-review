@@ -1,0 +1,115 @@
+{
+  "hash": "3ab9f61aa857f302",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0063",
+  "rules": [
+    {
+      "statement": "Persist bearer tokens such as registration access tokens and initial access tokens only as a salted hash used as the lookup key, never as plaintext.",
+      "why": "The plaintext token must not be stored at rest. The authorization-code and device-code grants already follow this rule, and the grant store hashes keys for free.",
+      "check": "Look for token values written to storage, logs or entities in plaintext, or a second ad-hoc hashing path instead of the hash-keyed grant store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Spend a single-use credential such as an RFC 7591 initial access token only after every validation check on the request has passed and immediately before the result is persisted, so a refused request leaves it unspent.",
+      "why": "A registration refused for any other reason must not burn the caller's token. An already spent, expired or revoked token is answered with invalid_token (401).",
+      "check": "Look for the consume call placed before metadata validation, or a missing consume, or a consume that is not checked for false. A false result should map to invalid_token/401.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give minted initial access tokens a bounded expiry (one day by default, at most thirty days) and reject a requested lifetime above the maximum with a 400.",
+      "why": "Initial access tokens are short-lived and single-use, unlike registration access tokens. The response must always report when the token expires.",
+      "check": "Look for initial access tokens minted without an expiry, a lifetime with no upper bound, or a response that leaves out the expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave an anonymous or open write endpoint (such as dynamic client registration) disabled by default, and merge its enabling flag with boolean AND so a child scope cannot re-enable what a parent disallows.",
+      "why": "Correct-by-default forbids shipping an anonymous write endpoint as the baseline, because open registration is an abuse and DoS vector.",
+      "check": "Look for an allow-anonymous setting that defaults to true, or that merges with OR or override semantics across server/tenant/client levels.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When authenticating an RFC 7592 management call, look up the bearer registration access token and confirm that the client_id bound in it matches the client_id in the route.",
+      "why": "The registration access token is bound to one specific client and is presented without a client_id. Without the match, one client's token could manage another client's registration.",
+      "check": "Look for management handlers that validate the token exists but never compare its bound client_id with the route parameter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate dynamically registered client metadata as RFC 7591 requires: default grant_types to authorization_code and response_types to code, require at least one redirect_uri for grant types that use a redirect, require each redirect URI to be absolute with no fragment, and return invalid_redirect_uri or invalid_client_metadata on failure.",
+      "why": "RFC 7591 defines these defaults and error codes, and URIs that are not absolute or carry a fragment are unsafe redirect targets.",
+      "check": "Look for a missing redirect_uris check for authorization_code or implicit, relative URIs or URIs with fragments being accepted, missing defaults, or generic error codes in place of the RFC 7591 ones.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a self-registered backchannel_logout_uri to be an absolute https URI without a fragment, and reject it with invalid_client_metadata otherwise.",
+      "why": "A logout_token must not travel in clear, and the spec permits http only for confidential clients the OP explicitly allows.",
+      "check": "Look for dynamic registration accepting an http or relative backchannel_logout_uri, or one with a fragment.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a registered frontchannel_logout_uri to be an absolute URI without a fragment whose scheme, host and port match a registered redirect URI, and require post_logout_redirect_uris to be absolute without fragments.",
+      "why": "OpenID Connect Front-Channel Logout and RP-Initiated Logout require this, and the server answers violations with invalid_client_metadata.",
+      "check": "Look for a front-channel logout URI accepted without comparing its origin with the redirect URIs, or logout URIs accepted that are relative or carry a fragment.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return generated secret material (client_secret, initial or registration access tokens) only in the create response, and never in later read or update responses.",
+      "why": "Only a hash is stored, so the plaintext can't be reproduced. Secrets are revealed once on create.",
+      "check": "Look for GET/PUT responses that try to include client_secret or registration_access_token, or for plaintext secrets kept so they can be returned later.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

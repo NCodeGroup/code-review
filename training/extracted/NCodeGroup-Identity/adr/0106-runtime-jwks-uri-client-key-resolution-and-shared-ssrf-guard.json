@@ -1,0 +1,122 @@
+{
+  "hash": "faea6679224fb0be",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0106",
+  "rules": [
+    {
+      "statement": "Route every server-initiated outbound HTTP fetch of a client- or user-supplied URL through a dedicated named HttpClient whose ConnectCallback applies the shared SSRF guard, pins the socket to the validated resolved IP, and disables automatic redirects.",
+      "why": "Fetching a client-supplied URL is a textbook SSRF sink. One fetch had used a plain unnamed HttpClient that followed redirects with no SSRF control, which left a confused-deputy gap.",
+      "check": "Look for new code that fetches a URL taken from client metadata, a request parameter or registration data using an unnamed or plain HttpClient, an HttpClient without the SSRF-guard ConnectCallback, or a handler with AllowAutoRedirect left enabled.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add any configuration option, flag or allow-list that re-permits private, loopback, link-local, CGNAT, unique-local, multicast, reserved or other IANA special-use addresses in the outbound SSRF guard; extension points may only block more addresses.",
+      "why": "The special-use address floor is a fact, not a deployment opinion. Re-permitting any of it is an SSRF footgun, and no knob may weaken a security control below its safe baseline.",
+      "check": "Flag options or filter logic that can allow an address the hardcoded floor blocks. Also flag filter-composition logic that blocks an address only when all checks agree; it should block when the floor or any filter blocks.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound every outbound fetch of a client-supplied URL: require an absolute https URI, apply a wall-clock timeout and a response-size cap, and honor an optional host allow-list.",
+      "why": "Without these limits, a client-controlled URL can hang the server, exhaust its memory, or reach unintended hosts.",
+      "check": "Look for outbound fetches of client-supplied URLs that accept http or relative URIs, have no timeout, read the full body without a size limit, or ignore the configured allowed-hosts setting.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a per-client setting overrides a server-wide security limit, treat it only as a tighter ceiling: intersect allow-lists, and take the minimum of numeric limits such as timeouts, size caps and cache durations.",
+      "why": "These per-client settings are ceilings. A client must never loosen the server's limits.",
+      "check": "Look for code that merges per-client and server settings so that the client value simply replaces the server value, or that takes the maximum or union where a limit could be loosened.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When fetching a remote client key set (jwks_uri) fails because it is unreachable, oversized, disallowed or malformed, log a warning and fail closed by using only the locally known keys; never throw out of the resolver and never grant access.",
+      "why": "A missing key set should simply make signature verification fail. A fetch error must not turn into an exception path or an authentication bypass.",
+      "check": "Look for key-resolution code that propagates fetch exceptions, returns a permissive result, or skips signature verification when the remote fetch fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When importing a fetched JWK Set, skip any JWK with an unsupported kty or malformed key material instead of failing the whole set.",
+      "why": "One bad key should never break a key set that is otherwise usable.",
+      "check": "Look for JWK Set import loops that throw or return failure for the whole set when a single key cannot be parsed or has an unsupported kty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Convert runtime-fetched JWKs into key objects through the existing shared secret import and serialization pipeline, not with new RSA/EC parsing code.",
+      "why": "Reusing the pipeline keeps parsing, validation and the key-type taxonomy consistent with inline key import.",
+      "check": "Look for new code that parses JWK RSA or EC parameters directly with RSA.ImportParameters, ECDsa.ImportParameters or similar instead of calling the shared importer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that verifies a client-signed JWT, such as client_assertion or a JAR request object, must get the client's verification keys from the key-resolver service, not read the client's stored keys directly.",
+      "why": "Reading stored keys directly ignores keys the client publishes at jwks_uri, so assertions signed with those keys can never validate.",
+      "check": "Look for client-assertion or request-object validation code that reads the client's stored secret-key collection directly instead of calling the key resolver.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register replaceable public extension seams with TryAddSingleton, and register additive multi-implementation extension points with TryAddEnumerable, so that deployments can override or extend them.",
+      "why": "Seams like the key resolver and the address filters are meant to be overridable or extensible through DI.",
+      "check": "Look for public seam registrations that use AddSingleton, which prevents overriding, or multi-implementation extension points registered in a way that replaces or duplicates implementations.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cache a successfully fetched remote key set per URI with an absolute expiration bounded by the configured cache duration.",
+      "why": "Caching keeps verification from fetching on every request, and the bound still lets clients rotate keys.",
+      "check": "Look for jwks_uri-style fetches made on every validation with no cache, or caches without an absolute expiration or not keyed by URI.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

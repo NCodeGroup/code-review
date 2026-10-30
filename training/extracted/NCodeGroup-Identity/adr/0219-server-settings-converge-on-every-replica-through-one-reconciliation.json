@@ -1,0 +1,139 @@
+{
+  "hash": "eee394d7e451b5e4",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0219",
+  "rules": [
+    {
+      "statement": "A message broadcast between replicas to announce a change carries only an identifier as a hint, never the changed state, and each receiver re-reads the committed state from the store.",
+      "why": "A broadcast message may be lost, repeated or late, so it can only tell a replica to read the store; that way a replica always serves what the store committed.",
+      "check": "Look for broadcast/pub-sub payloads that serialize documents, settings or entity state for receivers to apply directly, instead of an identifier followed by a store read.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a post-commit refresh or change announcement best-effort: catch and log its failure, and never let it fail a write that has already committed.",
+      "why": "The write has committed. Polling remains the fallback for a lost notification, so failing the response would misreport the outcome.",
+      "check": "Look for post-commit notification, broadcast or cache-refresh calls whose exceptions propagate out of the write handler and turn a committed write into an error response.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a cache whose invalidation depends on at-most-once change notifications an absolute expiration, not a sliding one.",
+      "why": "A replica that misses a notification keeps a busy entry indefinitely under sliding expiration, so disabled or deleted entities stay in service. An absolute lifetime bounds how long stale state can live.",
+      "check": "Look for SlidingExpiration (or similar sliding options) on caches of entities that other replicas invalidate through broadcast messages, with no absolute lifetime to bound them.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a subscriber may have missed change notifications (on first subscribe or on a restored connection), evict or re-read everything those notifications would have invalidated.",
+      "why": "Delivery is at most once. A replica that was disconnected during an announcement otherwise keeps stale cached state.",
+      "check": "Look for broadcast subscribers or handlers that ignore reconnect or resubscribe events, with no path that clears the cache or re-reads the store after a gap.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reconcile state derived from settings by checking invariants against the current effective state, not by replaying a before/after diff captured from a write.",
+      "why": "Configuration reloads and deployments change effective settings without any write, so diff-driven jobs never run for them. Jobs that carry diffs also lose work on restart.",
+      "check": "Look for derived-state updates (key seeding, cache rebuilds, validations) that run only from a write handler's comparison of old and new documents, with nothing that handles a configuration change.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run long full-scan passes in their own hosted service rather than as jobs on a shared in-process job dispatcher.",
+      "why": "A long pass holds the dispatcher's worker ahead of time-sensitive deliveries, and a queued job's state is lost on restart.",
+      "check": "Look for walks over all tenants or entities queued on a shared in-process dispatcher or job queue.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a background process writes back a bookkeeping value to a row that users also write, update only that column and only if the row's concurrency token is unchanged since the process read it.",
+      "why": "Otherwise the background record could overwrite a concurrent user write.",
+      "check": "Look for background or reconciliation writes that save the whole entity, or that update without a concurrency-token condition.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key a lease or deduplication marker for work driven by a state change on both the row's concurrency token and the state fingerprint, so that returning to an earlier state counts as new work.",
+      "why": "A fingerprint alone would skip a return to an earlier state, even though entities created in between were reconciled only against the other state.",
+      "check": "Look for lease or 'already processed' keys built only from a content hash or state value, with no version or concurrency token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a fingerprint of a settings set deterministically: order entries by name and string lists in ordinal order before hashing.",
+      "why": "Replicas that see the same change must produce the same fingerprint to share one lease and to recognize that there is nothing to do.",
+      "check": "Look for hashes over dictionaries, sets or lists that are enumerated without an explicit ordinal sort.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pass over many tenants or items, log an item that fails and continue with the next one instead of aborting the pass.",
+      "why": "One bad tenant must not stop reconciliation for every other tenant.",
+      "check": "Look for loops over tenants or entities in background passes where an exception from one item ends the whole loop, or is swallowed without being logged.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change cannot be refused (such as a configuration reload or deployment) and it invalidates stored entities, report each affected entity and its violations in a warning log, and do not refuse to start.",
+      "why": "Refusing to start would let one entity stop every replica and tenant. A report names the entities that will fail, which would otherwise go unnoticed.",
+      "check": "Look for configuration-change paths that silently leave stored entities invalid, or that throw at startup because of one invalid entity.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a lazily built service to handlers and background services through a dependency-free singleton registry or accessor that waits until the service exists, rather than through a dependency on the services that build it.",
+      "why": "Background services and handlers in other packages can then reach the service without pulling in its construction graph or creating dependency cycles.",
+      "check": "Look for hosted services or handlers that inject a provider or factory only to get an already-materialized instance, or that build it themselves.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

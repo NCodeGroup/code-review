@@ -1,0 +1,41 @@
+{
+  "hash": "872c60a816e17043",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity review of #320",
+  "rules": [
+    {
+      "statement": "Represent HTTP status codes in public models and internal responses as `int`, not the `System.Net.HttpStatusCode` enum, so a status the enum does not name is kept exactly as it was sent.",
+      "why": "The enum is too restrictive: it can't name every status a server might send, such as 499.",
+      "check": "Look for properties, constructor parameters or fields typed `HttpStatusCode` in new models or response wrappers. The exception is code that has to build or read `HttpResponseMessage` directly.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare integer HTTP status codes against the `Microsoft.AspNetCore.Http.StatusCodes` constants (for example `StatusCodes.Status200OK`), not against `(int)HttpStatusCode.X` casts or numeric literals.",
+      "why": "Microsoft already provides a constants class with the int value of every HTTP status code, and the casts were repeated in several places.",
+      "check": "Look for `(int)HttpStatusCode.` or bare numbers like `200` compared against status codes in source and tests.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hard-code policy such as the preference order of signing algorithms. Expose it as an options property, use the existing constant definitions (not string literals) for the default, and validate the configured values: reject blank entries, `none` and duplicates.",
+      "why": "The preference order is policy that users should be able to configure. Hard-coded string literals copy constants that already exist.",
+      "check": "Look for static readonly arrays of algorithm names or similar policy lists written as string literals in the implementation, with no matching option. Also check that the new option has validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

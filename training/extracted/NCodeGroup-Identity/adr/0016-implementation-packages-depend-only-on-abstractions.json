@@ -1,0 +1,52 @@
+{
+  "hash": "6b3e2a4c7df2283e",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0016",
+  "rules": [
+    {
+      "statement": "An implementation package's project must reference only `*.Abstractions` packages, never another implementation package.",
+      "why": "A direct implementation-to-implementation reference pulls in the other package's whole dependency closure, makes the package boundary meaningless, and stops the two implementations from being replaced independently.",
+      "check": "Look for a `ProjectReference` or `PackageReference` in a non-Abstractions, non-composition-root `.csproj` that points at a package whose name doesn't end in `.Abstractions`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an implementation needs a capability owned by another package, take that capability's interface from its `*.Abstractions` package by constructor injection instead of using the other package's concrete type.",
+      "why": "Routing collaboration through an abstraction resolved from DI gives a shared behavior exactly one concrete binding and stops callers from reaching it by different concrete paths.",
+      "check": "Look for code that creates or names a concrete type from another implementation package (`new DefaultFoo(...)`, or a `DefaultFoo` constructor parameter) where the `IFoo` abstraction should be injected.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each implementation package registers its own concrete types with `TryAdd*` from a single `DefaultRegistration` extension block on `IServiceBuilder<TMarker>`, and only the composition root references the implementation packages and calls their registrations.",
+      "why": "Keeping intra-family wiring in the `NCode.Registration` composition keeps the reference graph a flat fan-out from the composition root, not a web, and lets consumers replace any binding.",
+      "check": "Look for implementation-package registrations that use `Add*` instead of `TryAdd*`, that are spread outside the package's single `DefaultRegistration` file, or that register another package's concrete types. Also look for a non-root package calling another implementation package's registration method.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship a new capability shared by more than one implementation as an `*.Abstractions` package with the interface, options and value types, paired with an implementation package that holds the `DefaultFoo` concrete type.",
+      "why": "A lone implementation package, or one that mixes contract and implementation, forces consumers to take its dependencies and invites a forbidden direct implementation reference.",
+      "check": "Look for a new package used by multiple implementations that has no matching `.Abstractions` package, or that puts interfaces and their concrete implementations in the same package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

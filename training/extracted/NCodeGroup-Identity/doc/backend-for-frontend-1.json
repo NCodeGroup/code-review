@@ -1,0 +1,196 @@
+{
+  "hash": "162fb0ff51b138cf",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity docs/backend-for-frontend.md",
+  "rules": [
+    {
+      "statement": "Never send an access token, refresh token or ID token to the browser in any endpoint response body, header or cookie; the browser only ever gets an opaque HttpOnly session cookie.",
+      "why": "Injected script has the same privileges as the application, so any token that reaches the browser can be stolen and replayed from anywhere until it expires.",
+      "check": "Look for BFF endpoints, user/session responses, headers or cookies that serialize or echo access_token, refresh_token, id_token or token-derived values to the client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add options that disable or weaken security checks such as the callback binding, cookie attributes, CSRF checks, the return-URL allow-list or the forwarding allow-list; a setting may only select an equal or stronger behavior.",
+      "why": "The library must be correct by default with no off switch.",
+      "check": "Look for new boolean options or configuration values like Disable*/Allow*/Skip* that turn off a security check, or that accept a value weaker than the default (for example SameSite=Lax/None, non-HttpOnly cookies, wildcard allow-lists).",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put tokens, session handles, user subjects or request paths into events, metrics, traces or logs.",
+      "why": "Telemetry must be observable without leaking credentials or personal data.",
+      "check": "Look for log messages, metric tags, Activity tags or audit-event properties that include token values, cookie/session handles, sub claims or request paths.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a session cookie an opaque random handle of at least 256 bits, store the server-side record under a hash of the handle rather than the handle itself, and encrypt the stored tokens with a key derived from the handle.",
+      "why": "A dump of the session store alone must yield no usable token or session handle.",
+      "check": "Look for session stores keyed by the raw cookie value, tokens stored in plaintext, handles shorter than 32 random bytes or generated without a cryptographic RNG, or tokens placed in the cookie itself.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep login transaction state and session state as server-side records keyed by random values instead of protecting them into cookies with an ASP.NET Core Data Protection key ring.",
+      "why": "Server-side records remove the need to share and rotate a Data Protection key ring across replicas.",
+      "check": "Look for IDataProtector/IDataProtectionProvider or ISecureDataFormat used to put login state (state, nonce, PKCE verifier) or session data into cookies or query parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A confidential OAuth client must use authorization code with PKCE S256, authenticate with private_key_jwt or mTLS, use PAR when the provider advertises it, validate the RFC 9207 iss response parameter, and bind tokens with DPoP when the provider supports it.",
+      "why": "These are the current best-practice protections that RFC 10017 and the OAuth security BCP require for a BFF client.",
+      "check": "Look for authorization requests without code_challenge or with the plain method, client_secret auth used as the default, PAR ignored when pushed_authorization_request_endpoint is present, callbacks that skip the iss check, or DPoP unused when dpop_signing_alg_values_supported is advertised.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not implement implicit, hybrid or resource-owner password flows, token-mediating backends that hand access tokens to the browser, or front-channel logout and session-management iframes.",
+      "why": "These flows and mechanisms either expose tokens to script or depend on third-party cookies that browsers are removing.",
+      "check": "Look for response_type values containing token or id_token, grant_type=password, endpoints that return access tokens to the SPA, or front-channel logout/check_session iframe support.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refresh a session's tokens single-flight across the whole cluster, so only one replica can redeem a given refresh token at a time (for example under a lease in shared state).",
+      "why": "A rotated refresh token presented twice trips reuse detection, and the provider then revokes the whole token family.",
+      "check": "Look for refresh logic that only uses an in-process lock or no coordination, so concurrent requests on different replicas can redeem the same refresh token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept a session cookie on API calls only when the request carries the required static custom anti-forgery header and passes Fetch Metadata checks; deny cross-origin calls by default and set the cookie with SameSite=Strict, HttpOnly and Secure.",
+      "why": "Cookie-authenticated APIs are exposed to CSRF, and RFC 10017 §6.1.3.3 describes this layered defense.",
+      "check": "Look for cookie-authenticated endpoints that skip the header or Sec-Fetch-* checks, CORS policies that allow arbitrary origins with credentials, or session cookies without SameSite=Strict/HttpOnly/Secure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Forward API calls only to destinations on an explicit allow-list: normalize the path before matching, strip inbound credentials such as cookies and Authorization headers, and never follow redirects.",
+      "why": "RFC 10017 §6.1.3.6 requires this so the forwarder can't be used to send the user's access token to an attacker-chosen destination.",
+      "check": "Look for proxy code that builds destination URLs from request input without allow-list matching on a normalized path, forwards the inbound Cookie/Authorization headers, or uses an HttpClient with automatic redirects enabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End a session on the server at logout: revoke the refresh token, delete the server-side session, run RP-initiated logout, and also end matching sessions when a back-channel logout_token arrives.",
+      "why": "Sessions have to be revocable on the server instead of waiting for tokens to expire.",
+      "check": "Look for logout handlers that only clear the cookie without revoking the refresh token or deleting the stored session, or that leave back-channel logout_tokens unhandled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use only standard discovery metadata and endpoints in a relying-party or protocol client; do not add adapters or branches for one particular identity provider.",
+      "why": "The client must work with any compliant OpenID Provider.",
+      "check": "Look for hard-coded provider-specific URLs, issuer checks that branch behavior, or vendor-specific parameters in place of metadata-driven behavior.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model extensible vocabularies (for example token requirements, client-authentication methods or claim shaping) as registered strategies, not closed enums or switch statements, unless the set is provably closed.",
+      "why": "Every vocabulary should be open for extension (ADR-0150).",
+      "check": "Look for new enums with switch/if chains that pick behavior for a set others could reasonably extend, where a registered strategy interface would fit.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose service contracts as public interfaces with internal Default* implementations, make options classes sealed and give them validators, and compose registrations through the IServiceBuilder<TMarker> idiom.",
+      "why": "These are the family's shared conventions for libraries.",
+      "check": "Look for public concrete implementation classes, unsealed options classes or options without an IValidateOptions validator, and registration extensions that skip the builder idiom.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library package should reference only the abstractions packages of other libraries; only the composition-root package references their implementations.",
+      "why": "Dependencies point one way, so hosts choose implementations and libraries stay decoupled (ADR-0016).",
+      "check": "Look for project references from a library to another library's implementation package (not .Abstractions) when it isn't the turnkey composition root.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Relying-party and protocol-client packages must not depend on OpenID Provider server packages.",
+      "why": "A client used in front of another OP must pull in no server code.",
+      "check": "Look for client or BFF project references to server/OP authentication packages.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

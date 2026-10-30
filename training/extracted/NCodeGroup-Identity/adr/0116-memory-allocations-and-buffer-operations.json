@@ -1,0 +1,162 @@
+{
+  "hash": "a7f34b672fec9037",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0116",
+  "rules": [
+    {
+      "statement": "APIs that produce binary data take ReadOnlySpan<T>/ReadOnlyMemory<T> inputs and write results into a caller-supplied IBufferWriter<T> (generic `ref TWriter destination` where TWriter : IBufferWriter<byte>, allows ref struct), or use a Try…(Span<T>, out int bytesWritten) shape for fixed sizes, instead of returning a newly allocated byte[].",
+      "why": "Returning fresh byte[] from encode/export paths adds GC allocation pressure on per-request hot paths, and the writer-first shape lets the caller decide how memory is allocated.",
+      "check": "New or changed public/internal methods that return byte[] or take byte[] parameters for binary data instead of span/memory inputs and an IBufferWriter or Span destination.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rent transient working buffers and accumulating writers from NCode.Buffers BufferFactory (CreatePooledBufferWriter, Rent, CreatePinnedArray) instead of `new byte[]`, `new ArrayBufferWriter<byte>`, MemoryStream, or a bare ArrayPool<byte>.",
+      "why": "A single pooled convention keeps buffer handling uniform and low on allocations, and secret zeroing is wired into the pool.",
+      "check": "`new byte[`, `new ArrayBufferWriter<byte>`, `new MemoryStream()` or `ArrayPool<byte>.Shared` used for transient buffers in new code.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass the sensitivity flag explicitly when renting buffers: `isSensitive: true` for secret material (keys, passwords, nonces, plaintext) and `isSensitive: false` for non-secret bytes such as public keys and wire buffers.",
+      "why": "Sensitive rentals come from the pinned SecureMemoryPool, which zeroes memory. Secrets put in ordinary pools or arrays stay on the GC heap and can be copied when the heap is compacted.",
+      "check": "Buffers holding secrets rented with isSensitive: false or with no flag, or secret bytes held in a plain byte[]/shared pool.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero secret buffers when they are released, either through the secure pool lifetime or with CryptographicOperations.ZeroMemory, and never leave secret bytes in unzeroed managed arrays.",
+      "why": "A byte[] holding key material cannot be pinned or reliably zeroed, so copies of it stay in process memory until GC runs.",
+      "check": "Temporary buffers holding keys, passwords or plaintext that are not disposed through a secure lease or cleared with CryptographicOperations.ZeroMemory before going out of scope.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode sensitive text to bytes once, at the earliest boundary, using NCode.Buffers SecureEncoding, and pass it down the call chain as ReadOnlyMemory<byte> instead of passing a string and re-encoding it in leaf methods.",
+      "why": "Encoding a secret string again in leaf methods creates more unzeroed copies of the secret.",
+      "check": "Secrets passed as string through several layers and encoded with Encoding.UTF8.GetBytes deep in the call chain.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Get a contiguous span from a possibly multi-segment pooled Sequence<byte> with the shared GetSpanLease(isSensitive:) helper, never with .ToArray() or by concatenating segments manually.",
+      "why": "The helper leases a contiguous view without allocating and zeroes it when the data is sensitive.",
+      "check": "`.ToArray()` on a ReadOnlySequence/Sequence, or hand-written loops that copy segments to flatten a sequence.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define ReadOnlySpan<byte> constants from valid UTF-8 text with `u8` literals, not Encoding.UTF8.GetBytes at runtime.",
+      "why": "u8 literals are compile-time constants and do not allocate.",
+      "check": "Encoding.UTF8.GetBytes(\"literal\") used for constant byte values, stored in a static field or computed per call.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reinterpret byte buffers as spans of same-endianness blittable values with zero-copy MemoryMarshal APIs (Cast, AsBytes, CreateSpan with Unsafe.As), guarded by BitConverter.IsLittleEndian with a BinaryPrimitives.ReverseEndianness fallback, instead of per-element copy loops or BitConverter array allocations.",
+      "why": "MemoryMarshal reinterpretation avoids copies and allocations, and the JIT-constant endianness guard keeps it correct on every architecture.",
+      "check": "Per-element BinaryPrimitives or BitConverter.GetBytes loops that convert whole buffers, or MemoryMarshal.Cast/AsBytes used without a BitConverter.IsLittleEndian guard and fallback.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse or write a defined little-endian wire encoding with BinaryPrimitives.Read/Write…LittleEndian, not MemoryMarshal.Read<T>/Write<T>, which use the host's endianness.",
+      "why": "BinaryPrimitives is correct on every architecture and costs almost nothing.",
+      "check": "MemoryMarshal.Read<T>/Write<T> used for fixed-endianness wire or format data without an endianness guard.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Optimizations in constant-time cryptographic code must not add data-dependent branches or data-dependent memory accesses, and test vectors or differential tests must cover these primitives.",
+      "why": "Constant-time behavior and correctness always come before speed in cryptographic primitives.",
+      "check": "Optimized crypto or math primitives that add branches or table lookups indexed by secret data, or that change without test vector or differential test coverage.",
+      "scope": "domain",
+      "domain": "cryptography",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never place `stackalloc` inside a loop body; allocate once before the loop and clear or overwrite the buffer on each iteration.",
+      "why": "Stack memory from stackalloc is only reclaimed when the method returns, so a stackalloc inside a loop grows with every iteration and can overflow the stack.",
+      "check": "`stackalloc` expressions inside for/foreach/while bodies.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Use `stackalloc` only for small, fixed, constant-bounded sizes, and rent from a pool for caller-controlled or unbounded lengths.",
+      "why": "An unbounded or caller-controlled stackalloc size can overflow the stack.",
+      "check": "stackalloc sized by a parameter, an input length or any value without a small constant upper bound.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hash multi-part inputs by feeding each part to IncrementalHash.AppendData (or the hash instance's AppendData) instead of concatenating them into a combined buffer.",
+      "why": "Hashing the parts in sequence avoids allocating a combined buffer, which matters for large messages.",
+      "check": "Code that concatenates prefix and message into a new array or buffer only to hash it in one call.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a pooled writer that is a `using` local must be passed by ref to a `ref TWriter` API, keep the `using var` for disposal and pass a separate non-using IBufferWriter<byte> local that refers to the same writer.",
+      "why": "A using local cannot be passed by ref (CS1657), and this pattern keeps disposal intact.",
+      "check": "Pooled writers whose `using` was removed so they can be passed by ref, leaving them undisposed.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

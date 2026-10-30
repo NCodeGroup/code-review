@@ -1,0 +1,98 @@
+{
+  "hash": "be571231cc2c3fda",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0111",
+  "rules": [
+    {
+      "statement": "Route every server-initiated outbound HTTP call to a client-controlled URL (fetches and POST deliveries alike) through a dedicated named HttpClient whose handler uses the shared SSRF guard as its ConnectCallback and sets AllowAutoRedirect = false; never use the default unnamed HttpClient for such calls.",
+      "why": "The default client follows redirects and applies no SSRF control, so a client registering an internal URL can turn the server into a confused deputy that probes internal services or follows a redirect to an internal host.",
+      "check": "Look for outbound calls to client-registered URLs (e.g. logout or notification endpoints, metadata URIs) made with IHttpClientFactory.CreateClient() with no name, or with a named client whose handler lacks the guard ConnectCallback or leaves auto-redirect enabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read an outbound HTTP response body from a client-controlled URL through the shared capped reader, which rejects early on Content-Length and still enforces the byte cap while streaming; never call ReadAsStringAsync/ReadAsByteArrayAsync on it with no cap.",
+      "why": "An uncapped read lets an oversized response exhaust resources (DoS), and Content-Length can be missing or false, so it is only a hint.",
+      "check": "Look for ReadAsStringAsync, ReadAsByteArrayAsync or an unbounded stream copy on responses fetched from client-supplied URLs, or for a copied capped-read helper instead of the shared one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A fetch of a client-supplied URL that reads the response body must require an absolute https URI, apply the optional host allow-list, and bound the request with a timeout CancellationTokenSource linked to the caller's token.",
+      "why": "These checks give every client-URL fetch the same SSRF and resource bounds, so no fetch path is left weaker than the others.",
+      "check": "New or changed client-URL fetches that accept non-https or relative URIs, skip the allow-list check, or have no linked timeout token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a timeout is enforced with a linked CancellationTokenSource, turn only the timeout's cancellation into a domain error and let the caller's own cancellation propagate unchanged.",
+      "why": "Real caller cancellation must not be masked as a fetch failure.",
+      "check": "catch (OperationCanceledException) blocks that turn every cancellation into an error without checking whether the caller's token requested it.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Surface specific validation failures (wrong status code, content type, or size) as their own errors instead of wrapping them in a generic 'failed to fetch' error.",
+      "why": "Masking the specific failure hides the real cause from callers and from diagnostics.",
+      "check": "Broad catch blocks around a fetch-and-validate sequence that replace a specific validation error with a generic one.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Stream-reading helpers should write into a caller-supplied IBufferWriter<byte> (a pooled NCode.Buffers writer) and the caller should parse directly from the resulting ReadOnlySequence<byte>, rather than the helper allocating and returning a byte[].",
+      "why": "This avoids an intermediate array allocation, allows zero-copy JsonDocument.Parse, and returns the buffers to the pool.",
+      "check": "Helpers that return byte[] or string from a body read, or callers that call ToArray() on the buffer before parsing when a sequence-based parse is available.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add settings or options for a behavior that has no real need for them (for example, body size or timeout settings on a call whose response body is thrown away).",
+      "why": "Settings that serve no purpose add speculative public surface.",
+      "check": "New public options or settings properties on code paths where they control nothing that matters.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Extract logic that is duplicated across consumers into one shared service instead of copying it, and register that service with TryAddSingleton so hosts can override it through DI.",
+      "why": "Duplicated copies drift apart, and TryAdd registration keeps the shared seam replaceable.",
+      "check": "The same helper method copied into several classes, or a shared service registered with AddSingleton instead of TryAddSingleton.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

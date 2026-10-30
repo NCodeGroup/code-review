@@ -1,0 +1,142 @@
+{
+  "hash": "8ce1304eb5352403",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0256",
+  "rules": [
+    {
+      "statement": "Every HTML response the server writes must set its security headers through the single shared page-security writer, never by writing Content-Security-Policy or framing headers by hand.",
+      "why": "A page that writes its own headers carries only what its author remembered (the form_post page shipped without frame-ancestors), and one writer makes each page's policy a testable value.",
+      "check": "Look for new or changed code that writes a `text/html` response (Content-Type text/html, IResult writing HTML) without calling the shared page-security writer, or that sets `Content-Security-Policy`/`X-Frame-Options` headers directly.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A server-rendered page's Content-Security-Policy must start from `default-src 'none'` and explicitly set `base-uri`, `form-action` and `frame-ancestors` (to `'none'` unless the page needs more), listing only the sources the page actually uses.",
+      "why": "`frame-ancestors`, `base-uri` and `form-action` do not fall back to `default-src`, so leaving them out leaves the page frameable or open to injected bases and forms.",
+      "check": "Check CSP strings or policy objects for a missing `default-src 'none'`, a missing `frame-ancestors`, `base-uri` or `form-action`, or sources broader than the page needs.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not rely on ASP.NET Core antiforgery's `X-Frame-Options: SAMEORIGIN` for clickjacking protection; assign (not append) the page's framing and security headers explicitly on every response.",
+      "why": "Antiforgery adds the header only when it stores a cookie, so a returning browser gets the page with no framing policy, and appending would leave antiforgery's weaker value in place.",
+      "check": "Look for HTML pages that set no framing policy of their own and so depend on antiforgery, or that use `Headers.Append` for security headers instead of assigning them.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow inline or bundled scripts and styles with a per-response nonce (cryptographically random, at least 16 bytes, Base64Url) or, for a fixed inline script, its SHA-256 hash; never use `'unsafe-inline'`, and never allow scripts by origin alone.",
+      "why": "`'unsafe-inline'` admits every injected script or style, and an origin-based `script-src` admits any script that origin serves; a nonce or hash admits only what this response carries.",
+      "check": "Flag `'unsafe-inline'`, `script-src 'self'` used without a nonce or hash, a nonce that is reused across responses or not created with a cryptographic RNG, or a dynamic inline script with no nonce or hash.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Substitute the CSP nonce only into the trusted template segments of a page, never into values rendered from request, user or tenant data.",
+      "why": "If the nonce were written into a rendered value, injected markup could receive a valid nonce and execute.",
+      "check": "Look for nonce-placeholder replacement done over the whole output string, or over strings that contain HTML-encoded user or tenant data.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pages the server writes must refuse framing (`frame-ancestors 'none'` plus `X-Frame-Options: DENY`), except pages framed by design, which may allow only the origins that need them (for example the relying party's origin for a form_post response, or any origin for the OIDC check_session_iframe).",
+      "why": "Any page an arbitrary origin can frame is a clickjacking target (RFC 9700 §4.16), especially login and consent pages.",
+      "check": "Look for a new page that allows framing, uses `SAMEORIGIN` or a wildcard frame-ancestors, or opens framing wider than the origins the protocol requires.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every CSP directive name against `[a-z0-9-]+` and every source against the CSP Level 3 grammar (printable `!` to `~`, excluding `;` and `,`), throwing on bad input, so no value can start another directive.",
+      "why": "A source containing `;` or `,` could inject an extra directive and weaken the policy.",
+      "check": "Look for CSP values built by concatenating unvalidated strings (logo URLs, origins, configuration values) into the header.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Omit `form-action` only on pages whose form submissions redirect on to a client's URIs; every page without a form must carry `form-action 'none'`.",
+      "why": "Browsers check `form-action` against every redirect after a submission, so client redirect targets cannot be listed, but a page with no form has no reason to allow any submission.",
+      "check": "Look for a page that has no form but sets an open or missing `form-action`, or that leaves `form-action` open with no client-bound redirect to justify it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In markup served under a strict CSP, hide or lay out elements with attributes such as `hidden` rather than inline `style` attributes.",
+      "why": "A strict `style-src` without `'unsafe-inline'` blocks inline style attributes.",
+      "check": "Look for `style=\"...\"` attributes in server-generated HTML for pages that use a strict CSP.",
+      "scope": "domain",
+      "domain": "web-html-pages",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send `Referrer-Policy: same-origin` (not `no-referrer`), `X-Content-Type-Options: nosniff` and `Cache-Control: no-store, no-cache, max-age=0` with `Pragma: no-cache` on authentication pages.",
+      "why": "`same-origin` keeps issuer URLs from reaching other origins while still letting same-origin form and fetch POSTs send a real `Origin`; `no-referrer` makes them send `Origin: null`.",
+      "check": "Flag `Referrer-Policy: no-referrer` or missing nosniff or no-store headers on authentication or consent pages.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not send `Cross-Origin-Opener-Policy` with a value other than `unsafe-none` on an OpenID provider's interactive pages.",
+      "why": "It severs `window.opener` and breaks pop-up sign-in (`display=popup`).",
+      "check": "Look for `Cross-Origin-Opener-Policy` headers added to login, consent or authorization pages.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

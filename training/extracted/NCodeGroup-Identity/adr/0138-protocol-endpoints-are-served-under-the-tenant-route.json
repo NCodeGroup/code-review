@@ -1,0 +1,77 @@
+{
+  "hash": "193cfcdede224394",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0138",
+  "rules": [
+    {
+      "statement": "Map a tenant's OpenID protocol endpoints, including the discovery document, under the tenant route, so that every endpoint, and `/.well-known/openid-configuration` in particular, is served beneath the tenant's issuer; never map them at absolute root routes when the tenant route is non-empty.",
+      "why": "OpenID Connect Discovery §4.3 requires the discovery document to be fetched from beneath the issuer. A path-based tenant strategy also cannot resolve the tenant when `{tenantId}` is missing from the matched route.",
+      "check": "Look for protocol endpoint groups mapped with an empty or hard-coded prefix while the issuer or base address includes a tenant path, and for endpoint routes that leave out the tenant route parameter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a tenant's configured issuer as its base address exactly as configured, and never append the tenant route or any other request-derived path to it.",
+      "why": "The issuer is the tenant's complete identity and already names where the tenant is served. Appending to it creates doubled paths (e.g. `/acme/acme`) and makes the issuer depend on the request.",
+      "check": "Look for code that builds endpoint URLs or a base address by combining a configured issuer with the tenant route, the path base or other request data.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at host startup that a statically configured issuer ends with its tenant route (a path base may come before it), and stop the host when it does not.",
+      "why": "An issuer that does not end with the tenant path would publish a discovery document from which nothing can be served, so the misconfiguration should fail fast.",
+      "check": "Look for static tenant or issuer configuration that is not checked at startup against the strategy's tenant route.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When binding a route template from the current request, pass the binder a new dictionary holding only that template's own parameters, never the request's live `RouteValueDictionary`.",
+      "why": "`TemplateBinder` consumes the values it binds and writes any leftovers as a query string. Passing the live values strips parameters from the request, which breaks links generated later, and can leak unrelated parameters into the URL.",
+      "check": "Look for `TemplateBinder.BindValues` (or similar binding APIs) called with `HttpContext.Request.RouteValues` or `GetRouteData().Values` directly instead of a filtered copy.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate absolute endpoint URLs with `LinkGenerator`, passing the request's route values as ambient values so that route-prefix parameters such as `{tenantId}` carry over, rather than supplying those prefix values explicitly at each link site.",
+      "why": "Ambient values are the routing system's own way to carry a route prefix's values. They only fill parameters of the target route and never become query parameters, while explicit values at each site would require every site to know the prefix.",
+      "check": "Look for link generation that leaves out ambient values (so prefix parameters are lost) or that manually adds tenant/prefix route values at individual call sites.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave out the scheme's default port when building the authority of a published URL, so that published URLs keep the issuer's own form (e.g. `https://op.example`, not `https://op.example:443`).",
+      "why": "An explicit default port makes published endpoint URLs differ from the issuer's form even though they name the same origin.",
+      "check": "Look for authority or URL construction that always writes the port (e.g. `Uri.Port` used unconditionally, or `UriBuilder` with an explicit port) instead of omitting it when `Uri.IsDefaultPort` is true.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

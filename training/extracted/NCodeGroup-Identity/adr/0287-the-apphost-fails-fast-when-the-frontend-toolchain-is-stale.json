@@ -1,0 +1,51 @@
+{
+  "hash": "2129d384533b1660",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0287",
+  "rules": [
+    {
+      "statement": "A startup or precondition check collects every problem it finds and throws one exception that lists them all and names the command that repairs them, instead of failing on the first problem or letting dependent components fail later.",
+      "why": "One report lets one run of the repair command fix everything, and failing fast at startup is better than components exiting one by one with errors that only show up in their logs.",
+      "check": "Look for validation code that throws on the first failed condition when there are several, that only logs, or whose message gives no remedy.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep top-level `Program.cs` composition-only: put startup logic such as environment checks or path setup in `internal` types and call them from `Program.cs` in one line, not as local functions.",
+      "why": "The ADR moved a local function out of `Program.cs` into internal types so that `Program.cs` stays composition-only and the logic can be tested.",
+      "check": "Look for local functions, loops, file or process access, or validation logic written directly in `Program.cs`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put ambient environment access (environment variables, filesystem roots, spawning external processes) behind thin `internal virtual` passthrough members that are excluded from coverage, so tests can override them.",
+      "why": "Tests can then cover the logic without depending on the real machine, and the untestable passthroughs stay out of coverage.",
+      "check": "Look for logic that calls `Environment.GetEnvironmentVariable`, `Process.Start` or fixed filesystem paths directly, with no overridable seam, or for seams that contain logic beyond a passthrough.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code spawns an external process to probe the environment (for example `tool --version`), give the call a bounded timeout.",
+      "why": "The ADR runs `node --version` with a 10-second timeout so a hanging tool cannot stall startup.",
+      "check": "Look for `Process.Start` or `WaitForExit` calls without a timeout or cancellation.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

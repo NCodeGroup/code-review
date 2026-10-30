@@ -1,0 +1,63 @@
+{
+  "hash": "ac7c58a37ac4f294",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0014",
+  "rules": [
+    {
+      "statement": "A create endpoint must not accept the identifier of the resource it creates in its request body; the server generates the id and returns it in the 201 Created response body and Location header. References to existing parent resources may still come from the caller.",
+      "why": "Caller-supplied ids tie what an operator typed once to every foreign key, issued token and audit record, so the resource can never be renamed. They also push format, validation and collision handling onto every caller.",
+      "check": "Look for create-request DTOs that carry an Id field for the new resource, or handlers that save a caller-provided id as-is. Also check that the 201 response returns the generated id and a Location header. Exceptions decided by a later ADR, such as a creator-named tenant id or a requested-id field for DCR-style client_id, are allowed.",
+      "scope": "domain",
+      "domain": "rest-management-api",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate externally exposed resource identifiers as opaque 128-bit CSPRNG values, base64url-encoded with no prefix or structure, through the injected crypto service rather than with Guid.NewGuid(), snowflakes or type-prefixed formats.",
+      "why": "A Guid has only about 122 bits and is not guaranteed to come from a CSPRNG. A snowflake reveals creation time and ordering, and a prefix adds parsing surface. Using the injected crypto facade also keeps id generation testable by mocking.",
+      "check": "Look for Guid.NewGuid(), snowflake or IdGen values, or hand-built prefixed strings used as public domain ids, and for static random calls in place of the injected crypto service's URL-safe key generator with 16 bytes.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never expose internal surrogate primary keys, such as snowflake long ids, on the wire; use only the opaque string identifier externally.",
+      "why": "Surrogate keys are internal storage keys and are never exposed. Snowflakes would also reveal creation time and ordering.",
+      "check": "Look for DTOs, routes or responses that include the entity's long surrogate key.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not treat an identifier's unguessability as access control; every resource access must still go through an explicit resource-based authorization check.",
+      "why": "Relying on an opaque id for protection is security through obscurity. If it ever carries real weight, the authorization itself is the bug.",
+      "check": "Look for endpoints that load or change a resource by id without an authorization check, or code comments arguing that an id is safe because it cannot be guessed.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the uniqueness validation and the database unique constraint on generated identifiers, even though they are high-entropy random values.",
+      "why": "A collision is astronomically unlikely, but the check is cheap and keeps the invariant enforced defensively instead of assumed.",
+      "check": "Look for diffs that remove uniqueness checks from validators, or unique indexes from mappings or migrations, on the grounds that the ids are now random.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

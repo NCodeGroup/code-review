@@ -1,0 +1,90 @@
+{
+  "hash": "8811ad8f5f4cfed5",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0042",
+  "rules": [
+    {
+      "statement": "Nest tenant-bound management resources under a `/tenants/{tenantId}/…` route segment and open the ambient tenant scope from that route value, not from host/path/static protocol tenant resolution.",
+      "why": "Protocol-resolved scope means something different under each hosting strategy and can only ever reach the request's resolved tenant. The route segment is the one fail-closed scope source that behaves the same under every strategy.",
+      "check": "Look for a new or changed tenant-bound management endpoint (clients, settings, secrets, owners) mounted outside `/tenants/{tenantId}/`, or a management request whose tenant scope comes from the resolved protocol tenant instead of the matched route's `{tenantId}`.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The management API filter must not resolve a protocol tenant. It opens an ambient tenant scope only when the matched route has a `{tenantId}` value and otherwise leaves the request unscoped.",
+      "why": "Resolving a protocol tenant on the central-admin surface makes the scope depend on the hosting strategy. It also clashes by name with the `tenantId` route parameter under dynamic-by-path resolution.",
+      "check": "Look for the protocol environment or tenant-resolution filter being applied to the management group, or for a scope that is opened even when the route has no tenant segment.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Control-plane management endpoints (the tenant collection, servers) must have no `{tenantId}` route segment and must run without a tenant scope. A server id must never be used to open a tenant scope.",
+      "why": "Control-plane resources are global and are administered from the server root, so scoping them to a tenant would be wrong.",
+      "check": "Look for a server or tenant-collection endpoint that has a tenant segment, opens a tenant scope, or passes a server id into a tenant scope.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the same route `{tenantId}` value both to open the data scope and as the tenant node in the authorization (ownership) check.",
+      "why": "When both come from one value, the data scope and the authority check cannot diverge. The query filter still limits reads to that tenant even if a handler forgets to filter.",
+      "check": "Look for authorization that evaluates a tenant id taken from the body, the resolved protocol tenant, or a different parameter than the one that opened the scope.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Management handlers must read the target tenant from the route id and must not read the ambient protocol-resolved tenant (such as the request's OpenID context tenant). This includes reconstructing merged or effective views.",
+      "why": "The ambient resolved tenant is not necessarily the tenant named in the route, so an admin could not address or preview other tenants.",
+      "check": "Look for management or effective-settings handlers that read the current context's resolved tenant instead of the route id. An effective-settings tier should merge from the route-identified rows: server, then server merged with the tenant's rows, then that result merged with the client's rows.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A create for a tenant-bound resource takes its owning tenant from the ambient scope, which comes from the route `{tenantId}`. It must not take the tenant from a field in the request body.",
+      "why": "This keeps the property that a request body carries no tenant identifier, while the path makes the owning tenant explicit.",
+      "check": "Look for request DTOs or handlers that accept a tenant id in the body to set ownership on a tenant-bound entity.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compose route groups declaratively. Each group node declares its own prefix, filters, endpoints, child groups and the services those endpoints need, and the whole tree is registered by registering its root group. Do not keep a separate imperative list mapping endpoints to groups.",
+      "why": "Declaring a group's hierarchy and contents in one place gives a single composition mechanism, with no separate endpoint-to-group mapping to keep in sync.",
+      "check": "Look for endpoints registered against a group outside that group's own ConfigureServices, or for new uses of the replaced imperative group-provider tier.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

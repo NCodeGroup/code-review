@@ -1,0 +1,544 @@
+{
+  "hash": "4b0c3a118f93ad45",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity csharp-production.instructions.md",
+  "rules": [
+    {
+      "statement": "Give every type or member you add, or whose signature or behavior you change, a `///` XML doc comment, but do not add doc comments to undocumented code you are not otherwise touching.",
+      "why": "New and changed API must be documented. Existing undocumented code is grandfathered so that diffs stay focused.",
+      "check": "New or modified public/internal types or members without `///` docs, or a diff that adds docs to untouched members.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a substantive `<summary>` that explains purpose, behavior and context, and use `<param>`, `<returns>` and `<remarks>` where they make things clearer.",
+      "why": "Terse one-liners don't give consumers enough context.",
+      "check": "Summaries that only restate the member name, or missing param/returns docs on members where they would help.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write `///` and `//` comments (and ADR prose) in the timeless present: no change-relative words such as 'now', 'new', 'previously', 'no longer', 'renamed' or 'moved', and never name a removed or renamed identifier.",
+      "why": "History belongs in Git and the CHANGELOG. The text has to read correctly to someone who never saw the earlier version.",
+      "check": "Comments containing temporal or change-relative wording, or ones that refer to a deleted or superseded type or member by its old name.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the `<summary>` opening tag, its content and its closing tag on separate lines, even when the summary is short.",
+      "why": "This keeps doc comment formatting consistent.",
+      "check": "A single-line `/// <summary>...</summary>`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Start a property summary with 'Gets or sets', 'Gets' or 'Sets' to match its accessors, and use 'Gets' for an `init`-only property.",
+      "why": "This is the Microsoft convention. An init-only property is read-only after construction.",
+      "check": "`{ get; init; }` or get-only properties documented as 'Gets or sets', or property summaries that don't follow the convention.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In comment prose, spell protocol terms in their spec form, such as 'JSON Web Token (JWT)', JSON, JOSE, OAuth and OpenID, rather than in the Pascal casing of a .NET type name; cref targets and identifiers keep their real casing.",
+      "why": "Documentation should use the specifications' canonical terminology.",
+      "check": "Prose in `///` or `//` comments that writes 'JsonWebToken', 'Json', 'Jose', 'Oauth' or 'OpenId' as a plain word.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep internal citations out of `///` doc comments: no ADR numbers, no relative links to repository docs, no internal implementation names. Put any ADR reference in a `//` comment instead.",
+      "why": "`///` text ships to consumers through IntelliSense XML and OpenAPI schema descriptions, where internal references are meaningless or broken.",
+      "check": "`///` comments containing 'ADR-', `<see href=\"../`, persistence column names or internal type names.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For a minimal-API handler's XML docs to reach its OpenAPI operation, the defining project must reference Microsoft.AspNetCore.OpenApi and call `AddOpenApi`, the handler must be `internal` or more visible, and the endpoint must not use `.WithSummary()` or `.WithDescription()`. Use either fluent metadata or XML docs, never both.",
+      "why": "The XML-comment source generator silently ignores private handlers and skips operations that carry fluent metadata.",
+      "check": "Private handlers with `///` docs, endpoints that combine `.WithSummary`/`.WithDescription` with XML docs, or handler projects that have docs but no OpenApi reference or `AddOpenApi` call.",
+      "scope": "domain",
+      "domain": "aspnetcore-openapi",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare every non-200 response with `.Produces(StatusCodes.StatusNNN)` or `.Produces<T>()` in the endpoint map; a `<response code>` doc only describes a response entry that already exists.",
+      "why": "A `<response>` XML tag does not add a response to the OpenAPI document.",
+      "check": "`<response code=\"4xx\">` or other non-200 response tags with no matching `.Produces` call on the endpoint.",
+      "scope": "domain",
+      "domain": "aspnetcore-openapi",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register OpenAPI document transformers in the library's composition-root `AddOpenApi(...)`, and expose the document and the API-reference UI through the library's map extension, never in the host.",
+      "why": "The document describes the server's own endpoints, so a host should never have to redeclare them.",
+      "check": "Hosts that add OpenAPI transformers, security schemes or reference UI mappings themselves.",
+      "scope": "domain",
+      "domain": "aspnetcore-openapi",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never pre-fill secret material in a served OpenAPI document or API-reference renderer configuration outside Development, but wire the login flow itself in every environment.",
+      "why": "Anyone who can load the reference page can read a pre-filled secret. The flow is still needed for the production bootstrap path.",
+      "check": "Client secrets or passwords written into OpenAPI or renderer config without a Development environment guard, or an auth flow that is only wired in Development.",
+      "scope": "domain",
+      "domain": "aspnetcore-openapi",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To pre-fill an x-www-form-urlencoded field in an API-reference renderer, mark it `required` and set its schema `Default` in a document transformer instead of relying on examples, and put credentials where the client's registered authentication method expects them.",
+      "why": "Renderers build form bodies from the schema. They leave optional properties unchecked and ignore named examples.",
+      "check": "Transformers that use `example` to pre-fill form fields, or a credential location that doesn't match the client's auth method (for example body credentials for a `client_secret_basic` client).",
+      "scope": "domain",
+      "domain": "aspnetcore-openapi",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode password and secret bytes into a `SecureMemoryPool<byte>` rental with `SecureEncoding.UTF8` (NCode.Buffers), never `ArrayPool<byte>` with manual zeroing or `Encoding.UTF8.GetBytes`. Encode once at the earliest boundary and pass `ReadOnlyMemory<byte>` down the call chain.",
+      "why": "Pinned buffers that are zeroed on return keep plaintext secrets from lingering on the GC heap.",
+      "check": "`Encoding.UTF8.GetBytes` on secrets, `ArrayPool` plus `CryptographicOperations.ZeroMemory` for secrets, or secret strings re-encoded in leaf methods.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Supply a secret that comes from configuration pre-encoded as Base64Url and decode it straight into a secure buffer.",
+      "why": "Then a raw process-memory snapshot of the configuration string does not expose the plaintext directly.",
+      "check": "Configured secrets read as plaintext strings and then encoded to bytes.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode and decode text only through `SecureEncoding.UTF8` or `SecureEncoding.ASCII` (NCode.Buffers), never `Encoding.UTF8`, `Encoding.ASCII`, `Encoding.Default` or an overload that takes no encoding. Pass `contentEncoding: SecureEncoding.UTF8` to `TypedResults.Text` and `TypedResults.Content`.",
+      "why": "The standard encodings silently substitute '?' or U+FFFD for invalid input. The strict encodings throw.",
+      "check": "Uses of `Encoding.UTF8/ASCII/Default`, `File.ReadAllText(path)`, `new StreamReader(stream)` or `new StringContent(text)` without an encoding, or `TypedResults.Text` without `contentEncoding`.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "For binary and key material, take `ReadOnlySpan<byte>` or `ReadOnlyMemory<byte>` as input and write output into a caller-supplied generic `ref TWriter` (`IBufferWriter<byte>`, `allows ref struct`) rather than returning a new `byte[]`.",
+      "why": "This avoids allocations and lets callers control where sensitive bytes live.",
+      "check": "New methods that return `byte[]` for binary or key data, or that take `byte[]` parameters where a span would do.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rent pooled writers with `BufferFactory.CreatePooledBufferWriter(isSensitive:)` (`true` for secrets), not a bare `ArrayBufferWriter<byte>`, and flatten a multi-segment sequence with `GetSpanLease(isSensitive:)` instead of concatenating manually.",
+      "why": "Pooled writers avoid allocation, and the sensitive ones are pinned and zeroed.",
+      "check": "`new ArrayBufferWriter<byte>()` for transient buffers, or manual concatenation of `Sequence<byte>` segments.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allocate a `byte[]` (`new byte[]`, `.ToArray()`, `ArrayBufferWriter<T>`, `MemoryStream`, `GC.AllocateArray`) only where an external API requires an array, and then take it from a rented or pinned buffer through `MemoryMarshal.TryGetArray`. Otherwise use `BufferFactory.Rent` or a small fixed `stackalloc`.",
+      "why": "Transient arrays add GC pressure and can leave secrets on the heap.",
+      "check": "Transient `new byte[]`, `.ToArray()`, `MemoryStream` or `GC.AllocateArray` that no external API requires.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hold a secret stored in a field or kept across an `await` as a sensitive `BufferFactory.Rent(..., isSensitive: true, out Memory<byte>)` lease, never as a bare array or a `CreatePinnedArray` ref struct.",
+      "why": "`CreatePinnedArray` returns a ref struct that only works synchronously inside one method. The lease keeps the secret pinned and zeroes it on return.",
+      "check": "Secrets stored in fields or used across awaits as plain arrays.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the `out Span<T>` overload of `BufferFactory.Rent` by default, `out Memory<T>` only for a buffer kept in a field or used across an `await`, and never slice the returned buffer back to the requested length.",
+      "why": "The out buffer is already exactly the requested length.",
+      "check": "`.Slice(0, length)` or a range slice on a buffer returned by `Rent`, or `out Memory<T>` used purely locally and synchronously.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an interface method return output either as a `Span<T>`/`Memory<T>` destination plus a returned count, or as a generic `ref TWriter ... allows ref struct` writer with a sizing method beside it, not as a new array.",
+      "why": "This avoids allocation and lets callers size buffers up front.",
+      "check": "New interface methods that return `byte[]`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a compact JWS or JWE with `MemoryExtensions.Split` into a `stackalloc Range[segmentCount + 1]`, reject any other segment count, take the JWS signing input as the original span up to the end of the payload, and base64url-decode each segment into a rented buffer sized by `Base64Url.GetByteCountForDecode`.",
+      "why": "This parses tokens without allocations. The spare slot catches extra segments, and slicing the original text avoids rebuilding the signing input.",
+      "check": "`string.Split('.')` on tokens, a Range buffer with no spare slot, a signing input built by concatenation, or decoded output sliced by bytesWritten.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never hold sensitive text in a `string`. Read key and secret files as bytes into a secure buffer (`File.OpenHandle` + `RandomAccess.Read`) and process sensitive XML with `XmlWriter`/`XmlReader` over sensitive pooled buffers.",
+      "why": "Strings are immutable and cannot be zeroed, so secrets in them linger in memory.",
+      "check": "`File.ReadAllText` or other string APIs used on keys or secrets, or sensitive XML built as a string.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce a string only once, at a storage or wire boundary, with `string.Create`, never by renting a char buffer and calling `new string(span)`. Pass span inputs through a readonly ref struct state, and check the writer's written count against the length.",
+      "why": "`string.Create` writes in place and avoids an extra copy. The count check keeps a '\\0' remainder from being persisted.",
+      "check": "`new string(span)` after filling a rented char buffer, or `string.Create` callbacks with no written-count check.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On hot paths, transform identifiers into rented char spans (for example `MemoryExtensions.ToLowerInvariant(source, destination)`) instead of allocating new strings.",
+      "why": "This avoids per-call string allocations.",
+      "check": "`string.ToLowerInvariant()` or similar string-allocating transforms on per-request paths.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a capacity to collection constructors whenever the final or maximum count is known, return shared empty instances (`[]`, `FrozenSet<T>.Empty`), write `list ?? (IReadOnlyCollection<T>)[]` rather than `list ?? []`, and create collections lazily when they may stay empty.",
+      "why": "This avoids resize and empty-collection allocations. `list ?? []` allocates a new list.",
+      "check": "`new List<T>()`, `new HashSet<T>()` or `new Dictionary<,>()` with no capacity when the count is known, `?? []` on a list-typed value, or a new empty collection returned.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On per-request paths, replace LINQ (`Any`, `All`, `Where(...).ToHashSet()`) with `foreach`, and test `Count == 0` first to avoid creating a boxed enumerator.",
+      "why": "Every LINQ call allocates a delegate and an enumerator.",
+      "check": "LINQ calls in request-handling code.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Optimize cryptographic and numeric hot-path primitives aggressively (AggressiveInlining/AggressiveOptimization, unrolling, stackalloc, `MemoryMarshal`/`Unsafe` zero-copy, bounds-check elision), but never add a data-dependent branch or memory access to constant-time code, and keep the test vectors and differential tests passing.",
+      "why": "These primitives are performance-critical. Constant-time behavior and correctness are never traded for speed.",
+      "check": "Data-dependent branches or indexing added to constant-time code, or optimizations with no covering test vectors.",
+      "scope": "domain",
+      "domain": "cryptography-primitives",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never register or remove logging providers in a library; only the host's composition root chooses log sinks.",
+      "why": "Sinks are the host's decision.",
+      "check": "Library code that calls `ClearProviders`, `AddConsole`, `AddEventLog` or similar on logging builders.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log through source-generated `[LoggerMessage]` extension methods on `ILogger`, kept in a per-package `internal static partial class Log` marked `[ExcludeFromCodeCoverage]`, never through direct `ILogger.Log*` calls.",
+      "why": "Generated logging is allocation-free, strongly typed and structured.",
+      "check": "`logger.LogInformation(...)` or other direct `Log*` calls, or a Log class missing the `[ExcludeFromCodeCoverage]` attribute.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make log message templates constants with named placeholders, never interpolated or concatenated strings, and pass each value as its own type rather than a pre-built `ToString()`.",
+      "why": "This keeps logging structured, and formatting happens only when the level is enabled.",
+      "check": "`$\"...\"` or `+` in templates, or `.ToString()` on log arguments.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define event IDs as named constants in a per-package `internal static class EventIds`, based on a private `Base` constant plus an offset and named exactly like the `[LoggerMessage]` method they identify, and reference them from the attribute instead of using magic numbers.",
+      "why": "Stable, named IDs keep log filters and alerts reliable.",
+      "check": "`EventId = 1234` literals, or constants whose names don't match their log method.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each runtime package its own disjoint 1000-wide event-ID band, treat event IDs as append-only (never renumber or reuse a shipped one), and log nothing from Abstractions packages.",
+      "why": "Globally unique, stable IDs let operators key filters and alerts on a number regardless of which assembly emitted it.",
+      "check": "Changed or reused existing event ID values, IDs outside the package's band, or logging added to an Abstractions package.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Measure each signal once, through its owner: HTTP request count, latency and status through ASP.NET Core's `http.server.request.duration` (enriched via `IHttpMetricsTagsFeature`) and outbound calls through System.Net.Http. Add your own instrument only for a mechanism neither covers.",
+      "why": "Duplicate instruments for the same signal give conflicting data.",
+      "check": "New counters or histograms for request counts, latencies or outbound HTTP calls.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create meters through `IMeterFactory`, never `new Meter(...)`: one meter per package, named by a public constant, with its instruments held in one internal metrics singleton.",
+      "why": "This integrates with DI and testing and keeps instruments in one place.",
+      "check": "`new Meter(`, or instruments created at call sites.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reuse OpenTelemetry semantic-convention attribute names (such as `error.type`) where one exists, and use UCUM units: durations as histograms in seconds, counts as `{noun}`.",
+      "why": "This keeps metrics consistent and interoperable.",
+      "check": "Durations recorded in milliseconds, non-UCUM units, or custom names where a semantic convention exists.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take metric attribute values only from a vocabulary the server controls (registered names, server-chosen codes, `_OTHER`), never tenant, client, subject or address identifiers or values echoed from the request.",
+      "why": "Dimensions must stay bounded and free of identifying data. Identifiers belong in traces and logs.",
+      "check": "Metric tags set from request input or from user, client or tenant identifiers.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test every metric instrument with `MetricCollector<T>`, asserting its name, unit and attributes.",
+      "why": "Instruments are a contract that dashboards depend on.",
+      "check": "New instruments with no `MetricCollector` test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Update the metrics catalog documentation in the same change that adds or renames an instrument or attribute.",
+      "why": "The catalog is the contract that dashboards and alerts are built against.",
+      "check": "Instrument or attribute changes with no matching docs update.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trace only your own mechanisms, through one static `ActivitySource` named like the package's meter: no spans for what ASP.NET Core or System.Net.Http already traces, and no tokens, cookies, keys, subjects, client ids or paths on spans. Set `Error` status and `error.type` on failure.",
+      "why": "This avoids duplicate spans and keeps sensitive or unbounded data out of traces.",
+      "check": "Multiple ActivitySources per package, spans around HTTP handling or outbound calls, or sensitive tags on activities.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test spans with an `ActivityListener` that is filtered to a parent activity the test itself started.",
+      "why": "This keeps tests isolated from activities created elsewhere.",
+      "check": "Activity tests whose listener is not filtered to the test's own parent.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind configuration to strongly typed options classes with `services.Configure<T>(configuration.GetSection(...))`, and never read `IConfiguration` ad hoc deep in the code.",
+      "why": "Typed options are validated, testable and discoverable.",
+      "check": "`IConfiguration` injected into or indexed inside non-composition code.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Inject `IOptions<T>` for configuration fixed at startup and `IOptionsMonitor<T>` for values that can change at runtime, and make options classes sealed, with init or get-only members, concrete collections and secure defaults.",
+      "why": "Options are data types, and no setting should weaken a security control below its safe baseline.",
+      "check": "Unsealed options classes, mutable setters, interface-typed collections, insecure defaults, or the wrong options accessor for the value's lifetime.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply one shared implementation of a validation rule both to configured data and to the same data written at runtime (management API, dynamic registration, seeders), and never resolve, inside an options validator, the services that consume those options.",
+      "why": "A check that exists only for configuration lets the runtime path store exactly what startup refuses.",
+      "check": "Validation logic duplicated or present only in an `IValidateOptions`, or validators that resolve the services consuming the options.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each strategy's `IValidateOptions<T>` next to the strategy and have it skip when another strategy is selected, rather than writing one shared validator that branches on strategy codes.",
+      "why": "Then a strategy registered by another package brings its own validation.",
+      "check": "Validators that switch on strategy names.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When configuration supplies a default for a value that a runtime write omits, get it from the owning seam at write time, validate it and persist it like an explicit value, and never fill it in at read time from the request or other ambient state.",
+      "why": "This keeps later configuration changes from silently changing existing data, and avoids a second, unvalidated source for the value.",
+      "check": "Read-time fallbacks to configuration or request values for persisted fields.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a configuration seeder that writes credentials or accounts require an explicit target (such as a tenant id) whenever it has something to seed, validated at host start, and never treat an unset target as 'all'.",
+      "why": "Otherwise every tenant created at runtime would inherit the seeded credential.",
+      "check": "Seeders that apply to all targets when the target id is missing, or that have no startup validation of the target.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at host start, with `TimerPeriod.IsValid` (NCode.Time), every options period that is handed to a timer, in an `IValidateOptions<T>` whose message names the option and its configuration key.",
+      "why": "A period the timer refuses then stops the host at startup instead of faulting a hosted service after it has started.",
+      "check": "Timer or delay periods taken from options without `TimerPeriod.IsValid` validation.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

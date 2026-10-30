@@ -1,0 +1,102 @@
+{
+  "hash": "38daebd63a57eb99",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0168",
+  "rules": [
+    {
+      "statement": "Report an introspected token as active only to the party that consumes it: an access token only to a resource-server client whose resource server identifier is in the token's `aud`, a refresh token only to the client it was issued to, and every other case as `active: false`.",
+      "why": "RFC 7662 §4 and RFC 9701 §3/§5 require the server to decide whether the token is usable by the caller; otherwise a client could read what token encryption hides from it.",
+      "check": "Look for introspection paths that return active token data to any authenticated client without checking the caller against the token's audience or issuing client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An inactive introspection response contains only `active: false` and no other member.",
+      "why": "Any extra member would leak information about a token the caller is not entitled to see.",
+      "check": "Look for inactive introspection responses that also include claims, error details, or other members.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Narrow an active introspection response to the caller: reduce `aud` to the calling resource server's identifier, reduce `scope` to that resource server's scopes, and omit `scope` when none remain.",
+      "why": "RFC 7662 §4 and RFC 9701 §5 ask the server to limit the response to the caller, and other audiences' scopes are not that resource server's business.",
+      "check": "Look for introspection responses that return the token's full `aud` or `scope` claim set unfiltered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce endpoint-scoped access restrictions through opt-in endpoint metadata that a resolver checks, so a restricted principal is refused at every endpoint that has not explicitly opted in, including requests with no matched endpoint.",
+      "why": "Checking endpoint by endpoint fails open, because an endpoint added later forgets the check. Opt-in metadata fails closed.",
+      "check": "Look for restrictions implemented as per-endpoint deny checks, or resolvers that accept the restricted principal when endpoint metadata is missing.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWT introspection response (RFC 9701) uses `typ` `token-introspection+jwt`, has only `iss`, `aud` and `iat` at the top level with the result nested under `token_introspection`, and has no top-level `sub` or `exp`.",
+      "why": "With that shape the response cannot be mistaken for an access token.",
+      "check": "Look for JWT introspection responses with a different `typ`, flattened claims, or top-level `sub` or `exp`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never send a client a response weaker than its registered protection: when a client registered response encryption and asks for a plain JSON or unencrypted response, refuse with 406.",
+      "why": "A response must never be weaker than what the client registered.",
+      "check": "Look for code that falls back to an unsigned or unencrypted response when the client's registered metadata requires encryption.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return JWT introspection responses only to resource-server clients that list `application/token-introspection+jwt` in `Accept`, and refuse an ordinary client that asks for one with 406.",
+      "why": "RFC 9701 defines JWT introspection responses for resource servers only.",
+      "check": "Look for media-type negotiation that issues JWT introspection responses to non-resource-server clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When one client-authentication service serves every endpoint, mirror `token_endpoint_auth_methods_supported` and `token_endpoint_auth_signing_alg_values_supported` into the `introspection_endpoint_*` and `revocation_endpoint_*` discovery members.",
+      "why": "RFC 8414 §2 defines separate members for each endpoint, and they must match the authentication those endpoints actually accept.",
+      "check": "Look for discovery metadata that advertises token endpoint auth methods or algorithms but leaves out or diverges in the introspection and revocation equivalents.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

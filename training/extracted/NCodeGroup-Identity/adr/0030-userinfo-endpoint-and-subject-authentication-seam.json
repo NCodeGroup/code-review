@@ -1,0 +1,77 @@
+{
+  "hash": "4ee41451dd05df82",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0030",
+  "rules": [
+    {
+      "statement": "Protected resource endpoints must authenticate the caller by dispatching the shared subject-authentication mediator command, whose default handler uses HttpContext.AuthenticateAsync with the host's configured ASP.NET Core authentication scheme. They must not validate bearer tokens or other credentials inside the endpoint.",
+      "why": "Validating credentials inside the endpoint repeats work that ASP.NET Core authentication schemes already do and duplicates the subject model. The shared seam lets the host plug in bearer, DPoP, mTLS or another mechanism without changing the endpoint.",
+      "check": "Look for a new or changed resource endpoint that parses or validates an Authorization header, JWT or other credential itself, or that adds its own authentication service, when it should dispatch the shared authenticate-subject command.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add a parallel service, strategy collection or model that duplicates an existing mediator 'authenticate → disposition' command/handler pattern or an existing domain type. Reuse the existing command and type instead.",
+      "why": "A parallel service and model overlapped the existing subject-authentication type. Reusing the mediator seam keeps a single way to authenticate a subject.",
+      "check": "Look for new interfaces such as I*AuthenticationService, handler-strategy lists, or new authenticated-* model types that overlap an existing mediator command or domain type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a response's claim set is defined by the host and gated by scopes, such as UserInfo, discovery or introspection, model it as an extensible dictionary marked with [JsonExtensionData]. Do not use a fixed, strongly-typed DTO with one property per claim.",
+      "why": "The dictionary keeps the response open to enrichment, so adding a claim does not require a public API change.",
+      "check": "Look for new result types for claims-bearing endpoints that declare fixed properties for optional or host-defined claims instead of a [JsonExtensionData] dictionary.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default claims handlers for the library's endpoints, such as UserInfo, must emit only the claims the specification requires (for example `sub`). Profile, email and other user-store claims come from extra enricher command handlers that the host registers, not from the library's default handler.",
+      "why": "The library has no store of claims per user, so the claim set is a concern of the host or application. New claims are added by registering handlers, not by changing the endpoint.",
+      "check": "Look for a default claims handler that adds claims beyond the required ones, or for endpoint code that hardcodes optional claims instead of leaving them to enricher handlers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A bearer-protected resource endpoint must return 401 with error `invalid_token` when no subject is authenticated. If authentication fails, it must return that failure's error.",
+      "why": "The ADR maps the authentication result to HTTP this way for the UserInfo resource endpoint, following OpenID Connect Core 5.3.",
+      "check": "Look for a resource endpoint that returns 200 or a different error code when the caller is anonymous, or that drops the specific error from a failed authentication.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave out a noun in a type name when the enclosing namespace already supplies that context. Keep the noun only on types that are referenced across slices, where they would otherwise be ambiguous or collide.",
+      "why": "Repeating the namespace's noun is redundant and causes name collisions with general cross-slice types.",
+      "check": "Look for new types inside a feature namespace whose names repeat the namespace's noun, and so collide with or shadow a shared type that has the same meaning.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

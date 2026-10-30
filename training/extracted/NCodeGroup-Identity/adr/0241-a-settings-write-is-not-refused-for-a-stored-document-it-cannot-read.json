@@ -1,0 +1,42 @@
+{
+  "hash": "36ddc33e448a697a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0241",
+  "rules": [
+    {
+      "statement": "When validating a write by walking already-stored documents, catch the deserialization/vocabulary exception (e.g. JsonException) for a stored document that cannot be read, log a warning, and continue with the next one instead of letting it escape or counting it as a violation the write introduces.",
+      "why": "An escaping exception fails the write with 500, so one unreadable stored document would block every write. Its unreadability depends on its own contents, so the change did not introduce it.",
+      "check": "Look for loops in write validation that resolve or validate stored documents without catching the specific exception, so it can escape as a 500. Also look for code that treats an unreadable stored document as a violation introduced by the change.",
+      "scope": "domain",
+      "domain": "settings-management-api",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A write that replaces a stored document must still go ahead when the replaced document cannot be read: skip only the checks that depend on the old document, log it, and still validate the incoming document and let its failures propagate.",
+      "why": "If the write were blocked, the unreadable document could never be repaired through the API. Nothing was coherent under the old document, so there is nothing to compare against.",
+      "check": "Check that the try/catch wraps only the resolution of the replaced or stored document, not the parsing or validation of the written document. Check that the written document is resolved first so its failure propagates, and that an unreadable old document does not stop the write.",
+      "scope": "domain",
+      "domain": "settings-management-api",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an unreadable stored document is skipped, log it as a Warning through a dedicated source-generated log message with its own event ID, and include the owning identifiers (e.g. tenant, client) and the exception's Message.",
+      "why": "The write's response does not report skipped documents, so the log has to carry the same information the diagnostic report carries, so operators can find and repair the document.",
+      "check": "Look for catch blocks that skip a document silently, log at the wrong level, reuse another message's event ID, or leave out the identifiers or the exception message.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

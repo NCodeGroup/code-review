@@ -1,0 +1,91 @@
+{
+  "hash": "aca4ffb7d8d21610",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0122",
+  "rules": [
+    {
+      "statement": "Keep both directions of a JWT claim-value mapping (JSON to Claim and Claim to JSON) in one component, and cover them with a round-trip test over every JSON scalar kind.",
+      "why": "When the two halves of one mapping live in separate files, they drift apart, and each drift is a silent data defect in decoded tokens that get re-encoded.",
+      "check": "Look for claim-value conversion logic added or changed in the encoder or the claims-identity factory instead of in the shared mapper, or a change to one direction that has no matching round-trip test.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decoding a JSON number into a Claim, keep the exact JSON text and give it the first matching value type, most specific first: integer32, integer64, uinteger64, the unbounded integer, and double only when the number has a fraction or exponent.",
+      "why": "Probing narrow to wide and letting each later probe overwrite the earlier one types every number as double, and re-encoding through double loses integers above 2^53.",
+      "check": "Look for decoding code that checks double before the integer types, lets a later TryGet overwrite an earlier one, or reformats the number text instead of keeping the raw JSON.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode a JSON string claim as ClaimValueTypes.String every time; never re-type it based on what the string looks like.",
+      "why": "Guessing a type from a string's shape changes the declared type, so a round trip no longer returns the same claim.",
+      "check": "Look for decoding code that runs a string claim through date or number detection and assigns it a non-string value type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a claim's value, parse it in its declared XML Schema type's lexical space using invariant culture: NumberStyles.Integer for integer types and NumberStyles.Float for reals, never NumberStyles.Any or the current culture.",
+      "why": "Lenient parsing accepts thousands separators, currency symbols and parenthesized negatives, so a value like \"1,000\" typed integer64 silently becomes 1000.",
+      "check": "Look for int/long/uint/ulong/double.TryParse calls on claim values that use NumberStyles.Any, NumberStyles.Number, NumberStyles.Currency, or no explicit CultureInfo.InvariantCulture.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode every declared claim value type to its matching JSON type: uinteger32/uinteger64 as unsigned numbers, unbounded integer as the narrowest long/ulong or an exact JSON number beyond 64 bits, JSON_NULL as JSON null, and JSON/JSON_ARRAY only when the parsed value is well formed and of the declared kind.",
+      "why": "An encoder that knows only some types turns the rest into strings, turns null into an empty string, or emits values of the wrong kind on every round trip.",
+      "check": "Look for encoder switches that leave out uinteger or integer types, map JSON_NULL to an empty string, push large integers through double, or accept a JSON value without checking that it is an object or array as declared.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a claim value is malformed, out of range or unrepresentable for its declared type (including NaN/Infinity doubles and unknown value types), emit it as its verbatim string; never throw and never guess a different type.",
+      "why": "Throwing turns one malformed claim into a failed token issuance, while the verbatim string keeps the data.",
+      "check": "Look for claim-encoding paths that can throw on claim content (for example Parse instead of TryParse, serializing a non-finite double, or JsonDocument.Parse without a fallback), or that coerce an invalid value into some other type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When application code creates a numeric claim, format the value in XML Schema lexical form with CultureInfo.InvariantCulture.",
+      "why": "Culture-formatted values such as \"1,000\" are not coerced; they are emitted as strings instead of numbers.",
+      "check": "Look for new Claim(...) calls with a numeric ClaimValueTypes where the value comes from ToString() without CultureInfo.InvariantCulture, or from a culture-specific format string.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

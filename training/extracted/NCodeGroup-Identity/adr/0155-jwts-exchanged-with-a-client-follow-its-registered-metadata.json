@@ -1,0 +1,115 @@
+{
+  "hash": "ceed7eccd125cefd",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0155",
+  "rules": [
+    {
+      "statement": "When protecting a JWT addressed to a client, use exactly the signing and encryption algorithms the client registered, and fail with an error instead of substituting another permitted algorithm.",
+      "why": "The client verifies and decrypts using what it registered; a silent substitution either fails at the client or weakens what the client expects, while failing names the misconfiguration.",
+      "check": "Look for issuance code that picks the first key or algorithm from a supported list, or falls back to another algorithm when the registered one is unavailable or outside the ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt a JWT addressed to a party only to an asymmetric public key that party published (its jwks or jwks_uri), never to the server's own key or a key derived from a shared secret.",
+      "why": "The server's own key can't be decrypted by the client, and a shared-secret-derived key ties confidentiality to a secret the server also stores and that some clients don't have.",
+      "check": "Check encryption paths that use tenant/server keys, client secrets, or symmetric key management (A*KW, A*GCMKW, PBES2-*, dir) for responses addressed to a client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not offer or accept RSA1_5 key management, and do not combine JWE encryption with compression (DEF).",
+      "why": "RFC 8725 §3.2 says to avoid RSA1_5 and §3.6 says not to compress before encrypting.",
+      "check": "Look for RSA1_5 in algorithm lists or defaults, and for a `zip` header or compression option set on encrypted tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At a trust boundary that accepts inbound JWTs, treat an unset or missing algorithm allow-list as permitting nothing, not every algorithm.",
+      "why": "An unset list can only mean one was removed, and it must not widen acceptance to every algorithm a JOSE implementation registers.",
+      "check": "Look for inbound validation (request objects, client assertions, signed requests) that skips the algorithm check or allows all algorithms when the configured list is null or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an inbound JWT's algorithm against the explicit allow-list in the client's effective settings, narrowed to the single value the client registered when it registered one, not just against `none`.",
+      "why": "A check against `none` alone lets profile ceilings such as FAPI 2.0 go unenforced.",
+      "check": "Look for inbound JWT validation that only rejects `alg: none`, or that reads tenant-level lists instead of the client's effective settings and registered value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate an OAuth 2.0 protected resource endpoint (such as UserInfo) only with an access token, never with an ambient session cookie.",
+      "why": "A session cookie is an ambient credential, and it names no client to address a protected response to.",
+      "check": "Look for protected-resource endpoints that fall back to cookie or session authentication when no bearer token is present.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a client registration or settings write when a registered algorithm falls outside its effective supported-values ceiling, and recheck at issuance in case settings changed after the write.",
+      "why": "Failing at registration or issuance names the misconfiguration, and settings can change after they are written.",
+      "check": "Look for registration or management paths that store registered algorithms without checking them against the effective `*_values_supported` lists, or issuance that trusts the stored value without revalidating it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not put unsafe or non-standard protocol features behind an opt-in setting; remove them.",
+      "why": "An opt-in invites people to turn them on.",
+      "check": "Look for new options or flags that enable features the source marks as unsafe or non-standard, such as JWE compression or encrypted CIBA requests.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Advertise in discovery metadata only the algorithms and features the server actually enforces and implements.",
+      "why": "Advertising unimplemented options, such as signed UserInfo while returning only JSON, misleads clients.",
+      "check": "Look for discovery `*_values_supported` entries backed by settings that no runtime path reads or enforces.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

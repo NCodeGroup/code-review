@@ -1,0 +1,87 @@
+{
+  "hash": "864d2797879ac957",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0207",
+  "rules": [
+    {
+      "statement": "Do not construct services with real dependency graphs (for example by resolving every implementation of an interface through IServiceProvider/GetServices) inside options validation or the data sources that validators read; feed validators from dependency-free descriptors instead.",
+      "why": "Constructing handlers during options validation can deadlock host composition when any transitive dependency reads IOptions<T>.Value, and the container cannot detect the cycle because its last edge is a runtime GetServices call.",
+      "check": "Look for IValidateOptions implementations, or catalogs and data sources they consume, that take IServiceProvider or IEnumerable<IHandler> just to read a property such as a name from each handler.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read IOptions<T>.Value when the service is used, never in a constructor, in services that options validation could reach.",
+      "why": "Reading options in a constructor creates a hidden cycle with options validation that can deadlock host composition.",
+      "check": "Constructors that read `options.Value` and store the result, in services that could be resolved while options are being validated.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare traits of an extensible vocabulary entry (for example whether a method needs a shared secret) as data on its registered descriptor, never infer them from the entry's name or a hard-coded list of names.",
+      "why": "Hard-coded lists ignore entries that packages add. For example, a package-added secret-based method was never issued a secret.",
+      "check": "Switch statements, arrays or `is \"x\" or \"y\"` checks over vocabulary names that decide behavior which should come from a descriptor property.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A catalog built from contributed descriptors must reject an empty name, a name containing whitespace, or a duplicate name with an InvalidOperationException when it is constructed, and must compare names ordinally.",
+      "why": "Bad or ambiguous registrations should fail at composition instead of producing ambiguous behavior at runtime.",
+      "check": "Descriptor catalogs that accept registrations without validating names, that silently overwrite duplicates, or that compare names with culture-sensitive or case-insensitive comparers.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At host start, outside options validation, verify that every client-authentication handler has a descriptor of the same method name, that no two handlers authenticate the same method, and that every descriptor has a handler; throw InvalidOperationException otherwise.",
+      "why": "A method with no descriptor would not be advertised, an ambiguous method would be authenticated by either handler, and a descriptor without a handler would be advertised but could not authenticate.",
+      "check": "Adding a client-authentication handler without a matching descriptor (or a descriptor without a handler), or removing the correspondence checks in the authentication service's constructor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, issue a client_secret only when the registered token_endpoint_auth_method has a descriptor that requires a client secret. Issue none for unregistered methods, and treat only `none` as a public client (RFC 7591 §2).",
+      "why": "Secret issuance has to follow the registered descriptors so that methods added by packages are handled correctly, and no method may be classed as public or confidential based on its name.",
+      "check": "Registration code that decides on secret issuance from a fixed list of method names, or that infers a method is public or confidential from its name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive the domain and advertised default of token_endpoint_auth_method and token_endpoint_auth_methods_supported from the registered method descriptors in registration order, not from the registered handlers.",
+      "why": "Reading the domain from handlers forces those handlers to be constructed during options validation.",
+      "check": "Setting descriptors or discovery metadata that build the list of auth methods by enumerating handlers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

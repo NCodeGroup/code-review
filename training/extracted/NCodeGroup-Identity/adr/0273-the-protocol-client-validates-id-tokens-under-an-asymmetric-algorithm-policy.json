@@ -1,0 +1,173 @@
+{
+  "hash": "97c1a3096836a7c1",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0273",
+  "rules": [
+    {
+      "statement": "Compare token hash claims (at_hash, c_hash, s_hash) and similar secret-derived values with CryptographicOperations.FixedTimeEquals, never with string equality.",
+      "why": "A constant-time comparison avoids leaking how much of the expected value matched through timing.",
+      "check": "Look for ==, string.Equals or SequenceEqual used to compare a computed hash or secret against a claim or input.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Get the hash for at_hash, c_hash and s_hash from the signature algorithm's defined token hash function, not from the digest size in the alg name.",
+      "why": "The alg suffix gives the wrong digest for Ed25519 (SHA-512) and Ed448 (SHAKE256, 114 bytes).",
+      "check": "Look for code that parses the alg suffix (256/384/512) or maps alg names to SHA-2 functions to compute token hashes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute and verify left-most-half token hashes in one shared helper used by both issuer and validator, not in separate implementations.",
+      "why": "If the server and client share one implementation, they encode the hash the same way.",
+      "check": "Look for a new hand-written left-half/base64url hash computation instead of a call to the shared helper.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute token hashes over the value's ASCII octets: verification returns false for a non-ASCII value or claim, and computation throws ArgumentException for a non-ASCII value.",
+      "why": "OIDC Core §3.1.3.6 defines the hash over the ASCII octets.",
+      "check": "Look for UTF-8 encoding of the hashed value with no ASCII check, or for non-ASCII input being accepted silently.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an ID token under an asymmetric-only algorithm policy that never permits symmetric algorithms or `none`, intersected with the client's configured and provider-advertised algorithms, and fail validation when the intersection is empty.",
+      "why": "A symmetric or unsecured ID token must never be accepted, whatever the provider advertises.",
+      "check": "Look for ID-token validation that allows HS*, `none`, or the provider's advertised list without filtering, or that falls back to all algorithms when the intersection is empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass the permitted algorithms to the JWT validator as its valid signature algorithms, so the header alg is checked before any cryptographic operation.",
+      "why": "Rejecting a disallowed alg early stops the token from steering which cryptography runs.",
+      "check": "Look for alg checks done after signature verification, or validation with no explicit list of allowed algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure an OAuth/OIDC client's per-registration settings (such as allowed ID-token signing algorithms) on the client registration, not as process-wide configuration.",
+      "why": "Two clients in one process can register different values with their providers.",
+      "check": "Look for per-client protocol settings added to global options or static configuration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an algorithm-list option in its setter: reject blank entries, `none` and duplicates.",
+      "why": "An invalid list should fail when it is configured, not at validation time.",
+      "check": "Look for algorithm-list properties whose setter or init accessor stores input without checking it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWT header names a kid the cached key set lacks, refresh the key set once (rate-limited by the cache) and fail validation if the key is still missing.",
+      "why": "This handles key rotation without letting attacker-chosen kids cause unbounded fetches.",
+      "check": "Look for repeated or unthrottled JWKS refreshes on unknown kid, or for falling back to an arbitrary key when the kid is not found.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check ID-token claims per OIDC Core: iss equals the discovered issuer, aud contains the client id, exp and iat are required, typ if present is `JWT`, sub is non-empty, azp if present equals the client id, nonce matches ordinally, and auth_time satisfies max_age with the clock skew.",
+      "why": "OIDC Core §3.1.3.7 requires these checks, and the typ check rejects other JWT types such as logout+jwt and at+jwt.",
+      "check": "Look for ID-token validation that skips any of these checks, uses culture-sensitive or case-insensitive comparison, or accepts other typ values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In the authorization code flow, accept an absent at_hash/c_hash/s_hash, but require a present one to be a string that verifies against the value the request supplies.",
+      "why": "These claims are optional in the code flow, so requiring them would reject valid tokens from conforming providers.",
+      "check": "Look for code that rejects tokens missing these claims, or that skips verifying a claim that is present.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an invalid token as a validation result with a failure reason, but still throw for infrastructure failures and cancellation, rethrowing them when an inner validator has caught them.",
+      "why": "Callers need the token outcome as a value, while provider failures and cancellation must not be hidden as invalid-token results.",
+      "check": "Look for validators that throw on a bad token, or that turn OperationCanceledException or provider exceptions caught by an inner component into a failed result.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put token text in failure reasons or messages; map exceptions whose message embeds the token to a fixed message.",
+      "why": "JwtDecodeException messages contain the whole token, which would leak a credential.",
+      "check": "Look for exception messages from JWT decoding or key lookup copied into results, logs or responses.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a caller-supplied stack buffer sized to the hash output for hash computation and comparison, so verification does not allocate on the heap.",
+      "why": "Several hash checks can share one stack buffer, and the comparison makes no heap allocation.",
+      "check": "Look for byte[] allocations or ToArray calls in hash compute or verify paths where a stackalloc'd span would do.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

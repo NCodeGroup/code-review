@@ -1,0 +1,100 @@
+{
+  "hash": "9adcb5dc37d3472a",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0012",
+  "rules": [
+    {
+      "statement": "An EF Core SaveChangesInterceptor that changes entities must override both `SavingChanges` and `SavingChangesAsync`, and both must call one shared implementation.",
+      "why": "An interceptor that overrides only the synchronous hook never runs when code saves through `SaveChangesAsync`. It becomes dead code that silently does nothing.",
+      "check": "Look for a `SaveChangesInterceptor` subclass that overrides only `SavingChanges` or only `SavingChangesAsync`, or whose two overrides contain duplicated logic instead of calling a common method.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a save interceptor manages row-level `[ConcurrencyCheck]` tokens, store and repository methods must not assign those tokens by hand on add or update.",
+      "why": "Regenerating the token by hand in every mutation repeats the interceptor's job, and every new store or mutation has to remember to do it.",
+      "check": "Look for store methods that assign `entity.ConcurrencyToken = ...` (or call a token generator) on a row-level `[ConcurrencyCheck]` property before saving, or that copy a freshly generated row token onto a DTO returned from an update.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An interceptor that generates concurrency tokens must always assign a new token to Modified and Deleted entities, but on Added entities it must fill the token only when it is empty.",
+      "why": "A new row cannot have a concurrency conflict, so a caller may set the insert token in advance and return it without re-reading. Every update or delete must still change the row version.",
+      "check": "In token-generating interceptor code, look for unconditional overwrites of non-empty tokens on `EntityState.Added`, or for Modified/Deleted entries that skip regeneration.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A version column that tracks only a slice of a row (such as settings or secrets) must be a plain column, not `[ConcurrencyCheck]`. Only the operation that changes that slice may update it, and a generic per-mutation mechanism must not touch it.",
+      "why": "These columns tell running providers to reload only the slice that changed. Bumping them on every mutation, or making them EF concurrency tokens, would bump them on unrelated edits and add them to every UPDATE WHERE clause.",
+      "check": "Look for slice or sub-resource version properties marked `[ConcurrencyCheck]`/`IsConcurrencyToken`, for interceptors that regenerate them, and for operations that bump a slice token when that slice did not change.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Individual store or repository methods must not call `SaveChanges`/`SaveChangesAsync`; the unit-of-work owner commits.",
+      "why": "Calling save inside a store breaks the unit of work, in which several store operations are meant to commit together.",
+      "check": "Look for `SaveChanges`/`SaveChangesAsync` calls inside store or repository methods rather than in the unit-of-work or store manager.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests that prove an optimistic-concurrency conflict is detected must use a relational provider such as SQLite, not the EF InMemory provider.",
+      "why": "The InMemory provider does not enforce `[ConcurrencyCheck]` in the WHERE clause, so a stale write would not throw `DbUpdateConcurrencyException` there.",
+      "check": "Look for tests that expect `DbUpdateConcurrencyException` (or the exception it is translated into) on a stale write while running against `UseInMemoryDatabase`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a lost optimistic-concurrency race to callers as a store-neutral exception: translate `DbUpdateConcurrencyException` and store-side stale-token checks into that one exception type.",
+      "why": "Callers should handle a concurrency conflict the same way whatever the underlying store, and whether EF or the store's own defensive check found it.",
+      "check": "Look for `DbUpdateConcurrencyException` leaking out of the persistence layer, or for store stale-token checks that throw a different exception type than the store-neutral concurrency exception.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In load-then-update flows within one unit of work, look up the entity in the `DbSet.Local` change tracker before querying the database.",
+      "why": "Identity resolution would return the already-tracked instance anyway, so a second database query is a wasted round trip.",
+      "check": "Look for store code that re-queries the database for an entity that the same unit of work has already loaded and is tracking, instead of checking `Local` first.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

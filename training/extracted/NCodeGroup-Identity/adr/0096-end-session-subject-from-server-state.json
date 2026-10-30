@@ -1,0 +1,43 @@
+{
+  "hash": "47a6d51d487f6d1b",
+  "promptHash": "358791b74fd66fcf",
+  "label": "Identity ADR-0096",
+  "rules": [
+    {
+      "statement": "At the end-session endpoint, resolve the stable subject only from server-owned state (the persisted session grant located by `sid`, falling back to the OP login cookie), and never use the `id_token_hint`'s `sub` claim as the subject identifier.",
+      "why": "For pairwise clients the hint's `sub` is a per-sector pseudonym. Treating it as the stable subject makes revocation match no grants and double-projects the `sub` in back-channel `logout_token`s, which silently breaks logout.",
+      "check": "Look for end-session or logout code that reads the `sub` claim from an `id_token_hint` and uses it for revocation, session lookup or back-channel logout. Only `sid` and `azp`/`aud` (client_id) should be taken from the hint.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never add a stored or reversible mapping from a pairwise subject identifier back to the stable internal subject; match presented values forward against stored state.",
+      "why": "A reversible pseudonym map is a standing de-anonymization risk: a compromised store re-links every pairwise `sub`. It also breaks the one-way design used for pairwise projection and hashed grant keys.",
+      "check": "Look for new tables, entities, caches or lookups keyed by pairwise `sub` that return the stable principal id, or code that tries to invert a subject identifier projection.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a subject can't be resolved from server-owned state, leave it unresolved instead of guessing or falling back to an untrusted, client-presented identifier.",
+      "why": "Refusing to reverse a pseudonym or guess is safe. Guessing risks silently revoking or terminating the wrong subject.",
+      "check": "Look for fallback branches in logout or revocation that, when no session or cookie is found, use the token hint's `sub` or another client-supplied subject value as the subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}
