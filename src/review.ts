@@ -3,8 +3,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, maxFindings, maxTurns } from './config.ts';
-import type { ChangedFile, Gathered } from './gather.ts';
+import { budgets, maxFindings, maxTurns, reviewerTiers, type ModelTier } from './config.ts';
+import { batchRules, type ChangedFile, type Gathered } from './gather.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -112,7 +112,7 @@ const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1)$/i;
 
 // The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
-export function selectionFloor(files: ChangedFile[], hasDescription: boolean): string[] {
+export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
   const reviewed = files.filter((f) => !f.generated);
   const code = reviewed.filter((f) => productCode.test(f.path) && !testPath.test(f.path));
   const floor = new Set<string>(['hygiene']);
@@ -122,13 +122,15 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean): s
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
   if (/(^|\/)Migrations\/|\.sql$/i.test(reviewed.map((f) => f.path).join('\n'))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
+  if (hasReviewRules) floor.add('conventions');
   return [...floor];
 }
 
 function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
-  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}\n</pull_request>`;
+  const commits = gathered.commits.length ? `\nCommits:\n${gathered.commits.map((c) => `- ${c}`).join('\n')}` : '';
+  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${commits}\n</pull_request>`;
 }
 
 function fileList(gathered: Gathered): string {
@@ -137,14 +139,33 @@ function fileList(gathered: Gathered): string {
     .join('\n');
 }
 
-// The part every specialist shares, so the provider can cache it; each charter comes after it.
-function sharedContext(gathered: Gathered): string {
+function changeContext(gathered: Gathered, diff: string): string {
   return [
-    `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>`,
     pullRequestBlock(gathered),
     `Changed files:\n${fileList(gathered)}`,
-    `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.\n<diff>\n${gathered.diff}\n</diff>`,
+    `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.\n<diff>\n${diff}\n</diff>`,
   ].join('\n\n');
+}
+
+// The part every specialist shares, so the provider can cache it; each charter comes after it.
+function sharedContext(gathered: Gathered): string {
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>\n\n${changeContext(gathered, gathered.diff)}`;
+}
+
+// Haiku 5.5 costs five times as much once a prompt passes 100K tokens. Identity's rules, full of code, markdown and
+// emoji, measured about 2.1 characters a token, and the agent's own system prompt and tool definitions add a few
+// thousand more, so a conventions call stays under about 180,000 characters: rules first, then as much of the diff as
+// fits. The agent reads the rest of the changed files from the checkout.
+const conventionsPromptChars = 180_000;
+export const conventionsRuleChars = 140_000;
+
+export function conventionsPrompt(gathered: Gathered, checkout: string, charter: string, rules: string, limit = conventionsPromptChars): string {
+  const rulesBlock = `The repository's review rules for the changed files, from its default branch. Rules the build already enforces have been left out.\n<review_rules>\n${rules}\n</review_rules>`;
+  const tail = `\n\nThe checkout is at: ${checkout}\n\nYour charter:\n${charter}`;
+  const note = '\n[diff cut to fit; read the remaining changed files from the checkout]';
+  const room = limit - rulesBlock.length - tail.length - changeContext(gathered, '').length - 2;
+  const diff = gathered.diff.length <= room ? gathered.diff : `${gathered.diff.slice(0, Math.max(0, room - note.length))}${note}`;
+  return `${changeContext(gathered, diff)}\n\n${rulesBlock}${tail}`;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -183,14 +204,14 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const shared = sharedContext(gathered);
   const roster = [...charters.reviewers.keys()];
 
-  // Selection.
-  const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body));
+  // Selection only routes, so Sonnet is enough, at about half Opus's cost.
+  const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), gathered.reviewRules.length > 0 && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
   const selection = await runAgent<{ add: { reviewer: string; reason: string }[] }>(
     { provider: run.provider, proxyUrl: run.proxyUrl },
     {
       role: 'selection',
-      tier: 'opus',
+      tier: 'sonnet',
       systemPrompt: charters.selectionPrompt,
       prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
       schema: selectionSchema,
@@ -205,22 +226,46 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
   log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
-  // Specialists, in parallel.
-  const outcomes = await mapWithConcurrency([...selected], 4, async (name): Promise<ReviewerOutcome> => {
+  // Specialists, in parallel. On Haiku, the conventions reviewer runs once per batch of rule files, to stay under its
+  // long-prompt premium; on Sonnet, which has none, it gets every rule and the whole diff in one call.
+  const tiers = reviewerTiers();
+  const jobs: { name: string; tier: ModelTier; prompt: string }[] = [];
+  for (const reviewer of selected) {
+    const charter = charters.reviewers.get(reviewer)!;
+    const tier = tiers[reviewer] ?? 'haiku';
+    if (reviewer !== 'conventions') {
+      jobs.push({ name: reviewer, tier, prompt: `${shared}\n\nThe checkout is at: ${run.checkout}\n\nYour charter:\n${charter}` });
+      continue;
+    }
+    if (tier !== 'haiku') {
+      const rules = gathered.reviewRules.map((r) => r.text).join('\n\n');
+      jobs.push({ name: reviewer, tier, prompt: conventionsPrompt(gathered, run.checkout ?? '', charter, rules, Number.MAX_SAFE_INTEGER) });
+      continue;
+    }
+    const batches = batchRules(gathered.reviewRules, conventionsRuleChars);
+    batches.forEach((rules, i) => {
+      jobs.push({
+        name: batches.length > 1 ? `conventions-${i + 1}` : 'conventions',
+        tier,
+        prompt: conventionsPrompt(gathered, run.checkout ?? '', charter, rules),
+      });
+    });
+  }
+  const outcomes = await mapWithConcurrency(jobs, 4, async ({ name, tier, prompt }): Promise<ReviewerOutcome> => {
     const result = await runAgent<{ findings: Finding[] }>(run, {
       role: `reviewer:${name}`,
-      tier: 'haiku',
+      tier,
       systemPrompt: charters.specialistPrompt,
-      prompt: `${shared}\n\nThe checkout is at: ${run.checkout}\n\nYour charter:\n${charters.reviewers.get(name)}`,
+      prompt,
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist,
     });
     calls.push(result.record);
-    log(`  ${name}: ${result.error ? `failed (${result.error})` : `${result.output?.findings.length ?? 0} findings`} $${result.record.costUsd.toFixed(3)}`);
-    return result.error
-      ? { name, status: 'failed', findings: [], error: result.error }
-      : { name, status: 'ran', findings: (result.output?.findings ?? []).filter((f) => f.confidence >= 0.5) };
+    const reported = result.output?.findings ?? [];
+    const kept = reported.filter((f) => f.confidence >= 0.5);
+    log(`  ${name}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below 0.5 confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   });
 
   // Synthesis.

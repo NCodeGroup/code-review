@@ -4,11 +4,66 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { budgetDiff, isGenerated, splitDiff, type ChangedFile } from '../src/gather.ts';
+import { batchRules, budgetDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
-import { changedLines, selectionFloor } from '../src/review.ts';
+import { changedLines, conventionsPrompt, selectionFloor } from '../src/review.ts';
+
+test('globToRegExp matches applyTo patterns the way Copilot does', () => {
+  assert.ok(globToRegExp('src/**/*.cs').test('src/NCode.Identity.Jwk/JsonWebKey.cs'));
+  assert.ok(globToRegExp('src/**/*.cs').test('src/A.cs'));
+  assert.ok(!globToRegExp('src/**/*.cs').test('tests/A.Tests/ATests.cs'));
+  assert.ok(globToRegExp('**/*.cs').test('A.cs'));
+  assert.ok(globToRegExp('**').test('docs/adr/0001.md'));
+  assert.ok(!globToRegExp('*.md').test('docs/readme.md'));
+});
+
+test('dropToolEnforced keeps review-only and rolling-out rules and drops tool-enforced ones', () => {
+  const text = ['## Async', '- ✅ **Tool rule** one', '  continued', '', '- 👁 **Review rule** two', '- ⏳ **Rolling out** three', '- ✅/👁 **Mixed** four'].join('\n');
+  const kept = dropToolEnforced(text);
+  assert.doesNotMatch(kept, /Tool rule|continued/);
+  assert.match(kept, /Review rule/);
+  assert.match(kept, /Rolling out/);
+  assert.match(kept, /Mixed/);
+});
+
+test('readReviewRules picks instruction files whose applyTo matches a changed file', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'rules-'));
+  const folder = path.join(base, '.github', 'instructions');
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(path.join(folder, 'prod.instructions.md'), '---\napplyTo: "src/**/*.cs"\n---\n- 👁 production rule\n');
+  writeFileSync(path.join(folder, 'tests.instructions.md'), '---\napplyTo: "tests/**/*.cs"\n---\n- 👁 test rule\n');
+  writeFileSync(path.join(folder, 'all.instructions.md'), '---\napplyTo: "**"\n---\n- 👁 general rule\n');
+  const rules = readReviewRules(base, ['src/A/B.cs', 'docs/x.md']);
+  assert.deepEqual(rules.map((r) => r.name), ['prod.instructions.md', 'all.instructions.md']);
+  assert.match(rules[0]!.text, /production rule/);
+  assert.deepEqual(readReviewRules(base, ['docs/x.md']).map((r) => r.name), ['all.instructions.md']);
+});
+
+test('batchRules packs rule files into batches under the budget', () => {
+  const rule = (name: string, size: number) => ({ name, globs: ['**'], text: name[0]!.repeat(size) });
+  const batches = batchRules([rule('a', 130_000), rule('b', 40_000), rule('c', 5_000), rule('d', 200_000)], 140_000);
+  assert.equal(batches.length, 3);
+  assert.ok(batches.every((b) => b.length <= 140_000));
+  assert.match(batches[1]!, /^b+\n\nc+$/);
+  assert.match(batches[2]!, /rules cut to fit/);
+});
+
+test('conventionsPrompt cuts the diff so the prompt stays under Haiku 5.5\'s long-prompt price', () => {
+  const gathered = {
+    pullRequest: { number: 1, title: 't', author: 'a' },
+    files: [],
+    commits: [],
+    conventions: 'c'.repeat(40_000),
+    diff: 'd'.repeat(240_000),
+  } as unknown as Gathered;
+  const prompt = conventionsPrompt(gathered, '/checkout', 'charter', 'r'.repeat(140_000));
+  assert.ok(prompt.length <= 180_000, `prompt is ${prompt.length} characters`);
+  assert.match(prompt, /diff cut to fit/);
+  assert.match(prompt, /r{1000}/);
+  assert.doesNotMatch(prompt, /c{1000}/);
+});
 
 const diff = [
   'diff --git a/src/A.cs b/src/A.cs',

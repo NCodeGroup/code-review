@@ -33,6 +33,10 @@ export interface Gathered {
   files: ChangedFile[];
   diff: string;
   conventions: string;
+  // Only the conventions reviewer gets these: they're large.
+  reviewRules: RuleFile[];
+  // Commit subjects, present only when the author has write access.
+  commits: string[];
 }
 
 const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -124,7 +128,7 @@ function parseNumstat(numstat: string): ChangedFile[] {
   return files;
 }
 
-// The sections of AGENTS.md that state conventions, plus .claude/rules, all from the default branch.
+// Every reviewer gets these: the sections of AGENTS.md that state conventions, from the default branch.
 export function readConventions(basePath: string): string {
   const parts: string[] = [];
   const agents = path.join(basePath, 'AGENTS.md');
@@ -134,14 +138,101 @@ export function readConventions(basePath: string): string {
       if (/^## (Layout|Coding conventions|Known pending work)\b/.test(section)) parts.push(`From AGENTS.md:\n${section.trim()}`);
     }
   }
-  const rules = path.join(basePath, '.claude', 'rules');
-  if (existsSync(rules)) {
-    for (const name of readdirSync(rules).filter((n) => n.endsWith('.md')).sort()) {
-      parts.push(`From .claude/rules/${name}:\n${readFileSync(path.join(rules, name), 'utf8').trim()}`);
-    }
-  }
   const joined = parts.join('\n\n');
   return joined.length > maxConventionChars ? `${joined.slice(0, maxConventionChars)}\n[conventions truncated]` : joined;
+}
+
+// A glob as Copilot's applyTo and Claude Code's paths use them: ** spans folders, * and ? stay within one.
+export function globToRegExp(glob: string): RegExp {
+  let pattern = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === '*' && glob[i + 1] === '*') {
+      i++;
+      if (glob[i + 1] === '/') {
+        i++;
+        pattern += '(?:.*/)?';
+      } else {
+        pattern += '.*';
+      }
+    } else if (c === '*') pattern += '[^/]*';
+    else if (c === '?') pattern += '[^/]';
+    else pattern += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${pattern}$`);
+}
+
+function frontmatter(text: string): { fields: Map<string, string>; body: string } {
+  const fields = new Map<string, string>();
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  if (!match) return { fields, body: text };
+  for (const line of match[1]!.split(/\r?\n/)) {
+    const field = /^([A-Za-z]+):\s*(.*)$/.exec(line);
+    if (field) fields.set(field[1]!, field[2]!.trim().replace(/^["']|["']$/g, ''));
+  }
+  return { fields, body: text.slice(match[0].length) };
+}
+
+// Drops rules marked ✅ (tool-enforced: the build already fails on them) with their continuation lines. Rules marked
+// 👁 (review-only) and ⏳ (rolling out) stay, because only a reviewer catches them.
+export function dropToolEnforced(text: string): string {
+  const out: string[] = [];
+  let skipIndent = -1;
+  for (const line of text.split('\n')) {
+    if (skipIndent >= 0) {
+      const indent = /^\s*/.exec(line)![0].length;
+      if (line.trim() === '' || indent > skipIndent) continue;
+      skipIndent = -1;
+    }
+    const tool = /^(\s*)- ✅(?!\/)/.exec(line);
+    if (tool) {
+      skipIndent = tool[1]!.length;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+export interface RuleFile {
+  name: string;
+  globs: string[];
+  text: string;
+}
+
+// The repository's review rules for the files this pull request changes, from the default branch: each
+// .github/instructions/*.instructions.md whose applyTo matches a changed file, without its tool-enforced rules. The
+// most specific files come first; ones that apply to everything (**) come last.
+export function readReviewRules(basePath: string, changed: string[]): RuleFile[] {
+  const folder = path.join(basePath, '.github', 'instructions');
+  if (!existsSync(folder)) return [];
+  const files: RuleFile[] = [];
+  for (const name of readdirSync(folder).filter((n) => n.endsWith('.instructions.md')).sort()) {
+    const { fields, body } = frontmatter(readFileSync(path.join(folder, name), 'utf8'));
+    const globs = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
+    const patterns = globs.map(globToRegExp);
+    if (!changed.some((file) => patterns.some((p) => p.test(file)))) continue;
+    files.push({ name, globs, text: `From .github/instructions/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` });
+  }
+  const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
+  return files.sort((a, b) => general(a) - general(b));
+}
+
+// Packs rule files into batches of at most `budget` characters, one conventions call each. A file bigger than the
+// budget gets a batch of its own, cut to fit.
+export function batchRules(files: RuleFile[], budget: number): string[] {
+  const batches: string[][] = [];
+  let size = budget;
+  for (const file of files) {
+    const text = file.text.length > budget ? `${file.text.slice(0, budget - 40)}\n[rules cut to fit]` : file.text;
+    if (size + text.length > budget) {
+      batches.push([]);
+      size = 0;
+    }
+    batches.at(-1)!.push(text);
+    size += text.length + 2;
+  }
+  return batches.map((b) => b.join('\n\n'));
 }
 
 export function readPullRequest(event: any, repository: string): PullRequest {
@@ -169,5 +260,9 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
   const diff = budgetDiff(files, splitDiff(fullDiff), maxDiffChars);
-  return { pullRequest, mergeBase, files, diff, conventions: readConventions(basePath) };
+  const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
+  const commits = writers.has(pullRequest.authorAssociation)
+    ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
+    : [];
+  return { pullRequest, mergeBase, files, diff, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), commits };
 }
