@@ -3,3 +3,6 @@ out/
 evals/.work/
 evals/out/
 *.log
+
+# Built by npm run train from guidance the held-out evals use; rebuild it, do not commit it.
+guidance-holdout/

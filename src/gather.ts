@@ -229,8 +229,8 @@ export function readReviewRules(basePath: string, changed: string[]): RuleFile[]
 }
 
 // NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes.
-export function readGuidance(engineRoot: string, changed: string[]): RuleFile[] {
-  return readRuleFolder(path.join(engineRoot, 'guidance'), '.md', changed, 'NCodeGroup guidance');
+export function readGuidance(guidanceDir: string, changed: string[]): RuleFile[] {
+  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance');
 }
 
 function readRuleFolder(folder: string, suffix: string, changed: string[], label: string): RuleFile[] {
@@ -272,8 +272,8 @@ export function readPullRequest(event: any, repository: string): PullRequest {
   };
 }
 
-// engineRoot, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
-export function gather(pullRequest: PullRequest, prPath: string, basePath: string, engineRoot?: string): Gathered {
+// guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
+export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
   // the checkout, and the check run belongs on the commit that was reviewed.
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
@@ -289,5 +289,5 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const commits = writers.has(pullRequest.authorAssociation)
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
-  return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: engineRoot ? readGuidance(engineRoot, reviewed) : [], decisions, commits };
+  return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: guidanceDir ? readGuidance(guidanceDir, reviewed) : [], decisions, commits };
 }

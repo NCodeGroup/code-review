@@ -122,7 +122,7 @@ async function main(): Promise<void> {
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
-  const gathered = gather(pullRequest, prPath, basePath, root);
+  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);

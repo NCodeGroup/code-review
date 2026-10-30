@@ -46,6 +46,15 @@ export const budgets = {
 
 export const maxTurns = { specialist: 30 };
 
+// Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
+// check each one against every part of the diff, so a rule a reviewer skims past still gets checked.
+// CODE_REVIEW_RULE_CHECKS=off turns them off, for evals.
+export const rulesPerCheck = 12;
+
+export function ruleChecksOn(value = process.env['CODE_REVIEW_RULE_CHECKS'] ?? ''): boolean {
+  return value !== 'off';
+}
+
 // The diff goes to the reviewers in parts of up to maxChunkChars, each part to its own set of reviewers, so a large pull
 // request gets the same attention per line as a small one. Past maxChunks parts, files are listed but their hunks are
 // left out, and the summary says so. Each part costs about one more review.
