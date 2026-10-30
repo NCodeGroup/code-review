@@ -17,6 +17,10 @@ inputs:
     description: Where the default branch is checked out, relative to the workspace. Settings and conventions come from here.
     required: false
     default: base
+  github-token:
+    description: A read-only token for the GitHub API, used to read the pull request a /review comment is on.
+    required: false
+    default: ${{ github.token }}
   app-client-id:
     description: The NCode Review app's client ID.
     required: false
@@ -52,9 +56,12 @@ runs:
 
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # The app's private key is not in this step's environment.
+    # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
     - name: Review
+      id: review
       shell: bash
       env:
+        CODE_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_PR_PATH: ${{ inputs.pr-path }}
         CODE_REVIEW_BASE_PATH: ${{ inputs.base-path }}
@@ -68,6 +75,7 @@ runs:
     # Minted after the agents have exited, for this repository only, and able to write check runs only.
     - name: Get the app's token
       id: app-token
+      if: steps.review.outputs.reviewed == 'true'
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -76,6 +84,7 @@ runs:
         permission-checks: write
 
     - name: Publish
+      if: steps.review.outputs.reviewed == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
