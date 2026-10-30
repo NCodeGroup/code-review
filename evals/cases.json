@@ -480,5 +480,39 @@
     ],
     "mustNotFlag": [],
     "source": "The maintainer's 35 review comments on #420 at a8b922997 that led to a change."
+  },
+  {
+    "id": "tofu-email-routing-perpetual-diff",
+    "repository": "NCodeGroup/identity-platform",
+    "pullRequest": 1,
+    "title": "feat(ci): deploy workflow and the live/global root (inbound email)",
+    "body": "## Deploy pipeline\n\n- **`deploy`** — plans every CI root on pull requests (plan shown in the run summary), applies the **exact reviewed plan** after a merge to `main` through the root's GitHub environment (`production` waits for approval), and fails a daily scheduled run on drift.\n- **`tofu-root`** (reusable) — the plan job uses the read-only `*-plan` role and the `plan`-scope Cloudflare token; the apply job uses the environment's `AWS_ROLE_ARN` and its own SSM scope. The KMS-encrypted plan is the only hand-off between them. Fork and Dependabot PRs are skipped (no OIDC token); they are planned after merge.\n- **`aws-oidc`** (local action) — exchanges the job's OIDC token for a one-hour session named `gh-<run_id>-<run_attempt>`, so CloudTrail ties every call to its run (ADR-0136). No third-party action.\n\n## `live/global`\n\n- Cloudflare Email Routing for `security@`, `platform@`, `postmaster@`, `abuse@`, and the vendor aliases; mail to any other address is dropped. DMARC stays `p=reject` (nothing sends as the domain).\n- The forwarding mailbox is personal data: it comes from SSM (`/identity-platform/{plan,global}/email-destination`), never the repository, and is a sensitive variable so it is masked in plans.\n- State and plans are encrypted with the bootstrap's state KMS key (`aws_kms` key provider).\n\n## Verified locally\n\n`tofu validate` + 3 mocked tests for `live/global`, actionlint, Prettier, `tofu fmt`, generated docs, the member rule, and gitleaks. This PR's `deploy / global / plan` check is the first end-to-end run of OIDC → SSM → KMS-encrypted state.\n\n## After merge\n\nApprove the `production` deployment, then click Cloudflare's destination-verification link in the forwarding mailbox.",
+    "base": "004523758f56f004f6b09b096d8570f3f01e9bdd",
+    "head": "fed7ee10d251111e52059f96553a70dd8abc2bb4",
+    "expect": [
+      {
+        "file": "live/global/email.tf",
+        "concern": "cloudflare_email_routing_settings leaves support_subaddress unset. The attribute is optional and not computed in the provider, so every plan proposes false -> null: a perpetual diff that would also fail the daily drift check. Set it explicitly (false)."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Fixed by identity-platform#5 (c5eb56b8): support_subaddress = false."
+  },
+  {
+    "id": "tofu-oidc-immutable-subject",
+    "repository": "NCodeGroup/identity-platform",
+    "pullRequest": 1,
+    "title": "feat(ci): deploy workflow and the live/global root (inbound email)",
+    "body": "## Deploy pipeline\n\n- **`deploy`** — plans every CI root on pull requests (plan shown in the run summary), applies the **exact reviewed plan** after a merge to `main` through the root's GitHub environment (`production` waits for approval), and fails a daily scheduled run on drift.\n- **`tofu-root`** (reusable) — the plan job uses the read-only `*-plan` role and the `plan`-scope Cloudflare token; the apply job uses the environment's `AWS_ROLE_ARN` and its own SSM scope. The KMS-encrypted plan is the only hand-off between them. Fork and Dependabot PRs are skipped (no OIDC token); they are planned after merge.\n- **`aws-oidc`** (local action) — exchanges the job's OIDC token for a one-hour session named `gh-<run_id>-<run_attempt>`, so CloudTrail ties every call to its run (ADR-0136). No third-party action.\n\n## `live/global`\n\n- Cloudflare Email Routing for `security@`, `platform@`, `postmaster@`, `abuse@`, and the vendor aliases; mail to any other address is dropped. DMARC stays `p=reject` (nothing sends as the domain).\n- The forwarding mailbox is personal data: it comes from SSM (`/identity-platform/{plan,global}/email-destination`), never the repository, and is a sensitive variable so it is masked in plans.\n- State and plans are encrypted with the bootstrap's state KMS key (`aws_kms` key provider).\n\n## Verified locally\n\n`tofu validate` + 3 mocked tests for `live/global`, actionlint, Prettier, `tofu fmt`, generated docs, the member rule, and gitleaks. This PR's `deploy / global / plan` check is the first end-to-end run of OIDC → SSM → KMS-encrypted state.\n\n## After merge\n\nApprove the `production` deployment, then click Cloudflare's destination-verification link in the forwarding mailbox.",
+    "base": "004523758f56f004f6b09b096d8570f3f01e9bdd",
+    "head": "fed7ee10d251111e52059f96553a70dd8abc2bb4",
+    "expect": [
+      {
+        "file": ".github/workflows/deploy.yml",
+        "concern": "The deploy workflow assumes AWS roles through OIDC, but the roles' trust policies (modules/aws-github-oidc) match the name-based subject repo:NCodeGroup/identity-platform:<context>. Repositories created after July 15, 2026 get GitHub's immutable subject (repo:<owner>@<owner_id>/<name>@<id>:<context>), so AssumeRoleWithWebIdentity is denied on the first run. AWS also recommends immutable IDs, since a freed repository name can be claimed by someone else."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Fixed by identity-platform#3 and #4 (v0.2.0 of the components): the roles trust the immutable subject. The reviewed change doesn't touch the module, so this is a gap-between-files case; it may be too hard to expect."
   }
 ]

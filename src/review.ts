@@ -133,9 +133,10 @@ export function loadCharters(root: string): Charters {
   };
 }
 
-const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf)/i;
+const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf|iam|role|policy|kms|trust|firewall)/i;
 const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
-const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1)$/i;
+const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
+const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
 
 // The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
@@ -148,6 +149,7 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
   if (/(^|\/)Migrations\/|\.sql$/i.test(reviewed.map((f) => f.path).join('\n'))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
+  if (reviewed.some((f) => infrastructurePath.test(f.path))) floor.add('infrastructure');
   if (hasReviewRules) floor.add('conventions');
   // Duct tape and unfinished capabilities build up in changes big enough to have a design; a one-line fix rarely does.
   if (code.reduce((lines, f) => lines + f.additions + f.deletions, 0) >= architectureMinLines) {
