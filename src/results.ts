@@ -1,8 +1,17 @@
-// What the review step hands the publish step, and how it reads in the check run.
+// What the review step hands the publish step, and how it reads in the check run and the summary comment.
 
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import type { ReviewedFinding } from './review.ts';
+import type { Finding, ReviewedFinding, Severity } from './review.ts';
+
+export interface ReviewerResult {
+  name: string;
+  status: 'ran' | 'failed';
+  model: string;
+  findingCount: number;
+  topSeverity?: Severity;
+  error?: string;
+}
 
 export interface Results {
   repository: string;
@@ -12,7 +21,9 @@ export interface Results {
   providerReason: string;
   summary: string;
   findings: ReviewedFinding[];
-  reviewers: { name: string; status: 'ran' | 'failed'; findingCount: number; error?: string }[];
+  reviewers: ReviewerResult[];
+  skipped: string[];
+  synthesisModel: string;
   calls: CallRecord[];
   costUsd: number;
   durationMs: number;
@@ -20,6 +31,55 @@ export interface Results {
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
+const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
+
+export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | undefined {
+  return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
+}
+
+// "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5".
+export function shortModel(model: string): string {
+  return model.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '');
+}
+
+// Finds the bot's one summary comment on a pull request, so a later run edits it instead of adding another.
+export const summaryMarker = '<!-- ncode-review:summary -->';
+
+export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
+  const ran = results.reviewers.filter((r) => r.status === 'ran').length;
+  const count = results.findings.length;
+  const lines = [
+    summaryMarker,
+    '### 🤖 Review complete',
+    '',
+    `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
+    '',
+    '| Reviewer | Model | Findings | Top |',
+    '|---|---|---|---|',
+  ];
+  if (results.synthesisModel && count) {
+    lines.push(`| synthesis | ${shortModel(results.synthesisModel)} | ${count} | ${severityDot[topSeverity(results.findings)!]} |`);
+  }
+  for (const r of [...results.reviewers].sort((a, b) => a.name.localeCompare(b.name))) {
+    const top = r.status === 'failed' ? '⚠️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
+    lines.push(`| ${cell(r.name)} | ${shortModel(r.model)} | ${r.status === 'failed' ? 'failed' : r.findingCount} | ${top} |`);
+  }
+  lines.push('');
+  if (results.skipped.length) lines.push(`*Skipped: ${results.skipped.join(', ')}*`, '');
+  if (count) {
+    lines.push('<details><summary>Findings</summary>', '');
+    for (const f of results.findings) {
+      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+    }
+    lines.push('', '</details>', '');
+  }
+  const provider = results.provider === 'anthropic' ? 'Claude API' : 'Amazon Bedrock';
+  lines.push(
+    `<sub>Trial: findings appear in the check run, not as review comments yet. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
+  );
+  return lines.join('\n');
+}
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
 function cell(text: string): string {

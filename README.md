@@ -67,6 +67,19 @@ jobs:
 its own review, and the pull request's code is only read, never built or run. Pushes start nothing; comment `/review`
 to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
+## Commands
+
+Comment on a pull request, as a top-level comment, not a reply in a review thread. Only people with write access can.
+
+| Comment | What happens |
+|---|---|
+| `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+
+To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
+
+Each review posts a neutral "Code review" check run with the findings and annotations, and creates or updates one
+summary comment from `ncode-review[bot]`: who reviewed, with which model, how many findings, and the worst severity.
+
 ## Opting a repository in
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:

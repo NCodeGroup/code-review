@@ -26,7 +26,7 @@ export async function chooseProvider(credentials: Credentials): Promise<Provider
       if (response.ok) return { provider: 'anthropic', reason: 'the plan\'s API credits' };
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
       reason = /credit balance/i.test(body.error?.message ?? '')
-        ? 'the plan\'s API credits are used up'
+        ? 'the Anthropic organization has no API credits (not linked yet, or used up)'
         : `Anthropic returned HTTP ${response.status}`;
     } catch (error) {
       reason = `Anthropic login failed: ${(error as Error).message}`;

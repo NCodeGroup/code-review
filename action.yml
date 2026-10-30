@@ -72,7 +72,8 @@ runs:
         CODE_REVIEW_WORKSPACE_ID: ${{ inputs.workspace-id }}
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
-    # Minted after the agents have exited, for this repository only, and able to write check runs only.
+    # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
+    # comments.
     - name: Get the app's token
       id: app-token
       if: steps.review.outputs.reviewed == 'true'
@@ -82,6 +83,7 @@ runs:
         private-key: ${{ inputs.app-private-key }}
         repositories: ${{ github.event.repository.name }}
         permission-checks: write
+        permission-pull-requests: write
 
     - name: Publish
       if: steps.review.outputs.reviewed == 'true'

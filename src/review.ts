@@ -37,6 +37,8 @@ export interface Review {
   summary: string;
   findings: ReviewedFinding[];
   calls: CallRecord[];
+  // Roster reviewers the path rules and selection didn't choose.
+  skipped: string[];
 }
 
 const findingProperties = {
@@ -303,5 +305,6 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     summary = 'No findings.';
   }
 
-  return { reviewers: outcomes, summary, findings, calls };
+  const skipped = roster.filter((name) => !selected.has(name));
+  return { reviewers: outcomes, summary, findings, calls, skipped };
 }
