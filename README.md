@@ -1,7 +1,61 @@
 # code-review
 AI pull request review for NCodeGroup repositories: a GitHub composite action on the Claude Agent SDK
 
-The engine isn't here yet. For now this repository holds setup tooling and checks.
+Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
+merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
+the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
+Bedrock key does.
+
+## How a review runs
+
+The agents run on the Claude Agent SDK with no settings, hooks, MCP servers or CLAUDE.md from anywhere, only Read, Grep
+and Glob, and a hook that refuses any path outside the pull request's checkout after resolving symlinks. Their
+environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
+reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
+repository under review. Results and the trace are scanned for secrets before they're written.
+
+## Using it
+
+```yaml
+name: Code review
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+permissions: {}
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.sender.type != 'Bot' &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-review')
+    runs-on: ubuntu-latest
+    environment: code-review
+    timeout-minutes: 30
+    concurrency:
+      group: code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: base
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: NCodeGroup/code-review@<commit sha>
+        with:
+          app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
+          bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+```
+
+`pull_request_target` runs this file from the default branch, so a pull request can't change its own review, and the
+pull request's code is only read, never built or run.
 
 ## Opting a repository in
 

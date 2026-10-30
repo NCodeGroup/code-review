@@ -1,0 +1,177 @@
+// Runs one model call through the Agent SDK, locked down: no settings, hooks, MCP servers or CLAUDE.md from anywhere,
+// read-only tools confined to the checkout, and an environment that holds no secret.
+
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, Options, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import { mkdtempSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { bedrockRegion, modelIds, type ModelTier, type Provider } from './config.ts';
+import { placeholderKey } from './proxy.ts';
+
+export interface AgentRun {
+  provider: Provider;
+  proxyUrl: string;
+  // The pull request's checkout. Tools may read only inside it; without it the agent gets no tools.
+  checkout?: string;
+}
+
+export interface CallRecord {
+  role: string;
+  provider: Provider;
+  model: string;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  turns: number;
+  durationMs: number;
+  outcome: string;
+}
+
+export interface AgentResult<T> {
+  output: T | undefined;
+  record: CallRecord;
+  error?: string;
+}
+
+// True when the path, with every symlink resolved, is the root or inside it. A pull request can add a symlink to
+// /proc/self/environ, so the lexical path isn't enough.
+export function isInside(root: string, candidate: string): boolean {
+  let resolved: string;
+  try {
+    resolved = realpathSync(path.resolve(root, candidate));
+  } catch {
+    // A path that doesn't exist yet can't be read; resolve its parent instead so Glob patterns still work.
+    try {
+      resolved = path.join(realpathSync(path.dirname(path.resolve(root, candidate))), path.basename(candidate));
+    } catch {
+      return false;
+    }
+  }
+  const realRoot = realpathSync(root);
+  const relative = path.relative(realRoot, resolved);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function pathGuard(checkout: string): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== 'PreToolUse') return {};
+    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+    const candidates = [toolInput['file_path'], toolInput['path']].filter((v): v is string => typeof v === 'string');
+    const outside = candidates.find((candidate) => !isInside(checkout, candidate));
+    if (outside === undefined) return {};
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: `Only files inside the pull request's checkout (${checkout}) can be read.`,
+      },
+    };
+  };
+}
+
+// The agent's whole environment: the proxy address, a placeholder key, and the minimum to run. Nothing from this
+// process's environment, which holds the job's token-request variables and inputs, is passed on.
+// A one-shot call turns prompt caching off: a cache write costs 25% more than plain input and nothing would read it.
+export function agentEnvironment(run: AgentRun, home: string, cache = true): Record<string, string> {
+  const env: Record<string, string> = {
+    PATH: process.env['PATH'] ?? '',
+    HOME: home,
+    USERPROFILE: home,
+    TMPDIR: home,
+    TEMP: home,
+    TMP: home,
+    LANG: 'C.UTF-8',
+    CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    DISABLE_AUTOUPDATER: '1',
+    DISABLE_TELEMETRY: '1',
+    DISABLE_ERROR_REPORTING: '1',
+    CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK: '1',
+    API_TIMEOUT_MS: '300000',
+  };
+  if (!cache) env['DISABLE_PROMPT_CACHING'] = '1';
+  for (const name of ['SYSTEMROOT', 'SystemRoot', 'COMSPEC', 'WINDIR']) {
+    const value = process.env[name];
+    if (value) env[name] = value;
+  }
+  if (run.provider === 'anthropic') {
+    env['ANTHROPIC_BASE_URL'] = `${run.proxyUrl}/anthropic`;
+    env['ANTHROPIC_API_KEY'] = placeholderKey;
+  } else {
+    env['CLAUDE_CODE_USE_BEDROCK'] = '1';
+    env['AWS_REGION'] = bedrockRegion;
+    env['ANTHROPIC_BEDROCK_BASE_URL'] = `${run.proxyUrl}/bedrock`;
+    env['AWS_BEARER_TOKEN_BEDROCK'] = placeholderKey;
+    env['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = modelIds.bedrock.haiku;
+  }
+  return env;
+}
+
+export interface AgentRequest {
+  role: string;
+  tier: ModelTier;
+  systemPrompt: string;
+  prompt: string;
+  schema: Record<string, unknown>;
+  maxTurns: number;
+  budgetUsd: number;
+  // False for a call whose prompt nothing else will reuse.
+  cache?: boolean;
+}
+
+export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> {
+  const model = modelIds[run.provider][request.tier];
+  const home = mkdtempSync(path.join(tmpdir(), 'code-review-agent-'));
+  const tools = run.checkout ? ['Read', 'Grep', 'Glob'] : [];
+  const options: Options = {
+    model,
+    systemPrompt: request.systemPrompt,
+    // Outside the checkout, so nothing in it is treated as project configuration.
+    cwd: home,
+    ...(run.checkout ? { additionalDirectories: [run.checkout] } : {}),
+    settingSources: [],
+    mcpServers: {},
+    tools,
+    allowedTools: tools,
+    permissionMode: 'dontAsk',
+    maxTurns: request.maxTurns,
+    maxBudgetUsd: request.budgetUsd,
+    outputFormat: { type: 'json_schema', schema: request.schema },
+    persistSession: false,
+    env: agentEnvironment(run, home, request.cache ?? true),
+    ...(run.checkout ? { hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [pathGuard(run.checkout)] }] } } : {}),
+  };
+
+  const started = Date.now();
+  let result: SDKResultMessage | undefined;
+  let error: string | undefined;
+  try {
+    for await (const message of query({ prompt: request.prompt, options })) {
+      if (message.type === 'result') result = message;
+    }
+  } catch (e) {
+    error = (e as Error).message;
+  }
+
+  const record: CallRecord = {
+    role: request.role,
+    provider: run.provider,
+    model,
+    costUsd: result?.total_cost_usd ?? 0,
+    inputTokens: result?.usage.input_tokens ?? 0,
+    outputTokens: result?.usage.output_tokens ?? 0,
+    cacheReadTokens: result?.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: result?.usage.cache_creation_input_tokens ?? 0,
+    turns: result?.num_turns ?? 0,
+    durationMs: Date.now() - started,
+    outcome: error ? 'error' : (result?.subtype ?? 'no result'),
+  };
+  if (result?.subtype !== 'success') {
+    const reason = error ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
+    return { output: undefined, record, error: reason };
+  }
+  return { output: result.structured_output as T, record };
+}
