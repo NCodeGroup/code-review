@@ -79,8 +79,8 @@ else {
 
 # The environment: only the default branch may deploy to it.
 if ($PSCmdlet.ShouldProcess("$Repo environment $environment", "Limit deployments to $defaultBranch")) {
-    '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
-        Invoke-Gh api -X PUT "repos/$Repo/environments/$environment" --input - --silent
+    Invoke-Gh api -X PUT "repos/$Repo/environments/$environment" --silent `
+        -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
     $policies = @(Invoke-Gh api "repos/$Repo/environments/$environment/deployment-branch-policies" --jq '.branch_policies[] | @json' |
         ForEach-Object { $_ | ConvertFrom-Json })
     foreach ($policy in $policies | Where-Object { $_.name -ne $defaultBranch -or $_.type -ne 'branch' }) {
