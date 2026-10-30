@@ -1,7 +1,7 @@
 // Replays the eval cases through the review pipeline and scores them: each expected concern must be raised, and no
 // must-not-flag concern may be. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.
 //
-//   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name]
+//   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name] [--guidance full]
 //
 // Writes evals/out/<label>.json with every finding, the judge's verdicts and the cost.
 
@@ -106,6 +106,11 @@ async function main(): Promise<void> {
   const cases = (JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Case[]).filter((c) => !only || only.includes(c.id));
   const label = arg('label') ?? new Date().toISOString().replace(/[:.]/g, '-');
   const charters = loadCharters(root);
+  // The held-out guidance was trained without the eval cases' own pull requests and decision records, so a catch
+  // measures what the bot learned in general. --guidance full uses the production guidance instead.
+  const guidance = path.join(root, arg('guidance') === 'full' ? 'guidance' : 'guidance-holdout');
+  if (!existsSync(guidance)) throw new Error(`${path.basename(guidance)}/ is missing; run npm run train -- --generalize-only first.`);
+  console.log(`Guidance: ${path.basename(guidance)}/`);
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
@@ -128,7 +133,7 @@ async function main(): Promise<void> {
           }
         }),
       };
-      const gathered = gather(pullRequest, head, base, root);
+      const gathered = gather(pullRequest, head, base, guidance);
       const outcome = await review({ ...run, checkout: head }, gathered, charters, (line) => console.log(`  ${line}`));
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       const calls = [...outcome.calls];

@@ -125,6 +125,28 @@ test('mergeSynthesis does not count a finding in another file as merged', () => 
   assert.deepEqual(out.map((f) => [f.title, f.reviewers]), [['helpers', ['conventions']], ['int, not the enum', ['api-compat']]]);
 });
 
+test('ruleBatches takes every picked rule once, in catalog order', async () => {
+  const { ruleBatches } = await import('../src/review.ts');
+  const { ruleChecksOn } = await import('../src/config.ts');
+  const rule = (id: string, reviewers: string[]) => ({ id, reviewers, summary: id, text: id });
+  const catalog = ['G-a-1', 'G-a-2', 'G-b-1', 'R-x-1', 'R-x-2'].map((id) => rule(id, ['conventions']));
+  const rulesFor = new Map([['conventions', [catalog[3]!, catalog[0]!]], ['security', [catalog[0]!, catalog[2]!]]]);
+  assert.deepEqual(ruleBatches(catalog, rulesFor, 2).map((b) => b.map((r) => r.id)), [['G-a-1', 'G-b-1'], ['R-x-1']]);
+  assert.deepEqual(ruleBatches(catalog, new Map(), 2), []);
+  assert.ok(ruleChecksOn(''));
+  assert.ok(!ruleChecksOn('off'));
+});
+
+test('holdoutLabels names the reviews and decision records the eval cases draw on', async () => {
+  const { holdoutLabels } = await import('../training/run.ts');
+  const labels = holdoutLabels([
+    { id: 'comments-341-b0fa15533', repository: 'NCodeGroup/Identity', source: "The maintainer's 3 review comments on #341." },
+    { id: 'span-split', repository: 'NCodeGroup/Identity', source: 'Review comment https://github.com/NCodeGroup/Identity/pull/420#discussion_r1' },
+    { id: 'lenient', repository: 'NCodeGroup/Identity', source: 'Fixed by #309 (163ad04c); ADR-0266.' },
+  ]);
+  assert.deepEqual([...labels].sort(), ['Identity ADR-0266', 'Identity review of #309', 'Identity review of #341', 'Identity review of #420']);
+});
+
 test('findingLimit grows with the parts of a large diff', () => {
   assert.equal(findingLimit(1), 40);
   assert.equal(findingLimit(3), 80);

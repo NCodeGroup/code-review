@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 
@@ -104,7 +104,18 @@ export interface Charters {
   specialistPrompt: string;
   selectionPrompt: string;
   synthesisPrompt: string;
+  ruleCheckPrompt: string;
   reviewers: Map<string, string>;
+}
+
+// The rules the context stage picked for any reviewer, once each and in catalog order so a topic's rules share a batch,
+// in batches for the rule checks.
+export function ruleBatches(catalog: IndexedRule[], rulesFor: Map<string, IndexedRule[]>, size: number): IndexedRule[][] {
+  const picked = new Set([...rulesFor.values()].flat().map((r) => r.id));
+  const rules = catalog.filter((r) => picked.has(r.id));
+  const batches: IndexedRule[][] = [];
+  for (let i = 0; i < rules.length; i += size) batches.push(rules.slice(i, i + size));
+  return batches;
 }
 
 export function loadCharters(root: string): Charters {
@@ -113,7 +124,13 @@ export function loadCharters(root: string): Charters {
     reviewers.set(name.slice(0, -3), readFileSync(path.join(root, 'reviewers', name), 'utf8'));
   }
   const prompt = (name: string) => readFileSync(path.join(root, 'prompts', `${name}.md`), 'utf8');
-  return { specialistPrompt: prompt('specialist'), selectionPrompt: prompt('selection'), synthesisPrompt: prompt('synthesis'), reviewers };
+  return {
+    specialistPrompt: prompt('specialist'),
+    selectionPrompt: prompt('selection'),
+    synthesisPrompt: prompt('synthesis'),
+    ruleCheckPrompt: prompt('rule-check'),
+    reviewers,
+  };
 }
 
 const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf)/i;
@@ -141,6 +158,9 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
 }
 
 export const architectureMinLines = 60;
+
+// The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
+export const ruleCheckName = 'rule-check';
 
 function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
@@ -295,17 +315,28 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const tiers = reviewerTiers();
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
+  const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
   const jobs = parts.flatMap((diff, part) => {
     const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
-    return [...selected].map((reviewer) => ({
-      name: reviewer,
-      part,
-      tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-      prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
-    }));
+    return [
+      ...[...selected].map((reviewer) => ({
+        name: reviewer,
+        part,
+        label: '',
+        tier: tiers[reviewer] ?? ('haiku' as ModelTier),
+        prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
+      })),
+      ...batches.map((batch, i) => ({
+        name: ruleCheckName,
+        part,
+        label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
+        tier: 'sonnet' as ModelTier,
+        prompt: [sharedBlock, `${rulesBlock(batch).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
+      })),
+    ];
   });
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
-  const reviewOne = async ({ name, part, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
+  const reviewOne = async ({ name, part, label, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
     const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
       role: `reviewer:${name}`,
       tier,
@@ -318,7 +349,8 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(result.record);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    log(`  ${name}${parts.length > 1 ? ` (part ${part + 1})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
+    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   };
   const concurrency = 6;
@@ -326,8 +358,8 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     ...(await mapWithConcurrency(first, concurrency, reviewOne)),
     ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
   ];
-  // One outcome per reviewer across the parts: it ran if any part ran.
-  const outcomes: ReviewerOutcome[] = [...selected].map((name) => {
+  // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran.
+  const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const errors = mine.flatMap((o) => (o.error ? [o.error] : []));
     return {

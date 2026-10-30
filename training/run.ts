@@ -2,7 +2,7 @@
 // prompts and its maintainer's review comments.
 //
 //   node training/run.ts --repo NCodeGroup/Identity --checkout C:\GitHub\NCode\Identity [--maintainer polewskm]
-//   node training/run.ts --generalize-only
+//   node training/run.ts --generalize-only [--holdout-only]
 //
 // 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The result
 //    is saved under training/extracted/<repository>/ with the source's content hash, so a rerun reads only sources that
@@ -10,6 +10,9 @@
 // 2. Generalize: Opus merges every repository's extracted rules, topic by topic, into guidance/<topic>.md, which the
 //    engine gives the conventions reviewer in every repository. training/feedback.md holds the maintainer's
 //    corrections, and every generalization follows them.
+// 3. Hold out: the same generalization, without the review comments and decision records of the eval cases' pull
+//    requests, into guidance-holdout/. The evals use it, so a catch shows what the bot learned in general rather than
+//    the answer to that case. Production uses guidance/.
 //
 // Runs on Bedrock with AWS_BEARER_TOKEN_BEDROCK. Review the guidance in a pull request before it's merged.
 
@@ -45,6 +48,21 @@ interface Extracted { hash: string; promptHash: string; label: string; rules: Ru
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
   return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+// The source labels the eval cases draw on: the review of each pull request a case names, and each decision record its
+// source cites. Labels look like "Identity review of #341" and "Identity ADR-0266".
+export function holdoutLabels(cases: { id: string; repository: string; pullRequest?: number; source?: string }[]): Set<string> {
+  const labels = new Set<string>();
+  for (const c of cases) {
+    const repo = c.repository.split('/')[1]!;
+    const text = `${c.id} ${c.source ?? ''}`;
+    const pulls = new Set<number>(c.pullRequest ? [c.pullRequest] : []);
+    for (const m of text.matchAll(/(?:\/pull\/|#|^comments-)(\d+)/g)) pulls.add(Number(m[1]));
+    for (const pull of pulls) labels.add(`${repo} review of #${pull}`);
+    for (const m of text.matchAll(/ADR-(\d{4})/g)) labels.add(`${repo} ADR-${m[1]}`);
+  }
+  return labels;
 }
 
 const sha = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -231,12 +249,13 @@ const titles: Record<string, string> = {
   documentation: 'Documentation', performance: 'Performance',
 };
 
-async function generalize(run: AgentRun, calls: CallRecord[]): Promise<void> {
+async function generalize(run: AgentRun, calls: CallRecord[], folder: string, exclude = new Set<string>()): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'generalize.md'), 'utf8');
   const feedbackFile = path.join(root, 'training', 'feedback.md');
   const feedback = existsSync(feedbackFile) ? readFileSync(feedbackFile, 'utf8') : '';
-  const usable = loadExtracted().filter(({ rule }) => rule.scope !== 'repository' && !rule.enforced_by_tools);
-  const out = path.join(root, 'guidance');
+  const usable = loadExtracted().filter(({ rule, source }) => rule.scope !== 'repository' && !rule.enforced_by_tools && !exclude.has(source));
+  console.log(`${folder}/: ${usable.length} rules${exclude.size ? `, holding out ${exclude.size} sources` : ''}`);
+  const out = path.join(root, folder);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   await mapWithConcurrency([...topics], 4, async (topic) => {
@@ -254,7 +273,7 @@ async function generalize(run: AgentRun, calls: CallRecord[]): Promise<void> {
       cache: false,
     });
     calls.push(result.record);
-    if (!result.output) { console.log(`  ${topic}: failed (${result.error})`); return; }
+    if (!result.output) { console.log(`  ${folder}/${topic}: failed (${result.error})`); return; }
     const { description, applies_to, rules: final } = result.output;
     const lines = [
       '---',
@@ -270,7 +289,7 @@ async function generalize(run: AgentRun, calls: CallRecord[]): Promise<void> {
       '',
     ];
     writeFileSync(path.join(out, `${topic}.md`), lines.join('\n'));
-    console.log(`  ${topic}: ${rules.length} extracted rules -> ${final.length}, $${result.record.costUsd.toFixed(2)}`);
+    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${result.record.costUsd.toFixed(2)}`);
   });
 }
 
@@ -311,7 +330,11 @@ async function main(): Promise<void> {
         : [];
       if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls);
     }
-    if (!process.argv.includes('--extract-only')) await generalize(run, calls);
+    if (!process.argv.includes('--extract-only')) {
+      const cases = JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Parameters<typeof holdoutLabels>[0];
+      if (!process.argv.includes('--holdout-only')) await generalize(run, calls, 'guidance');
+      await generalize(run, calls, 'guidance-holdout', holdoutLabels(cases));
+    }
   } finally {
     await proxy.close();
   }

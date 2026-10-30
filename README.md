@@ -14,6 +14,8 @@ environment holds no secret: model calls go through a localhost proxy that adds 
 reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
 repository under review. Results and the trace are scanned for secrets before they're written.
 
+Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
+
 ## Using it
 
 ```yaml
@@ -118,6 +120,14 @@ From a clone of this repository:
 
 The `code-review` environment holds no secrets. Anthropic's federation rule trusts only jobs in it, so only
 default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
+
+## Evals
+
+`node evals/run.ts` replays the 16 cases in `evals/cases.json` (real pull requests from NCodeGroup/Identity with the findings a maintainer expected and one that must not appear) through the whole pipeline on Bedrock, and a Sonnet judge compares what the reviewers posted with what was expected. A full run of 16 costs about $30 without rule checks and $52 with them. It needs `AWS_BEARER_TOKEN_BEDROCK` and, for the checkout of each case, `gh`.
+
+The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
+
+`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. Run each setup at least twice: one run varies by about 2 of 55.
 
 ## Checks
 
