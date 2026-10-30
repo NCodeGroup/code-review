@@ -1,8 +1,9 @@
-# Checks the Anthropic workload identity federation rule `github-code-review` end to end.
+# Checks the review's model access end to end.
 # Comment `/wif-test` on any issue in this repository. Both jobs pass when:
-#   - a job in the `code-review` environment gets an Anthropic token, and
-#   - the same exchange without the environment is refused.
-# Getting a token needs no API credits; nothing here calls a model.
+#   - a job in the `code-review` environment gets an Anthropic token through the federation rule `github-code-review`,
+#   - the same exchange without the environment is refused, and
+#   - when the environment holds a Bedrock key, a one-token Haiku call on Bedrock succeeds with it.
+# Getting a token needs no API credits. The Bedrock call costs a fraction of a cent.
 name: WIF smoke test
 
 on:
@@ -53,6 +54,20 @@ jobs:
           if [ "$EXPECT" = success ] && [ "$status" != 200 ]; then echo "::error::Expected a token, got HTTP $status"; exit 1; fi
           if [ "$EXPECT" = refused ] && [ "$status" = 200 ]; then echo "::error::The rule accepted a job outside the code-review environment"; exit 1; fi
           echo "As expected: $EXPECT"
+      - name: Call Haiku on Bedrock with the environment's key (one output token)
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then echo "::notice::The code-review environment has no Bedrock key; skipped."; exit 0; fi
+          status=$(curl -sS -o response.json -w '%{http_code}' \
+            https://bedrock-runtime.us-west-2.amazonaws.com/model/global.anthropic.claude-haiku-5-5/invoke \
+            -H "authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" -H 'content-type: application/json' \
+            --data '{"anthropic_version":"bedrock-2023-05-31","max_tokens":1,"messages":[{"role":"user","content":"Hi"}]}')
+          echo "HTTP $status"
+          jq '{model, usage}' response.json || cat response.json
+          rm -f response.json
+          if [ "$status" != 200 ]; then echo "::error::The Bedrock call failed with HTTP $status"; exit 1; fi
 
   without-environment:
     if: >-
