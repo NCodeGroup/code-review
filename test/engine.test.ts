@@ -235,6 +235,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
     'https://help',
   );
   assert.ok(body.startsWith(summaryMarker));
+  assert.match(body, /<!-- ncode-review:head=abcdef1234 -->/);
   assert.ok(body.includes('**Verdict: 💬 Comment** — Adds a cache. It works.'));
   assert.match(body, /\*\*2 reviewers run\*\* — 1 finding \(\[run details\]\(https:\/\/check\)\)/);
   assert.match(body, /\| synthesis \| opus-5-5 \| 1 \| 🟠 \|/);
@@ -243,6 +244,13 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\*Skipped: performance, data-model\*/);
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
+});
+
+test('the summary comment records the reviewed commit for the next run to read', async () => {
+  const { headMarker, reviewedHead } = await import('../src/results.ts');
+  const sha = 'be871218490af47fa393c9d0a11b68548265bf0f';
+  assert.equal(reviewedHead(`<!-- ncode-review:summary -->\n${headMarker(sha)}\n### 🤖 Review complete`), sha);
+  assert.equal(reviewedHead('<!-- ncode-review:summary -->\n### 🤖 Review complete'), undefined);
 });
 
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
