@@ -1,0 +1,92 @@
+name: NCode code review
+description: Reviews a pull request with Claude and posts the findings as the "Code review" check run (shadow mode).
+
+inputs:
+  app-private-key:
+    description: The NCode Review app's private key (the NCODE_REVIEW_APP_PRIVATE_KEY organization secret).
+    required: true
+  bedrock-api-key:
+    description: The Bedrock API key used once the plan's API credits run out (the AWS_BEARER_TOKEN_BEDROCK organization secret).
+    required: false
+    default: ''
+  pr-path:
+    description: Where the pull request's head is checked out, relative to the workspace.
+    required: false
+    default: pr
+  base-path:
+    description: Where the default branch is checked out, relative to the workspace. Settings and conventions come from here.
+    required: false
+    default: base
+  app-client-id:
+    description: The NCode Review app's client ID.
+    required: false
+    default: Iv23liAbZt44tgephpLC
+  federation-rule-id:
+    description: The Anthropic federation rule the job logs in through.
+    required: false
+    default: fdrl_019dXaBRa2Zo1UazugiQwWZ3
+  organization-id:
+    description: The Anthropic organization.
+    required: false
+    default: e9301a37-092f-47c8-9b24-188808b1d576
+  service-account-id:
+    description: The Anthropic service account the federation rule maps to.
+    required: false
+    default: svac_012yav3w3rfhH5i9bAgoWLHe
+  workspace-id:
+    description: The Anthropic workspace that pays for the review.
+    required: false
+    default: wrkspc_019f5RLk5SG4XWE8XKwWFHZh
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+
+    - name: Install the engine
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+    # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
+    # The app's private key is not in this step's environment.
+    - name: Review
+      shell: bash
+      env:
+        CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
+        CODE_REVIEW_PR_PATH: ${{ inputs.pr-path }}
+        CODE_REVIEW_BASE_PATH: ${{ inputs.base-path }}
+        CODE_REVIEW_BEDROCK_KEY: ${{ inputs.bedrock-api-key }}
+        CODE_REVIEW_FEDERATION_RULE_ID: ${{ inputs.federation-rule-id }}
+        CODE_REVIEW_ORGANIZATION_ID: ${{ inputs.organization-id }}
+        CODE_REVIEW_SERVICE_ACCOUNT_ID: ${{ inputs.service-account-id }}
+        CODE_REVIEW_WORKSPACE_ID: ${{ inputs.workspace-id }}
+      run: node "$GITHUB_ACTION_PATH/src/main.ts"
+
+    # Minted after the agents have exited, for this repository only, and able to write check runs only.
+    - name: Get the app's token
+      id: app-token
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        repositories: ${{ github.event.repository.name }}
+        permission-checks: write
+
+    - name: Publish
+      shell: bash
+      env:
+        CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
+        CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: node "$GITHUB_ACTION_PATH/src/publish.ts"
+
+    - name: Upload the trace
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: code-review-trace
+        path: ${{ runner.temp }}/code-review/trace.json
+        retention-days: 30
+        if-no-files-found: ignore
