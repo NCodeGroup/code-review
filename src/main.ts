@@ -11,7 +11,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { loadCharters, review } from './review.ts';
-import type { Results } from './results.ts';
+import { topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -96,7 +96,16 @@ async function main(): Promise<void> {
       providerReason: choice.reason,
       summary: outcome.summary,
       findings: outcome.findings,
-      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => ({ name, status, findingCount: findings.length, ...(error ? { error } : {}) })),
+      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => ({
+        name,
+        status,
+        model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+        findingCount: findings.length,
+        ...(topSeverity(findings) ? { topSeverity: topSeverity(findings) } : {}),
+        ...(error ? { error } : {}),
+      })),
+      skipped: outcome.skipped,
+      synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
       calls: outcome.calls,
       costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
       durationMs: Date.now() - started,

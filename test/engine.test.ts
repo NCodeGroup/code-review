@@ -185,3 +185,38 @@ test('commandFromEvent accepts only an exact /review from a writer on a pull req
   assert.equal(commandFromEvent(event('/review', 'NONE')), undefined);
   assert.equal(commandFromEvent(event('/review', 'MEMBER', null)), undefined);
 });
+
+test('summaryComment shows reviewers, models, counts and the worst severity', async () => {
+  const { summaryComment, summaryMarker, shortModel, topSeverity } = await import('../src/results.ts');
+  assert.equal(shortModel('global.anthropic.claude-haiku-5-5'), 'haiku-5-5');
+  assert.equal(shortModel('claude-opus-5-5'), 'opus-5-5');
+  assert.equal(topSeverity([{ severity: 'nit' }, { severity: 'blocker' }]), 'blocker');
+  assert.equal(topSeverity([]), undefined);
+  const finding = { file: 'src/A.cs', line: 3, title: 'Leaks | a pipe', problem: '', consequence: '', fix: '', evidence: '', confidence: 0.8, reviewers: ['tests'] };
+  const body = summaryComment(
+    {
+      findings: [{ ...finding, severity: 'should-fix', id: 'F1' }],
+      reviewers: [
+        { name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' },
+        { name: 'correctness', status: 'ran', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0 },
+        { name: 'security', status: 'failed', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0, error: 'x' },
+      ],
+      skipped: ['performance', 'data-model'],
+      synthesisModel: 'global.anthropic.claude-opus-5-5',
+      provider: 'bedrock',
+      costUsd: 0.6912,
+      durationMs: 71_400,
+      headSha: 'abcdef1234',
+    } as never,
+    'https://check',
+    'https://help',
+  );
+  assert.ok(body.startsWith(summaryMarker));
+  assert.match(body, /\*\*2 reviewers run\*\* — 1 finding \(\[run details\]\(https:\/\/check\)\)/);
+  assert.match(body, /\| synthesis \| opus-5-5 \| 1 \| 🟠 \|/);
+  assert.match(body, /\| correctness \| sonnet-5-5 \| 0 \| 🟢 \|/);
+  assert.match(body, /\| security \| sonnet-5-5 \| failed \| ⚠️ \|/);
+  assert.match(body, /\*Skipped: performance, data-model\*/);
+  assert.match(body, /Leaks \\| a pipe/);
+  assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
+});
