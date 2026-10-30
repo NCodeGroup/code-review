@@ -57,7 +57,7 @@ jobs:
           path: pr
           fetch-depth: 0
           persist-credentials: false
-      - uses: NCodeGroup/code-review@<commit sha>
+      - uses: NCodeGroup/code-review@v0.1.0 # an exact release tag, never a branch or @v1
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -66,6 +66,19 @@ jobs:
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
 its own review, and the pull request's code is only read, never built or run. Pushes start nothing; comment `/review`
 to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
+
+## Versions
+
+Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.1.0`. Never a branch, and never a floating
+major tag like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a
+release someone reviewed in a pull request in its own repository. The "Protect release tags" ruleset forbids moving or
+deleting any `v*` tag, so an exact tag is as fixed as a commit. Dependabot's `github-actions` ecosystem opens a pull
+request in the consumer for each new release.
+
+To release, run the Release workflow from `main` with the version, such as `0.2.0`. It checks that the version is
+`MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, runs the typecheck and tests on the commit, then creates
+the tag and a GitHub release with generated notes. Versions below 1.0.0 are marked as pre-releases. A tag can't be
+deleted afterwards, so a mistake is fixed by releasing the next version.
 
 ## Commands
 
