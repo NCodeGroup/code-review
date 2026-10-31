@@ -54,7 +54,8 @@ const charters: Charters = {
   synthesisPrompt: 'syn',
   ruleCheckPrompt: 'r',
   verificationPrompt: 'v',
-  reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, n])),
+  reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, { text: n, shadow: false }])),
+  shadowPrompts: {},
 };
 
 const finding = (title: string, severity: Finding['severity'] = 'should-fix'): Finding =>
@@ -73,9 +74,11 @@ interface CappedOptions {
   reviewRules?: RuleFile[];
   // CODE_REVIEW_MAX_RUN_USD for the run; unset when undefined.
   maxRunUsd?: string;
+  // CODE_REVIEW_SHADOW for the run; unset when undefined.
+  shadow?: string;
 }
 
-const ceilingEnv = ['CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_TIERS', 'CODE_REVIEW_RULE_CHECKS'];
+const ceilingEnv = ['CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_TIERS', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE'];
 
 async function cappedReview({
   parts = 1,
@@ -85,6 +88,7 @@ async function cappedReview({
   synthesis = { summary: 'Merged.', verdict: 'approve', findings: [] },
   reviewRules = [],
   maxRunUsd,
+  shadow,
 }: CappedOptions = {}) {
   const roles: string[] = [];
   const agent = async <T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
@@ -103,6 +107,7 @@ async function cappedReview({
   const saved = ceilingEnv.map((name) => [name, process.env[name]] as const);
   for (const name of ceilingEnv) delete process.env[name];
   if (maxRunUsd !== undefined) process.env['CODE_REVIEW_MAX_RUN_USD'] = maxRunUsd;
+  if (shadow !== undefined) process.env['CODE_REVIEW_SHADOW'] = shadow;
   const logs: string[] = [];
   try {
     const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, { ...gathered, reviewRules, chunks: Array(parts).fill(diff) }, charters, (line) => logs.push(line), agent);
@@ -181,6 +186,13 @@ test('context and selection spend count toward the ceiling, and spend equal to i
   assert.ok(byContext.result.reviewers.some((r) => r.name === ruleCheckName));
   assert.ok(byContext.result.reviewers.every((r) => r.status === 'skipped' && r.error === runBudgetReason));
   assert.match(byContext.result.summary, /\(\$12\.00 spent\) and skipped 7 of 7 reviewer calls/);
+});
+
+test('a shadow reviewer the cost ceiling skipped is not counted in the warning about the posted review', async () => {
+  const { result } = await cappedReview({ shadow: 'security' });
+  assert.deepEqual(result.shadow.map((r) => [r.name, r.status, r.error]), [['security', 'skipped', runBudgetReason]]);
+  assert.ok(!result.reviewers.some((r) => r.name === 'security'));
+  assert.match(result.summary, /skipped 3 of 5 reviewer calls \(tests, architecture, completeness\), so it is incomplete\.$/);
 });
 
 test('review enforces the ceiling CODE_REVIEW_MAX_RUN_USD sets', async () => {

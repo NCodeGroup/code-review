@@ -87,6 +87,19 @@ export function ruleChecksOn(value = process.env['CODE_REVIEW_RULE_CHECKS'] ?? '
   return value !== 'off';
 }
 
+// Shadow reviewers run but post nothing: a charter marked shadow: true in its frontmatter, and, for an experiment, the
+// reviewers CODE_REVIEW_SHADOW names, comma-separated, such as "performance,rule-check".
+export function shadowOverride(value = process.env['CODE_REVIEW_SHADOW'] ?? ''): Set<string> {
+  return new Set(value.split(',').map((name) => name.trim()).filter(Boolean));
+}
+
+// The share of reviews, from 0 (the default: none) to 1 (all), on which each prompts/<name>.shadow.md runs alongside its
+// live prompt. CODE_REVIEW_SHADOW_RATE sets it; anything that isn't a number in that range counts as 0.
+export function shadowPromptRate(value = process.env['CODE_REVIEW_SHADOW_RATE'] ?? ''): number {
+  const rate = Number(value.trim() || '0');
+  return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0;
+}
+
 // The diff goes to the reviewers in parts of up to maxChunkChars, each part to its own set of reviewers, so a large pull
 // request gets the same attention per line as a small one. Past maxChunks parts, files are listed but their hunks are
 // left out, and the summary says so. Each part costs about one more review.

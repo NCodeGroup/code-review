@@ -12,8 +12,9 @@ import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.t
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
-import { changedLines, loadCharters, review } from './review.ts';
-import { topSeverity, type Results } from './results.ts';
+import { loadCharters, review } from './review.ts';
+import { buildResults } from './review-results.ts';
+import type { Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -28,12 +29,6 @@ function take(name: string): string | undefined {
   const value = process.env[name];
   delete process.env[name];
   return value || undefined;
-}
-
-// The added lines of each file a finding is in, so the publish step can tell which findings can be inline comments.
-function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
-  const all = changedLines(diff);
-  return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
@@ -126,36 +121,25 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const outcome = await review({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, gathered, loadCharters(root), log);
-    results = {
+    results = buildResults(outcome, {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
-      summary: outcome.summary,
-      verdict: outcome.verdict,
-      findings: outcome.findings,
-      ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
-      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
-        const top = topSeverity(findings);
-        return {
-          name,
-          status,
-          model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
-          findingCount: findings.length,
-          ...(top ? { topSeverity: top } : {}),
-          ...(error ? { error } : {}),
-        };
-      }),
-      skipped: outcome.skipped,
-      synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
-      calls: outcome.calls,
-      costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
-      changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
+      diff: gathered.diff,
+    });
+    // The shadow reviewers' findings and the shadow prompts' outputs, beside the live ones they shadow.
+    const trace = {
+      results,
+      rawFindings: outcome.reviewers,
+      verification: outcome.verification,
+      shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
+      files: gathered.files,
+      conventionsChars: gathered.conventions.length,
     };
-    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length };
 
     const secrets = secretValues(credentials);
     const resultsJson = JSON.stringify(results, null, 2);

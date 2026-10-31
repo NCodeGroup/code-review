@@ -1,9 +1,11 @@
 // Replays the eval cases through the review pipeline and scores them: each expected concern must be raised, and no
 // must-not-flag concern may be. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.
 //
-//   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name] [--guidance full]
+//   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--shadow performance] [--label name] [--guidance full]
 //
-// Writes evals/out/<label>.json with every finding, the judge's verdicts and the cost.
+// Writes evals/out/<label>.json with every finding, the judge's verdicts and the cost. Shadow reviewers (a charter marked
+// shadow: true, or --shadow, which sets CODE_REVIEW_SHADOW) are scored on their own: their catches and must-not
+// violations are reported apart from the live reviewers', which never include them.
 //
 // A concern with a minSeverity counts as raised only by a finding at that severity or above: an expected should-fix
 // raised as a nit is missed, and a must-not concern at should-fix may still be raised as a nit.
@@ -31,7 +33,7 @@ interface Case {
   mustNotFlag: Concern[];
   source: string;
 }
-interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[] }
+interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[]; caughtShadow?: boolean; byShadow?: string[] }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const work = path.join(root, 'evals', '.work');
@@ -111,6 +113,7 @@ async function main(): Promise<void> {
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
   if (arg('tiers')) process.env['CODE_REVIEW_TIERS'] = arg('tiers');
+  if (arg('shadow')) process.env['CODE_REVIEW_SHADOW'] = arg('shadow');
   const only = arg('only')?.split(',');
   const cases = (JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Case[]).filter((c) => !only || only.includes(c.id));
   const label = arg('label') ?? new Date().toISOString().replace(/[:.]/g, '-');
@@ -124,6 +127,8 @@ async function main(): Promise<void> {
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
   let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
+  let caughtShadow = 0, shadowViolations = 0, shadowFindingCount = 0;
+  const shadowNames = new Set<string>();
 
   try {
     for (const c of cases) {
@@ -145,15 +150,27 @@ async function main(): Promise<void> {
       const gathered = gather(pullRequest, head, base, guidance);
       const outcome = await review({ ...run, checkout: head }, gathered, charters, (line) => console.log(`  ${line}`));
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
+      const shadow = outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
+      for (const o of outcome.shadow) shadowNames.add(o.name);
       const calls = [...outcome.calls];
       const verdicts: Verdict[] = [];
       for (const concern of c.expect) {
         const by = await raised(run, concern, outcome.findings, calls);
         const byRaw = by.length ? by : await raised(run, concern, raw, calls);
-        verdicts.push({ concern: concern.concern, caught: by.length > 0, caughtRaw: byRaw.length > 0, by: by.length ? by : byRaw });
+        const byShadow = shadow.length ? await raised(run, concern, shadow, calls) : [];
+        verdicts.push({
+          concern: concern.concern, caught: by.length > 0, caughtRaw: byRaw.length > 0, by: by.length ? by : byRaw,
+          ...(outcome.shadow.length ? { caughtShadow: byShadow.length > 0, byShadow } : {}),
+        });
       }
       const forbidden = [];
-      for (const concern of c.mustNotFlag) forbidden.push({ concern: concern.concern, raisedBy: await raised(run, concern, outcome.findings, calls) });
+      for (const concern of c.mustNotFlag) {
+        forbidden.push({
+          concern: concern.concern,
+          raisedBy: await raised(run, concern, outcome.findings, calls),
+          ...(shadow.length ? { raisedByShadow: await raised(run, concern, shadow, calls) } : {}),
+        });
+      }
 
       const caseCost = calls.reduce((sum, call) => sum + call.costUsd, 0);
       expected += verdicts.length;
@@ -163,20 +180,31 @@ async function main(): Promise<void> {
       findingCount += outcome.findings.length;
       seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
       refutedCount += outcome.refuted.length;
+      caughtShadow += verdicts.filter((v) => v.caughtShadow).length;
+      shadowViolations += forbidden.filter((f) => f.raisedByShadow?.length).length;
+      shadowFindingCount += shadow.length;
       cost += caseCost;
       const status = [
         ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
       ].join(', ');
-      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, refuted: outcome.refuted, raw, calls, costUsd: caseCost });
+      const shadowStatus = outcome.shadow.length
+        ? `; shadow (${outcome.shadow.map((o) => o.name).join(', ')}): ${verdicts.filter((v) => v.caughtShadow).length} caught, ${forbidden.filter((f) => f.raisedByShadow?.length).length} must-not, ${shadow.length} findings`
+        : '';
+      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings${shadowStatus}, $${caseCost.toFixed(2)}`);
+      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, refuted: outcome.refuted, raw, shadow, shadowPrompts: outcome.shadowPrompts, calls, costUsd: caseCost });
     }
   } finally {
     await proxy.close();
   }
 
-  const summary = { label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations, findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount, costUsd: cost };
+  const summary = {
+    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations, findings: findingCount,
+    blockersAndShouldFixes: seriousCount, refuted: refutedCount, costUsd: cost,
+    shadow: { reviewers: [...shadowNames], caught: caughtShadow, violations: shadowViolations, findings: shadowFindingCount },
+  };
   console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
+  if (shadowNames.size) console.log(`Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
 }

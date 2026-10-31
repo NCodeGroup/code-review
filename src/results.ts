@@ -14,6 +14,14 @@ export interface ReviewerResult {
   error?: string;
 }
 
+// What the shadow reviewers and prompts did: shown only in the check run's collapsed shadow section.
+export interface ShadowResults {
+  reviewers: ReviewerResult[];
+  findings: (Finding & { reviewer: string })[];
+  // The prompts whose shadow variants ran on this review; their outputs are only in the trace.
+  prompts: string[];
+}
+
 export interface Results {
   repository: string;
   pullRequest: number;
@@ -35,6 +43,8 @@ export interface Results {
   notShown: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
+  // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
+  shadow?: ShadowResults;
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -173,17 +183,62 @@ export function checkText(results: Results): string {
     }
     out.push('');
   }
-  out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
-  for (const r of results.reviewers) {
-    out.push(`| ${r.name} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
-  }
+  out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
   for (const role of ['selection', 'synthesis', 'verification']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
-  return out.join('\n');
+  return [...out, ...shadowSection(results, costs, maxCheckText - out.join('\n').length - 1)].join('\n');
+}
+
+// GitHub refuses a check run whose text is longer than this.
+export const maxCheckText = 65_535;
+
+// Collapsed, so the shadow reviewers' findings stay out of the way of the ones that were posted. It takes only the room
+// the posted part leaves, so it can't make GitHub refuse the check run; findings that don't fit are counted, and when
+// not even the section's frame fits, a one-line note says the shadow findings are in the trace.
+function shadowSection(results: Results, costs: Map<string, number>, room: number): string[] {
+  const shadow = results.shadow;
+  if (!shadow) return [];
+  const head = [
+    '',
+    '<details><summary>Shadow findings (not posted)</summary>',
+    '',
+    "Shadow reviewers run as usual, but their findings appear only here and in the trace: they aren't given to synthesis, posted as threads, or counted in the summary or the verdict.",
+    '',
+  ];
+  if (shadow.reviewers.length) {
+    head.push(...reviewerTable(shadow.reviewers, costs), '');
+  }
+  const tail: string[] = [];
+  if (shadow.prompts.length) {
+    const cost = [...costs].filter(([role]) => role.startsWith('shadow-prompt:')).reduce((sum, [, c]) => sum + c, 0);
+    tail.push(`Shadow prompts ran on this review beside the live ones: ${shadow.prompts.map((p) => `\`prompts/${p}.shadow.md\``).join(', ')}, $${cost.toFixed(3)}. Their outputs are only in the trace.`, '');
+  }
+  tail.push('</details>');
+  const findings = [...shadow.findings]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
+    .map((f) => `- ${severityDot[f.severity]} ${severityLabel[f.severity]} · \`${cell(f.file)}:${f.line}\` · **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewer)} · confidence ${f.confidence.toFixed(2)}</sub>`);
+  const more = (n: number) => (n ? [`- ${n} more shadow finding${n === 1 ? '' : 's'}, in the trace.`] : []);
+  const size = (lines: string[]) => lines.join('\n').length;
+  let shown = findings.length;
+  while (shown >= 0 && size([...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail]) > room) shown--;
+  if (shown < 0) {
+    const note = ['', "*Shadow findings (not posted) didn't fit in this check run; they are in the trace.*"];
+    return size(note) <= room ? note : [];
+  }
+  return [...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail];
+}
+
+// The live and the shadow reviewers' tables share one row format.
+function reviewerTable(reviewers: ReviewerResult[], costs: Map<string, number>): string[] {
+  return [
+    '| Reviewer | Status | Findings | Cost |',
+    '|---|---|---|---|',
+    ...reviewers.map((r) => `| ${cell(r.name)} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
+  ];
 }
 
 export interface Annotation {
