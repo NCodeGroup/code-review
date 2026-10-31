@@ -4,7 +4,7 @@
 
 import { errorText } from './comments.ts';
 import type { Api } from './github.ts';
-import { NoProviderError } from './provider.ts';
+import { assertNoSecrets } from './outputs.ts';
 
 export const checkName = 'Code review';
 
@@ -71,9 +71,9 @@ export function budgetStatus(reason: string): RunStatus {
   };
 }
 
-// The status for an error that stopped the review step: a used-up budget, or a failure with the error's text.
+// The status for an error that stopped the review step: a failure with the error's text. The review step reports no
+// provider as budgetStatus instead.
 export function failureStatus(error: unknown, url?: string): RunStatus {
-  if (error instanceof NoProviderError) return budgetStatus(error.reason);
   return { conclusion: 'failure', title: 'Review failed', summary: `The review failed: ${errorText(error).replace(/\.$/, '')}.${logLine(url)}` };
 }
 
@@ -94,11 +94,41 @@ export function parseStatus(json: string): RunStatus | undefined {
   return { conclusion, title: value.title, summary: value.summary, ...(isSha(value.headSha) ? { headSha: value.headSha } : {}) };
 }
 
+// What the review step records when it stops without a review: status.json for the finish step, with the commit the
+// run decided to review and no secret, and, once there is such a commit, the step output that tells the later steps
+// there's a check run to complete even without an acknowledgement.
+export function stoppedRecord(status: RunStatus, headSha: string | undefined, secrets: string[]): { json: string; output: string } {
+  let safe: RunStatus = { ...status, ...(headSha ? { headSha } : {}) };
+  try {
+    assertNoSecrets(JSON.stringify(safe), secrets, 'The reason');
+  } catch {
+    safe = { ...safe, summary: "The review stopped, and its reason can't be shown here; the run's log says why." };
+  }
+  return { json: JSON.stringify(safe, null, 2), output: headSha ? 'stopped=true\n' : '' };
+}
+
+// The outcomes of setup-node, npm ci, the review and the publish step, empty for a step that didn't run.
+export interface StepOutcomes {
+  setup?: string;
+  install?: string;
+  review?: string;
+  publish?: string;
+}
+
+// The step outcomes the finish step gets, one variable for each step.
+export function stepOutcomesFrom(env: NodeJS.ProcessEnv): StepOutcomes {
+  return {
+    setup: env['CODE_REVIEW_SETUP_OUTCOME'] ?? '',
+    install: env['CODE_REVIEW_INSTALL_OUTCOME'] ?? '',
+    review: env['CODE_REVIEW_REVIEW_OUTCOME'] ?? '',
+    publish: env['CODE_REVIEW_PUBLISH_OUTCOME'] ?? '',
+  };
+}
+
 // The status when the review step left none: the run was cancelled, it stopped before the review step finished, or the
-// review finished and its results couldn't be posted. `outcomes` are the step outcomes of setup-node, npm ci, the
-// review and the publish step, empty for a step that didn't run.
-export function stoppedStatus(outcomes: { review?: string; publish?: string; others?: string[] }, url?: string): RunStatus {
-  const all = [...(outcomes.others ?? []), outcomes.review, outcomes.publish];
+// review finished and its results couldn't be posted.
+export function stoppedStatus(outcomes: StepOutcomes, url?: string): RunStatus {
+  const all = [outcomes.setup, outcomes.install, outcomes.review, outcomes.publish];
   if (all.includes('cancelled')) {
     return {
       conclusion: 'cancelled',
@@ -108,6 +138,31 @@ export function stoppedStatus(outcomes: { review?: string; publish?: string; oth
   }
   const summary = outcomes.review === 'success' ? "The review finished, but its results couldn't be posted." : 'The run stopped before the review finished.';
   return { conclusion: 'failure', title: 'Review failed', summary: `${summary}${logLine(url)}` };
+}
+
+// The status the finish step completes the check run with: the review step's status.json when it wrote a readable one,
+// otherwise one from the steps' outcomes. A status that holds the token, or anything shaped like a credential, keeps
+// only its conclusion and commit.
+export function finishStatus(
+  statusJson: string | undefined,
+  outcomes: StepOutcomes,
+  context: { token: string; url?: string | undefined; log?: (line: string) => void },
+): RunStatus {
+  const status = (statusJson === undefined ? undefined : parseStatus(statusJson)) ?? stoppedStatus(outcomes, context.url);
+  try {
+    assertNoSecrets(JSON.stringify(status), [context.token], 'The check run');
+    return status;
+  } catch (error) {
+    (context.log ?? console.log)(`::warning::${(error as Error).message} It is left out.`);
+  }
+  const safe: RunStatus = {
+    conclusion: status.conclusion,
+    title: 'Review stopped',
+    summary: "The reason can't be shown here; the run's log says why.",
+    ...(status.headSha ? { headSha: status.headSha } : {}),
+  };
+  assertNoSecrets(JSON.stringify(safe), [context.token], 'The check run');
+  return safe;
 }
 
 // The acknowledgement: 👀 on the /review comment, then the "Code review" check run in progress. A refused reaction only

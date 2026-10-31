@@ -152,7 +152,10 @@ runs:
         CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
         CODE_REVIEW_CHECK_RUN_ID: ${{ steps.ack.outputs.check-run-id }}
         CODE_REVIEW_CHECK_RUN_SHA: ${{ steps.ack.outputs.head-sha }}
-        CODE_REVIEW_STEP_OUTCOMES: ${{ steps.setup-node.outcome }},${{ steps.install.outcome }},${{ steps.review.outcome }},${{ steps.publish.outcome }}
+        CODE_REVIEW_SETUP_OUTCOME: ${{ steps.setup-node.outcome }}
+        CODE_REVIEW_INSTALL_OUTCOME: ${{ steps.install.outcome }}
+        CODE_REVIEW_REVIEW_OUTCOME: ${{ steps.review.outcome }}
+        CODE_REVIEW_PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
       run: node "$GITHUB_ACTION_PATH/src/finish.ts"
 
     - name: Upload the trace

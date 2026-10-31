@@ -10,13 +10,19 @@ import {
   decisionOutputs,
   failureStatus,
   finishCheck,
+  finishStatus,
   inProgressCheck,
   parseStatus,
   publishCheck,
+  skippedStatus,
+  stepOutcomesFrom,
+  stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
+import { decideAcknowledgement, postAcknowledgement } from '../src/acknowledgement.ts';
 import { decideReview } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
+import { required, take } from '../src/env.ts';
 import { fetchPullRequest, githubApi, type Api } from '../src/github.ts';
 import { chooseProvider, NoProviderError } from '../src/provider.ts';
 
@@ -210,8 +216,8 @@ test('finishCheck posts nothing without an acknowledgement or a decided commit',
   assert.equal(calls.length, 0);
 });
 
-test('failureStatus reads no provider as a used-up budget, neutral, with the reason and that the autopilot can go on', () => {
-  const status = failureStatus(new NoProviderError('the Anthropic organization has no API credits (not linked yet, or used up), and the run has no Bedrock key'));
+test('budgetStatus reads no provider as a used-up budget, neutral, with the reason and that the autopilot can go on', () => {
+  const status = budgetStatus(new NoProviderError('the Anthropic organization has no API credits (not linked yet, or used up), and the run has no Bedrock key').reason);
   assert.equal(status.conclusion, 'neutral');
   assert.equal(status.title, 'Review budget used up');
   assert.match(status.summary, /no API credits .* and the run has no Bedrock key\./);
@@ -219,7 +225,7 @@ test('failureStatus reads no provider as a used-up budget, neutral, with the rea
   assert.match(status.summary, /autopilot can carry on without it/);
 });
 
-test('failureStatus reads any other error as a failure, with its text on one line and a link to the log', () => {
+test('failureStatus reads an error as a failure, with its text on one line and a link to the log', () => {
   const status = failureStatus(new Error('Couldn\'t read pull request #7: HTTP 502.\n::error::spoofed'), 'https://github.com/run/1');
   assert.equal(status.conclusion, 'failure');
   assert.equal(status.title, 'Review failed');
@@ -227,15 +233,71 @@ test('failureStatus reads any other error as a failure, with its text on one lin
 });
 
 test('stoppedStatus reads a cancelled step as a cancelled run', () => {
-  assert.equal(stoppedStatus({ others: ['success', 'success'], review: 'cancelled', publish: '' }).conclusion, 'cancelled');
-  assert.equal(stoppedStatus({ others: ['success', 'cancelled'], review: '', publish: '' }).conclusion, 'cancelled');
+  assert.equal(stoppedStatus({ setup: 'success', install: 'success', review: 'cancelled', publish: '' }).conclusion, 'cancelled');
+  assert.equal(stoppedStatus({ setup: 'success', install: 'cancelled', review: '', publish: '' }).conclusion, 'cancelled');
+  assert.equal(stoppedStatus({ setup: 'success', install: 'success', review: 'success', publish: 'cancelled' }).conclusion, 'cancelled');
 });
 
 test('stoppedStatus tells a failure before the review from a review that could not be posted', () => {
-  const before = stoppedStatus({ others: ['success', 'failure'], review: '', publish: '' });
+  const before = stoppedStatus({ setup: 'success', install: 'failure', review: '', publish: '' });
   assert.equal(before.conclusion, 'failure');
   assert.match(before.summary, /stopped before the review finished/);
   assert.match(stoppedStatus({ review: 'success', publish: 'failure' }).summary, /couldn't be posted/);
+});
+
+test('stoppedRecord writes the status with the decided commit, and tells the later steps there is a check run to complete', () => {
+  const record = stoppedRecord(failureStatus(new Error('boom')), sha, ['s3cret-value']);
+  assert.deepEqual(JSON.parse(record.json), { ...failureStatus(new Error('boom')), headSha: sha });
+  assert.equal(record.output, 'stopped=true\n');
+});
+
+test('stoppedRecord writes a skipped run neutral, with no commit and no step output', () => {
+  const record = stoppedRecord(skippedStatus('Not a /review command from someone with write access; nothing to do.'), undefined, []);
+  assert.deepEqual(JSON.parse(record.json), { conclusion: 'neutral', title: 'Review skipped', summary: 'Not a /review command from someone with write access; nothing to do.' });
+  assert.equal(record.output, '');
+});
+
+test('stoppedRecord leaves out a reason that holds a secret, and keeps the conclusion and commit', () => {
+  for (const reason of ['the key s3cret-value was refused', `token ghp_${'x'.repeat(30)} leaked`]) {
+    const record = stoppedRecord(failureStatus(new Error(reason)), sha, ['s3cret-value']);
+    assert.doesNotMatch(record.json, /s3cret-value|ghp_/);
+    assert.deepEqual(JSON.parse(record.json), {
+      conclusion: 'failure',
+      title: 'Review failed',
+      summary: "The review stopped, and its reason can't be shown here; the run's log says why.",
+      headSha: sha,
+    });
+  }
+});
+
+test('stepOutcomesFrom reads each step outcome by name, empty for a step that did not run', () => {
+  const env = { CODE_REVIEW_SETUP_OUTCOME: 'success', CODE_REVIEW_INSTALL_OUTCOME: 'failure', CODE_REVIEW_PUBLISH_OUTCOME: 'skipped' };
+  assert.deepEqual(stepOutcomesFrom(env), { setup: 'success', install: 'failure', review: '', publish: 'skipped' });
+});
+
+const token = 'app-token-value';
+
+test('finishStatus completes with the review step status when it wrote one', () => {
+  const written = { conclusion: 'neutral', title: 'Review budget used up', summary: 's', headSha: sha };
+  assert.deepEqual(finishStatus(JSON.stringify(written), { review: 'success' }, { token }), written);
+});
+
+test('finishStatus reads the steps outcomes when there is no readable status', () => {
+  for (const json of [undefined, 'not json']) {
+    assert.equal(finishStatus(json, { setup: 'success', install: 'success', review: 'cancelled', publish: '' }, { token }).conclusion, 'cancelled');
+    const failed = finishStatus(json, { setup: 'success', install: 'failure' }, { token, url: 'https://github.com/run/1' });
+    assert.equal(failed.conclusion, 'failure');
+    assert.match(failed.summary, /stopped before the review finished\. \[The run's log\]\(https:\/\/github.com\/run\/1\) says why\.$/);
+  }
+});
+
+test('finishStatus leaves out a status that holds the token, and keeps the conclusion and commit', () => {
+  const lines: string[] = [];
+  const written = { conclusion: 'failure', title: 'Review failed', summary: `The review failed: ${token}.`, headSha: sha };
+  const status = finishStatus(JSON.stringify(written), {}, { token, log: (line) => lines.push(line) });
+  assert.deepEqual(status, { conclusion: 'failure', title: 'Review stopped', summary: "The reason can't be shown here; the run's log says why.", headSha: sha });
+  assert.doesNotMatch(JSON.stringify(status), new RegExp(token));
+  assert.match(lines[0] ?? '', /^::warning::The check run contains one of this run's secrets\. It is left out\.$/);
 });
 
 test('parseStatus reads status.json as data', () => {
@@ -275,6 +337,83 @@ test('fetchPullRequest reads the pull request with the read-only token, and thro
   assert.deepEqual(await fetchPullRequest(repository, 7, 'r', ok.fn), own);
   assert.equal(ok.requests[0]?.url, `https://api.github.com/repos/${repository}/pulls/7`);
   await assert.rejects(fetchPullRequest(repository, 7, 'r', fakeFetch({ 'api.github.com': { status: 404 } }).fn), /Couldn't read pull request #7: HTTP 404/);
+});
+
+test('decideAcknowledgement passes on the head and comment of a /review from a writer, read with the read-only token', async () => {
+  const fetched = fakeFetch({ 'api.github.com': { status: 200, body: own } });
+  const outputs = await decideAcknowledgement({ event: comment('/review'), repository, token: 'read-only' }, fetched.fn, () => {});
+  assert.equal(outputs, `acknowledge=true\nhead-sha=${sha}\ncomment-id=99\n`);
+  assert.deepEqual(fetched.requests.map((r) => r.url), [`https://api.github.com/repos/${repository}/pulls/7`]);
+  assert.equal((fetched.requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer read-only');
+});
+
+test('decideAcknowledgement passes on the head of an automatic review of a new commit, after reading the reviewed head', async () => {
+  const fetched = fakeFetch({ 'api.github.com': { status: 200, body: [] } });
+  assert.equal(await decideAcknowledgement({ event: { pull_request: own }, repository, token: 'read-only' }, fetched.fn, () => {}), `acknowledge=true\nhead-sha=${sha}\n`);
+  assert.match(fetched.requests[0]?.url ?? '', new RegExp(`^https://api\\.github\\.com/repos/${repository}/issues/7/comments`));
+});
+
+test('decideAcknowledgement passes on nothing, and says why, for a run that will not review', async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({});
+  assert.equal(await decideAcknowledgement({ event: comment('looks good'), repository, token: 'read-only' }, fetched.fn, (line) => lines.push(line)), undefined);
+  assert.equal(fetched.requests.length, 0);
+  assert.match(lines[0] ?? '', /^No acknowledgement: Not a \/review command/);
+  const malformed = { pull_request: { ...own, head: { sha: 'main', repo: { full_name: repository } } } };
+  assert.equal(await decideAcknowledgement({ event: malformed, repository, token: undefined }, fakeFetch({ 'api.github.com': { status: 200, body: [] } }).fn, (line) => lines.push(line)), undefined);
+  assert.match(lines[1] ?? '', /no head commit to acknowledge/);
+});
+
+const postEnv = { GITHUB_REPOSITORY: repository, CODE_REVIEW_HEAD_SHA: sha, CODE_REVIEW_COMMENT_ID: '99', GITHUB_SERVER_URL: 'https://github.com', GITHUB_RUN_ID: '5' };
+
+test('postAcknowledgement acknowledges, writes exactly the check run id and head, and revokes its token', async () => {
+  const outputs: string[] = [];
+  const { calls, api } = recordingApi((_, url) => (url.endsWith('/check-runs') ? { id: 42 } : undefined));
+  await postAcknowledgement(api, postEnv, { output: (text) => outputs.push(text), log: () => {} });
+  assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), [
+    `POST /repos/${repository}/issues/comments/99/reactions`,
+    `POST /repos/${repository}/check-runs`,
+    'DELETE /installation/token',
+  ]);
+  assert.equal(calls[1]?.body.details_url, `https://github.com/${repository}/actions/runs/5`);
+  assert.deepEqual(outputs, [`check-run-id=42\nhead-sha=${sha}\n`]);
+});
+
+test('postAcknowledgement revokes its token when the acknowledgement fails, and writes nothing', async () => {
+  const outputs: string[] = [];
+  const { calls, api } = recordingApi((_, url) => (url.endsWith('/check-runs') ? new Error('GitHub refused: HTTP 500') : undefined));
+  await assert.rejects(postAcknowledgement(api, postEnv, { output: (text) => outputs.push(text), log: () => {} }), /HTTP 500/);
+  assert.equal(calls.at(-1)?.url, '/installation/token');
+  assert.equal(calls.at(-1)?.method, 'DELETE');
+  assert.deepEqual(outputs, []);
+});
+
+test('postAcknowledgement refuses a malformed head before any call but the revocation', async () => {
+  for (const headSha of [undefined, 'main', `${sha}\nacknowledge=false`]) {
+    const { calls, api } = recordingApi();
+    const env = { ...postEnv, CODE_REVIEW_HEAD_SHA: headSha };
+    await assert.rejects(postAcknowledgement(api, env, { output: () => assert.fail('wrote an output'), log: () => {} }), /CODE_REVIEW_HEAD_SHA is not a commit SHA/);
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['DELETE /installation/token']);
+  }
+});
+
+test('postAcknowledgement only warns when the token cannot be revoked', async () => {
+  const lines: string[] = [];
+  const outputs: string[] = [];
+  const { api } = recordingApi((method) => (method === 'DELETE' ? new Error('GitHub refused: HTTP 502') : { id: 42 }));
+  await postAcknowledgement(api, { ...postEnv, CODE_REVIEW_COMMENT_ID: '' }, { output: (text) => outputs.push(text), log: (line) => lines.push(line) });
+  assert.deepEqual(outputs, [`check-run-id=42\nhead-sha=${sha}\n`]);
+  assert.match(lines.at(-1) ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
+});
+
+test('required throws for a missing variable, and take removes the variable it reads', () => {
+  const env: NodeJS.ProcessEnv = { A: 'a', EMPTY: '' };
+  assert.equal(required('A', env), 'a');
+  assert.throws(() => required('EMPTY', env), /EMPTY isn't set/);
+  assert.equal(take('A', env), 'a');
+  assert.equal('A' in env, false);
+  assert.equal(take('EMPTY', env), undefined);
+  assert.equal('EMPTY' in env, false);
 });
 
 const anthropic = { token: async () => 'anthropic-token', secrets: new Set<string>() } as unknown as AnthropicTokenSource;
@@ -320,7 +459,7 @@ function actionSteps(): Step[] {
   const lines = readFileSync(path.join(root, 'action.yml'), 'utf8').split('\n');
   const start = lines.indexOf('  steps:');
   const steps: Step[] = [];
-  let block: 'with' | 'env' | undefined;
+  let block: 'with' | 'env' | 'if' | undefined;
   for (const line of lines.slice(start + 1)) {
     if (line.startsWith('    - ')) {
       steps.push({ name: '', id: '', uses: '', if: '', continueOnError: false, with: {}, env: {}, text: '' });
@@ -336,12 +475,20 @@ function actionSteps(): Step[] {
       if (key === 'name') step.name = value;
       if (key === 'id') step.id = value;
       if (key === 'uses') step.uses = value;
-      if (key === 'if') step.if = value;
+      if (key === 'if') {
+        // A folded condition (>-) is read as one line, its lines joined by a space.
+        if (value === '>-') block = 'if';
+        else step.if = value;
+      }
       if (key === 'continue-on-error') step.continueOnError = value === 'true';
       continue;
     }
+    if (block === 'if' && /^ {8,}\S/.test(line)) {
+      step.if = [step.if, line.trim()].filter(Boolean).join(' ');
+      continue;
+    }
     const entry = /^ {8}([\w-]+): (.*)$/.exec(line);
-    if (entry && block) step[block][entry[1] ?? ''] = entry[2] ?? '';
+    if (entry && (block === 'with' || block === 'env')) step[block][entry[1] ?? ''] = entry[2] ?? '';
   }
   return steps;
 }
@@ -388,10 +535,28 @@ test('action.yml passes the check run on to the publish and finish steps, and fi
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_ID'], '${{ steps.ack.outputs.check-run-id }}');
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_SHA'], '${{ steps.ack.outputs.head-sha }}');
   }
-  assert.match(finish?.if ?? '', /^>-$/);
-  assert.match(finish?.text ?? '', /always\(\)/);
-  assert.match(finish?.text ?? '', /steps\.publish\.outputs\.check-completed != 'true'/);
-  assert.match(steps.find((s) => s.id === 'app-token')?.text ?? '', /always\(\)/);
+  // The token is minted, after a failure too, for a review to publish, a stop to report, or an acknowledged check run.
+  assert.equal(
+    steps.find((s) => s.id === 'app-token')?.if,
+    "always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')",
+  );
+  assert.equal(publish?.if, "steps.review.outputs.reviewed == 'true'");
+  // The finish step runs, after a failure too, only with the token, only when the publish step didn't complete the
+  // check run, and only when there's one to complete.
+  assert.equal(
+    finish?.if,
+    "always() && steps.app-token.outcome == 'success' && steps.publish.outputs.check-completed != 'true' && " +
+      "(steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')",
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(finish?.env ?? {}).filter(([name]) => name.endsWith('_OUTCOME'))),
+    {
+      CODE_REVIEW_SETUP_OUTCOME: '${{ steps.setup-node.outcome }}',
+      CODE_REVIEW_INSTALL_OUTCOME: '${{ steps.install.outcome }}',
+      CODE_REVIEW_REVIEW_OUTCOME: '${{ steps.review.outcome }}',
+      CODE_REVIEW_PUBLISH_OUTCOME: '${{ steps.publish.outcome }}',
+    },
+  );
 });
 
 // The value imports of a source file, followed through the relative ones: what node loads to run it.
@@ -413,6 +578,8 @@ test('the acknowledgement and finish scripts load no npm package, so they run be
     const packages = loaded.filter((m) => !m.startsWith('node:') && !path.isAbsolute(m));
     assert.deepEqual(packages, [], script);
     assert.ok(loaded.includes(path.join(root, 'src', 'checks.ts')) && loaded.includes('node:fs'), `${script} imports were read`);
+    // Nor the review's own modules, which may come to need one.
+    for (const module of ['provider.ts', 'config.ts', 'credentials.ts']) assert.equal(loaded.includes(path.join(root, 'src', module)), false, `${script} loads ${module}`);
   }
 });
 

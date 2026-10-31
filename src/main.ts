@@ -5,10 +5,11 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { failureStatus, skippedStatus, type RunStatus } from './checks.ts';
+import { budgetStatus, failureStatus, skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideReview } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
+import { required, take } from './env.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
@@ -30,29 +31,11 @@ function writeStatus(status: RunStatus): void {
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!outDir) return;
   const secrets = [...secretValues(run.credentials), ...(run.githubToken ? [run.githubToken] : [])];
-  let safe = { ...status, ...(run.headSha ? { headSha: run.headSha } : {}) };
-  try {
-    assertNoSecrets(JSON.stringify(safe), secrets, 'The reason');
-  } catch {
-    safe = { ...safe, summary: "The review stopped, and its reason can't be shown here; the run's log says why." };
-  }
+  const record = stoppedRecord(status, run.headSha, secrets);
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(path.join(outDir, 'status.json'), JSON.stringify(safe, null, 2));
+  writeFileSync(path.join(outDir, 'status.json'), record.json);
   const output = process.env['GITHUB_OUTPUT'];
-  if (output && run.headSha) appendFileSync(output, 'stopped=true\n');
-}
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} isn't set.`);
-  return value;
-}
-
-// Reads a variable and removes it from this process's environment, so nothing started later inherits it.
-function take(name: string): string | undefined {
-  const value = process.env[name];
-  delete process.env[name];
-  return value || undefined;
+  if (output && record.output) appendFileSync(output, record.output);
 }
 
 // The added lines of each file a finding is in, so the publish step can tell which findings can be inline comments.
@@ -189,14 +172,15 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
+  // No provider means the budget is used up, not that the review broke: the check run says so, neutral, and the job
+  // doesn't fail.
+  const noProvider = error instanceof NoProviderError;
   try {
-    writeStatus(failureStatus(error, runUrl()));
+    writeStatus(noProvider ? budgetStatus(error.reason) : failureStatus(error, runUrl()));
   } catch (statusError) {
     console.error(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
   }
-  // No provider means the budget is used up, not that the review broke: the check run says so, neutral, and the job
-  // doesn't fail.
-  if (error instanceof NoProviderError) {
+  if (noProvider) {
     console.log(`::warning::${error.message} No review ran, and nothing was charged.`);
     return;
   }
