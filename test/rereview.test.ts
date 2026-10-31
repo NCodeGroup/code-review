@@ -430,7 +430,12 @@ const charters: Charters = {
   ruleCheckPrompt: '',
   reReviewPrompt: 'RE-REVIEW',
   verificationPrompt: 'VERIFICATION',
-  reviewers: new Map([['correctness', 'CORRECTNESS CHARTER'], ['security', 'SECURITY CHARTER'], ['tests', 'TESTS CHARTER']]),
+  reviewers: new Map([
+    ['correctness', { text: 'CORRECTNESS CHARTER', shadow: false }],
+    ['security', { text: 'SECURITY CHARTER', shadow: false }],
+    ['tests', { text: 'TESTS CHARTER', shadow: false }],
+  ]),
+  shadowPrompts: {},
 };
 
 function fakeAgent(output: unknown, requests: AgentRequest[]) {
@@ -703,7 +708,7 @@ test('reReview with verification on never approves after refuting what it would 
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
-  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
 }
 
 test('runReview does the full review without a plan, and records the head it read', async () => {

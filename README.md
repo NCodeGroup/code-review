@@ -40,9 +40,36 @@ Besides the reviewers, **rule checks** go through the rules the context stage pi
 
 A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.
 
-Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
+Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. Shadow calls count toward it too, but the shadow-prompt twins start after every live reviewer call, and a skipped shadow reviewer doesn't make the review incomplete. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
 **Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+
+### Shadow reviewers and prompts
+
+A new reviewer or prompt can run without posting until its precision holds. Mark a charter in shadow in its
+frontmatter:
+
+```markdown
+---
+shadow: true
+---
+# performance
+```
+
+A shadow reviewer is chosen and runs like any other, but its findings go only to the trace and to a collapsed
+"Shadow findings (not posted)" section of the check run. They aren't given to synthesis or verification, posted as threads, shown in
+the summary comment or the annotations, or counted in the verdict. For an experiment, set
+`CODE_REVIEW_SHADOW=performance,tests` in the review job's `env:` to put those reviewers in shadow too; `rule-check`
+works as a name.
+
+A shadow prompt, `prompts/<name>.shadow.md` beside `specialist`, `selection`, `synthesis` or `rule-check`, runs
+alongside the live prompt with the same input on a share of reviews set by `CODE_REVIEW_SHADOW_RATE`, from `0` (the
+default: never) to `1` (every review). The sample is picked from the pull request's number and head commit, so the
+same commit is always sampled the same way. Both outputs go to the trace (`trace.json`, under `shadow.prompts`); the
+shadow output is never posted, and the check run's shadow section only names the prompts that ran and their cost. A
+shadow specialist prompt runs every reviewer a second time, so a sampled review costs up to about twice as much.
+
+A [re-review](#re-reviews) runs only its own reviewer and prompt, so it runs no shadow reviewer or shadow prompt.
 
 ## Using it
 
@@ -273,6 +300,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+
+Shadow reviewers ([Shadow reviewers and prompts](#shadow-reviewers-and-prompts)) are scored on their own: `--shadow performance` (or `CODE_REVIEW_SHADOW`) runs `performance` in shadow, and the report gives its catches, must-not violations and findings apart from the live reviewers', whose scores never include them. Precision counts only posted findings, so never theirs; the review's cost includes their calls.
 
 A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
 

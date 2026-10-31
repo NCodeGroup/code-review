@@ -525,7 +525,7 @@ async function verifyPosted(
     diff: gathered.diff,
     pullRequest: pullRequestBlock(gathered),
     systemPrompt: charters.verificationPrompt,
-    charters: charters.reviewers,
+    charters: new Map([...charters.reviewers].map(([name, charter]) => [name, charter.text])),
     log,
     enabled: options.enabled,
     ...(options.agent ? { agent: options.agent } : {}),
@@ -581,6 +581,9 @@ export async function reReview(
     const verifiedAway = Boolean(verified?.trace.length);
     return {
       reviewers: outcomes,
+      shadow: [],
+      shadowSkipped: [],
+      shadowPrompts: [],
       summary,
       verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
       findings,
@@ -615,7 +618,7 @@ export async function reReview(
       role: `reviewer:${reReviewer}`,
       tier,
       systemPrompt: `${charters.specialistPrompt}\n\n${charters.reReviewPrompt}`,
-      prompt: [context, `Your charter:\n${charters.reviewers.get(reReviewer) ?? ''}`],
+      prompt: [context, `Your charter:\n${charters.reviewers.get(reReviewer)?.text ?? ''}`],
       schema: reReviewSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
