@@ -5,7 +5,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { budgetStatus, failureStatus, skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
+import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideReview } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -14,7 +14,7 @@ import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { chooseProvider, NoProviderError } from './provider.ts';
+import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
@@ -172,15 +172,13 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  // No provider means the budget is used up, not that the review broke: the check run says so, neutral, and the job
-  // doesn't fail.
-  const noProvider = error instanceof NoProviderError;
+  const { status, failed } = stoppedBy(error, runUrl());
   try {
-    writeStatus(noProvider ? budgetStatus(error.reason) : failureStatus(error, runUrl()));
+    writeStatus(status);
   } catch (statusError) {
     console.error(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
   }
-  if (noProvider) {
+  if (!failed) {
     console.log(`::warning::${error.message} No review ran, and nothing was charged.`);
     return;
   }

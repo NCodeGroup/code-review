@@ -80,7 +80,7 @@ export async function decideReview<P extends PullRequestLike>(
     return { review: true, pullRequest, ...(typeof commentId === 'number' ? { commentId } : {}) };
   }
   const pullRequest = event.pull_request;
-  const reason = await skipReasonFor('automatic', pullRequest, repository, () => reviewedHead(Number(pullRequest?.number)));
-  if (reason || !pullRequest) return { review: false, reason: reason ?? 'The event has no pull request.' };
-  return { review: true, pullRequest };
+  if (!pullRequest) return { review: false, reason: 'The event has no pull request.' };
+  const reason = await skipReasonFor('automatic', pullRequest, repository, () => reviewedHead(Number(pullRequest.number)));
+  return reason ? { review: false, reason } : { review: true, pullRequest };
 }

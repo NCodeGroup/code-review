@@ -24,7 +24,7 @@ import { decideReview } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
 import { fetchPullRequest, githubApi, type Api } from '../src/github.ts';
-import { chooseProvider, NoProviderError } from '../src/provider.ts';
+import { chooseProvider, NoProviderError, stoppedBy } from '../src/provider.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = 'NCodeGroup/code-review';
@@ -115,6 +115,12 @@ test('decideReview gives nothing for an automatic review of a commit already rev
   assert.equal((await decideReview({ pull_request: own }, repository, r.readPullRequest, r.reviewedHead)).review, false);
   const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
   assert.equal((await decideReview({ pull_request: fork }, repository, r.readPullRequest, r.reviewedHead)).review, false);
+});
+
+test('decideReview gives nothing for an automatic event without a pull request, without an API call', async () => {
+  const r = readers(own);
+  assert.deepEqual(await decideReview({}, repository, r.readPullRequest, r.reviewedHead), { review: false, reason: 'The event has no pull request.' });
+  assert.deepEqual(r.counts, { pullRequest: 0, reviewedHead: 0 });
 });
 
 test('decisionOutputs passes on only a well-formed head and comment id', () => {
@@ -230,6 +236,13 @@ test('failureStatus reads an error as a failure, with its text on one line and a
   assert.equal(status.conclusion, 'failure');
   assert.equal(status.title, 'Review failed');
   assert.match(status.summary, /^The review failed: Couldn't read pull request #7: HTTP 502\. ::error::spoofed\. \[The run's log\]\(https:\/\/github.com\/run\/1\) says why\.$/);
+});
+
+test('stoppedBy reads no provider as a used-up budget that passes the job, and any other error as a failure that fails it', () => {
+  const noProvider = new NoProviderError('the credits are used up, and the run has no Bedrock key');
+  assert.deepEqual(stoppedBy(noProvider, 'https://github.com/run/1'), { status: budgetStatus(noProvider.reason), failed: false });
+  const error = new Error('Couldn\'t read pull request #7: HTTP 502');
+  assert.deepEqual(stoppedBy(error, 'https://github.com/run/1'), { status: failureStatus(error, 'https://github.com/run/1'), failed: true });
 });
 
 test('stoppedStatus reads a cancelled step as a cancelled run', () => {

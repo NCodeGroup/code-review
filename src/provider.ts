@@ -1,5 +1,6 @@
 // Picks the run's provider: Anthropic while the plan's API credits last, then Bedrock with the organization's key.
 
+import { budgetStatus, failureStatus, type RunStatus } from './checks.ts';
 import { bedrockRegion, modelIds, type Provider } from './config.ts';
 import type { Credentials } from './credentials.ts';
 
@@ -16,6 +17,14 @@ export class NoProviderError extends Error {
     super(`No provider available: ${reason}.`);
     this.reason = reason;
   }
+}
+
+// How the review step stops on an error. No provider means the budget is used up, not that the review broke: the check
+// run says so, neutral, and the job doesn't fail. Any other error fails both.
+export function stoppedBy(error: unknown, url?: string): { status: RunStatus; failed: boolean } {
+  return error instanceof NoProviderError
+    ? { status: budgetStatus(error.reason), failed: false }
+    : { status: failureStatus(error, url), failed: true };
 }
 
 // A one-token call to Bedrock with the run's key; says why Bedrock refused it, or undefined. Only a 401 or 403 proves the
