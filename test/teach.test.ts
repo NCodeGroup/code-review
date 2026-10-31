@@ -43,6 +43,12 @@ test('parseCommand reads /review teach F<n> as a rule from that finding', () => 
   assert.equal(link.rule, 'a rule');
 });
 
+test('parseCommand keeps a first word that is a link but not to a finding comment as part of the rule', () => {
+  for (const rule of ['https://example.com/x a rule', 'http://github.com/NCodeGroup/code-review/pull/7#discussion_r9 a rule', 'https://github.com/NCodeGroup/code-review/pull/7 a rule']) {
+    assert.deepEqual(parseCommand(`/review teach ${rule}`), { kind: 'teach', scope: 'repository', rule }, rule);
+  }
+});
+
 test('parseCommand reads /review teach org as an NCodeGroup-wide rule', () => {
   assert.deepEqual(parseCommand('/review teach org Name async methods with Async.'), { kind: 'teach', scope: 'org', rule: 'Name async methods with Async.' });
   assert.deepEqual(parseCommand('/review teach org F2 a rule'), { kind: 'teach', scope: 'org', rule: 'F2 a rule' });
@@ -133,6 +139,29 @@ test('planTeaching for teach org opens the issue in NCodeGroup/code-review, with
   assert.doesNotMatch(hidden.teaching.body, /Secret/);
 });
 
+test('planTeaching keeps a private repository\'s finding out of an org issue, end to end', async () => {
+  const where = { ...context, repository: 'NCodeGroup/Secret', commentUrl: 'https://github.com/NCodeGroup/Secret/pull/7#issuecomment-1', isPrivate: true };
+  const secret = finding({
+    path: 'src/secret-file.ts',
+    body: '🟠 **Should fix: Secret title** <sub>F2 · async</sub>\n\nSecret finding text.\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=should-fix -->',
+    html_url: 'https://github.com/NCodeGroup/Secret/pull/7#discussion_r42',
+    pull_request_url: 'https://api.github.com/repos/NCodeGroup/Secret/pulls/7',
+  });
+  const { reads, read } = reader({ '/repos/NCodeGroup/Secret/pulls/7/comments?per_page=100&page=1': [secret] });
+  const plan = await planTeaching({ kind: 'teach', scope: 'org', ref: { kind: 'id', id: 'F2' }, rule: 'A rule.' }, where, read);
+  assert.ok('teaching' in plan);
+  assert.equal(reads.length, 1, 'the finding was read');
+  assert.match(plan.teaching.body, /with `\/review teach` in a private repository\./);
+  assert.doesNotMatch(plan.teaching.body, /### From finding|secret-file|Secret title|Secret finding text|discussion_r42|NCodeGroup\/Secret/);
+  // As the parser reads it, `teach org F2` names no finding: F2 is part of the rule, and nothing is read.
+  const parsed = reader({});
+  const org = await planTeaching(parseCommand('/review teach org F2 a rule') as Teach, where, parsed.read);
+  assert.ok('teaching' in org);
+  assert.equal(org.teaching.rule, 'F2 a rule');
+  assert.deepEqual(parsed.reads, []);
+  assert.doesNotMatch(org.teaching.body, /### From finding|NCodeGroup\/Secret/);
+});
+
 test('planTeaching teaches from a finding named by its comment link, reading only that comment', async () => {
   const commentPath = '/repos/NCodeGroup/code-review/pulls/comments/42';
   const { reads, read } = reader({ [commentPath]: finding() });
@@ -179,6 +208,15 @@ test('planTeaching answers an empty, an overlong or an unknown-finding command w
   assert.ok('answer' in unknown);
   assert.match(unknown.answer.body, /^There's no F9 in the newest review\. The newest review's findings are F2\. .*`\/review teach <link> <rule>`/);
   assert.deepEqual(reads, [listPath]);
+});
+
+test('planTeaching answers a link to a comment that isn\'t a finding on this pull request with the newest review\'s ids', async () => {
+  const commentPath = '/repos/NCodeGroup/code-review/pulls/comments/55';
+  const { reads, read } = reader({ [listPath]: [finding()] });
+  const plan = await planTeaching(parseCommand('/review teach https://github.com/NCodeGroup/code-review/pull/7#discussion_r55 a rule') as Teach, context, read);
+  assert.ok('answer' in plan);
+  assert.match(plan.answer.body, /^That link isn't to one of NCode Review's finding comments on this pull request\. The newest review's findings are F2\. .*`\/review teach <link> <rule>`/);
+  assert.deepEqual(reads, [commentPath, listPath]);
 });
 
 test('planTeaching makes no GitHub read for a rule that names no finding', async () => {
@@ -240,6 +278,15 @@ test('postTeaching replies that the app lacks the permission when GitHub refuses
   const body = (replies.calls[0]![2] as { body: string }).body;
   assert.match(body, /^I couldn't open a `review-guidance` issue: the NCode Review app can't write issues in NCodeGroup\/code-review\. A maintainer needs to give the app the Issues: Read and write permission\./);
   assert.ok(body.endsWith('```text\nA rule for @\u200bsomeone.\n```'), 'the reply keeps the rule, quoted');
+});
+
+test('postTeaching fails, with no reply, when GitHub refuses the issue for another reason', async () => {
+  for (const status of [422, 500]) {
+    const issues = recorder((method) => (method === 'GET' ? { name: guidanceLabel } : new GitHubError(`refused ${status}`, status)));
+    const replies = recorder(() => ({ html_url: 'r' }));
+    await assert.rejects(postTeaching(replies.api, issues.api, teaching, []), new RegExp(`refused ${status}`));
+    assert.deepEqual(replies.calls, [], `no reply after a ${status}`);
+  }
 });
 
 test('postTeaching replies that the app lacks the permission when it got no issues token', async () => {
