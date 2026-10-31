@@ -2,6 +2,9 @@
   "hash": "7d7f9c27b5e8070b",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-testing.instructions.md",
+  "applyTo": [
+    "tests/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Mirror the folder structure and namespace of the code under test in test files, adding a `.Tests` suffix to the namespace and a `Tests` suffix to the class name.",

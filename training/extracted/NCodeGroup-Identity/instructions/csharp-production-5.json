@@ -2,6 +2,9 @@
   "hash": "4b0c3a118f93ad45",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-production.instructions.md",
+  "applyTo": [
+    "src/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Give every type or member you add, or whose signature or behavior you change, a `///` XML doc comment, but do not add doc comments to undocumented code you are not otherwise touching.",
