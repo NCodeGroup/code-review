@@ -129,7 +129,7 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
-`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. Run each setup at least twice: one run varies by about 2 of 55.
+`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
 
 ## Checks
 
