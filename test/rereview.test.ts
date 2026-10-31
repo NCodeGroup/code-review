@@ -85,7 +85,7 @@ function moveMain(repo: string): string {
 }
 
 function pullRequest(baseSha: string, headSha: string): PullRequest {
-  return { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha, headSha };
+  return { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha };
 }
 
 test('changedSince counts nothing when the default branch only moved the hunks', () => {

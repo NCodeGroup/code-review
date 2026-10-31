@@ -111,6 +111,7 @@ function gathered(): Gathered {
       title: 'Fix a typo',
       author: 'someone',
       authorAssociation: 'MEMBER',
+      authorCanWrite: true,
       draft: false,
       baseRef: 'main',
       baseSha: 'a'.repeat(40),
