@@ -9,9 +9,9 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun } from './agent.ts';
+import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { errorText } from './comments.ts';
-import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
+import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { botLogin, recordedHead } from './results.ts';
 import {
@@ -30,6 +30,7 @@ import {
   type Verdict,
 } from './review.ts';
 import { parsePosted, snapDistance } from './threads.ts';
+import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
 
 // The one reviewer a re-review runs.
 export const reReviewer = 'correctness';
@@ -439,6 +440,8 @@ export function reReviewSummary(s: {
   nits: number;
   outside: number;
   earlier: EarlierStatus[];
+  // What verification did to what the re-review would post, when it ran.
+  verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped'>;
 }): string {
   const since = s.lastHead.slice(0, 7);
   const parts: string[] = [];
@@ -458,11 +461,23 @@ export function reReviewSummary(s: {
     parts.push(`${left} ${s.nits + s.outside === 1 ? "isn't" : "aren't"} posted on a re-review.`);
   }
   if (s.error) return parts.join(' ');
+  const v = s.verification;
+  if (v?.refuted.length) {
+    const titles = v.refuted.map((r) => `"${r.finding.title}"`).join('; ');
+    parts.push(`Verification refuted ${plural(v.refuted.length, 'finding')}, which the check run lists with ${v.refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}.`);
+  }
+  if (v?.questionedPosted) parts.push(`Verification couldn't settle ${plural(v.questionedPosted, 'blocker')}, now ${v.questionedPosted === 1 ? 'a should-fix question' : 'should-fix questions'}.`);
+  if (v?.questionedDropped) {
+    const n = v.questionedDropped;
+    parts.push(`Verification couldn't settle ${n === 1 ? '1 should-fix, now a nit, which isn\'t' : `${n} should-fixes, now nits, which aren't`} posted on a re-review.`);
+  }
+  // What verification took away is for the maintainer to look at, so the re-review doesn't say it's done.
+  const verifiedAway = Boolean(v && (v.refuted.length || v.questionedDropped));
   const waiting = s.earlier.filter(pending).length;
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
   if (s.earlierUnread) parts.push("The earlier review threads couldn't be read, so their findings weren't checked.");
-  else if (!s.posted.length && !waiting && (s.reviewed || !what)) parts.push('No further findings above nits.');
+  else if (!s.posted.length && !waiting && !verifiedAway && (s.reviewed || !what)) parts.push('No further findings above nits.');
   return parts.join(' ');
 }
 
@@ -474,14 +489,74 @@ export function reReviewVerdict(posted: Pick<Finding, 'severity'>[], earlier: Ea
   return incomplete || posted.length || waiting.length ? 'comment' : 'approve';
 }
 
+const numberFindings = (kept: Finding[]): ReviewedFinding[] =>
+  [...kept]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
+    .slice(0, findingLimit(1))
+    .map((f, i) => ({ ...f, id: `F${i + 1}`, reviewers: [reReviewer] }));
+
+interface ReReviewVerification {
+  refuted: RefutedFinding[];
+  // Blockers verification couldn't settle, posted as should-fix questions, and should-fixes it made nits, not posted.
+  questionedPosted: number;
+  questionedDropped: number;
+  trace: VerificationCall[];
+}
+
+// Verification of what a re-review would post, as for a first review when CODE_REVIEW_VERIFICATION=on: a refuted
+// finding is dropped, and one it can't settle is a question one severity lower. A should-fix that becomes a nit isn't
+// posted, since a re-review posts no nits; as verification ranks nits last, the findings left keep their ids.
+async function verifyPosted(
+  run: AgentRun,
+  gathered: Gathered,
+  charters: Charters,
+  findings: ReviewedFinding[],
+  log: (line: string) => void,
+  options: ReReviewVerificationOptions,
+): Promise<{ findings: ReviewedFinding[]; calls: CallRecord[]; verified: ReReviewVerification }> {
+  const outcome = await verifyFindings({
+    run,
+    findings,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: charters.reviewers,
+    log,
+    enabled: options.enabled,
+    ...(options.agent ? { agent: options.agent } : {}),
+  });
+  const posted = outcome.findings.filter((f) => f.severity !== 'nit');
+  const ids = new Set(posted.map((f) => f.id));
+  const trace = outcome.trace.map((call) => ({
+    ...call,
+    findings: call.findings.map(({ postedAs, ...f }) => (postedAs && ids.has(postedAs) ? { ...f, postedAs } : f)),
+  }));
+  const questionedDropped = outcome.findings.length - posted.length;
+  return {
+    findings: posted,
+    calls: outcome.calls,
+    verified: { refuted: outcome.refuted, questionedPosted: outcome.questioned - questionedDropped, questionedDropped, trace },
+  };
+}
+
+export interface ReReviewVerificationOptions {
+  enabled: boolean;
+  // Stands in for the verification calls in tests.
+  agent?: VerificationAgent;
+}
+
 // `agent` stands in for runAgent in tests.
-export async function reReview(run: AgentRun, gathered: Gathered, charters: Charters, plan: ReReviewPlan, log: (line: string) => void, agent: typeof runAgent = runAgent): Promise<ReReview> {
+export async function reReview(
+  run: AgentRun,
+  gathered: Gathered,
+  charters: Charters,
+  plan: ReReviewPlan,
+  log: (line: string) => void,
+  agent: typeof runAgent = runAgent,
+  verification: ReReviewVerificationOptions = { enabled: verificationOn() },
+): Promise<ReReview> {
   const statuses: EarlierStatus[] = plan.earlier.map((finding) => ({ finding, status: 'unchecked', note: '' }));
-  const finish = (outcomes: ReviewerOutcome[], kept: Finding[], nits: number, outside: number, calls: Review['calls'], error?: string): ReReview => {
-    const findings: ReviewedFinding[] = [...kept]
-      .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
-      .slice(0, findingLimit(1))
-      .map((f, i) => ({ ...f, id: `F${i + 1}`, reviewers: [reReviewer] }));
+  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification): ReReview => {
     const summary = reReviewSummary({
       lastHead: plan.lastHead,
       changed: plan.changed,
@@ -492,10 +567,24 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
       nits,
       outside,
       earlier: statuses,
+      ...(verified ? { verification: verified } : {}),
     });
     // Changes since the last review that no reviewer saw, being only in generated files or files over the size budget.
     const unseen = !outcomes.length && (plan.changed.hunks > 0 || Object.keys(plan.changed.removed).length > 0);
-    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen), findings, refuted: [], verification: [], calls, skipped: [], earlier: statuses };
+    // As for a first review, verification never makes a re-review an approval: it only runs when there was something to
+    // post, and a verifier misled by the change's own code can refute a real finding.
+    const verifiedAway = Boolean(verified?.trace.length);
+    return {
+      reviewers: outcomes,
+      summary,
+      verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
+      findings,
+      refuted: verified?.refuted ?? [],
+      verification: verified?.trace ?? [],
+      calls,
+      skipped: [],
+      earlier: statuses,
+    };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 
@@ -538,7 +627,8 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
   const reported = result.output.findings.filter((f) => f.confidence >= minConfidence);
   const { kept, nits, outside } = postable(reported, plan.changed.lines);
   log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${result.record.costUsd.toFixed(3)}`);
-  return finish([{ name: reReviewer, status: 'ran', findings: reported }], kept, nits, outside, [result.record]);
+  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(kept), log, verification);
+  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [result.record, ...calls], undefined, verified.trace.length ? verified : undefined);
 }
 
 // --- Choosing the review ---

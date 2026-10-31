@@ -30,6 +30,7 @@ import {
 import { headMarker, recordedHead, summaryComment } from '../src/results.ts';
 import type { Charters, Finding, Review } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
+import type { Verification, VerificationAgent } from '../src/verify.ts';
 
 const made: string[] = [];
 after(() => {
@@ -567,6 +568,82 @@ test('reReview never approves when the earlier threads could not be read', async
   assert.equal(outcome.verdict, 'comment');
   assert.match(outcome.summary, /The earlier review threads couldn't be read, so their findings weren't checked\.$/);
   assert.doesNotMatch(outcome.summary, /no further findings/i);
+});
+
+// A verification agent that answers each finding by its title, and records every request it gets.
+function verifier(answers: Record<string, Omit<Verification, 'id'>>, requests: AgentRequest[]): VerificationAgent {
+  return async (_run, request) => {
+    requests.push(request);
+    const text = (request.prompt as string[]).join('\n');
+    const verifications = [...text.matchAll(/<finding id="(F\d+)"[^>]*>\n([\s\S]*?)\n<diff>/g)].flatMap(([, id, fields]) => {
+      const answer = answers[(JSON.parse(fields!) as { title: string }).title];
+      return answer ? [{ id: id!, ...answer }] : [];
+    });
+    return {
+      output: { verifications },
+      record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.05, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' },
+    };
+  };
+}
+
+test('reReview with verification on verifies what it would post, as the first review does, and posts no nit it makes', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const output = {
+    findings: [finding('blocker', 'a.ts', 62, 'Confirmed'), finding('blocker', 'a.ts', 62, 'Unsure'), finding('should-fix', 'a.ts', 62, 'Refuted'), finding('should-fix', 'a.ts', 62, 'Doubt'), finding('nit', 'a.ts', 62, 'Style')],
+    earlier: [],
+  };
+  const verifications: AgentRequest[] = [];
+  const agent = verifier(
+    {
+      Confirmed: { verdict: 'confirmed', path: 'a.ts:62', reason: 'r', question: '' },
+      Unsure: { verdict: 'uncertain', path: '', reason: 'unclear', question: 'Is more intended?' },
+      Refuted: { verdict: 'refuted', path: 'a.ts:1', reason: 'It is guarded.', question: '' },
+      Doubt: { verdict: 'uncertain', path: '', reason: 'unclear', question: '' },
+    },
+    verifications,
+  );
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: true, agent });
+  assert.equal(verifications.length, 1);
+  assert.equal(verifications[0]!.role, 'verification');
+  assert.equal(verifications[0]!.systemPrompt, 'VERIFICATION');
+  assert.match((verifications[0]!.prompt as string[]).join('\n'), /CORRECTNESS CHARTER/);
+  assert.doesNotMatch((verifications[0]!.prompt as string[]).join('\n'), /"title": "Style"/);
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.severity]), [['F1', 'Confirmed', 'blocker'], ['F2', 'Unsure', 'should-fix']]);
+  assert.match(outcome.findings[0]!.evidence, /Verified: a\.ts:62$/);
+  assert.equal(outcome.findings[1]!.problem, 'Is more intended?');
+  assert.deepEqual(outcome.refuted.map((r) => [r.finding.title, r.reason]), [['Refuted', 'It is guarded.']]);
+  assert.deepEqual(outcome.verification[0]!.findings.map((f) => [f.title, f.postedAs]), [['Confirmed', 'F1'], ['Unsure', 'F2'], ['Refuted', undefined], ['Doubt', undefined]]);
+  assert.deepEqual(outcome.calls.map((c) => c.role), ['reviewer:correctness', 'verification']);
+  assert.equal(outcome.verdict, 'request-changes');
+  assert.match(
+    outcome.summary,
+    /1 nit isn't posted on a re-review\. Verification refuted 1 finding, which the check run lists with its reason: "Refuted"\. Verification couldn't settle 1 blocker, now a should-fix question\. Verification couldn't settle 1 should-fix, now a nit, which isn't posted on a re-review\. 2 new findings at should-fix or above\.$/,
+  );
+});
+
+test('reReview with verification on never approves after refuting what it would post, and approves with nothing to verify', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const run = { provider: 'bedrock' as const, proxyUrl: 'http://127.0.0.1:1', checkout: repo };
+  const verifications: AgentRequest[] = [];
+  const agent = verifier({ Wrong: { verdict: 'refuted', path: '', reason: 'Not reachable.', question: '' } }, verifications);
+  const refuted = await reReview(run, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('blocker', 'a.ts', 62, 'Wrong')], earlier: [] }, []), { enabled: true, agent });
+  assert.deepEqual(refuted.findings, []);
+  assert.equal(refuted.refuted.length, 1);
+  assert.equal(refuted.verdict, 'comment');
+  assert.doesNotMatch(refuted.summary, /no further findings/i);
+  const clean = await reReview(run, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('nit', 'a.ts', 62, 'Style')], earlier: [] }, []), { enabled: true, agent });
+  assert.equal(verifications.length, 1);
+  assert.deepEqual(clean.verification, []);
+  assert.equal(clean.verdict, 'approve');
+  assert.match(clean.summary, /No further findings above nits\.$/);
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
