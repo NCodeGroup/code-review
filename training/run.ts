@@ -21,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { mapWithConcurrency } from '../src/concurrency.ts';
 import { startProxy } from '../src/proxy.ts';
 
@@ -217,12 +217,12 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
       budgetUsd: 3,
       cache: false,
     });
-    calls.push(result.record);
+    calls.push(...result.records);
     if (!result.output) { failed++; console.log(`  ${source.label}: failed (${result.error})`); return; }
     mkdirSync(path.dirname(file), { recursive: true });
     const saved: Extracted = { hash, promptHash, label: source.label, rules: result.output.rules };
     writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`);
-    console.log(`  ${source.label}: ${result.output.rules.length} rules, $${result.record.costUsd.toFixed(3)}`);
+    console.log(`  ${source.label}: ${result.output.rules.length} rules, $${totalCost(result.records).toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
 }
@@ -275,7 +275,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       budgetUsd: 15,
       cache: false,
     });
-    calls.push(result.record);
+    calls.push(...result.records);
     if (!result.output) { console.log(`  ${folder}/${topic}: failed (${result.error})`); return; }
     const { description, applies_to, rules: final } = result.output;
     const lines = [
@@ -292,7 +292,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       '',
     ];
     writeFileSync(path.join(out, `${topic}.md`), lines.join('\n'));
-    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${result.record.costUsd.toFixed(2)}`);
+    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${totalCost(result.records).toFixed(2)}`);
   });
 }
 
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
   } finally {
     await proxy.close();
   }
-  console.log(`Training cost $${calls.reduce((sum, c) => sum + c.costUsd, 0).toFixed(2)} over ${calls.length} calls.`);
+  console.log(`Training cost $${totalCost(calls).toFixed(2)} over ${calls.length} calls.`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
