@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dropContradicted } from '../src/claims.ts';
+import { dropContradicted, droppedLine, type DroppedFinding } from '../src/claims.ts';
+import { printable } from '../src/outputs.ts';
 import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
 import { fileList, settleFindings, synthesisDiff, type Finding, type ReviewedFinding } from '../src/review.ts';
 
@@ -239,4 +240,18 @@ test('the check run lists the dropped findings and why', () => {
   assert.match(text, /### Dropped before posting/);
   assert.match(text, /`test\/fetch-head\.test\.ts:7` \*\*No skipReason tests\*\* \(synthesis\): says `src\/command\.ts` isn't changed: "no changes to `command\.ts`"/);
   assert.doesNotMatch(checkText({ ...results, dropped: [] }), /Dropped before posting/);
+});
+
+test('printable strips control characters, so a file name stays on one log line', () => {
+  assert.equal(printable('a\nb\r\u001b[31m\u0085c\u2028d.ts'), 'ab[31mcd.ts');
+  assert.equal(printable('src/ok file.ts'), 'src/ok file.ts');
+});
+
+test('droppedLine names each dropped file once, made printable', () => {
+  const dropped = (file: string): DroppedFinding => ({ finding: {} as DroppedFinding['finding'], file, claim: '' });
+  assert.equal(
+    droppedLine([dropped('src/a.ts\n::error::x'), dropped('src/a.ts\n::error::x'), dropped('b.ts')]),
+    "Dropped 3 findings saying a changed file isn't changed: src/a.ts::error::x, b.ts",
+  );
+  assert.equal(droppedLine([dropped('b.ts')]), "Dropped 1 finding saying a changed file isn't changed: b.ts");
 });

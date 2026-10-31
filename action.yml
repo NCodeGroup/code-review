@@ -59,8 +59,8 @@ runs:
         CODE_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
       run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" decide
 
-    # A token for the acknowledgement alone, which revokes it before it exits, so no app token is alive while the review
-    # step and its agents run.
+    # A token for the acknowledgement alone. The Acknowledge step revokes it before it exits, and the step after it
+    # revokes it again, so no app token is alive while the review step and its agents run.
     - name: Get the app's token to acknowledge
       id: ack-token
       if: steps.ack-decide.outputs.acknowledge == 'true'
@@ -86,6 +86,17 @@ runs:
         CODE_REVIEW_HEAD_SHA: ${{ steps.ack-decide.outputs.head-sha }}
         CODE_REVIEW_COMMENT_ID: ${{ steps.ack-decide.outputs.comment-id }}
       run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" post
+
+    # Revokes the acknowledgement's token again, whatever happened to the Acknowledge step, which may not have run or may
+    # have stopped before its own revocation. A token revoked already answers 401, which counts as done.
+    - name: Revoke the acknowledgement's token
+      id: ack-revoke
+      if: always() && steps.ack-token.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        CODE_REVIEW_APP_TOKEN: ${{ steps.ack-token.outputs.token }}
+      run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" revoke
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       id: setup-node

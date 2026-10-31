@@ -22,3 +22,9 @@ export function assertNoSecrets(text: string, knownSecrets: Iterable<string>, wh
     if (pattern.test(text)) throw new SecretFoundError(`${where} contains something shaped like a credential (${pattern.source.slice(0, 12)}…).`);
   }
 }
+
+// Text from a pull request, such as a file name, made safe for one log line: without control characters it can't break
+// the line, so it can't start a workflow command or forge another line.
+export function printable(text: string): string {
+  return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '');
+}

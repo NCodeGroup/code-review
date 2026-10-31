@@ -10,7 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
 - This repository's own workflow pins v0.4.0 and triggers on `closed`, so its pull requests are reviewed by the current engine and record each finding's outcome when they close.
+- When the Anthropic credits are used up and Bedrock is throttling the key or its quota is used up (HTTP 429, `ThrottlingException` or `ServiceQuotaExceededException`), the check run says the review budget is used up, neutral, instead of starting a review Bedrock would refuse partway ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - A re-review also runs `security` when what changed since the last review touches a file `sensitive:` names or code the selection floor gives to `security`, such as a path with `auth`, `token` or `crypt` in it, and a change to a `sensitive:` file makes it a deep review: `correctness` and `security` run on Opus, unless `CODE_REVIEW_TIERS` names them, verification checks the findings in sensitive files on Opus, and the summary and the check run say so. Each of its reviewers checks the earlier findings, and the most cautious status counts; when one of them fails, the re-review posts no findings and the next one covers those changes again ([#86](https://github.com/NCodeGroup/code-review/issues/86)).
+
+### Fixed
+
+- A re-review no longer fails when GitHub's answer for the earlier review threads isn't JSON or its connection drops partway: it goes on without the earlier findings and won't approve, as when GitHub refuses the request ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+- A closed issue that can't be read, such as on a network failure, no longer fails the review step: the reviewers go without it and the log says why. A failed lookup of an author's permission, which leaves their description out, warns with the reason too ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+- The log warns, with the reason, when the pull request's comments can't be read, so a run that couldn't tell which commit it reviewed last, and so reviews in full, says why ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+- The evals build each case's pull request as the review step does: a case can name its author and association (a member by default), a description from an author without write access is left out with the issues it closes, and an issue that can't be read warns instead of vanishing ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+
+### Security
+
+- A step that always runs revokes the acknowledgement's app token before the review step starts, even when the acknowledgement script never ran or stopped before revoking it ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+- Changed file names are logged without control characters, so a file name can't break a log line or start a workflow command ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 
 ## [0.4.0] - 2026-10-31
 

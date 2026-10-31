@@ -160,9 +160,10 @@ async function main(): Promise<void> {
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
+  const log = (line: string) => console.log(line);
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
-  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken));
+  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
   const reviewedHead = async (number: number) => newestReviewedHead(await issueComments(number));
 
   // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
@@ -198,7 +199,7 @@ async function main(): Promise<void> {
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
   if (!event.comment) {
-    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), log: console.log });
+    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), log });
     if (pause !== 'review') writeStatus(pausedStatus());
     if (pause === 'paused') {
       console.log('Paused, and the notice is posted already; comment /review to resume.');
@@ -216,10 +217,9 @@ async function main(): Promise<void> {
   if (event.comment) event = { pull_request: decision.pullRequest };
 
   const credentials = takeCredentials();
-  const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequestEvent = event.pull_request ?? event.issue;
-  const isWriter = writerCheck(repository, githubToken);
+  const isWriter = writerCheck(repository, githubToken, fetch, log);
   const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
   const pullRequest = readPullRequest(event, repository, authorCanWrite);
   run.headSha = pullRequest.headSha || undefined;
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter, fetch, log);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);

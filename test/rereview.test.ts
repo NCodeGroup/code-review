@@ -409,6 +409,21 @@ test('readEarlierFindings gives undefined for a GraphQL body without threads, an
   assert.equal(calls, 10);
 });
 
+test('readEarlierFindings gives undefined for a body that is not JSON, or one cut off partway', async () => {
+  const notJson = (async () => new Response('<html>502</html>', { status: 200 })) as unknown as typeof fetch;
+  assert.equal(await readEarlierFindings('o/r', 1, 'token', notJson), undefined);
+  const cutOff = (async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error('connection reset'));
+        },
+      }),
+      { status: 200 },
+    )) as unknown as typeof fetch;
+  assert.equal(await readEarlierFindings('o/r', 1, 'token', cutOff), undefined);
+});
+
 test('earlierBlock stops at its size cap with whole entries, the unresolved ones first', () => {
   const many = Array.from({ length: 60 }, (_, i) => earlierFinding({ id: `F${i + 1}`, resolved: i % 2 === 0, text: 'x'.repeat(1_500) }));
   const block = earlierBlock(many);
