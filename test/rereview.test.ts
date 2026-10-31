@@ -13,6 +13,7 @@ import {
   changedSince,
   earlierBlock,
   earlierFindings,
+  mergeOverlapping,
   planReReview,
   postable,
   readEarlierFindings,
@@ -30,7 +31,7 @@ import {
 } from '../src/rereview.ts';
 import { headMarker, recordedHead, summaryComment } from '../src/results.ts';
 import type { Charters, Finding, Review } from '../src/review.ts';
-import { threadBody } from '../src/threads.ts';
+import { sameProblem, threadBody } from '../src/threads.ts';
 import type { Verification, VerificationAgent } from '../src/verify.ts';
 
 const made: string[] = [];
@@ -274,6 +275,50 @@ test('postable keeps blockers and should-fixes on or next to a changed line, and
   assert.deepEqual(result.kept.map((f) => [f.severity, f.line]), [['should-fix', 10], ['blocker', 14]]);
   assert.equal(result.nits, 1);
   assert.equal(result.outside, 2);
+});
+
+const by = (reviewer: string, f: Finding) => ({ ...f, reviewers: [reviewer] });
+
+test('mergeOverlapping posts the same problem from correctness and security once, at the higher severity, with both reviewers', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Token leaks into the log')), by('security', finding('blocker', 'a.ts', 12, 'Token leaks into the log!'))]);
+  assert.deepEqual(result.kept.map((f) => [f.severity, f.line, f.reviewers]), [['blocker', 12, ['security', 'correctness']]]);
+  assert.equal(result.merged, 1);
+  assert.equal(result.near, 0);
+});
+
+test('mergeOverlapping never merges two findings of the same reviewer', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('correctness', finding('should-fix', 'a.ts', 11, 'Same'))]);
+  assert.equal(result.kept.length, 2);
+  assert.equal(result.merged, 0);
+});
+
+test('mergeOverlapping keeps differently titled findings of two reviewers apart and counts them as near', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Off by one')), by('security', finding('should-fix', 'a.ts', 13, 'Token leaks'))]);
+  assert.equal(result.kept.length, 2);
+  assert.equal(result.merged, 0);
+  assert.equal(result.near, 1);
+});
+
+test('mergeOverlapping keeps the same title apart when it is farther away or in another file', () => {
+  const far = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('security', finding('should-fix', 'a.ts', 14, 'Same'))]);
+  assert.deepEqual([far.kept.length, far.merged, far.near], [2, 0, 0]);
+  const elsewhere = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('security', finding('should-fix', 'b.ts', 10, 'Same'))]);
+  assert.deepEqual([elsewhere.kept.length, elsewhere.merged, elsewhere.near], [2, 0, 0]);
+});
+
+test('mergeOverlapping keeps the more confident of two findings at the same severity', () => {
+  const result = mergeOverlapping([
+    by('correctness', { ...finding('should-fix', 'a.ts', 10, 'Same'), confidence: 0.6 }),
+    by('security', { ...finding('should-fix', 'a.ts', 10, 'Same'), confidence: 0.9 }),
+  ]);
+  assert.deepEqual(result.kept.map((f) => [f.confidence, f.reviewers]), [[0.9, ['security', 'correctness']]]);
+});
+
+test('sameProblem ignores severity and punctuation but not the file or distance', () => {
+  assert.ok(sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks!' }, { file: 'a.ts', line: 13, title: 'token LEAKS' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'a.ts', line: 14, title: 'Token leaks' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'b.ts', line: 10, title: 'Token leaks' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'a.ts', line: 10, title: 'Key leaks' }));
 });
 
 function earlierFinding(overrides: Partial<EarlierFinding> = {}): EarlierFinding {

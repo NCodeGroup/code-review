@@ -40,7 +40,7 @@ import {
   type Severity,
   type Verdict,
 } from './review.ts';
-import { parsePosted, snapDistance } from './threads.ts';
+import { nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
 
 // The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
@@ -447,6 +447,29 @@ export function postable<T extends Pick<Finding, 'severity' | 'file' | 'line'>>(
     else outside++;
   }
   return { kept, nits, outside };
+}
+
+// Correctness and security can report one problem twice. Of two findings by different reviewers that sameProblem pairs,
+// only the more severe is posted, the more confident on a tie, naming both reviewers, so verification never drops it
+// when security is one of them. `near` counts the findings kept apart though close to another reviewer's, for the evals
+// to measure.
+export function mergeOverlapping<T extends Pick<Finding, 'severity' | 'file' | 'line' | 'title' | 'confidence'> & { reviewers: string[] }>(findings: T[]): { kept: T[]; merged: number; near: number } {
+  const ordered = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  const kept: T[] = [];
+  let merged = 0;
+  let near = 0;
+  for (const finding of ordered) {
+    const others = kept.flatMap((k, index) => (!k.reviewers.some((r) => finding.reviewers.includes(r)) && nearby(k, finding) ? [{ k, index }] : []));
+    const same = others.find(({ k }) => sameProblem(k, finding));
+    if (same) {
+      kept[same.index] = { ...same.k, reviewers: [...same.k.reviewers, ...finding.reviewers] };
+      merged++;
+    } else {
+      if (others.length) near++;
+      kept.push(finding);
+    }
+  }
+  return { kept, merged, near };
 }
 
 const maxEarlierChars = 60_000;

@@ -87,6 +87,17 @@ function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: bool
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
 }
 
+// Two findings in the same file within a few lines of each other.
+export function nearby(a: Pick<ReviewedFinding, 'file' | 'line'>, b: Pick<ReviewedFinding, 'file' | 'line'>): boolean {
+  return a.file === b.file && Math.abs(a.line - b.line) <= repeatDistance;
+}
+
+// Two findings of one review that repeat each other: in the same file within a few lines and with the same title words,
+// whatever their severity.
+export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>, b: Pick<ReviewedFinding, 'file' | 'line' | 'title'>): boolean {
+  return nearby(a, b) && fingerprint({ ...a, severity: 'nit' }) === fingerprint({ ...b, severity: 'nit' });
+}
+
 // `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed.
 export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
   const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
