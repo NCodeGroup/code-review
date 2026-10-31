@@ -554,6 +554,69 @@ test('readPostedThreads throws when a page of review comments cannot be read', a
   await assert.rejects(readPostedThreads(api, 'o/r', 1), /HTTP 502/);
 });
 
+const threadFinding = { id: 'F1', file: 'src/A.cs', line: 3, severity: 'should-fix' as const, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
+const threadResults = { ...summaryResults, findings: [threadFinding, { ...threadFinding, id: 'F2', severity: 'nit' as const, title: 'U' }], changedLines: { 'src/A.cs': [3] } };
+
+test('postThreads posts only the findings the bot has not posted yet', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const { threadBody } = await import('../src/threads.ts');
+  const calls: string[] = [];
+  const bodies: any[] = [];
+  const api = async (method: string, url: string, body?: unknown): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return [{ user: { login: 'ncode-review[bot]' }, path: 'src/A.cs', line: 3, body: threadBody(threadFinding) }];
+    bodies.push(body);
+    return {};
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1', 'POST /repos/o/r/pulls/1/reviews']);
+  assert.deepEqual(bodies[0].comments.map((c: { path: string; line: number }) => [c.path, c.line]), [['src/A.cs', 3]]);
+  assert.ok(bodies[0].comments[0].body.includes('F2'));
+  assert.ok(lines.includes('Posted a review with 1 threads and 0 findings in its body.'));
+});
+
+test('postThreads posts nothing, and warns, when the pull request has more review comments than it reads', async () => {
+  const { commentPageSize, maxCommentPages, postThreads } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    return Array.from({ length: commentPageSize }, () => ({ user: { login: 'someone' }, body: 'hi' }));
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.equal(calls.length, maxCommentPages);
+  assert.ok(calls.every((call) => call.startsWith('GET ')));
+  assert.deepEqual(lines, [`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`]);
+});
+
+test('postThreads throws, posting nothing, when a page of review comments cannot be read', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    throw new Error('HTTP 502');
+  };
+  await assert.rejects(postThreads(api, threadResults, ['secret-token'], () => {}), /HTTP 502/);
+  assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1']);
+});
+
+test('postThreads posts the findings in the review body when GitHub refuses the inline threads', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const bodies: any[] = [];
+  const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
+    if (method === 'GET') return [];
+    bodies.push(body);
+    if (bodies.length === 1) throw new Error('HTTP 422');
+    return {};
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].comments, undefined);
+  assert.ok(lines.includes("::warning::GitHub refused the inline threads (HTTP 422); posting them in the review's body."));
+});
+
 test('lastReviewedHead takes the head of the newest bot summary across pages', async () => {
   const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
   const { summaryMarker, headMarker } = await import('../src/results.ts');

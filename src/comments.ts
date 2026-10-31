@@ -1,8 +1,9 @@
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
-// posting a new summary and collapsing the earlier ones.
+// posting the new threads and a new summary, and collapsing the earlier summaries.
 
+import { assertNoSecrets } from './outputs.ts';
 import { botLogin, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
-import { parsePosted, type PostedThread } from './threads.ts';
+import { parsePosted, placeFindings, reviewBody, threadBody, type PostedThread } from './threads.ts';
 
 // GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
 // comments and review comments share both.
@@ -46,6 +47,44 @@ export async function readPostedThreads(
   type ReviewComment = Parameters<typeof parsePosted>[0][number] & { user?: { login?: string } };
   const listed = await readCommentPages(`/repos/${repository}/pulls/${number}/comments`, async (url) => (await api('GET', url)) as ReviewComment[]);
   return listed && parsePosted(listed.filter((comment) => comment.user?.login === botLogin));
+}
+
+// Posts the findings as one review of inline threads, leaving out ones the bot already posted on this pull request.
+// GitHub rejects the whole review when any comment's line isn't in the diff, so on a rejection it posts them all in
+// the review's body instead. When the pull request has more review comments than it reads, it posts none, since it
+// can't tell which findings are already posted; the check run still has them all. A page that can't be read throws.
+export async function postThreads(
+  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines'>,
+  secrets: Iterable<string>,
+  log: (line: string) => void = console.log,
+): Promise<void> {
+  const posted = await readPostedThreads(api, results.repository, results.pullRequest);
+  if (!posted) {
+    log(`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`);
+    return;
+  }
+  const placement = placeFindings(results.findings, results.changedLines, posted);
+  if (!placement.inline.length && !placement.inBody.length) {
+    log(`No new findings to post${placement.alreadyPosted.length ? ` (${placement.alreadyPosted.length} already posted)` : ''}.`);
+    return;
+  }
+  const reviews = `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`;
+  const review = {
+    commit_id: results.headSha,
+    event: 'COMMENT',
+    body: reviewBody(placement, results.headSha),
+    comments: placement.inline.map(({ finding, line }) => ({ path: finding.file, line, side: 'RIGHT', body: threadBody(finding) })),
+  };
+  assertNoSecrets(JSON.stringify(review), secrets, 'The review');
+  try {
+    await api('POST', reviews, review);
+    log(`Posted a review with ${placement.inline.length} threads and ${placement.inBody.length} findings in its body.`);
+  } catch (error) {
+    log(`::warning::GitHub refused the inline threads (${errorText(error)}); posting them in the review's body.`);
+    const fallback = { inline: [], inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody], alreadyPosted: placement.alreadyPosted };
+    await api('POST', reviews, { commit_id: results.headSha, event: 'COMMENT', body: reviewBody(fallback, results.headSha) });
+  }
 }
 
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
