@@ -104,6 +104,7 @@ const charters: Charters = {
   selectionPrompt: 'sel',
   synthesisPrompt: 'syn',
   ruleCheckPrompt: 'r',
+  reReviewPrompt: 'rr',
   verificationPrompt: 'v',
   reviewers: new Map(['architecture', 'completeness', 'conventions', 'correctness', 'hygiene', 'intent', 'security', 'tests'].map((n) => [n, n])),
 };
@@ -250,6 +251,19 @@ test('a light review runs hygiene alone on Haiku, with no context, selection or 
   assert.ok(result.skipped.includes('correctness'));
 });
 
+test('a light review leaves out a finding that says a changed file isn\'t changed, still with no synthesis', async () => {
+  const { result, calls } = await run(gathered(['README.md', 'docs/guide.md']), {
+    findings: () => [
+      { ...finding('README.md', 'should-fix'), problem: '`docs/guide.md` is not in the diff, so the link it adds is broken.' },
+      finding('docs/guide.md', 'nit'),
+    ],
+  });
+  assert.deepEqual(calls.map((c) => c.role), ['reviewer:hygiene']);
+  assert.deepEqual(result.findings.map((f) => [f.id, f.file, f.severity]), [['F1', 'docs/guide.md', 'nit']]);
+  assert.deepEqual(result.dropped.map((d) => [d.finding.file, d.file]), [['README.md', 'docs/guide.md']]);
+  assert.match(result.summary, /^Light review \(documentation only\): 1 finding from hygiene, not merged by synthesis\.$/);
+});
+
 test('a light review with no findings approves', async () => {
   const { result } = await run(gathered(['README.md']));
   assert.equal(result.verdict, 'approve');
@@ -268,7 +282,7 @@ test('CODE_REVIEW_TIERS overrides a light review\'s hygiene', async () => {
 });
 
 test('the check run says when a review was deep or light, and shows each reviewer\'s models', () => {
-  const base = { summary: 's', verdict: 'comment', findings: [], reviewers: [], calls: [], notShown: [], provider: 'bedrock', costUsd: 0, durationMs: 0 } as unknown as Results;
+  const base = { summary: 's', verdict: 'comment', findings: [], dropped: [], reviewers: [], calls: [], notShown: [], provider: 'bedrock', costUsd: 0, durationMs: 0 } as unknown as Results;
   const deep = checkSummary({ ...base, depth: 'deep', sensitiveFiles: ['src/Payments/Ledger.cs'] });
   assert.match(deep, /\*\*Deep review \(sensitive paths\)\*\*: `src\/Payments\/Ledger\.cs` matches `sensitive:` in `\.github\/code-review\/config\.yml`/);
   assert.match(checkSummary({ ...base, depth: 'light' }), /\*\*Light review \(documentation only\)\*\*: every changed file is documentation/);

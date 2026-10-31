@@ -210,7 +210,7 @@ test('the policies have a budget of their own', () => {
 });
 
 test('project charters join the roster as project:<name> and never replace an engine charter', () => {
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
   const settings = readProjectSettings(baseWithSettings());
   const charters = withProjectCharters(engine, settings.reviewers);
   assert.deepEqual([...charters.reviewers.keys()], ['security', 'project:oauth', 'project:security']);
@@ -359,12 +359,12 @@ test('guidance.md rules get their own ids in the catalog', () => {
 
 test('the check run lists files skipped by config and the settings warnings', () => {
   const summary = checkSummary({
-    verdict: 'approve', summary: 'Fine.', costUsd: 0, provider: 'bedrock', durationMs: 0, notShown: [],
+    verdict: 'approve', summary: 'Fine.', costUsd: 0, provider: 'bedrock', durationMs: 0, notShown: [], dropped: [],
     skippedByConfig: ['vendor/lib.js'], warnings: ['Policy ../x.md leaves the repository; it was left out.'],
   } as unknown as Results);
   assert.match(summary, /Skipped by config \(`skip:` in `\.github\/code-review\/config\.yml`\): `vendor\/lib\.js`\./);
   assert.match(summary, /- ⚠️ Policy \.\.\/x\.md leaves the repository; it was left out\./);
-  assert.doesNotMatch(checkSummary({ verdict: 'approve', summary: '', costUsd: 0, provider: 'bedrock', durationMs: 0, notShown: [] } as unknown as Results), /Skipped by config|warnings/);
+  assert.doesNotMatch(checkSummary({ verdict: 'approve', summary: '', costUsd: 0, provider: 'bedrock', durationMs: 0, notShown: [], dropped: [] } as unknown as Results), /Skipped by config|warnings/);
 });
 
 test('gather reviews a pull request that edits .github/code-review with the default branch copy', () => {
@@ -436,7 +436,7 @@ test('a pull request whose every changed file is skipped by config runs no model
   assert.deepEqual(gathered.skippedByConfig, ['vendor/lib.js']);
   assert.equal(fileList(gathered), "vendor/lib.js [not reviewed: skipped by the repository's config]");
 
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
   // The proxy address goes nowhere: a model call would fail and be recorded.
   const outcome = await review({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, engine, () => {});
   assert.deepEqual(outcome.calls, []);
