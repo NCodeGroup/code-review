@@ -54,7 +54,7 @@ function apiErrorMessage(error: string, text: string): SDKMessage {
 
 function outputFor(options: Options): unknown {
   const properties = (options.outputFormat?.schema['properties'] ?? {}) as Record<string, unknown>;
-  const finding = { severity: 'nit', file: 'README.md', line: 1, title: 'Typo', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
+  const finding = { severity: 'nit', file: 'config/greeting.json', line: 1, title: 'Typo', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
   if ('add' in properties) return { add: [{ reviewer: 'tests', reason: 'the change needs tests' }] };
   if ('summary' in properties) return { summary: 'One typo.', verdict: 'comment', findings: [{ ...finding, sources: ['R1', 'R2'] }] };
   return { findings: [finding] };
@@ -111,25 +111,33 @@ function gathered(): Gathered {
       title: 'Fix a typo',
       author: 'someone',
       authorAssociation: 'MEMBER',
+      authorCanWrite: true,
       draft: false,
       baseRef: 'main',
       baseSha: 'a'.repeat(40),
       headSha: 'b'.repeat(40),
     },
     mergeBase: 'a'.repeat(40),
-    files: [{ path: 'README.md', additions: 1, deletions: 1, generated: false, shown: true }],
-    diff: 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-teh\n+the\n',
+    files: [{ path: 'config/greeting.json', additions: 1, deletions: 1, generated: false, shown: true }],
+    diff: 'diff --git a/config/greeting.json b/config/greeting.json\n--- a/config/greeting.json\n+++ b/config/greeting.json\n@@ -1 +1 @@\n-{ "greeting": "teh" }\n+{ "greeting": "the" }\n',
     chunks: [],
     conventions: '',
     reviewRules: [],
     guidance: [],
     decisions: [],
     commits: [],
+    sensitive: [],
+    skippedByConfig: [],
+    policies: [],
+    tiers: {},
+    projectReviewers: [],
+    warnings: [],
   };
 }
 
-// Reviews the typo fix with the hygiene reviewer (the floor) and the tests reviewer (added by selection), on a run that
-// starts on the Claude API with a Bedrock key; the Claude API refuses only the tests reviewer's call.
+// Reviews the typo fix, in a file that isn't documentation so the review isn't a light one, with the hygiene reviewer
+// (the floor) and the tests reviewer (added by selection), on a run that starts on the Claude API with a Bedrock key;
+// the Claude API refuses only the tests reviewer's call.
 async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean = () => false) {
   const previousTiers = process.env['CODE_REVIEW_TIERS'];
   delete process.env['CODE_REVIEW_TIERS'];

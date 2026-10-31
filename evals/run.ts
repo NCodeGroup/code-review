@@ -240,7 +240,7 @@ async function main(): Promise<void> {
       const base = worktree(repo, `${c.id}-base`, c.base);
       const pullRequest: PullRequest = {
         repository: c.repository, number: c.pullRequest ?? 0, title: c.title, body: c.body, author: 'polewskm',
-        authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: c.base, headSha,
+        authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: c.base, headSha,
         issues: closedIssues(c.body).flatMap((number) => {
           try {
             const issue = JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' }));

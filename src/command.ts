@@ -1,6 +1,15 @@
 // Pull request comment commands: `/review`, `/review explain <finding>` with an optional question, and
 // `/review teach [org | <finding>] <rule>`. Only a top-level comment from someone with write access counts: a reply
 // inside a review thread is a pull_request_review_comment event, which carries no issue, so it is never a command.
+//
+// The gate reads only the comment's author_association, so a private organization member's /review is ignored, unlike
+// their description (see writers.ts). That is on purpose: the workflow's `if:` checks the same association before the
+// engine starts, and a permission lookup there would let more people start a run that holds the model credentials.
+// The set lives here, not in writers.ts, because the acknowledgement loads this file before npm ci and must not load
+// config.ts; writers.ts imports it from here.
+
+// The author associations that name a writer.
+export const writerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // Which finding `/review explain` asks about: an id such as F3, which means the newest review's F3; a link to one of the
 // bot's inline finding comments; or something that is neither, which gets the list of valid ids.
@@ -17,8 +26,6 @@ export type Command =
   | { kind: 'review' }
   | { kind: 'explain'; ref: FindingRef; question: string }
   | { kind: 'teach'; scope: TeachScope; ref?: FindingRef; rule: string };
-
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // The longest question passed on to the agent; the rest is cut off.
 export const maxQuestionChars = 2_000;
@@ -78,7 +85,7 @@ export interface CommentEvent {
 
 export function commandFromEvent(event: CommentEvent): { command: Command; number: number } | undefined {
   if (!event.issue?.pull_request || typeof event.issue.number !== 'number') return undefined;
-  if (!writers.has(event.comment?.author_association ?? '')) return undefined;
+  if (!writerAssociations.has(event.comment?.author_association ?? '')) return undefined;
   const command = parseCommand(event.comment?.body ?? '');
   return command ? { command, number: event.issue.number } : undefined;
 }

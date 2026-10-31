@@ -85,7 +85,7 @@ function moveMain(repo: string): string {
 }
 
 function pullRequest(baseSha: string, headSha: string): PullRequest {
-  return { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha, headSha };
+  return { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha };
 }
 
 test('changedSince counts nothing when the default branch only moved the hunks', () => {
@@ -483,6 +483,22 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
   assert.match(outcome.summary, /1 nit and 1 finding away from the changed lines aren't posted on a re-review\. 1 new finding at should-fix or above\.$/);
 });
 
+test('reReview runs correctness on the model the repository\'s tiers: name', async () => {
+  const { repo, reviewed, a } = pullRequestRepo();
+  const main = moveMain(repo);
+  git(repo, 'merge', '-q', '--no-edit', 'main');
+  const edited = [...numbered(5, 'main'), ...a];
+  edited[24] = 'changed again 20';
+  const head = commit(repo, { 'a.ts': edited }, 'edit');
+  const gathered = { ...gather(pullRequest(main, head), repo, repo), tiers: { correctness: 'opus' as const } };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [], earlier: [] }, requests));
+  assert.equal(requests[0]!.tier, 'opus');
+  assert.equal(outcome.depth, 'standard');
+});
+
 test('reReview gives its correctness call the Bedrock fallback of the run, and keeps both calls of a rerun on Bedrock', async () => {
   const { repo, first, reviewed, a } = pullRequestRepo();
   const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
@@ -708,7 +724,7 @@ test('reReview with verification on never approves after refuting what it would 
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
-  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [], warnings: [], depth: 'standard', sensitiveFiles: [] };
 }
 
 test('runReview does the full review without a plan, and records the head it read', async () => {
