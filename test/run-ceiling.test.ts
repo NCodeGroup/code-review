@@ -83,9 +83,11 @@ interface CappedOptions {
   maxRunUsd?: string;
   // CODE_REVIEW_SHADOW for the run; unset when undefined.
   shadow?: string;
+  // CODE_REVIEW_VERIFICATION=on for the run when true.
+  verification?: boolean;
 }
 
-const ceilingEnv = ['CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_TIERS', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE'];
+const ceilingEnv = ['CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_TIERS', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_VERIFICATION'];
 
 async function cappedReview({
   parts = 1,
@@ -96,6 +98,7 @@ async function cappedReview({
   reviewRules = [],
   maxRunUsd,
   shadow,
+  verification,
 }: CappedOptions = {}) {
   const roles: string[] = [];
   const agent = async <T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
@@ -115,6 +118,7 @@ async function cappedReview({
   for (const name of ceilingEnv) delete process.env[name];
   if (maxRunUsd !== undefined) process.env['CODE_REVIEW_MAX_RUN_USD'] = maxRunUsd;
   if (shadow !== undefined) process.env['CODE_REVIEW_SHADOW'] = shadow;
+  if (verification) process.env['CODE_REVIEW_VERIFICATION'] = 'on';
   const logs: string[] = [];
   try {
     const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, { ...gathered, reviewRules, chunks: Array(parts).fill(diff) }, charters, (line) => logs.push(line), agent);
@@ -140,6 +144,14 @@ test('review skips the reviewer calls queued after the cost ceiling is reached, 
     completeness: ['skipped', runBudgetReason],
   });
   assert.deepEqual(result.findings.map((f) => f.title).sort(), ['reviewer:correctness', 'reviewer:hygiene']);
+});
+
+test('verification calls are skipped once the cost ceiling is reached, and their findings stay unverified', async () => {
+  const { result, roles } = await cappedReview({ verification: true });
+  assert.ok(!roles.includes('verification'));
+  assert.deepEqual(result.verification.map((c) => c.skipped), [true]);
+  assert.deepEqual(result.findings.map((f) => [f.title, f.severity]).sort(), [['reviewer:correctness', 'should-fix'], ['reviewer:hygiene', 'should-fix']]);
+  assert.match(result.summary, /Verification reached the run's cost ceiling and skipped 1 of 1 calls, so their findings weren't verified\./);
 });
 
 test('the check run marks a reviewer the cost ceiling skipped as skipped: run budget', async () => {
