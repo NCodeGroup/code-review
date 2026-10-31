@@ -137,6 +137,7 @@ const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|pas
 const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
+const contractPath = /\.proto$|\.schema\.json$/i;
 
 // The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
@@ -146,9 +147,11 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   if (code.length) floor.add('correctness');
   if (code.some((f) => securityPath.test(f.path))) floor.add('security');
   if (reviewed.some((f) => /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/.test(f.path))) floor.add('api-compat');
+  if (code.some((f) => f.packable && f.publicMember)) floor.add('api-compat');
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
   if (/(^|\/)Migrations\/|\.sql$/i.test(reviewed.map((f) => f.path).join('\n'))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
+  if (code.some((f) => f.serializedContract) || reviewed.some((f) => contractPath.test(f.path) && !testPath.test(f.path))) floor.add('data-model');
   if (reviewed.some((f) => infrastructurePath.test(f.path))) floor.add('infrastructure');
   if (hasReviewRules) floor.add('conventions');
   // Duct tape and unfinished capabilities build up in changes big enough to have a design; a one-line fix rarely does.

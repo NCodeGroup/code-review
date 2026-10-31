@@ -29,6 +29,12 @@ export interface ChangedFile {
   deletions: number;
   generated: boolean;
   shown: boolean;
+  // A .cs file in a project the default branch packs: PublicAPI.Shipped.txt beside its .csproj, or IsPackable true in it.
+  packable?: boolean;
+  // A .cs file whose diff declares, removes or changes a public or protected member, judged from the file at the head.
+  publicMember?: boolean;
+  // A .cs file whose diff touches a serialized or persisted contract: JSON or data-contract names, a DbContext.
+  serializedContract?: boolean;
 }
 
 export interface Gathered {
@@ -127,6 +133,137 @@ export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, c
     file.shown = true;
   }
   return chunks.map((chunk) => chunk.join(''));
+}
+
+// Whether the .csproj nearest above a file packs it, read from the default branch's checkout only, so a pull request
+// can't make its own project count as packed.
+export function isPackableProject(basePath: string, file: string, cache = new Map<string, boolean>()): boolean {
+  const parts = file.split('/');
+  if (parts.some((p) => p === '' || p === '.' || p === '..')) return false;
+  for (let depth = parts.length - 1; depth >= 0; depth--) {
+    const folder = parts.slice(0, depth).join('/');
+    const known = cache.get(folder);
+    if (known !== undefined) return known;
+    let names: string[];
+    try {
+      names = readdirSync(path.join(basePath, folder));
+    } catch {
+      continue;
+    }
+    const projects = names.filter((n) => n.endsWith('.csproj'));
+    if (!projects.length) continue;
+    const packable = names.includes('PublicAPI.Shipped.txt') || projects.some((p) => {
+      try {
+        return /<IsPackable>\s*true\s*<\/IsPackable>/i.test(readFileSync(path.join(basePath, folder, p), 'utf8'));
+      } catch {
+        return false;
+      }
+    });
+    cache.set(folder, packable);
+    return packable;
+  }
+  return false;
+}
+
+type Declaration =
+  | { kind: 'namespace' }
+  | { kind: 'type'; visible: boolean; membersPublic: boolean }
+  | { kind: 'member'; visible: boolean };
+
+const modifierRun = /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
+const accessWords = new Set(['public', 'protected', 'private', 'internal']);
+
+// A C# line read as a declaration, from its leading modifiers. Members without an access modifier are private (or a
+// statement) and read as nothing.
+function declaration(line: string): Declaration | undefined {
+  if (/^\s*namespace\b/.test(line)) return { kind: 'namespace' };
+  const match = modifierRun.exec(line)!;
+  const modifiers = match[1]!.split(/\s+/).filter(Boolean);
+  const visible = modifiers.includes('public') || (modifiers.includes('protected') && !modifiers.includes('private'));
+  const type = /^(class|struct|interface|enum|record)\s+[A-Za-z_@]/.exec(line.slice(match[0].length));
+  if (type) return { kind: 'type', visible, membersPublic: type[1] === 'interface' || type[1] === 'enum' };
+  if (modifiers.some((m) => accessWords.has(m))) return { kind: 'member', visible };
+  return undefined;
+}
+
+const indentOf = (line: string) => /^\s*/.exec(line)![0].length;
+const notCode = /^\s*([{}()[\]#]|\/\/|\/\*|\*)/;
+
+// Whether a changed line declares, or sits inside, a public or protected member of a public type. `above` is the number
+// of the head's lines before it; the nearest declaration above with less indentation encloses it.
+function inVisibleMember(lines: string[], above: number, code: string): boolean {
+  let own = declaration(code);
+  // An attribute belongs to the declaration below it.
+  if (!own && /^\s*\[/.test(code)) {
+    const next = lines.slice(above).find((l) => l.trim() && !notCode.test(l));
+    own = next === undefined ? undefined : declaration(next);
+  }
+  if (own?.kind === 'namespace') return false;
+  let found = own?.visible;
+  if (found === false) return false;
+  let indent = indentOf(code);
+  for (let i = above - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (!line.trim() || notCode.test(line) || indentOf(line) >= indent) continue;
+    const enclosing = declaration(line);
+    if (!enclosing) continue;
+    if (enclosing.kind === 'namespace') break;
+    indent = indentOf(line);
+    // Straight inside a class or struct, outside any member with an access modifier: a private field or a blank.
+    if (found === undefined && enclosing.kind === 'type' && !enclosing.membersPublic) return false;
+    if (!enclosing.visible) return false;
+    found = true;
+  }
+  return found === true;
+}
+
+// Whether a .cs file's diff adds or removes a line that declares, or sits inside, a public or protected member: a
+// change to the surface, or to the behavior behind it. head is the file at the pull request's head, '' when deleted.
+export function touchesPublicMember(section: string, head: string): boolean {
+  const lines = head.split(/\r?\n/);
+  let next = 0;
+  let inHunk = false;
+  for (const text of section.split('\n')) {
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+    if (hunk) {
+      next = Number(hunk[1]);
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (text.startsWith(' ')) next++;
+    if (!text.startsWith('+') && !text.startsWith('-')) continue;
+    const code = text.slice(1).replace(/\r$/, '');
+    // An added line is head line `next`; a removed one sits before it.
+    const above = next - 1;
+    if (text.startsWith('+')) next++;
+    if (!code.trim() || /^\s*(\/\/|\/\*|\*)/.test(code)) continue;
+    if (inVisibleMember(lines, above, code)) return true;
+  }
+  return false;
+}
+
+const contractMarker = /\b(?:JsonPropertyName|DataMember|JsonSerializerContext|IEntityTypeConfiguration)\b|\w*DbContext\b/;
+
+// Whether a file's diff, in its hunks with their context, touches a serialized or persisted contract.
+export function touchesSerializedContract(section: string): boolean {
+  const hunks = section.indexOf('\n@@');
+  return hunks >= 0 && contractMarker.test(section.slice(hunks));
+}
+
+// Marks what the selection floor needs to know about each changed .cs file outside the tests. Whether its project is
+// packed comes from the default branch; the head's copy, read through readHead as data, only places changed lines.
+export function markContracts(files: ChangedFile[], sections: Map<string, string>, basePath: string, readHead: (file: string) => string): void {
+  const projects = new Map<string, boolean>();
+  for (const file of files) {
+    const section = sections.get(file.path);
+    if (file.generated || !section || !/\.cs$/i.test(file.path) || testPattern.test(file.path)) continue;
+    if (touchesSerializedContract(section)) file.serializedContract = true;
+    if (!isPackableProject(basePath, file.path, projects)) continue;
+    file.packable = true;
+    const deleted = /^\+\+\+ \/dev\/null$/m.test(section);
+    if (touchesPublicMember(section, deleted ? '' : readHead(file.path))) file.publicMember = true;
+  }
 }
 
 function parseNumstat(numstat: string): ChangedFile[] {
@@ -281,7 +418,15 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const range = [mergeBase, pullRequest.headSha];
   const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
-  const chunks = chunkDiff(files, splitDiff(fullDiff), maxChunkChars, maxChunks);
+  const sections = splitDiff(fullDiff);
+  markContracts(files, sections, basePath, (file) => {
+    try {
+      return git(prPath, ['cat-file', 'blob', `${pullRequest.headSha}:${file}`]);
+    } catch {
+      return '';
+    }
+  });
+  const chunks = chunkDiff(files, sections, maxChunkChars, maxChunks);
   const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
   // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
   const proposed = readProposedDecisions(prPath, reviewed);

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, readReviewRules, splitDiff, type ChangedFile, type Gathered } from '../src/gather.ts';
+import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, isPackableProject, markContracts, readReviewRules, splitDiff, touchesPublicMember, touchesSerializedContract, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
@@ -632,6 +632,127 @@ test('infrastructure changes get the infrastructure reviewer and the code review
   for (const name of ['hygiene', 'correctness', 'security', 'infrastructure', 'intent', 'tests']) assert.ok(floor.includes(name), `${name} in ${floor.join(',')}`);
   assert.ok(!selectionFloor([file('src/A.cs')], false).includes('infrastructure'));
   assert.ok(selectionFloor([file('live/prod/terraform.tfvars')], false).includes('infrastructure'));
+});
+
+test('selectionFloor adds api-compat for a public member change in a packable project', () => {
+  const lib = (p: string, marks: Partial<ChangedFile>): ChangedFile => ({ ...file(p), ...marks });
+  assert.ok(selectionFloor([lib('src/Lib/A.cs', { packable: true, publicMember: true })], false).includes('api-compat'));
+  assert.ok(!selectionFloor([lib('src/Lib/A.cs', { packable: true })], false).includes('api-compat'));
+  assert.ok(!selectionFloor([lib('src/App/A.cs', { publicMember: true })], false).includes('api-compat'));
+  assert.ok(!selectionFloor([lib('tests/Lib.Tests/ATests.cs', { packable: true, publicMember: true })], false).includes('api-compat'));
+});
+
+test('selectionFloor adds data-model for a serialized contract, a .proto or a .schema.json file', () => {
+  assert.ok(selectionFloor([{ ...file('src/Lib/Token.cs'), serializedContract: true }], false).includes('data-model'));
+  assert.ok(selectionFloor([file('protos/token.proto')], false).includes('data-model'));
+  assert.ok(selectionFloor([file('schemas/settings.schema.json')], false).includes('data-model'));
+  assert.ok(!selectionFloor([file('src/Lib/Token.cs'), file('docs/token.md'), file('src/settings.json')], false).includes('data-model'));
+  assert.ok(!selectionFloor([file('tests/fixtures/settings.schema.json')], false).includes('data-model'));
+});
+
+test('isPackableProject reads PublicAPI.Shipped.txt or IsPackable from the nearest project on the base', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-'));
+  const project = (folder: string, csproj: string, shipped = false) => {
+    mkdirSync(path.join(base, folder), { recursive: true });
+    writeFileSync(path.join(base, folder, `${path.basename(folder)}.csproj`), csproj);
+    if (shipped) writeFileSync(path.join(base, folder, 'PublicAPI.Shipped.txt'), '#nullable enable\n');
+  };
+  project('src/Shipped', '<Project Sdk="Microsoft.NET.Sdk" />', true);
+  project('src/Packed', '<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>');
+  project('src/App', '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>');
+  assert.ok(isPackableProject(base, 'src/Shipped/Sub/New/A.cs'));
+  assert.ok(isPackableProject(base, 'src/Packed/A.cs'));
+  assert.ok(!isPackableProject(base, 'src/App/A.cs'));
+  assert.ok(!isPackableProject(base, 'src/NewProject/A.cs'));
+  assert.ok(!isPackableProject(base, 'src/App/../Shipped/A.cs'));
+});
+
+// A file at the pull request's head, one line per entry; line numbers below are 1-based.
+const csLines = [
+  'namespace NCode.Lib;', // 1
+  '',
+  'public sealed class Verifier', // 3
+  '{',
+  '    private int count;', // 5
+  '',
+  '    public bool Verify(string token)', // 7
+  '    {',
+  '        return token.Length > 0;', // 9
+  '    }',
+  '',
+  '    private void Helper()', // 12
+  '    {',
+  '        count++;', // 14
+  '    }',
+  '}',
+  '',
+  'internal class Hidden', // 18
+  '{',
+  '    public void Run()', // 20
+  '    {',
+  '        Go();', // 22
+  '    }',
+  '}',
+  '',
+  'public interface IThing', // 26
+  '{',
+  '    void Do();', // 28
+  '}',
+];
+const csHead = csLines.join('\n');
+const csSection = (hunk: string) => `diff --git a/src/Lib/A.cs b/src/Lib/A.cs\n--- a/src/Lib/A.cs\n+++ b/src/Lib/A.cs\n${hunk}\n`;
+// Head line n replaces an older line at the same place.
+const edit = (n: number) => csSection(`@@ -${n},1 +${n},1 @@\n-${csLines[n - 1]!.replace(/\S.*/, 'Old();')}\n+${csLines[n - 1]}`);
+
+test('touchesPublicMember finds a change in the body of a public member of a public type', () => {
+  assert.ok(touchesPublicMember(edit(9), csHead));
+  assert.ok(touchesPublicMember(edit(28), csHead), 'an interface member is public without a modifier');
+});
+
+test('touchesPublicMember finds a public or protected declaration added or removed', () => {
+  assert.ok(touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    public void Added() { }'), csHead));
+  assert.ok(touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    protected internal void Added() { }'), csHead));
+  assert.ok(touchesPublicMember(csSection('@@ -10,3 +10,2 @@\n     }\n-    public void Removed() => Go();\n '), csHead));
+  assert.ok(touchesPublicMember(csSection('@@ -1,2 +0,0 @@\n-namespace NCode.Lib;\n-public class Gone { }'), ''));
+  assert.ok(touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    [Obsolete]'), csHead), 'an attribute belongs to the member below it');
+});
+
+test('touchesPublicMember ignores private members, internal types and comments', () => {
+  assert.ok(!touchesPublicMember(edit(14), csHead));
+  assert.ok(!touchesPublicMember(edit(22), csHead));
+  assert.ok(!touchesPublicMember(edit(5), csHead));
+  assert.ok(!touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    private protected void Added() { }'), csHead));
+  assert.ok(!touchesPublicMember(csSection('@@ -9,0 +9,1 @@\n+        // Shorter tokens are refused.'), csHead));
+});
+
+test('touchesSerializedContract looks for contract markers in the hunks, not the file name', () => {
+  assert.ok(touchesSerializedContract(csSection('@@ -1,2 +1,2 @@\n     [JsonPropertyName("id")]\n-    public string Id { get; set; }\n+    public string Key { get; set; }')));
+  assert.ok(touchesSerializedContract(csSection('@@ -40,1 +40,1 @@ public class AppDbContext : DbContext\n-        Old();\n+        New();')));
+  assert.ok(touchesSerializedContract(csSection('@@ -1,1 +1,1 @@\n-    [DataMember(Name = "a")]\n+    [DataMember(Name = "b")]')));
+  for (const marker of ['JsonSerializerContext', 'IEntityTypeConfiguration<Token>']) {
+    assert.ok(touchesSerializedContract(csSection(`@@ -1,1 +1,1 @@\n-x\n+class C : ${marker}`)), marker);
+  }
+  assert.ok(!touchesSerializedContract(`diff --git a/src/DbContext.cs b/src/DbContext.cs\n--- a/src/DbContext.cs\n+++ b/src/DbContext.cs\n@@ -1,1 +1,1 @@\n-Old();\n+New();\n`));
+});
+
+test('markContracts takes packability from the base and reads the head only for a packable file', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'contracts-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />');
+  writeFileSync(path.join(base, 'src', 'Lib', 'PublicAPI.Shipped.txt'), '');
+  const files = ['src/Lib/A.cs', 'src/New/A.cs', 'tests/Lib.Tests/ATests.cs'].map((p) => file(p));
+  const sections = new Map(files.map((f) => [f.path, edit(9).replaceAll('src/Lib/A.cs', f.path)]));
+  const read: string[] = [];
+  markContracts(files, sections, base, (p) => {
+    read.push(p);
+    return csHead;
+  });
+  assert.deepEqual(read, ['src/Lib/A.cs']);
+  assert.equal(files[0]!.packable, true);
+  assert.equal(files[0]!.publicMember, true);
+  assert.equal(files[1]!.packable, undefined, 'a project only the head has is not packed');
+  assert.equal(files[2]!.publicMember, undefined);
+  assert.ok(selectionFloor(files, false).includes('api-compat'));
 });
 
 test('decision records the pull request adds or changes are read from its head and always reach the reviewers', async () => {
