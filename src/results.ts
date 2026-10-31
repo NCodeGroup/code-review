@@ -3,7 +3,8 @@
 import type { CallRecord } from './agent.ts';
 import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
-import type { Finding, ReviewedFinding, Severity, Verdict } from './review.ts';
+import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
   name: string;
@@ -25,6 +26,9 @@ export interface Results {
   findings: ReviewedFinding[];
   // Findings left out before posting because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
+  // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
+  // is off or there was no blocker or should-fix to check.
+  refuted?: RefutedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -37,7 +41,6 @@ export interface Results {
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
 export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', 'request-changes': '⛔ Request changes', comment: '💬 Comment' };
 
@@ -181,6 +184,13 @@ export function checkText(results: Results): string {
       '',
     );
   }
+  if (results.refuted?.length) {
+    out.push('### Refuted by verification', '');
+    for (const { finding: f, path, reason } of results.refuted) {
+      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`);
+    }
+    out.push('');
+  }
   out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
@@ -188,7 +198,7 @@ export function checkText(results: Results): string {
   for (const r of results.reviewers) {
     out.push(`| ${r.name} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
   }
-  for (const role of ['selection', 'synthesis']) {
+  for (const role of ['selection', 'synthesis', 'verification']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
   if (results.dropped.length) {

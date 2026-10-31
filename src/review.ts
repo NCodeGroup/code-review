@@ -1,15 +1,19 @@
-// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
+// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
+import { mapWithConcurrency } from './concurrency.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
+// Most severe first.
+export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 export interface Finding {
   severity: Severity;
@@ -44,6 +48,9 @@ export interface Review {
   findings: ReviewedFinding[];
   // Findings left out because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
+  // Findings verification refuted and dropped, with its reasons, and every verification call.
+  refuted: RefutedFinding[];
+  verification: VerificationCall[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -108,6 +115,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  verificationPrompt: string;
   reviewers: Map<string, string>;
 }
 
@@ -132,6 +140,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    verificationPrompt: prompt('verification'),
     reviewers,
   };
 }
@@ -236,8 +245,6 @@ export function synthesisDiff(gathered: Pick<Gathered, 'diff'>, files: string[],
   return out ? { diff: out, files: shown } : { diff: gathered.diff.slice(0, budget), files: shown };
 }
 
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
-
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
 // naming it doesn't count. Without a limit, it keeps every finding.
@@ -269,12 +276,12 @@ function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
 
 // Synthesis gave its verdict with the dropped findings in view, so a verdict they carried gives way to the one the kept
 // findings call for. Its request-changes on should-fixes that together make the change unsafe stands while one is kept
-// and no blocker was dropped.
-function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], dropped: DroppedFinding[]): Verdict {
-  const fromFindings = verdictFor(findings);
-  if (!verdict) return fromFindings;
-  if (!dropped.length) return verdict;
+// and no blocker was dropped. Without synthesis's verdict there is none to settle: review() derives one from the
+// findings it posts, after verification.
+function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], dropped: DroppedFinding[]): Verdict | undefined {
+  if (!verdict || !dropped.length) return verdict;
   if (verdict === 'request-changes' && findings.length && !dropped.some((d) => d.finding.severity === 'blocker')) return verdict;
+  const fromFindings = verdictFor(findings);
   return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
 }
 
@@ -285,7 +292,7 @@ export function settleFindings(
   raw: (Finding & { id: string; reviewer: string })[],
   changedFiles: string[],
   limit: number,
-): Pick<Review, 'summary' | 'verdict' | 'findings' | 'dropped'> {
+): SynthesizedReview & Pick<Review, 'dropped'> {
   // Without synthesis, fall back to the reviewers' own findings, most severe first.
   const merged = mergeSynthesis(synthesis.output?.findings ?? [], raw);
   const { kept, dropped } = dropContradicted(merged, changedFiles);
@@ -296,19 +303,6 @@ export function settleFindings(
     findings,
     dropped,
   };
-}
-
-export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -430,7 +424,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const limit = findingLimit(parts.length);
   const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
   let summary = '';
-  let verdict: Verdict = 'approve';
+  let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
   let dropped: DroppedFinding[] = [];
   if (raw.length) {
@@ -456,6 +450,20 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     summary = 'No findings.';
   }
 
+  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  const verified = await verifyReview({ summary, verdict, findings }, {
+    run: reviewRun,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
+    log,
+    enabled: verificationOn(),
+  });
+  calls.push(...verified.calls);
+  ({ summary, verdict, findings } = verified);
+
   const skipped = roster.filter((name) => !selected.has(name));
-  return { reviewers: outcomes, summary, verdict, findings, dropped, calls, skipped };
+  verdict ??= verdictFor(findings);
+  return { reviewers: outcomes, summary, verdict, findings, dropped, refuted: verified.refuted, verification: verified.trace, calls, skipped };
 }

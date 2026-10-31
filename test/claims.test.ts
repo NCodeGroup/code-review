@@ -175,7 +175,8 @@ test('settleFindings drops a contradicted finding from the reviewers\' own findi
   assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'b']]);
   assert.deepEqual(out.dropped.map((d) => d.finding.title), ['false']);
   assert.match(out.summary, /^Synthesis failed \(timed out\)/);
-  assert.equal(out.verdict, 'comment');
+  // review() derives the verdict from the findings it posts, after verification.
+  assert.equal(out.verdict, undefined);
 });
 
 test('settleFindings settles a verdict the dropped findings carried on the findings it keeps', () => {
