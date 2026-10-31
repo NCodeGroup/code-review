@@ -5,6 +5,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
 import { commandFromEvent, skipReasonFor, type Command } from './command.ts';
 import { errorText, lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -105,9 +106,13 @@ async function answer(
     const choice = await chooseProvider(credentials);
     console.log(`Provider: ${choice.reason}`);
     const proxy = await startProxy(credentials);
+    const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
     try {
       const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
-      return await explainFinding({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, systemPrompt, { found, question: command.question, headSha });
+      const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
+      const result = await explainFinding(run, systemPrompt, { found, question: command.question, headSha });
+      if (fallback?.reason) console.log(`Switched to Bedrock partway: ${fallback.reason}`);
+      return result;
     } finally {
       await proxy.close();
     }
@@ -117,9 +122,9 @@ async function answer(
   if (explained) {
     const { found, result } = explained;
     if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
-    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, call: result.record } };
+    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, calls: result.records } };
     const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
-    console.log(`${outcome}, $${result.record.costUsd.toFixed(2)}`);
+    console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
   }
   writeForPublish(outDir, files, secrets, 'answered');
 }
@@ -182,15 +187,20 @@ async function main(): Promise<void> {
   log(`Provider: ${choice.reason}`);
 
   const proxy = await startProxy(credentials);
+  // A run that starts on the Claude API with a Bedrock key moves to Bedrock if the credits run out partway.
+  const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
-    const outcome = await review({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, gathered, loadCharters(root), log);
+    const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
+    const outcome = await review(run, gathered, loadCharters(root), log);
+    if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
+      ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
@@ -200,16 +210,16 @@ async function main(): Promise<void> {
         return {
           name,
           status,
-          model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+          model: lastModel(outcome.calls, `reviewer:${name}`),
           findingCount: findings.length,
           ...(top ? { topSeverity: top } : {}),
           ...(error ? { error } : {}),
         };
       }),
       skipped: outcome.skipped,
-      synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
+      synthesisModel: lastModel(outcome.calls, 'synthesis'),
       calls: outcome.calls,
-      costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
+      costUsd: totalCost(outcome.calls),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
