@@ -9,7 +9,7 @@ import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
-import { isTemplateOwned, parseAnswers, readTemplate, templateFromAnswers, templateRepository, type Template } from '../src/template.ts';
+import { isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
 import { placeFindings } from '../src/threads.ts';
 
 const made: string[] = [];
@@ -104,6 +104,42 @@ test('readTemplate reads a checkout\'s answers file, and nothing when there is n
   assert.deepEqual(readTemplate(dir), template);
 });
 
+test('templateRef reads a tag or a SHA, the SHA of a described commit, and nothing else', () => {
+  assert.equal(templateRef('v0.41.1'), 'v0.41.1');
+  assert.equal(templateRef('v0.41.1-3-gabc1234'), 'abc1234');
+  assert.equal(templateRef(''), undefined);
+  assert.equal(templateRef('a b'), undefined);
+  assert.equal(templateRef('../x'), undefined);
+});
+
+test('renderedTemplatePaths maps the template folder\'s files to the paths they render to', () => {
+  const blob = (p: string, sha = 'a'.repeat(40)) => ({ path: p, type: 'blob', sha });
+  const rendered = renderedTemplatePaths([
+    blob('template/CLAUDE.md'),
+    blob('template/.github/instructions/project-template.instructions.md.jinja', 'b'.repeat(40)),
+    blob("template/{% if stack == 'dotnet' %}build{% endif %}/ProjectTemplate.props.jinja"),
+    blob('template/{{_copier_conf.answers_file}}.jinja'),
+    blob('README.md'),
+    { path: 'template/.claude', type: 'tree', sha: 'c'.repeat(40) },
+  ]);
+  assert.deepEqual([...rendered.keys()], ['CLAUDE.md', '.github/instructions/project-template.instructions.md', 'build/ProjectTemplate.props']);
+  assert.deepEqual(rendered.get('CLAUDE.md'), { sha: 'a'.repeat(40), jinja: false });
+  assert.deepEqual(rendered.get('.github/instructions/project-template.instructions.md'), { sha: 'b'.repeat(40), jinja: true });
+});
+
+test('matchesTemplateSource accepts each rendering of a Jinja source', () => {
+  const source = "Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n";
+  assert.ok(matchesTemplateSource(source, 'Run gh now.\n'));
+  assert.ok(matchesTemplateSource(source, 'Run glab now.\r\n'));
+  assert.ok(matchesTemplateSource('{{ _copier_answers._commit }}\n', 'v0.42.0\n'));
+});
+
+test('matchesTemplateSource refuses a changed literal and blocks that don\'t balance', () => {
+  const source = "Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n";
+  assert.ok(!matchesTemplateSource(source, 'Run gh later.\n'));
+  assert.ok(!matchesTemplateSource("Run {% if a %}gh now.\n", 'Run gh now.\n'));
+  assert.ok(!matchesTemplateSource('Run gh{% endif %} now.\n', 'Run gh now.\n'));
+});
 const pullRequest = (association = 'MEMBER', authorCanWrite = association !== 'CONTRIBUTOR'): PullRequest => ({
   repository: 'o/r', number: 23, title: 'Adopt project-template', author: 'a', authorAssociation: association, authorCanWrite, draft: false,
   baseRef: 'main', baseSha: '', headSha: '',

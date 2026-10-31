@@ -110,3 +110,78 @@ export function isTemplateOwned(file: string, template: Template | undefined): b
   if (!template || template.projectOwned.includes(file)) return false;
   return templateFiles.has(file) || templateFolders.some((folder) => file.startsWith(folder));
 }
+
+// What a pull request that adopts or updates the template would leave to it: the template, the _commit its head's
+// answers name, and the changed files the template would own, before they're compared with the template's own copies.
+export interface TemplateCandidate {
+  template: Template;
+  commit: string;
+  files: string[];
+}
+
+// The ref to read the template at for a _commit. Copier writes `git describe` output, such as v0.41.1-3-gabc1234, for a
+// commit past a tag, so that one is read at its abbreviated SHA. Anything that isn't plainly a ref isn't read.
+export function templateRef(commit: string): string | undefined {
+  const described = /-g([0-9a-f]{7,40})$/i.exec(commit);
+  if (described) return described[1]!;
+  return /^[A-Za-z0-9._/-]+$/.test(commit) && !commit.includes('..') ? commit : undefined;
+}
+
+// The files the template renders, by the path they get in a project, from the template repository's file list. Copier
+// renders from the template/ folder; a `{% if … %}name{% endif %}` path part renders as the name when the project has
+// the file, and a .jinja source drops its suffix. A path still holding a Jinja expression, such as the answers file's,
+// is left out.
+export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?: string }[]): Map<string, { sha: string; jinja: boolean }> {
+  const rendered = new Map<string, { sha: string; jinja: boolean }>();
+  for (const entry of tree) {
+    if (entry.type !== 'blob' || !entry.sha || !entry.path?.startsWith('template/')) continue;
+    let file = entry.path.slice('template/'.length).replace(/\{%-?\s*if\b[^%]*-?%\}([^{}]*?)\{%-?\s*endif\s*-?%\}/g, '$1');
+    if (/\{\{|\{%/.test(file)) continue;
+    const jinja = file.endsWith('.jinja');
+    if (jinja) file = file.slice(0, -'.jinja'.length);
+    if (!rendered.has(file)) rendered.set(file, { sha: entry.sha, jinja });
+  }
+  return rendered;
+}
+
+const jinjaTag = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\{#[\s\S]*?#\}/g;
+const blockTags = new Set(['if', 'for', 'macro', 'call', 'filter', 'block', 'raw', 'with', 'autoescape']);
+
+// Whether a file could be a rendering of a Jinja source, without rendering it: the source's text outside every tag and
+// block appears in the file in order, with each expression and block standing for any text. Whitespace next to a tag
+// is left out, since Jinja's whitespace control can remove it. A source whose blocks don't balance matches nothing.
+export function matchesTemplateSource(source: string, text: string): boolean {
+  const normalized = text.replace(/\r\n/g, '\n');
+  const pieces: string[] = [''];
+  let depth = 0;
+  let at = 0;
+  const literal = (piece: string) => {
+    if (depth === 0) pieces[pieces.length - 1] += piece;
+  };
+  const template = source.replace(/\r\n/g, '\n');
+  for (const tag of template.matchAll(jinjaTag)) {
+    literal(template.slice(at, tag.index));
+    at = tag.index + tag[0].length;
+    if (depth === 0) pieces.push('');
+    const name = /^\{%-?\s*(\w+)/.exec(tag[0])?.[1];
+    if (name && (blockTags.has(name) || (name === 'set' && !tag[0].includes('=')))) depth++;
+    else if (name?.startsWith('end') && --depth < 0) return false;
+  }
+  literal(template.slice(at));
+  if (depth !== 0) return false;
+  if (pieces.length === 1) return normalized === pieces[0];
+  const last = pieces.length - 1;
+  const trimmed = pieces.map((piece, i) => (i === 0 ? piece.trimEnd() : i === last ? piece.trimStart() : piece.trim()));
+  const first = trimmed[0]!;
+  const end = trimmed[last]!;
+  if (!normalized.startsWith(first) || !normalized.endsWith(end) || first.length + end.length > normalized.length) return false;
+  let cursor = first.length;
+  const limit = normalized.length - end.length;
+  for (const piece of trimmed.slice(1, last)) {
+    if (!piece) continue;
+    const found = normalized.indexOf(piece, cursor);
+    if (found < 0 || found + piece.length > limit) return false;
+    cursor = found + piece.length;
+  }
+  return true;
+}
