@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { commentPageSize, maxCommentPages } from '../src/comments.ts';
 import { outcomesMarker, tokenApi, type FindingOutcome } from '../src/outcomes.ts';
 import { botLogin, headMarker, reviewMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import {
@@ -8,7 +9,10 @@ import {
   discoverRepositories,
   findingsPerPull,
   listClosedPulls,
+  maxPullPages,
+  maxRepositoryPages,
   monthWindow,
+  pageSize,
   parseReportMarker,
   parseRepositories,
   precision,
@@ -55,6 +59,7 @@ class FakeGitHub {
   orgRepos: { full_name: string; fork?: boolean; private?: boolean }[] = [];
   callers = new Set<string>();
   failingContents = new Set<string>();
+  failingPulls = new Set<string>();
   pulls = new Map<string, { number: number; closed_at: string | null; updated_at: string }[]>();
   comments = new Map<string, Comment[]>();
   issues: FakeIssue[] = [];
@@ -76,6 +81,7 @@ class FakeGitHub {
       return this.callers.has(match[1]!) && match[2] === '.github/workflows/code-review.yml' ? json({ name: 'code-review.yml' }) : json({ message: 'Not Found' }, 404);
     }
     if ((match = /^\/repos\/([^/]+\/[^/]+)\/pulls$/.exec(url.pathname))) {
+      if (this.failingPulls.has(match[1]!)) return json({ message: 'boom' }, 500);
       const pulls = [...(this.pulls.get(match[1]!) ?? [])].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
       return paged(pulls);
     }
@@ -130,6 +136,9 @@ test('a configured repository list is owner/name only, split on commas and space
   assert.deepEqual(parseRepositories(''), []);
   assert.deepEqual(parseRepositories(undefined), []);
   assert.throws(() => parseRepositories('NCodeGroup/a,../../etc'), /owner\/name/);
+  assert.throws(() => parseRepositories('NCodeGroup/..'), /owner\/name/);
+  assert.throws(() => parseRepositories('NCodeGroup/.'), /owner\/name/);
+  assert.deepEqual(parseRepositories('NCodeGroup/.github NCodeGroup/a..b'), ['NCodeGroup/.github', 'NCodeGroup/a..b']);
 });
 
 test("discovery keeps the owner's public repositories that have the caller workflow, and notes one it can't check", async () => {
@@ -152,6 +161,19 @@ test("discovery keeps the owner's public repositories that have the caller workf
   assert.ok(!github.calls.some((c) => c.includes('NCodeGroup/fork/contents')));
 });
 
+test('discovery skips private repositories and notes when there are more repositories than it reads', async () => {
+  const github = new FakeGitHub();
+  github.orgRepos = [{ full_name: 'NCodeGroup/secret', private: true }, { full_name: 'NCodeGroup/a' }];
+  for (let n = github.orgRepos.length; n < maxRepositoryPages * pageSize; n++) github.orgRepos.push({ full_name: `NCodeGroup/fork-${n}`, fork: true });
+  github.orgRepos.push({ full_name: 'NCodeGroup/late' });
+  github.callers = new Set(['NCodeGroup/a', 'NCodeGroup/secret', 'NCodeGroup/late']);
+  const notes: string[] = [];
+  const found = await discoverRepositories(tokenApi('t', github.fetch), 'NCodeGroup', notes, () => {});
+  assert.deepEqual(found, ['NCodeGroup/a']);
+  assert.deepEqual(notes, [`Only the first ${maxRepositoryPages * pageSize} of NCodeGroup's repositories were checked.`]);
+  assert.equal(github.calls.filter((c) => c.includes('/orgs/')).length, maxRepositoryPages);
+});
+
 test('only pull requests closed inside the month count, and the listing stops once updates predate it', async () => {
   const github = new FakeGitHub();
   const month = monthWindow('2026-10', new Date('2026-11-01T06:00:00Z'));
@@ -168,6 +190,32 @@ test('only pull requests closed inside the month count, and the listing stops on
   const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', month, []);
   assert.deepEqual(closed.map((p) => p.number).sort((a, b) => a - b), [1, 2]);
   assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 1);
+});
+
+function inMonthPulls(count: number) {
+  return Array.from({ length: count }, (_, i) => {
+    const at = new Date(Date.UTC(2026, 9, 2) + i * 60_000).toISOString();
+    return { number: i + 1, closed_at: at, updated_at: at };
+  });
+}
+
+test('the listing goes on to the next page while updates are still inside the month', async () => {
+  const github = new FakeGitHub();
+  github.pulls.set('NCodeGroup/a', inMonthPulls(150));
+  const notes: string[] = [];
+  const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  assert.equal(closed.length, 150);
+  assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 2);
+  assert.deepEqual(notes, []);
+});
+
+test('the listing stops at its page cap and says the rest are left out', async () => {
+  const github = new FakeGitHub();
+  github.pulls.set('NCodeGroup/a', inMonthPulls(maxPullPages * pageSize + 1));
+  const notes: string[] = [];
+  const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  assert.equal(closed.length, maxPullPages * pageSize);
+  assert.deepEqual(notes, [`NCodeGroup/a has more closed pull requests updated since 2026-10 began than the ${maxPullPages * pageSize} read; the rest are left out.`]);
 });
 
 test("a pull request's findings come from the newest outcomes marker, and its cost from every review marker, in the bot's comments only", async () => {
@@ -230,6 +278,12 @@ test('a pull request the bot never commented on is not a reviewed one, and a dam
   assert.deepEqual(record?.findings, [{ reviewers: ['r'], outcome: 'ignored' }]);
   assert.deepEqual(record?.reviews, []);
   assert.equal(record?.unknownCost, 1);
+});
+
+test("a pull request with more comments than are read can't be recorded", async () => {
+  const github = new FakeGitHub();
+  github.comments.set('NCodeGroup/a#11', Array.from({ length: maxCommentPages * commentPageSize }, () => bot(summary(sha('a'), 'anthropic', 1))));
+  await assert.rejects(readPull(tokenApi('t', github.fetch), 'NCodeGroup/a', 11), /more comments than are read/);
 });
 
 const pullA: PullRecord = {
@@ -396,6 +450,19 @@ test("the change comes from the previous month's report by the workflow, never f
   assert.equal(github.issues.find((i) => i.number === 7)?.body, 'squatted');
 });
 
+test("when the workflow opened two issues for the month, the older one is the one updated", async () => {
+  const github = octoberGitHub();
+  github.issues.push(
+    { number: 8, title: 'Review report 2026-10', body: 'older', labels: ['review-report'], user: { login: 'github-actions[bot]' }, html_url: 'https://example.test/8' },
+    { number: 9, title: 'Review report 2026-10', body: 'newer', labels: ['review-report'], user: { login: 'github-actions[bot]' }, html_url: 'https://example.test/9' },
+  );
+  const result = await runReport(reportOptions(github));
+  assert.equal(result.issue?.action, 'updated');
+  assert.equal(result.issue?.number, 8);
+  assert.equal(github.issues.find((i) => i.number === 8)?.body, result.body);
+  assert.equal(github.issues.find((i) => i.number === 9)?.body, 'newer');
+});
+
 test('a configured repository list replaces the scan, and a dry run publishes nothing', async () => {
   const github = octoberGitHub();
   const result = await runReport({ ...reportOptions(github), repositories: ['NCodeGroup/a'], dryRun: true });
@@ -412,4 +479,16 @@ test("a pull request whose comments can't be read is left out and named in the n
   const result = await runReport({ ...reportOptions(github), dryRun: true });
   assert.match(result.body, /^- NCodeGroup\/a#2 is left out: couldn't read its comments \(GitHub refused GET .*HTTP 502\)\.$/m);
   assert.equal(parseReportMarker(result.body)?.totals.pulls, 1);
+});
+
+test("a repository whose closed pull requests can't be listed is left out and named in the notes, and the others still count", async () => {
+  const github = octoberGitHub();
+  github.failingPulls.add('NCodeGroup/down');
+  const logged: string[] = [];
+  const result = await runReport({ ...reportOptions(github), repositories: ['NCodeGroup/a', 'NCodeGroup/down'], dryRun: true, log: (l: string) => logged.push(l) });
+  assert.match(result.body, /^- Couldn't list NCodeGroup\/down's closed pull requests \(GitHub refused GET .*HTTP 500\); it's left out\.$/m);
+  assert.ok(logged.some((l) => l.startsWith("::warning::Couldn't list NCodeGroup/down's")));
+  const data = parseReportMarker(result.body)!;
+  assert.equal(data.totals.pulls, 2);
+  assert.deepEqual(Object.keys(data.byRepository), ['NCodeGroup/a']);
 });

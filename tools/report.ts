@@ -27,7 +27,9 @@ export const reportLabel = 'review-report';
 export const reportAuthor = 'github-actions[bot]';
 const reportMarkerPattern = /<!-- ncode-review:report (.+?) -->/;
 
-// Pages read at most, to bound calls: closed pull requests per repository, repositories and report issues, 100 a page.
+// GitHub's largest page, and the pages read at most, to bound calls: closed pull requests per repository, repositories
+// and report issues.
+export const pageSize = 100;
 export const maxPullPages = 30;
 export const maxRepositoryPages = 10;
 export const maxIssuePages = 10;
@@ -85,7 +87,8 @@ export function reportTitle(month: string): string {
   return `Review report ${month}`;
 }
 
-const repositoryPattern = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+// The name can't be `.` or `..`, which would turn a /repos/owner/name/... path into another endpoint.
+const repositoryPattern = /^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9._-]+$/;
 
 // A configured list of repositories, as owner/name separated by commas or whitespace; empty when none is configured.
 export function parseRepositories(list: string | undefined): string[] {
@@ -102,12 +105,12 @@ export async function discoverRepositories(api: Api, owner: string, notes: strin
   type Listed = { full_name?: string; fork?: boolean; private?: boolean };
   const candidates: string[] = [];
   for (let page = 1; page <= maxRepositoryPages; page++) {
-    const listed = (await api('GET', `/orgs/${encodeURIComponent(owner)}/repos?type=public&per_page=100&page=${page}`)) as Listed[];
+    const listed = (await api('GET', `/orgs/${encodeURIComponent(owner)}/repos?type=public&per_page=${pageSize}&page=${page}`)) as Listed[];
     for (const repo of listed) {
       if (typeof repo.full_name === 'string' && repositoryPattern.test(repo.full_name) && !repo.fork && !repo.private) candidates.push(repo.full_name);
     }
-    if (listed.length < 100) break;
-    if (page === maxRepositoryPages) notes.push(`Only the first ${maxRepositoryPages * 100} of ${owner}'s repositories were checked.`);
+    if (listed.length < pageSize) break;
+    if (page === maxRepositoryPages) notes.push(`Only the first ${maxRepositoryPages * pageSize} of ${owner}'s repositories were checked.`);
   }
   const found: string[] = [];
   for (const repository of candidates) {
@@ -135,16 +138,16 @@ export async function listClosedPulls(api: Api, repository: string, month: Month
   type Listed = { number?: number; closed_at?: string | null; updated_at?: string };
   const pulls: ListedPull[] = [];
   for (let page = 1; page <= maxPullPages; page++) {
-    const listed = (await api('GET', `/repos/${repository}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`)) as Listed[];
+    const listed = (await api('GET', `/repos/${repository}/pulls?state=closed&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`)) as Listed[];
     for (const pull of listed) {
       if (typeof pull.number !== 'number' || typeof pull.closed_at !== 'string') continue;
       const closed = Date.parse(pull.closed_at);
       if (closed >= month.start.getTime() && closed < month.end.getTime()) pulls.push({ number: pull.number, closed_at: pull.closed_at });
     }
     const oldest = listed.at(-1)?.updated_at;
-    if (listed.length < 100 || (oldest !== undefined && Date.parse(oldest) < month.start.getTime())) return pulls;
+    if (listed.length < pageSize || (oldest !== undefined && Date.parse(oldest) < month.start.getTime())) return pulls;
   }
-  notes.push(`${repository} has more closed pull requests updated since ${month.name} began than the ${maxPullPages * 100} read; the rest are left out.`);
+  notes.push(`${repository} has more closed pull requests updated since ${month.name} began than the ${maxPullPages * pageSize} read; the rest are left out.`);
   return pulls;
 }
 
@@ -509,13 +512,13 @@ export async function findReports(api: Api, repository: string, author: string):
   type Listed = { number?: number; title?: string; body?: string | null; html_url?: string; user?: { login?: string }; pull_request?: unknown };
   const reports = new Map<string, ReportIssue>();
   for (let page = 1; page <= maxIssuePages; page++) {
-    const listed = (await api('GET', `/repos/${repository}/issues?labels=${reportLabel}&state=all&sort=created&direction=asc&per_page=100&page=${page}`)) as Listed[];
+    const listed = (await api('GET', `/repos/${repository}/issues?labels=${reportLabel}&state=all&sort=created&direction=asc&per_page=${pageSize}&page=${page}`)) as Listed[];
     for (const issue of listed) {
       if (issue.pull_request || issue.user?.login !== author || typeof issue.number !== 'number' || typeof issue.title !== 'string') continue;
       if (!/^Review report \d{4}-\d{2}$/.test(issue.title) || reports.has(issue.title)) continue;
       reports.set(issue.title, { number: issue.number, title: issue.title, body: issue.body ?? '', ...(issue.html_url ? { html_url: issue.html_url } : {}) });
     }
-    if (listed.length < 100) break;
+    if (listed.length < pageSize) break;
   }
   return reports;
 }
