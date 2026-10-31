@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-31
+
 ### Added
 
 - Reviews close the loop on the bot's own threads, and pause when nobody answers. A re-review resolves the bot's thread of an earlier finding it found fixed when the thread is outdated or its lines changed, and never resolves anyone else's. When it finds a finding still open after an `Autopilot:` reply, it replies once in that thread to say why, ending with a line that asks the maintainer, and never a second time. A finding whose thread someone with write access resolved while it was still on the code it was posted on, or marked with a 👎, is never posted again, even at another severity. After three reviews with no comment from someone with write access in between (comments starting `Autopilot:` don't count), an automatic review stops before any model call and posts "Paused: comment `/review` to resume" once, completing the acknowledged check run as "Review paused"; a `/review` from a writer always reviews. Synthesis gets the open issues that people with write access opened, by number and title as data, and marks a finding one of them tracks "Tracked in #N" in the summary and the check run instead of posting it as a new thread. The consumer workflow needs `issues: read` for that ([#46](https://github.com/NCodeGroup/code-review/issues/46)).
@@ -88,7 +90,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.3.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/NCodeGroup/code-review/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/NCodeGroup/code-review/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/NCodeGroup/code-review/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/NCodeGroup/code-review/compare/v0.2.0...v0.2.1
