@@ -78,7 +78,7 @@ export function reviewOrder(file: string): number {
   return 0;
 }
 
-function git(repository: string, args: string[]): string {
+export function git(repository: string, args: string[]): string {
   return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
