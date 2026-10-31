@@ -83,6 +83,10 @@ export function isGenerated(file: string): boolean {
 const docPattern = /(\.md|\.txt|\.rst)$|(^|\/)docs?\//i;
 const testPattern = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec|tests)\.[a-z]+$|Tests?\.cs$/i;
 
+export function isDocumentation(file: string): boolean {
+  return docPattern.test(file);
+}
+
 // Product code first, then tests, then everything else: when the diff is over budget, what's left out is the least risky.
 export function reviewOrder(file: string): number {
   if (docPattern.test(file)) return 3;

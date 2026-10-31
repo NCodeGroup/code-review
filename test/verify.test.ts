@@ -200,7 +200,7 @@ test('verification calls are recorded as the verification role and costed in the
   assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd]), [['verification', 0.125], ['verification', 0.125]]);
   const text = checkText({ findings: out.findings, refuted: out.refuted, reviewers: [], calls: out.calls } as unknown as Results);
   assert.match(text, /### Refuted by verification\n\n- Blocker `src\/a\.ts:3` \*\*title F1\*\* \(correctness\): The &lt;caller> checks it \\\| always\. — `src\/a\.ts:3 → src\/c\.ts:9`/);
-  assert.match(text, /\| verification \| ran \| \| \$0\.250 \|/);
+  assert.match(text, /\| verification \| sonnet-5-5 \| ran \| \| \$0\.250 \|/);
   const off = checkText({ findings: [], reviewers: [], calls: [] } as unknown as Results);
   assert.doesNotMatch(off, /Refuted by verification|\| verification/);
 });
