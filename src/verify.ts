@@ -132,6 +132,8 @@ const verificationSchema = {
 };
 
 const lowered: Record<Severity, Severity> = { blocker: 'should-fix', 'should-fix': 'nit', nit: 'nit' };
+// The reviewer whose findings, like blockers, a refutation never drops.
+const securityReviewer = 'security';
 const maxHunkChars = 6_000;
 
 // The hunk of a file's diff section that holds the line, or the nearest one.
@@ -208,19 +210,22 @@ export function applyVerifications(
       kept.push(f);
     } else if (v.verdict === 'confirmed') {
       kept.push({ ...f, evidence: appendEvidence(f.evidence, `Verified: ${v.path.trim() || v.reason.trim()}`) });
-    } else if (v.verdict === 'refuted' && v.reason.trim() && citesUnchangedCode(v.path, added, lines) && f.severity !== 'blocker' && !f.reviewers.includes('security')) {
-      refuted.push({ finding: f, path: v.path.trim(), reason: v.reason.trim() });
     } else if (v.verdict === 'refuted' && v.reason.trim()) {
+      const citesOutside = citesUnchangedCode(v.path, added, lines);
+      const neverDropped = f.severity === 'blocker' || f.reviewers.includes(securityReviewer);
+      if (citesOutside && !neverDropped) {
+        refuted.push({ finding: f, path: v.path.trim(), reason: v.reason.trim() });
+        continue;
+      }
       questioned++;
-      const outside = citesUnchangedCode(v.path, added, lines);
-      if (outside) demoted++;
+      if (citesOutside) demoted++;
       kept.push({
         ...f,
         severity: lowered[f.severity],
         problem: v.question.trim() || `Is this intended? ${f.problem}`,
         evidence: appendEvidence(
           f.evidence,
-          outside
+          citesOutside
             ? `Verification refuted it, but a refuted ${f.severity === 'blocker' ? 'blocker' : 'security finding'} stays as a question: ${v.reason.trim()} (${v.path.trim()})`
             : `Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: ${v.reason.trim()}`,
         ),
