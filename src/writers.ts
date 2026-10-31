@@ -5,9 +5,8 @@
 // CONTRIBUTOR, in event payloads and to the workflow's token. So an author it doesn't name a writer is looked up in the
 // repository's permissions, which the workflow's token can read (metadata: read).
 
+import { writerAssociations } from './command.ts';
 import { maxIssueChars } from './config.ts';
-
-export const writerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 export type WriterCheck = (login: string | undefined, association: string | undefined) => Promise<boolean>;
 

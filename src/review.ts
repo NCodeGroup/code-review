@@ -1,19 +1,21 @@
 // Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, totalCost, withoutTools, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, withoutTools, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { parseCharter, type Charter } from './charter.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { closedIssues, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { isTemplateOwned, type Template } from './template.ts';
+import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
-export type Severity = 'blocker' | 'should-fix' | 'nit';
-// Most severe first.
-export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export { severityRank, type Severity };
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {
@@ -50,18 +52,40 @@ export interface ReviewerOutcome {
 
 export type Verdict = 'approve' | 'request-changes' | 'comment';
 
+export type PromptName = 'specialist' | 'selection' | 'synthesis' | 'rule-check';
+export const promptNames: PromptName[] = ['specialist', 'selection', 'synthesis', 'rule-check'];
+
+// A shadow prompt's call beside the live call it shadows, for comparison in the trace. Its output is never posted.
+export interface ShadowPromptRun {
+  prompts: PromptName[];
+  role: string;
+  live: unknown;
+  shadow: unknown;
+}
+
 export interface Review {
+  // The live reviewers: what synthesis, the threads, the summary and the verdict are made from.
   reviewers: ReviewerOutcome[];
+  // The shadow reviewers that ran. Their findings go only to the trace and the check run's shadow section.
+  shadow: ReviewerOutcome[];
+  // Shadow reviewers the path rules and selection didn't choose.
+  shadowSkipped: string[];
+  // The shadow prompts' calls, when this review was sampled for them.
+  shadowPrompts: ShadowPromptRun[];
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings on the template's files: they belong in the template's repository, not in threads on this pull request.
+  upstream: ReviewedFinding[];
+  // Places on the template's files past the upstream list's limit.
+  upstreamOmitted: number;
   // Findings left out because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification refuted and dropped, with its reasons, and every verification call.
   refuted: RefutedFinding[];
   verification: VerificationCall[];
   calls: CallRecord[];
-  // Roster reviewers the path rules and selection didn't choose.
+  // Live roster reviewers the path rules and selection didn't choose.
   skipped: string[];
 }
 
@@ -137,7 +161,9 @@ export interface Charters {
   ruleCheckPrompt: string;
   reReviewPrompt: string;
   verificationPrompt: string;
-  reviewers: Map<string, string>;
+  reviewers: Map<string, Charter>;
+  // prompts/<name>.shadow.md, for each prompt that has one: run alongside the live prompt on a sample of reviews.
+  shadowPrompts: Partial<Record<PromptName, string>>;
 }
 
 // The rules the context stage picked for any reviewer, once each and in catalog order so a topic's rules share a batch,
@@ -188,11 +214,19 @@ export function outcomeNames(selected: string[], jobs: Pick<ReviewJob, 'name'>[]
 }
 
 export function loadCharters(root: string): Charters {
-  const reviewers = new Map<string, string>();
+  const reviewers = new Map<string, Charter>();
   for (const name of readdirSync(path.join(root, 'reviewers')).filter((n) => n.endsWith('.md')).sort()) {
-    reviewers.set(name.slice(0, -3), readFileSync(path.join(root, 'reviewers', name), 'utf8'));
+    reviewers.set(name.slice(0, -3), parseCharter(readFileSync(path.join(root, 'reviewers', name), 'utf8')));
   }
   const prompt = (name: string) => readFileSync(path.join(root, 'prompts', `${name}.md`), 'utf8');
+  const shadowPrompts: Partial<Record<PromptName, string>> = {};
+  for (const name of promptNames) {
+    try {
+      shadowPrompts[name] = readFileSync(path.join(root, 'prompts', `${name}.shadow.md`), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
   return {
     specialistPrompt: prompt('specialist'),
     selectionPrompt: prompt('selection'),
@@ -201,7 +235,29 @@ export function loadCharters(root: string): Charters {
     reReviewPrompt: prompt('re-review'),
     verificationPrompt: prompt('verification'),
     reviewers,
+    shadowPrompts,
   };
+}
+
+// The reviewers whose findings go only to the trace and the check run's shadow section: the charters marked shadow,
+// and the names CODE_REVIEW_SHADOW adds.
+export function shadowReviewers(charters: Charters, override = shadowOverride()): Set<string> {
+  return new Set([...[...charters.reviewers].filter(([, charter]) => charter.shadow).map(([name]) => name), ...override]);
+}
+
+const uint32Range = 2 ** 32;
+
+// Whether this review runs the shadow prompts: the share given by the rate, picked by the pull request's number and
+// head, so a re-run of the same commit samples the same way and tests are stable.
+export function shadowSampled(number: number, headSha: string, rate: number): boolean {
+  if (rate <= 0) return false;
+  if (rate >= 1) return true;
+  return createHash('sha256').update(`${number}:${headSha}`).digest().readUInt32BE(0) / uint32Range < rate;
+}
+
+function shadowPromptRun(prompts: PromptName[], role: string, live: AgentResult<unknown>, shadow: AgentResult<unknown>): ShadowPromptRun {
+  const output = (result: AgentResult<unknown>) => (result.error ? { error: result.error } : result.output);
+  return { prompts, role, live: output(live), shadow: output(shadow) };
 }
 
 const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf|iam|role|policy|kms|trust|firewall)/i;
@@ -209,9 +265,10 @@ const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
 
-// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
+// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove. The
+// template's files don't count: they aren't this repository's code to test or redesign.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
-  const reviewed = files.filter((f) => !f.generated);
+  const reviewed = files.filter((f) => !f.generated && !f.templateOwned);
   const code = reviewed.filter((f) => productCode.test(f.path) && !testPath.test(f.path));
   const floor = new Set<string>(['hygiene']);
   if (code.length) floor.add('correctness');
@@ -256,7 +313,7 @@ export function fileList(gathered: Pick<Gathered, 'files'>, inDiff?: Set<string>
   return gathered.files
     .map((f) => {
       const notShown = !f.shown ? ' [diff not shown: over the size budget]' : inDiff && !inDiff.has(f.path) ? ` [${elsewhere}]` : '';
-      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${notShown}`;
+      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.templateOwned ? ' [template-owned]' : ''}${notShown}`;
     })
     .join('\n');
 }
@@ -286,9 +343,17 @@ function decisionsBlock(decisions: Decision[]): string {
   return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts, including what its consequences accept; do report code that breaks one, citing it. A decision this pull request adds or changes is part of the change: what it accepts isn't a defect in the code, but you may question the decision itself.\n<decisions>\n${text}\n</decisions>`;
 }
 
+// Tells the reviewers which changed files are the template's, and that a template adoption or update is still reviewed
+// for what the project chose.
+export function templateBlock(gathered: Gathered): string {
+  const template = gathered.template;
+  if (!template || !gathered.files.some((f) => f.templateOwned)) return '';
+  return `\n\nThis repository is made from the project template ${template.repository}${template.commit ? ` (${template.commit})` : ''}. The changed files marked [template-owned] are the template's: a template update replaces them and discards any edit, so this repository can't fix them. Don't review them as this repository's code: don't ask for tests of them here, and don't report their style, comments or wording. Report a defect in one only when it's a real bug in the template; it goes on a list for ${template.repository}, not on this pull request. A blocker stays on this pull request: report one when a change in these files makes the change unsafe to merge, such as a hook, script or agent prompt that leaks secrets, weakens a check or runs code from outside the repository. Every other file is the project's, so review it as usual, including what the project chose when it adopted or updated the template: its answers in .copier-answers.yml, the files it merges with the template's (such as .gitignore, .gitattributes, editor and tool settings and the workflows), AGENTS.md, and its own files.`;
+}
+
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
 export function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
-  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, diff, part, parts)}`;
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}${templateBlock(gathered)}\n\n${changeContext(gathered, diff, part, parts)}`;
 }
 
 // The limit on posted findings: higher for a pull request reviewed in parts.
@@ -333,6 +398,52 @@ export function mergeSynthesis(
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
 }
 
+// Splits findings into the repository's own, which become threads, and the template's, which belong upstream. A blocker
+// stays on the pull request even in the template's file: it makes the change unsafe to merge, whoever has to fix it.
+export function byOwner<T extends Pick<Finding, 'file' | 'severity'>>(findings: T[], template: Template | undefined): { own: T[]; upstream: T[] } {
+  const upstream = (f: T) => f.severity !== 'blocker' && isTemplateOwned(f.file, template);
+  return { own: findings.filter((f) => !upstream(f)), upstream: findings.filter(upstream) };
+}
+
+// The findings on the template's files, for the summary's list for the template's repository: one per file and line,
+// keeping the most severe and naming every reviewer that raised it. The list stops at maxUpstreamFindings; omitted
+// counts the places past it.
+export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]): { upstream: ReviewedFinding[]; omitted: number } {
+  const byPlace = new Map<string, Finding & { reviewers: string[] }>();
+  const ranked = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  for (const f of ranked) {
+    const key = `${f.file}:${f.line}`;
+    const kept = byPlace.get(key);
+    if (kept) kept.reviewers = [...new Set([...kept.reviewers, ...f.reviewers])];
+    else byPlace.set(key, { ...f, reviewers: [...f.reviewers] });
+  }
+  const places = [...byPlace.values()];
+  return {
+    upstream: places.slice(0, maxUpstreamFindings).map((f, i) => ({ ...f, id: `U${i + 1}` })),
+    omitted: Math.max(0, places.length - maxUpstreamFindings),
+  };
+}
+
+// After synthesis, which may still place a finding in one of the template's files: moves those to the upstream list,
+// renumbers the rest, and, when only the template's findings remain, says so in the summary.
+export function settleUpstream(
+  findings: ReviewedFinding[],
+  upstreamRaw: (Finding & { reviewers: string[] })[],
+  template: Template | undefined,
+  summary: string,
+): { findings: ReviewedFinding[]; upstream: ReviewedFinding[]; upstreamOmitted: number; summary: string } {
+  const placed = byOwner(findings, template);
+  const own = placed.own.map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  const { upstream, omitted } = upstreamFindings([...upstreamRaw, ...placed.upstream]);
+  const total = upstream.length + omitted;
+  return {
+    findings: own,
+    upstream,
+    upstreamOmitted: omitted,
+    summary: !own.length && total ? `No findings in this repository's own files; ${total} in the template's belong upstream, in ${template!.repository}.` : summary,
+  };
+}
+
 type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] };
 
 const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
@@ -372,6 +483,15 @@ export function settleFindings(
   };
 }
 
+// The review's verdict after settling upstream: synthesis's when it gave one, else what the findings call for. When
+// settling moved some of synthesis's findings upstream, its verdict may rest on them, so it's capped at what the findings
+// left here call for.
+export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: boolean, findings: Pick<Finding, 'severity'>[]): Verdict {
+  const called = verdictFor(findings);
+  if (!synthesized) return called;
+  return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
+}
+
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
 export function changedLines(diff: string): Map<string, Set<number>> {
   const lines = new Map<string, Set<number>>();
@@ -390,9 +510,12 @@ export function changedLines(diff: string): Map<string, Set<number>> {
   return lines;
 }
 
+type Selection = { add: { reviewer: string; reason: string }[] };
+
 // Why a reviewer call that never started was skipped, in the check run.
 export const runBudgetReason = 'run budget';
 
+// The agent runs through a function the caller can replace, so a test can review with a stub that makes no model call.
 export async function review(
   run: AgentRun,
   gathered: Gathered,
@@ -403,6 +526,10 @@ export async function review(
   const calls: CallRecord[] = [];
   const spent = () => totalCost(calls);
   const roster = [...charters.reviewers.keys()];
+  const shadow = shadowReviewers(charters);
+  const variants = shadowSampled(gathered.pullRequest.number, gathered.pullRequest.headSha, shadowPromptRate()) ? charters.shadowPrompts : {};
+  const shadowPrompts: ShadowPromptRun[] = [];
+  if (Object.keys(variants).length) log(`Shadow prompts: ${Object.keys(variants).join(', ')}`);
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
@@ -422,24 +549,30 @@ export async function review(
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
-  const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
-    withoutTools(run),
-    {
-      role: 'selection',
-      tier: 'sonnet',
-      systemPrompt: charters.selectionPrompt,
-      prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
-      schema: selectionSchema,
-      maxTurns: 3,
-      budgetUsd: budgets.selection,
-      cache: false,
-    },
-  );
+  const oneShot = withoutTools(run);
+  const selectionRequest = (role: string, systemPrompt: string): AgentRequest => ({
+    role,
+    tier: 'sonnet',
+    systemPrompt,
+    prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
+    schema: selectionSchema,
+    maxTurns: 3,
+    budgetUsd: budgets.selection,
+    cache: false,
+  });
+  const [selection, shadowSelection] = await Promise.all([
+    agent<Selection>(oneShot, selectionRequest('selection', charters.selectionPrompt)),
+    variants.selection === undefined ? undefined : agent<Selection>(oneShot, selectionRequest('shadow-prompt:selection', variants.selection)),
+  ]);
   calls.push(...selection.records);
+  if (shadowSelection) {
+    calls.push(...shadowSelection.records);
+    shadowPrompts.push(shadowPromptRun(['selection'], 'selection', selection, shadowSelection));
+  }
   for (const addition of selection.output?.add ?? []) {
     if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
   }
-  log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
+  log(`Reviewers: ${[...selected].map((name) => (shadow.has(name) ? `${name} (shadow)` : name)).join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
   // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
   // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
@@ -449,24 +582,37 @@ export async function review(
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
   const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
-  const jobs = reviewJobs(parts, gathered.files, [...selected], context.rulesFor, batches, reviewerTiers()).map((job) => ({
+  interface Job extends ReviewJob { role: string; systemPrompt: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
+  const jobs: Job[] = reviewJobs(parts, gathered.files, [...selected], context.rulesFor, batches, reviewerTiers()).map((job) => ({
     ...job,
-    prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!}`],
+    role: `reviewer:${job.name}`,
+    systemPrompt: charters.specialistPrompt,
+    charter: job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!.text,
   }));
+  // A sampled review runs each job again with the shadow prompts, after the live jobs have written the shared cache.
+  const twins: Job[] = jobs.flatMap((job) => {
+    const charter = job.name === ruleCheckName ? variants['rule-check'] : undefined;
+    const prompts: PromptName[] = [...(variants.specialist !== undefined ? ['specialist' as const] : []), ...(charter !== undefined ? ['rule-check' as const] : [])];
+    if (!prompts.length) return [];
+    return [{ ...job, role: `shadow-prompt:${job.role}`, systemPrompt: variants.specialist ?? job.systemPrompt, charter: charter ?? job.charter, twinOf: job, prompts }];
+  });
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
+  const outcomeOf = new Map<Job, ReviewerOutcome>();
   // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
   const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
-  const reviewOne = async ({ name, part, label, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
-    const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
+  const reviewOne = async (job: Job): Promise<void> => {
+    const { name, part, label, tier } = job;
+    const where = [parts.length > 1 ? `part ${part + 1}` : '', label, shadow.has(name) ? 'shadow' : '', job.twinOf ? 'shadow prompt' : ''].filter(Boolean).join(', ');
     if (spent() >= ceiling) {
       log(`  ${name}${where ? ` (${where})` : ''}: skipped (${runBudgetReason})`);
-      return { name, status: 'skipped', findings: [], error: runBudgetReason };
+      outcomeOf.set(job, { name, status: 'skipped', findings: [], error: runBudgetReason });
+      return;
     }
     const result = await agent<{ findings: Finding[] }>(reviewRun, {
-      role: `reviewer:${name}`,
+      role: job.role,
       tier,
-      systemPrompt: charters.specialistPrompt,
-      prompt,
+      systemPrompt: job.systemPrompt,
+      prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.charter}`],
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
@@ -476,13 +622,17 @@ export async function review(
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
     log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
-    return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
+    outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
   };
   const concurrency = 6;
-  const perJob = [
-    ...(await mapWithConcurrency(first, concurrency, reviewOne)),
-    ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
-  ];
+  // The twins start after every live job, so the cost ceiling skips a twin before it skips a live call.
+  await mapWithConcurrency(first, concurrency, reviewOne);
+  await mapWithConcurrency([...jobs.filter((job) => !first.includes(job)), ...twins], concurrency, reviewOne);
+  for (const twin of twins) {
+    const output = (o: ReviewerOutcome) => (o.error ? { error: o.error } : { findings: o.findings });
+    shadowPrompts.push({ prompts: twin.prompts!, role: `${twin.twinOf!.role}${parts.length > 1 ? ` part ${twin.part + 1}` : ''}${twin.label ? ` ${twin.label}` : ''}`, live: output(outcomeOf.get(twin.twinOf!)!), shadow: output(outcomeOf.get(twin)!) });
+  }
+  const perJob = jobs.map((job) => outcomeOf.get(job)!);
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
   // all of them were.
   const outcomes: ReviewerOutcome[] = outcomeNames([...selected], jobs).map((name) => {
@@ -498,51 +648,77 @@ export async function review(
       ...(errors.length ? { error: errors.join('; ') } : {}),
     };
   });
-  const skippedJobs = perJob.filter((o) => o.status === 'skipped').length;
+  // A shadow reviewer's findings stop here: they never reach synthesis, the threads, the summary or the verdict.
+  const live = outcomes.filter((o) => !shadow.has(o.name));
+  const shadowOutcomes = outcomes.filter((o) => shadow.has(o.name));
+  if (shadowOutcomes.length) log(`Shadow reviewers (not posted): ${shadowOutcomes.map((o) => `${o.name} ${o.findings.length} findings`).join(', ')}`);
+  // Only a skipped live call leaves the posted review incomplete.
+  const liveJobs = perJob.filter((o) => !shadow.has(o.name));
+  const skippedJobs = liveJobs.filter((o) => o.status === 'skipped');
   let ceilingWarning = '';
-  if (skippedJobs) {
-    const names = [...new Set(perJob.filter((o) => o.status === 'skipped').map((o) => o.name))].join(', ');
-    ceilingWarning = `This review reached its $${ceiling.toFixed(2)} cost ceiling ($${spent().toFixed(2)} spent) and skipped ${skippedJobs} of ${jobs.length} reviewer calls (${names}), so it is incomplete.`;
+  if (skippedJobs.length) {
+    const names = [...new Set(skippedJobs.map((o) => o.name))].join(', ');
+    ceilingWarning = `This review reached its $${ceiling.toFixed(2)} cost ceiling ($${spent().toFixed(2)} spent) and skipped ${skippedJobs.length} of ${liveJobs.length} reviewer calls (${names}), so it is incomplete.`;
     log(`::warning::${ceilingWarning}`);
   }
 
   // Synthesis.
   const limit = findingLimit(parts.length);
-  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  // Findings on the template's files skip synthesis: they're listed for the template's repository instead.
+  const split = byOwner(live.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))), gathered.template);
+  const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
-  let dropped: DroppedFinding[] = [];
+  const changedFiles = gathered.files.map((f) => f.path);
+  // The claims guard reads the template's findings too: they're listed in the summary comment.
+  const guardedUpstream = dropContradicted(upstreamRaw, changedFiles);
+  let dropped: DroppedFinding[] = guardedUpstream.dropped;
   if (raw.length) {
     const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
-    const synthesis = await agent<SynthesisOutput>(
-      withoutTools(run),
-      {
-        role: 'synthesis',
-        tier: 'opus',
-        systemPrompt: charters.synthesisPrompt,
-        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n${completeList}\n${fileList(gathered, excerpt.files, 'diff not in this excerpt')}\n\n<diff>\n${excerpt.diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
-        schema: synthesisSchema,
-        maxTurns: 3,
-        budgetUsd: budgets.synthesis,
-        cache: false,
-      },
-    );
+    const synthesisRequest = (role: string, systemPrompt: string): AgentRequest => ({
+      role,
+      tier: 'opus',
+      systemPrompt,
+      prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n${completeList}\n${fileList(gathered, excerpt.files, 'diff not in this excerpt')}\n\n<diff>\n${excerpt.diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
+      schema: synthesisSchema,
+      maxTurns: 3,
+      budgetUsd: budgets.synthesis,
+      cache: false,
+    });
+    const [synthesis, shadowSynthesis] = await Promise.all([
+      agent<SynthesisOutput>(oneShot, synthesisRequest('synthesis', charters.synthesisPrompt)),
+      variants.synthesis === undefined ? undefined : agent<SynthesisOutput>(oneShot, synthesisRequest('shadow-prompt:synthesis', variants.synthesis)),
+    ]);
     calls.push(...synthesis.records);
-    const changedFiles = gathered.files.map((f) => f.path);
-    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, changedFiles, limit));
-    if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+    if (shadowSynthesis) {
+      calls.push(...shadowSynthesis.records);
+      shadowPrompts.push(shadowPromptRun(['synthesis'], 'synthesis', synthesis, shadowSynthesis));
+    }
+    const settledFindings = settleFindings(synthesis, raw, changedFiles, limit);
+    ({ summary, verdict, findings } = settledFindings);
+    dropped = [...settledFindings.dropped, ...dropped];
   } else {
     summary = 'No findings.';
   }
+  if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  // Synthesis may still place a finding in a template's file. Its verdict is capped when that moved some of its findings
+  // upstream; without one, the verdict comes from the findings verification leaves.
+  const settled = settleUpstream(findings, guardedUpstream.kept, gathered.template, summary);
+  if (verdict) verdict = settledVerdict(verdict, settled.findings.length < findings.length, settled.findings);
+  ({ summary, findings } = settled);
 
   // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  // Only the live reviewers' findings reach it: a shadow reviewer's findings never went to synthesis, so they are never
+  // verified, and its charter isn't given to the verifier.
+  const liveCharters = [...charters.reviewers].filter(([name]) => !shadow.has(name)).map(([name, charter]) => [name, charter.text] as const);
   const verified = await verifyReview({ summary, verdict, findings }, {
     run: reviewRun,
     diff: gathered.diff,
     pullRequest: pullRequestBlock(gathered),
     systemPrompt: charters.verificationPrompt,
-    charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
+    charters: new Map([...liveCharters, ...(shadow.has(ruleCheckName) ? [] : [[ruleCheckName, charters.ruleCheckPrompt] as const])]),
     log,
     enabled: verificationOn(),
     agent,
@@ -550,12 +726,27 @@ export async function review(
   calls.push(...verified.calls);
   ({ summary, verdict, findings } = verified);
 
-  const skipped = roster.filter((name) => !selected.has(name));
+  const notSelected = roster.filter((name) => !selected.has(name));
   verdict ??= verdictFor(findings);
   if (ceilingWarning) {
     summary = `${summary}\n\n⚠️ ${ceilingWarning}`;
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, dropped, refuted: verified.refuted, verification: verified.trace, calls, skipped };
+  return {
+    reviewers: live,
+    shadow: shadowOutcomes,
+    shadowSkipped: notSelected.filter((name) => shadow.has(name)),
+    shadowPrompts,
+    summary,
+    verdict,
+    findings,
+    upstream: settled.upstream,
+    upstreamOmitted: settled.upstreamOmitted,
+    dropped,
+    refuted: verified.refuted,
+    verification: verified.trace,
+    calls,
+    skipped: notSelected.filter((name) => !shadow.has(name)),
+  };
 }

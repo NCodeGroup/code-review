@@ -2,7 +2,7 @@
 // prompts and its maintainer's review comments.
 //
 //   node training/run.ts --repo NCodeGroup/Identity --checkout C:\GitHub\NCode\Identity [--maintainer polewskm]
-//   node training/run.ts --generalize-only [--holdout-only]
+//   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules]
 //   node training/run.ts --retag
 //
 // 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The result
@@ -10,9 +10,11 @@
 //    changed. An instruction file's rules also keep the file's applyTo globs.
 // 2. Generalize: Opus merges every repository's extracted rules, topic by topic, into guidance/<topic>.md, which the
 //    engine gives the conventions reviewer in every repository. training/feedback.md holds the maintainer's
-//    corrections, and every generalization follows them. Each rule learned only from instruction files is tagged with
-//    the files they apply to ("*Applies to:* `**/*.cs`"), and the engine gives it only to reviews that change such a
-//    file. --retag rewrites those tags in guidance/ and guidance-holdout/ from the rules' sources, without a model.
+//    corrections, and every generalization follows them. First, the rules of the closed `review-guidance` issues that
+//    `/review teach org` opened in NCodeGroup/code-review, closed as completed, are copied into its "Taught with
+//    /review teach" section (`--no-taught-rules` skips this). Each rule learned only from instruction files is tagged
+//    with the files they apply to ("*Applies to:* `**/*.cs`"), and the engine gives it only to reviews that change such
+//    a file. --retag rewrites those tags in guidance/ and guidance-holdout/ from the rules' sources, without a model.
 // 3. Hold out: the same generalization, without the review comments and decision records of the eval cases' pull
 //    requests, into guidance-holdout/. The evals use it, so a catch shows what the bot learned in general rather than
 //    the answer to that case. Production uses guidance/.
@@ -29,6 +31,8 @@ import { mapWithConcurrency } from '../src/concurrency.ts';
 import { applyToGlobs } from '../src/gather.ts';
 import { bulletGlobs, formatBullet, parseBullet, type GuidanceRule } from '../src/guidance.ts';
 import { startProxy } from '../src/proxy.ts';
+import { orgGuidanceRepository } from '../src/teach.ts';
+import { fetchGuidanceIssues, taughtRules, withTaughtRules } from './guidance-issues.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const topics = [
@@ -378,6 +382,21 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
   });
 }
 
+// Copies the rules of the closed `review-guidance` issues `/review teach org` opened into training/feedback.md, before
+// the generalization reads it. GitHub is read with GH_TOKEN, GITHUB_TOKEN or gh's login, or without a token.
+async function updateFeedback(): Promise<void> {
+  let token = process.env['GH_TOKEN'] || process.env['GITHUB_TOKEN'];
+  if (!token) {
+    try { token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined; } catch { token = undefined; console.warn('No GitHub token from GH_TOKEN, GITHUB_TOKEN or `gh auth token`; reading the guidance issues without one.'); }
+  }
+  const rules = taughtRules(await fetchGuidanceIssues(orgGuidanceRepository, token));
+  const file = path.join(root, 'training', 'feedback.md');
+  const before = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const after = withTaughtRules(before, rules);
+  if (after !== before.replace(/\r\n/g, '\n')) writeFileSync(file, after);
+  console.log(`training/feedback.md: ${rules.length} rules taught with /review teach org`);
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--retag')) {
     retag(['guidance', 'guidance-holdout']);
@@ -420,6 +439,7 @@ async function main(): Promise<void> {
       if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls);
     }
     if (!process.argv.includes('--extract-only')) {
+      if (!process.argv.includes('--no-taught-rules')) await updateFeedback();
       const cases = JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Parameters<typeof holdoutLabels>[0];
       if (!process.argv.includes('--holdout-only')) await generalize(run, calls, 'guidance');
       await generalize(run, calls, 'guidance-holdout', holdoutLabels(cases));
