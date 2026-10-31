@@ -10,6 +10,7 @@ import {
   lastModel,
   runAgent,
   totalCost,
+  withoutTools,
   type AgentRequest,
   type AgentRun,
   type BedrockFallback,
@@ -56,6 +57,7 @@ function outputFor(options: Options): unknown {
   const properties = (options.outputFormat?.schema['properties'] ?? {}) as Record<string, unknown>;
   const finding = { severity: 'nit', file: 'config/greeting.json', line: 1, title: 'Typo', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
   if ('add' in properties) return { add: [{ reviewer: 'tests', reason: 'the change needs tests' }] };
+  if ('rules' in properties) return { rules: ['R-review-1'], decisions: [] };
   if ('summary' in properties) return { summary: 'One typo.', verdict: 'comment', findings: [{ ...finding, sources: ['R1', 'R2'] }] };
   return { findings: [finding] };
 }
@@ -135,14 +137,11 @@ function gathered(): Gathered {
   };
 }
 
-// Reviews the typo fix, in a file that isn't documentation so the review isn't a light one, with the hygiene reviewer
-// (the floor) and the tests reviewer (added by selection), on a run that starts on the Claude API with a Bedrock key;
-// the Claude API refuses only the tests reviewer's call.
-async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean = () => false) {
+// Reviews the change with the engine's charters through the fake Agent SDK, on a run that starts on the Claude API with
+// a Bedrock key.
+async function reviewOnFakeSdk(input: Gathered, apiRefuses: (prompt: string) => boolean, bedrockFails: (prompt: string) => boolean = () => false) {
   const previousTiers = process.env['CODE_REVIEW_TIERS'];
   delete process.env['CODE_REVIEW_TIERS'];
-  const charters = loadCharters(root);
-  const testsCharter = `Your charter:\n${charters.reviewers.get('tests')!.text}`;
   const seen: SeenCall[] = [];
   const fallback: BedrockFallback = { switched: false };
   const run: AgentRun = {
@@ -150,16 +149,23 @@ async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean 
     proxyUrl: 'http://127.0.0.1:1',
     checkout: mkdtempSync(path.join(tmpdir(), 'fallback-checkout-')),
     fallback,
-    query: fakeQuery(seen, (prompt) => prompt.includes(testsCharter), (prompt) => prompt.includes(testsCharter) && bedrockFails(prompt)),
+    query: fakeQuery(seen, apiRefuses, bedrockFails),
   };
   try {
-    const outcome = await review(run, gathered(), charters, () => {});
+    const outcome = await review(run, input, loadCharters(root), () => {});
     const byRole = (role: string) => outcome.calls.filter((c) => c.role === role).map((c) => [c.provider, c.model, c.outcome]);
     return { outcome, fallback, seen, byRole };
   } finally {
     if (previousTiers === undefined) delete process.env['CODE_REVIEW_TIERS'];
     else process.env['CODE_REVIEW_TIERS'] = previousTiers;
   }
+}
+
+// Reviews the typo fix, in a file that isn't documentation so the review isn't a light one, with the hygiene reviewer
+// (the floor) and the tests reviewer (added by selection); the Claude API refuses only the tests reviewer's call.
+async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean = () => false) {
+  const testsCharter = `Your charter:\n${loadCharters(root).reviewers.get('tests')!.text}`;
+  return reviewOnFakeSdk(gathered(), (prompt) => prompt.includes(testsCharter), (prompt) => prompt.includes(testsCharter) && bedrockFails(prompt));
 }
 
 test('a credit error reruns that call on Bedrock and sends every later call there', async () => {
@@ -193,6 +199,46 @@ test('a reviewer whose Bedrock rerun fails too is failed with the rerun\'s error
   assert.equal(tests?.status, 'failed');
   assert.equal(tests?.error, bedrockMessage);
   assert.deepEqual(outcome.reviewers.find((r) => r.name === 'hygiene')?.status, 'ran');
+});
+
+test('a credit error on the selection call reruns it on Bedrock, and the review adds the reviewer the rerun picked', async () => {
+  const { outcome, fallback, byRole } = await reviewOnFakeSdk(gathered(), (prompt) => prompt.startsWith('Roster: '));
+
+  assert.deepEqual(fallback, { switched: true, reason: creditsRanOutReason });
+  assert.deepEqual(byRole('selection'), [
+    ['anthropic', modelIds.anthropic.sonnet, creditsRanOutReason],
+    ['bedrock', modelIds.bedrock.sonnet, 'success'],
+  ]);
+  assert.deepEqual(byRole('reviewer:tests'), [['bedrock', modelIds.bedrock.haiku, 'success']]);
+  assert.deepEqual(byRole('synthesis'), [['bedrock', modelIds.bedrock.opus, 'success']]);
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['tests', 'ran']]);
+});
+
+test('a credit error on the context call reruns it on Bedrock, and the reviewers get the rule the rerun picked', async () => {
+  const withRule: Gathered = { ...gathered(), reviewRules: [{ name: 'review.instructions.md', globs: [], text: '- Keep greetings lowercase.\n' }] };
+  const { outcome, fallback, byRole } = await reviewOnFakeSdk(withRule, (prompt) => prompt.includes('<catalog>'));
+
+  assert.deepEqual(fallback, { switched: true, reason: creditsRanOutReason });
+  assert.deepEqual(byRole('context'), [
+    ['anthropic', modelIds.anthropic.sonnet, creditsRanOutReason],
+    ['bedrock', modelIds.bedrock.sonnet, 'success'],
+  ]);
+  assert.deepEqual(byRole('selection'), [['bedrock', modelIds.bedrock.sonnet, 'success']]);
+  // The picked rule puts conventions on the floor and runs a rule check.
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['conventions', 'ran'], ['tests', 'ran'], ['rule-check', 'ran']]);
+});
+
+test('withoutTools keeps the run\'s provider, proxy, fallback and query, and drops its checkout and working folder', () => {
+  const fallback: BedrockFallback = { switched: false };
+  const query = fakeQuery([], () => false);
+  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work', fallback, query };
+  const bare = withoutTools(run);
+
+  assert.deepEqual(Object.keys(bare).sort(), ['fallback', 'provider', 'proxyUrl', 'query']);
+  assert.equal(bare.provider, 'anthropic');
+  assert.equal(bare.proxyUrl, 'http://127.0.0.1:1');
+  assert.equal(bare.fallback, fallback);
+  assert.equal(bare.query, query);
 });
 
 test('the Bedrock rerun gets the placeholder and the proxy, never a credential or a job variable', async () => {

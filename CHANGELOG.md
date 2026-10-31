@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
+- This repository's own workflow pins v0.4.0 and triggers on `closed`, so its pull requests are reviewed by the current engine and record each finding's outcome when they close.
 - Verification no longer drops a refuted blocker or `security` finding: it stays as a question one severity lower, with the refutation in its evidence. Any refutation must cite a line of the checkout outside the lines the pull request adds; one that rests only on the change's own lines keeps the finding as a question ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
 - Verification stops at the run's cost ceiling like the reviewer calls: its calls that haven't started are skipped, their findings stay unverified, and the summary says how many were skipped ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
 
