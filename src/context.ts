@@ -6,7 +6,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { runAgent, type AgentRun, type AgentResult } from './agent.ts';
-import type { Gathered, RuleFile } from './gather.ts';
+import { matchesAnyFile, type Gathered, type RuleFile } from './gather.ts';
+import { bulletGlobs } from './guidance.ts';
 
 export interface IndexedRule {
   id: string;
@@ -14,6 +15,8 @@ export interface IndexedRule {
   reviewers: string[];
   summary: string;
   text: string;
+  // The files a learned rule applies to, from its "*Applies to:*" tag; absent when it applies to every file.
+  globs?: string[];
 }
 
 export interface Decision {
@@ -64,10 +67,16 @@ export function guidanceRules(files: RuleFile[]): IndexedRule[] {
     const topic = file.name.replace(/\.md$/, '');
     const reviewers = reviewersOfTopic(topic);
     file.text.split('\n').filter((line) => line.startsWith('- **')).forEach((line, i) => {
-      rules.push({ id: `G-${topic}-${i + 1}`, reviewers, summary: summarize(line), text: line });
+      const globs = bulletGlobs(line);
+      rules.push({ id: `G-${topic}-${i + 1}`, reviewers, summary: summarize(line), text: line, ...(globs.length ? { globs } : {}) });
     });
   }
   return rules;
+}
+
+// The rules that apply to any of these files: an untagged rule applies to every file.
+export function rulesForFiles(rules: IndexedRule[], files: string[]): IndexedRule[] {
+  return rules.filter((rule) => !rule.globs || matchesAnyFile(rule.globs, files));
 }
 
 // One rule per top-level review-only bullet in the repository's conventions, with its continuation lines. They go to

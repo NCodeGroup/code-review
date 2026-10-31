@@ -2,6 +2,9 @@
   "hash": "ea280e28b2931949",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-production.instructions.md",
+  "applyTo": [
+    "src/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Never disable warnings-as-errors (`TreatWarningsAsErrors=false`) in any project, tests and hosts included; relax a single rule with a justified `.editorconfig` entry or a narrowly scoped `#pragma`.",

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -145,6 +145,145 @@ test('holdoutLabels names the reviews and decision records the eval cases draw o
     { id: 'lenient', repository: 'NCodeGroup/Identity', source: 'Fixed by #309 (163ad04c); ADR-0266.' },
   ]);
   assert.deepEqual([...labels].sort(), ['Identity ADR-0266', 'Identity review of #309', 'Identity review of #341', 'Identity review of #420']);
+});
+
+test('a guidance bullet learned from C# instruction files reaches a review of .cs files and not one of .ts files', async () => {
+  const { readGuidance } = await import('../src/gather.ts');
+  const { guidanceRules } = await import('../src/context.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'guidance-'));
+  writeFileSync(path.join(dir, 'code-organization.md'), [
+    '---', 'description: "x"', 'applyTo: "**"', '---', '', '# Code organization', '',
+    '- **Keep functions to three parameters.** Why. *Check:* Count them. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>',
+    '- **Name things by purpose.** Why. *Check:* Look. <sub>Identity ADR-0001</sub>',
+    '',
+  ].join('\n'));
+  const statements = (changed: string[]) => guidanceRules(readGuidance(dir, changed)).map((r) => r.summary);
+  assert.deepEqual(statements(['src/comments.ts']), ['Name things by purpose.']);
+  assert.deepEqual(statements(['src/Comments.cs']), ['Keep functions to three parameters.', 'Name things by purpose.']);
+  assert.deepEqual(statements(['src/comments.ts', 'src/Comments.cs']), ['Keep functions to three parameters.', 'Name things by purpose.']);
+  assert.deepEqual(guidanceRules(readGuidance(dir, ['src/Comments.cs']))[0]!.globs, ['**/*.cs']);
+});
+
+test('each part of a large diff gets only the guidance rules tagged for its files', async () => {
+  const { partFiles } = await import('../src/review.ts');
+  const { rulesForFiles } = await import('../src/context.ts');
+  const csharp = { id: 'G-a-1', reviewers: ['conventions'], summary: 'cs', text: 'cs', globs: ['**/*.cs'] };
+  const anywhere = { id: 'G-a-2', reviewers: ['conventions'], summary: 'any', text: 'any' };
+  const files: ChangedFile[] = [
+    { path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true },
+    { path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true },
+  ];
+  const tsPart = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+x\n';
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-2']);
+  // A changed file no part shows may be read by any part's reviewers, so its rules reach every part.
+  files[1]!.shown = false;
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-1', 'G-a-2']);
+  // A generated file isn't reviewed, so its rules don't reach the other parts.
+  files[1]!.generated = true;
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-2']);
+});
+
+test('a guidance bullet tagged with several globs reaches a review that changes a file any of them matches', async () => {
+  const { readGuidance } = await import('../src/gather.ts');
+  const { guidanceRules } = await import('../src/context.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'guidance-'));
+  writeFileSync(path.join(dir, 'public-api.md'), [
+    '---', 'description: "x"', 'applyTo: "**"', '---', '', '# Public API', '',
+    '- **Pin package versions.** Why. *Check:* Look. *Applies to:* `**/*.cs`, `**/*.csproj` <sub>Identity csharp-production.instructions.md</sub>',
+    '',
+  ].join('\n'));
+  const statements = (changed: string[]) => guidanceRules(readGuidance(dir, changed)).map((r) => r.summary);
+  assert.deepEqual(statements(['src/Identity.csproj']), ['Pin package versions.']);
+  assert.deepEqual(statements(['src/Comments.cs']), ['Pin package versions.']);
+  // A topic whose bullets are all tagged for other files is left out, rather than given to the reviewer as a bare header.
+  assert.deepEqual(readGuidance(dir, ['src/comments.ts']), []);
+});
+
+test('review jobs give each part of the diff only the rules tagged for its files, and skip a rule batch left empty', async () => {
+  const { outcomeNames, reviewJobs, ruleCheckName } = await import('../src/review.ts');
+  const csharp = { id: 'G-a-1', reviewers: ['conventions'], summary: 'cs', text: 'cs', globs: ['**/*.cs'] };
+  const anywhere = { id: 'G-a-2', reviewers: ['conventions'], summary: 'any', text: 'any' };
+  const files: ChangedFile[] = [
+    { path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true },
+    { path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true },
+  ];
+  const tsPart = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+x\n';
+  const csPart = 'diff --git a/src/A.cs b/src/A.cs\n--- a/src/A.cs\n+++ b/src/A.cs\n@@ -1 +1 @@\n+x\n';
+  const rulesFor = new Map([['conventions', [csharp, anywhere]]]);
+  const jobs = reviewJobs([tsPart, csPart], files, ['conventions', 'tests'], rulesFor, [[csharp], [anywhere]], { conventions: 'sonnet' });
+  const plan = jobs.map((job) => `${job.part} ${job.name} ${job.tier}: ${job.rules.map((r) => r.id).join(',')}`);
+  assert.deepEqual(plan, [
+    '0 conventions sonnet: G-a-2',
+    '0 tests haiku: ',
+    `0 ${ruleCheckName} sonnet: G-a-2`,
+    '1 conventions sonnet: G-a-1,G-a-2',
+    '1 tests haiku: ',
+    `1 ${ruleCheckName} sonnet: G-a-1`,
+    `1 ${ruleCheckName} sonnet: G-a-2`,
+  ]);
+  assert.deepEqual(outcomeNames(['conventions'], jobs), ['conventions', ruleCheckName]);
+  // A pull request that changes no C# file runs no rule check for a batch of C# rules, and reports none.
+  const tsOnly = reviewJobs([tsPart], files.slice(0, 1), ['conventions'], rulesFor, [[csharp]], {});
+  assert.deepEqual(tsOnly.map((job) => `${job.name}: ${job.rules.map((r) => r.id).join(',')}`), ['conventions: G-a-2']);
+  assert.deepEqual(outcomeNames(['conventions'], tsOnly), ['conventions']);
+});
+
+test('training tags a guidance rule with the files its instruction-file sources apply to', async () => {
+  const { generalGlob, retagGuidance, ruleScope, sourceScopes } = await import('../training/run.ts');
+  const { bulletGlobs, formatBullet, parseBullet } = await import('../src/guidance.ts');
+  assert.equal(generalGlob('src/**/*.cs'), '**/*.cs');
+  assert.equal(generalGlob('tests/**/*.cs'), '**/*.cs');
+  assert.equal(generalGlob('**'), '**');
+  const scopes = sourceScopes([
+    { label: 'Identity csharp-production.instructions.md', applyTo: ['src/**/*.cs'] },
+    { label: 'Identity repository.instructions.md', applyTo: ['**'] },
+    { label: 'Identity ADR-0001' },
+  ]);
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md'], scopes), ['**/*.cs']);
+  // Any source that applies to every file, or that isn't an instruction file, leaves the rule for every file.
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md', 'Identity repository.instructions.md'], scopes), []);
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md', 'Identity ADR-0001'], scopes), []);
+  const rule = { statement: 'Keep functions small.', why: 'Why.', check: 'Look.', note: 'Note.', sources: ['Identity csharp-production.instructions.md'] };
+  const tagged = formatBullet(rule, ['**/*.cs']);
+  assert.equal(tagged, '- **Keep functions small.** Why. *Check:* Look. *Note:* Note. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>');
+  assert.deepEqual(parseBullet(tagged), rule);
+  assert.deepEqual(bulletGlobs(tagged), ['**/*.cs']);
+  assert.equal(retagGuidance(formatBullet(rule, []), scopes), tagged);
+});
+
+test('retagging refuses a guidance bullet the formatter would not write back as it was', async () => {
+  const { retagGuidance } = await import('../training/run.ts');
+  assert.throws(() => retagGuidance('- **No sources.** Why. *Check:* Look.', new Map()), /Can't retag this bullet/);
+  assert.throws(() => retagGuidance('- **Empty note.** Why. *Check:* Look. *Note:*  <sub>Identity ADR-0001</sub>', new Map()), /Can't retag this bullet/);
+});
+
+test('a rerun of training keeps a saved extraction whose source is unchanged, with the source\'s current applyTo', async () => {
+  const { reuseExtraction, saveExtracted } = await import('../training/run.ts');
+  const saved = { hash: 'h', promptHash: 'p', label: 'Identity csharp.instructions.md', applyTo: ['src/**/*.cs'], rules: [] };
+  assert.equal(reuseExtraction(undefined, 'h', 'p', undefined), undefined);
+  assert.equal(reuseExtraction(saved, 'changed', 'p', ['src/**/*.cs']), undefined);
+  assert.equal(reuseExtraction(saved, 'h', 'changed', ['src/**/*.cs']), undefined);
+  assert.deepEqual(reuseExtraction(saved, 'h', 'p', ['src/**/*.cs']), { saved, changed: false });
+  const widened = reuseExtraction(saved, 'h', 'p', ['src/**/*.cs', 'tests/**/*.cs'])!;
+  assert.deepEqual(widened, { saved: { ...saved, applyTo: ['src/**/*.cs', 'tests/**/*.cs'] }, changed: true });
+  const dropped = reuseExtraction(saved, 'h', 'p', undefined)!;
+  assert.equal(dropped.changed, true);
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'extracted-')), 'instructions', 'csharp-1.json');
+  saveExtracted(file, widened.saved);
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).applyTo, ['src/**/*.cs', 'tests/**/*.cs']);
+  saveExtracted(file, dropped.saved);
+  assert.ok(!('applyTo' in JSON.parse(readFileSync(file, 'utf8'))));
+});
+
+test('the committed guidance carries the tags its sources give it', async () => {
+  const { retagGuidance, sourceScopes } = await import('../training/run.ts');
+  const scopes = sourceScopes();
+  assert.deepEqual(scopes.get('Identity csharp-production.instructions.md'), ['**/*.cs']);
+  const dir = path.resolve(import.meta.dirname, '..', 'guidance');
+  for (const name of readdirSync(dir)) {
+    const text = readFileSync(path.join(dir, name), 'utf8');
+    assert.equal(retagGuidance(text, scopes), text, `${name} is out of date: run node training/run.ts --retag`);
+  }
 });
 
 test('an eval concern with a minimum severity is judged only against findings at that severity or above', async () => {
