@@ -275,7 +275,7 @@ test('review leaves out a template finding that says a changed file isn\'t chang
     commits: [],
     template,
   };
-  const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['hygiene', 'hygiene']]) };
+  const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['hygiene', { text: 'hygiene', shadow: false }]]), shadowPrompts: {} };
   const reported = [
     finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'),
     { ...finding('.template/Get-PlanState.ps1', 9, 'should-fix', 'Claim'), problem: 'The pull request makes no changes to `AGENTS.md`.' },

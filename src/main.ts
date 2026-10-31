@@ -6,7 +6,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
+import { bedrockFallbackFor, totalCost, type AgentRun } from './agent.ts';
 import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, lastReviewedHead } from './comments.ts';
@@ -20,8 +20,9 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
-import { changedLines, loadCharters, review } from './review.ts';
-import { topSeverity, type Results } from './results.ts';
+import { loadCharters, review } from './review.ts';
+import { buildResults } from './review-results.ts';
+import type { Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,12 +42,6 @@ function writeStatus(status: RunStatus): void {
   writeFileSync(path.join(outDir, 'status.json'), record.json);
   const output = process.env['GITHUB_OUTPUT'];
   if (output && record.output) appendFileSync(output, record.output);
-}
-
-// The added lines of each file a finding is in, so the publish step can tell which findings can be inline comments.
-function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
-  const all = changedLines(diff);
-  return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
@@ -247,40 +242,29 @@ async function main(): Promise<void> {
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
-    results = {
+    results = buildResults(outcome, {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
       ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
-      summary: outcome.summary,
-      verdict: outcome.verdict,
-      findings: outcome.findings,
-      ...(outcome.upstream.length ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: gathered.template!.repository } : {}),
-      dropped: outcome.dropped,
-      ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
-      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
-        const top = topSeverity(findings);
-        return {
-          name,
-          status,
-          model: lastModel(outcome.calls, `reviewer:${name}`),
-          findingCount: findings.length,
-          ...(top ? { topSeverity: top } : {}),
-          ...(error ? { error } : {}),
-        };
-      }),
-      skipped: outcome.skipped,
-      synthesisModel: lastModel(outcome.calls, 'synthesis'),
-      calls: outcome.calls,
-      costUsd: totalCost(outcome.calls),
+      ...(gathered.template ? { template: gathered.template.repository } : {}),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
-      changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
+      diff: gathered.diff,
       recordedHead,
+    });
+    // The shadow reviewers' findings and the shadow prompts' outputs, beside the live ones they shadow.
+    const trace = {
+      results,
+      rawFindings: outcome.reviewers,
+      verification: outcome.verification,
+      shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
+      files: gathered.files,
+      conventionsChars: gathered.conventions.length,
+      ...reReviewTrace,
     };
-    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
     writeForPublish(outDir, { 'results.json': results, 'trace.json': trace }, secretValues(credentials), 'reviewed');
   } finally {
     await proxy.close();
