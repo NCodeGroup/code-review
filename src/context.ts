@@ -5,7 +5,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { runAgent, type AgentRun, type AgentResult } from './agent.ts';
+import { runAgent, withoutTools, type AgentRun, type AgentResult } from './agent.ts';
 import { matchesAnyFile, type Gathered, type RuleFile } from './gather.ts';
 import { bulletGlobs } from './guidance.ts';
 
@@ -188,7 +188,7 @@ export async function selectContext(
     ...accepted.map((d) => `${d.id}: ${d.title}`),
   ].join('\n');
   const result = await agent<{ rules: string[]; decisions: string[] }>(
-    { provider: run.provider, proxyUrl: run.proxyUrl },
+    withoutTools(run),
     {
       role: 'context',
       tier: 'sonnet',
