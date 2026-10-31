@@ -260,6 +260,303 @@ test('the summary comment records the reviewed commit for the next run to read',
   assert.equal(reviewedHead('<!-- ncode-review:summary -->\n### 🤖 Review complete'), undefined);
 });
 
+// Comments with two bot summaries, a summary from someone else, a collapsed summary and a bot comment without a body.
+async function summaryFixture() {
+  const { supersededComment, summaryMarker, headMarker } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const x = 'c'.repeat(40);
+  const z = 'd'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const comments: { id: number; user: { login: string }; body?: string }[] = [
+    { id: 1, user: bot, body: `${summaryMarker}\n${headMarker(a)}\n### 🤖 Review complete` },
+    { id: 2, user: { login: 'someone' }, body: `${summaryMarker}\n${headMarker(x)}` },
+    { id: 3, user: bot, body: supersededComment(z, 'https://example.test/c/0') },
+    { id: 4, user: bot, body: `${summaryMarker}\n${headMarker(b)}\n### 🤖 Review complete` },
+    { id: 5, user: bot },
+  ];
+  return { comments, b };
+}
+
+test('summaryComments lists the bot summary comments oldest first', async () => {
+  const { summaryComments } = await import('../src/results.ts');
+  const { comments } = await summaryFixture();
+  assert.deepEqual(summaryComments(comments).map((c) => c.id), [1, 4]);
+});
+
+test('newestReviewedHead takes the head of the newest bot summary', async () => {
+  const { newestReviewedHead } = await import('../src/results.ts');
+  const { comments, b } = await summaryFixture();
+  assert.equal(newestReviewedHead(comments), b);
+});
+
+test('newestReviewedHead ignores summaries from others, and gives undefined without a bot summary or a listing', async () => {
+  const { newestReviewedHead, supersededComment, summaryMarker, headMarker } = await import('../src/results.ts');
+  const x = 'c'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  assert.equal(newestReviewedHead([{ user: { login: 'someone' }, body: `${summaryMarker}\n${headMarker(x)}` }]), undefined);
+  assert.equal(newestReviewedHead([{ user: bot, body: supersededComment(x, 'https://example.test/c/0') }]), undefined);
+  assert.equal(newestReviewedHead([]), undefined);
+  assert.equal(newestReviewedHead(undefined), undefined);
+});
+
+// The newest summary decides: an older summary's head is never used, so an unreadable newest one reviews again.
+test('newestReviewedHead gives undefined when the newest bot summary has no head marker', async () => {
+  const { newestReviewedHead, summaryMarker, headMarker } = await import('../src/results.ts');
+  const bot = { login: 'ncode-review[bot]' };
+  assert.equal(
+    newestReviewedHead([
+      { user: bot, body: `${summaryMarker}\n${headMarker('a'.repeat(40))}` },
+      { user: bot, body: `${summaryMarker}\n### 🤖 Review complete` },
+    ]),
+    undefined,
+  );
+});
+
+test('supersededComment collapses an older summary so only the newest is still a summary', async () => {
+  const { summaryComments, supersededComment, supersededMarker, summaryMarker, reviewedHead } = await import('../src/results.ts');
+  const body = supersededComment('121b99b0' + '0'.repeat(32), 'https://github.com/o/r/pull/1#issuecomment-9');
+  assert.ok(body.startsWith(supersededMarker));
+  assert.ok(!body.startsWith(summaryMarker));
+  assert.equal(reviewedHead(body), undefined);
+  assert.equal(body.split('\n').length, 2);
+  assert.ok(body.includes('[the review at 121b99b](https://github.com/o/r/pull/1#issuecomment-9)'));
+  const bot = { login: 'ncode-review[bot]' };
+  const comments = [
+    { id: 1, user: bot, body },
+    { id: 2, user: bot, body: `${summaryMarker}\n### 🤖 Review complete` },
+  ];
+  assert.deepEqual(summaryComments(comments).map((c) => c.id), [2]);
+});
+
+const postedUrl = 'https://github.com/o/r/pull/1#issuecomment-9';
+
+// A fake GitHub API for postSummary: it records each call and answers like the real one.
+function fakeApi(marker: string, failOn?: { call: string; error: Error }) {
+  const bot = { login: 'ncode-review[bot]' };
+  const calls: string[] = [];
+  const bodies: unknown[] = [];
+  const api = async (method: string, url: string, body?: unknown): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (failOn && `${method} ${url}`.endsWith(failOn.call)) throw failOn.error;
+    if (method === 'GET') {
+      return [
+        { id: 1, user: bot, body: `${marker}\nold` },
+        { id: 2, user: { login: 'someone' }, body: `${marker}\nnot ours` },
+        { id: 3, user: bot, body: `${marker}\nolder still` },
+      ];
+    }
+    bodies.push(body);
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  return { api, calls, bodies };
+}
+
+const summaryResults = { repository: 'o/r', pullRequest: 1, headSha: 'b'.repeat(40) };
+
+test('postSummary posts the new summary before collapsing only the earlier bot summaries', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const { supersededComment, summaryMarker } = await import('../src/results.ts');
+  const { api, calls, bodies } = fakeApi(summaryMarker);
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'POST /repos/o/r/issues/1/comments',
+    'PATCH /repos/o/r/issues/comments/1',
+    'PATCH /repos/o/r/issues/comments/3',
+  ]);
+  const expected = { body: supersededComment('b'.repeat(40), postedUrl) };
+  assert.deepEqual(bodies, [{ body: 'new body' }, expected, expected]);
+});
+
+test('postSummary only warns when an earlier summary cannot be collapsed', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: '/comments/1', error: new Error('HTTP 403') });
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.ok(calls.includes('PATCH /repos/o/r/issues/comments/3'));
+  assert.ok(lines.includes("::warning::Couldn't collapse the earlier summary comment 1 (HTTP 403)."));
+});
+
+test('postSummary collapses nothing when the new summary cannot be posted', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: '/issues/1/comments', error: new Error('HTTP 500') });
+  const lines: string[] = [];
+  await assert.rejects(postSummary(api, summaryResults, 'new body', (line) => lines.push(line)));
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+});
+
+test('postSummary still posts, and warns, when the earlier summaries cannot be listed', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: 'page=1', error: new Error('HTTP 502') });
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.ok(calls.includes('POST /repos/o/r/issues/1/comments'));
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+  assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
+});
+
+test('postSummary still posts, and warns, when the pull request has more comments than it reads', async () => {
+  const { postSummary, commentPageSize, maxCommentPages } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.equal(calls.filter((call) => call.startsWith('GET')).length, maxCommentPages);
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+  assert.ok(lines.includes(`::warning::Couldn't list the earlier summary comments (more than ${commentPageSize * maxCommentPages} comments), so they stay expanded.`));
+});
+
+test('postSummary posts without collapsing anything on a first review', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return [{ id: 7, user: { login: 'someone' }, body: 'hi' }];
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, ['GET /repos/o/r/issues/1/comments?per_page=100&page=1', 'POST /repos/o/r/issues/1/comments']);
+});
+
+test('postSummary collapses an earlier summary found on a later page', async () => {
+  const { postSummary, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') {
+      if (url.endsWith('page=1')) return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+      return [{ id: 200, user: { login: 'ncode-review[bot]' }, body: `${summaryMarker}\nold` }];
+    }
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=2',
+    'POST /repos/o/r/issues/1/comments',
+    'PATCH /repos/o/r/issues/comments/200',
+  ]);
+});
+
+test('postSummary still posts, and warns, when a later page of comments cannot be read', async () => {
+  const { postSummary, commentPageSize } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') {
+      if (!url.endsWith('page=1')) throw new Error('HTTP 502');
+      return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+    }
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=2',
+    'POST /repos/o/r/issues/1/comments',
+  ]);
+  assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
+});
+
+test('readCommentPages reads every page until a short one', async () => {
+  const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
+  const pages: number[] = [];
+  const all = await readCommentPages(async (page) => {
+    pages.push(page);
+    return page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : [100, 101, 102];
+  });
+  assert.equal(all?.length, commentPageSize + 3);
+  assert.deepEqual(pages, [1, 2]);
+});
+
+test('readCommentPages gives undefined when a page cannot be read', async () => {
+  const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
+  const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : undefined));
+  assert.equal(broken, undefined);
+});
+
+test('readCommentPages gives undefined when every page up to the cap is full', async () => {
+  const { commentPageSize, maxCommentPages, readCommentPages } = await import('../src/comments.ts');
+  const pages: number[] = [];
+  const all = await readCommentPages(async (page) => {
+    pages.push(page);
+    return Array.from({ length: commentPageSize }, (_, i) => i);
+  });
+  assert.equal(all, undefined);
+  assert.equal(pages.length, maxCommentPages);
+});
+
+test('lastReviewedHead takes the head of the newest bot summary across pages', async () => {
+  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker, headMarker } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const urls: string[] = [];
+  const fetchPage = (async (url: string | URL | Request) => {
+    urls.push(String(url));
+    const page = String(url).endsWith('page=1')
+      ? [{ user: bot, body: `${summaryMarker}\n${headMarker(a)}` }, ...Array.from({ length: commentPageSize - 1 }, () => ({ user: { login: 'someone' }, body: 'hi' }))]
+      : [{ user: bot, body: `${summaryMarker}\n${headMarker(b)}` }];
+    return new Response(JSON.stringify(page), { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), b);
+  assert.deepEqual(urls, [
+    'https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1',
+    'https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=2',
+  ]);
+});
+
+test('lastReviewedHead gives undefined when a page cannot be read', async () => {
+  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker, headMarker } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const fetchPage = (async (url: string | URL | Request) => {
+    if (!String(url).endsWith('page=1')) return new Response('', { status: 500 });
+    const page = [{ user: bot, body: `${summaryMarker}\n${headMarker(a)}` }, ...Array.from({ length: commentPageSize - 1 }, () => ({ user: { login: 'someone' }, body: 'hi' }))];
+    return new Response(JSON.stringify(page), { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('lastReviewedHead gives undefined when the first page cannot be read', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const fetchPage = (async () => new Response('', { status: 500 })) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('errorText keeps an error message on one line', async () => {
+  const { errorText } = await import('../src/comments.ts');
+  assert.equal(errorText(new Error('HTTP 422 {"message":"x"}\n::error::injected\r\n  more')), 'HTTP 422 {"message":"x"} ::error::injected more');
+  assert.equal(errorText(new Error('y'.repeat(300))).length, 200);
+});
+
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
   const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
   const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
