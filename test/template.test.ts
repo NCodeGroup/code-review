@@ -4,10 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
+import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
-import { byOwner, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Finding, type ReviewedFinding } from '../src/review.ts';
+import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { isTemplateOwned, parseAnswers, readTemplate, templateFromAnswers, templateRepository, type Template } from '../src/template.ts';
 import { placeFindings } from '../src/threads.ts';
 
@@ -256,11 +257,56 @@ test('the verdict drops to what the findings left here call for when settling mo
   assert.equal(settledVerdict(undefined, false, []), 'approve');
 });
 
+test('review leaves out a template finding that says a changed file isn\'t changed, and lists the rest upstream', async () => {
+  const diff = ['diff --git a/AGENTS.md b/AGENTS.md', '--- a/AGENTS.md', '+++ b/AGENTS.md', '@@ -27,1 +27,2 @@', ' a', '+draft: no', ''].join('\n');
+  const gathered: Gathered = {
+    pullRequest: { repository: 'o/r', number: 23, title: 'Adopt', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+    mergeBase: 'b',
+    files: [
+      { path: 'AGENTS.md', additions: 1, deletions: 0, generated: false, shown: true },
+      { path: '.template/Get-PlanState.ps1', additions: 200, deletions: 0, generated: false, shown: true, templateOwned: true },
+    ],
+    diff,
+    chunks: [diff],
+    conventions: '',
+    reviewRules: [],
+    guidance: [],
+    decisions: [],
+    commits: [],
+    template,
+  };
+  const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['hygiene', 'hygiene']]) };
+  const reported = [
+    finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'),
+    { ...finding('.template/Get-PlanState.ps1', 9, 'should-fix', 'Claim'), problem: 'The pull request makes no changes to `AGENTS.md`.' },
+    finding('AGENTS.md', 28, 'should-fix', 'draft: no'),
+  ];
+  const agent = async <T>(_run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
+    const record = { role: request.role, provider: 'bedrock' as const, model: request.tier, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
+    const output = request.role === 'selection' ? { add: [] }
+      : request.role === 'synthesis' ? { summary: 'Merged.', verdict: 'comment', findings: [] }
+      : { findings: reported };
+    return { output: output as T, records: [record] };
+  };
+  const saved = process.env['CODE_REVIEW_VERIFICATION'];
+  delete process.env['CODE_REVIEW_VERIFICATION'];
+  try {
+    const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, () => {}, agent);
+    assert.deepEqual(result.findings.map((f) => [f.id, f.file, f.title]), [['F1', 'AGENTS.md', 'draft: no']]);
+    assert.deepEqual(result.upstream.map((f) => [f.id, f.file, f.line, f.title]), [['U1', '.template/Get-PlanState.ps1', 155, 'Empty catch']]);
+    assert.deepEqual(result.dropped.map((d) => [d.finding.title, d.file]), [['Claim', 'AGENTS.md']]);
+    assert.equal(result.verdict, 'comment');
+  } finally {
+    if (saved === undefined) delete process.env['CODE_REVIEW_VERIFICATION'];
+    else process.env['CODE_REVIEW_VERIFICATION'] = saved;
+  }
+});
+
 test('the summary lists the template\'s findings once, under the template\'s repository, with file and line', () => {
   const upstream: ReviewedFinding[] = [{ ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), id: 'U1', reviewers: ['hygiene'] }];
   const results = {
     repository: 'o/r', pullRequest: 23, headSha: 'a'.repeat(40), provider: 'bedrock', providerReason: '', summary: 'Adopts the template.',
-    verdict: 'comment', findings: [], upstream, template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
+    verdict: 'comment', findings: [], upstream, dropped: [], template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
     calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
   } as Results;
   const body = summaryComment(results, 'https://check', 'https://help');
@@ -279,7 +325,7 @@ test('the summary and check run count every upstream finding, and say how many p
   ];
   const results = {
     repository: 'o/r', pullRequest: 23, headSha: 'a'.repeat(40), provider: 'bedrock', providerReason: '', summary: 'Adopts the template.',
-    verdict: 'comment', findings: [], upstream, template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
+    verdict: 'comment', findings: [], upstream, dropped: [], template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
     calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
   } as Results;
   assert.match(checkSummary(results), /2 findings in the template's files belong upstream, in NCodeGroup\/project-template, and aren't posted as threads\.$/m);
