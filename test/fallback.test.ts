@@ -374,6 +374,7 @@ function resultsWith(fields: Partial<Results>): Results {
     durationMs: 0,
     notShown: [],
     changedLines: {},
+    dropped: [],
     ...fields,
   };
 }

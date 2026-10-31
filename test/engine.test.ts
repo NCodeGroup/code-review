@@ -114,6 +114,7 @@ test('mergeSynthesis adds back every reviewer finding synthesis left out, most s
     ['F3', 'style', ['conventions']],
   ]);
   assert.equal(mergeSynthesis([], raw, 2).length, 2);
+  assert.equal(mergeSynthesis([], raw).length, raw.length);
 });
 
 test('mergeSynthesis does not count a finding in another file as merged', () => {
@@ -265,6 +266,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
       summary: 'Adds a cache.\nIt works.',
       verdict: 'comment',
       findings: [{ ...finding, severity: 'should-fix', id: 'F1' }],
+      dropped: [],
       reviewers: [
         { name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' },
         { name: 'correctness', status: 'ran', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0 },
@@ -290,6 +292,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\| security \| sonnet-5-5 \| failed \| ⚠️ \|/);
   assert.match(body, /\| architecture \| — \| skipped \| ⏭️ \|/);
   assert.match(body, /\*Skipped: performance, data-model\*/);
+  assert.doesNotMatch(body, /Left out/);
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
 });

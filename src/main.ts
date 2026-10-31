@@ -161,6 +161,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      dropped: outcome.dropped,
       ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
