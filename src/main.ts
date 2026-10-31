@@ -149,14 +149,17 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
-      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => ({
-        name,
-        status,
-        model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
-        findingCount: findings.length,
-        ...(topSeverity(findings) ? { topSeverity: topSeverity(findings) } : {}),
-        ...(error ? { error } : {}),
-      })),
+      reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
+        const top = topSeverity(findings);
+        return {
+          name,
+          status,
+          model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+          findingCount: findings.length,
+          ...(top ? { topSeverity: top } : {}),
+          ...(error ? { error } : {}),
+        };
+      }),
       skipped: outcome.skipped,
       synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
       calls: outcome.calls,

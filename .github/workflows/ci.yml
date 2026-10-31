@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A required check must also report in a merge queue.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -21,3 +24,19 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+
+  commit-attribution:
+    name: Commit attribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check commit attribution
+        shell: pwsh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: ./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD
