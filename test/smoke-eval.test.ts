@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
-import { parseMaxCost, runCapped, selectCases } from '../evals/run.ts';
-import { commandData, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import type { RealityJudge } from '../evals/precision.ts';
+import { casePrecision, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
+import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -22,6 +25,24 @@ test('parseMaxCost refuses a flag without a positive number, instead of running 
   for (const value of ['', '0', '-1', 'eight', '8usd', 'Infinity']) {
     assert.throws(() => parseMaxCost(value), /--max-cost takes a positive number of dollars/, value);
   }
+});
+
+test('parsePrecision is on by default and refuses anything but on or off', () => {
+  assert.equal(parsePrecision(undefined), true);
+  assert.equal(parsePrecision('on'), true);
+  assert.equal(parsePrecision('off'), false);
+  assert.throws(() => parsePrecision('no'), /--precision takes on or off/);
+});
+
+test('casePrecision with precision off asks the judge nothing and has no precision', async () => {
+  const asked: string[] = [];
+  const judge: RealityJudge = async (f) => { asked.push(f.title); return { verdict: 'real', reason: 'r' }; };
+  const finding: Finding = { severity: 'should-fix', file: 'src/a.cs', line: 10, title: 'Unmatched', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
+  const input = { caseId: 'case', findings: [finding], matched: new Set<Finding>(), mustNot: new Set<Finding>(), cache: {}, judge };
+  assert.equal(await casePrecision(false, input), undefined);
+  assert.deepEqual(asked, []);
+  assert.equal((await casePrecision(true, input))?.real, 1);
+  assert.deepEqual(asked, ['Unmatched']);
 });
 
 // A runner whose cases cost what the table says, recording the ones it started.
@@ -164,6 +185,96 @@ test('scanDir scans every file under the folder and fails on a secret, naming th
 
 test('scanDir finds nothing to scan in a folder that does not exist', () => {
   assert.equal(scanDir(path.join(tmpdir(), 'smoke-scan-missing-folder', 'out'), []), 0);
+});
+
+// A link to a file, or on Windows without the symlink privilege a junction to a folder, outside the scanned folder.
+function linkOutside(dir: string, outside: string): boolean {
+  try {
+    symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, 'link.txt'), 'file');
+    return true;
+  } catch {
+    try {
+      symlinkSync(outside, path.join(dir, 'link'), 'junction');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+test('scanDir refuses a link, so the upload cannot reach a file outside what was scanned', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-scan-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'smoke-outside-'));
+  try {
+    writeFileSync(path.join(outside, 'secret.txt'), 'known-secret-value');
+    writeFileSync(path.join(dir, 'run.json'), '{}');
+    if (!linkOutside(dir, outside)) {
+      t.skip('this system cannot create a link');
+      return;
+    }
+    assert.throws(() => scanDir(dir, ['known-secret-value']), /is not a regular file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('baselinePathFrom honors --baseline and otherwise reads evals/baseline-smoke.json', () => {
+  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline', 'other.json'], '/repo'), path.resolve('other.json'));
+  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json'], '/repo'), path.join('/repo', 'evals', 'baseline-smoke.json'));
+  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline'], '/repo'), path.join('/repo', 'evals', 'baseline-smoke.json'));
+});
+
+const regressed = smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 1, 4), smokeCase('small', 2, 2)]);
+
+test('checkFiles with no baseline file records no failure and writes the proposed baseline beside the run', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
+  try {
+    const runFile = path.join(dir, 'run.json');
+    writeFileSync(runFile, JSON.stringify(regressed));
+    const verdict = checkFiles(runFile, path.join(dir, 'missing-baseline.json'));
+    assert.deepEqual(verdict.failures, []);
+    assert.equal(verdict.notices.length, 1);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(dir, proposedName), 'utf8')), trimmed(regressed));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkFiles records a failure for a run that regressed from the baseline file', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
+  try {
+    const runFile = path.join(dir, 'run.json');
+    const baselineFile = path.join(dir, 'baseline.json');
+    writeFileSync(runFile, JSON.stringify(regressed));
+    writeFileSync(baselineFile, JSON.stringify(baseline));
+    assert.deepEqual(checkFiles(runFile, baselineFile).failures, ['Caught dropped by 3, from 6/6 to 3/6: more than the 2 a run varies by.']);
+    assert.ok(existsSync(path.join(dir, proposedName)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Runs the real command once per outcome, since the exit code it sets is what fails the workflow's step.
+test('smoke.ts check exits 1 on a regression from --baseline and 0 without a baseline', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-cli-'));
+  try {
+    const runFile = path.join(dir, 'run.json');
+    const baselineFile = path.join(dir, 'baseline.json');
+    writeFileSync(runFile, JSON.stringify(regressed));
+    writeFileSync(baselineFile, JSON.stringify(baseline));
+    const check = (...extra: string[]) => spawnSync(process.execPath, [path.join(root, 'evals', 'smoke.ts'), 'check', runFile, ...extra], {
+      encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_STEP_SUMMARY: '' },
+    });
+    const failed = check('--baseline', baselineFile);
+    assert.equal(failed.status, 1, failed.stderr);
+    assert.match(failed.stdout, /error: Caught dropped by 3/);
+    const passed = check('--baseline', path.join(dir, 'missing.json'));
+    assert.equal(passed.status, 0, passed.stderr);
+    assert.match(passed.stdout, /notice: There is no evals\/baseline-smoke\.json yet/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('the smoke eval workflow runs only on main and by hand, in the code-review environment, with pinned actions', () => {

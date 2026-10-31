@@ -113,6 +113,18 @@ export function parseMaxCost(value: string | undefined): number | undefined {
   return Number(text);
 }
 
+// Whether the precision judge runs: --precision on, the default, or off.
+export function parsePrecision(value: string | undefined): boolean {
+  const setting = value ?? 'on';
+  if (setting !== 'on' && setting !== 'off') throw new Error(`--precision takes on or off, not ${JSON.stringify(setting.slice(0, 40))}.`);
+  return setting === 'on';
+}
+
+// One case's precision, or undefined with --precision off, when the judge isn't asked about any finding.
+export function casePrecision(precisionOn: boolean, input: Parameters<typeof judgePosted>[0]): Promise<CasePrecision | undefined> {
+  return precisionOn ? judgePosted(input) : Promise.resolve(undefined);
+}
+
 // The cases --only or --subset names, in cases.json's order. A name that matches no case fails, so a typo or a renamed
 // case can't quietly shrink the run.
 export function selectCases(all: EvalCase[], only: string | undefined, subset: string | undefined): EvalCase[] {
@@ -148,10 +160,10 @@ export async function runCapped<T>(
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
 async function main(): Promise<void> {
-  const maxCost = parseMaxCost(process.argv.includes('--max-cost') ? (arg('max-cost') ?? '') : undefined);
-  const precisionSetting = arg('precision') ?? 'on';
-  if (precisionSetting !== 'on' && precisionSetting !== 'off') throw new Error(`--precision takes on or off, not ${JSON.stringify(precisionSetting.slice(0, 40))}.`);
-  const precisionOn = precisionSetting === 'on';
+  // A --max-cost with no value reaches parseMaxCost as '' and fails, instead of running uncapped.
+  const maxCostArg = process.argv.includes('--max-cost') ? (arg('max-cost') ?? '') : undefined;
+  const maxCost = parseMaxCost(maxCostArg);
+  const precisionOn = parsePrecision(arg('precision'));
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
   if (arg('tiers')) process.env['CODE_REVIEW_TIERS'] = arg('tiers');
@@ -213,16 +225,14 @@ async function main(): Promise<void> {
       }
 
       const diffs = splitDiff(gathered.diff);
-      const precision = precisionOn
-        ? await judgePosted({
-          caseId: c.id,
-          findings: outcome.findings,
-          matched,
-          mustNot,
-          cache: verdictCache,
-          judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
-        })
-        : undefined;
+      const precision = await casePrecision(precisionOn, {
+        caseId: c.id,
+        findings: outcome.findings,
+        matched,
+        mustNot,
+        cache: verdictCache,
+        judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
+      });
       if (precision) {
         saveVerdicts(verdictFile, verdictCache);
         precisions.push(precision);

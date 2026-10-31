@@ -113,18 +113,28 @@ function readBaseline(file: string): EvalOutput | undefined {
   }
 }
 
+// The baseline check's arguments: --baseline <file>, or evals/baseline-smoke.json under root.
+export function baselinePathFrom(argv: readonly string[], root: string): string {
+  const index = argv.indexOf('--baseline');
+  const value = index >= 0 ? argv[index + 1] : undefined;
+  return value ? path.resolve(value) : path.join(root, baselineFile);
+}
+
+// Reads the run and the baseline, a missing one as none, checks them, and writes the proposed baseline beside the run.
+export function checkFiles(runFile: string, baselinePath: string): SmokeVerdict {
+  const run = readOutput(runFile);
+  const verdict = smokeCheck(run, readBaseline(baselinePath));
+  writeFileSync(path.join(path.dirname(runFile), proposedName), `${JSON.stringify(trimmed(run), null, 2)}\n`);
+  return verdict;
+}
+
 function main(): void {
   const [command, target] = process.argv.slice(2);
   const annotate = (kind: 'notice' | 'error', message: string) =>
     console.log(process.env['GITHUB_ACTIONS'] === 'true' ? `::${kind} title=Smoke eval::${commandData(message)}` : `${kind}: ${message}`);
   if (command === 'check' && target) {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const index = process.argv.indexOf('--baseline');
-    const baselinePath = index >= 0 && process.argv[index + 1] ? path.resolve(process.argv[index + 1] ?? '') : path.join(root, baselineFile);
-    const runFile = path.resolve(target);
-    const run = readOutput(runFile);
-    const verdict = smokeCheck(run, readBaseline(baselinePath));
-    writeFileSync(path.join(path.dirname(runFile), proposedName), `${JSON.stringify(trimmed(run), null, 2)}\n`);
+    const verdict = checkFiles(path.resolve(target), baselinePathFrom(process.argv, root));
     const summaryFile = process.env['GITHUB_STEP_SUMMARY'];
     if (summaryFile) appendFileSync(summaryFile, verdict.markdown);
     else process.stdout.write(verdict.markdown);
