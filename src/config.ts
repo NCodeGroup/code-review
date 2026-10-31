@@ -105,5 +105,7 @@ export const maxFindings = 40;
 export const findingsPerExtraChunk = 20;
 export const maxFindingsCap = 100;
 export const minConfidence = 0.3;
+// Findings on the template's files listed in the summary for its repository, one per file and line.
+export const maxUpstreamFindings = 20;
 // The most lines a suggestion may replace, or write. Defined in threads.ts, which the acknowledgement loads before npm ci.
 export { maxSuggestionLines } from './threads.ts';
