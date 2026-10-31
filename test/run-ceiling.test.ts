@@ -168,6 +168,20 @@ test('review skips a rule-check call queued after the cost ceiling is reached, a
   assert.match(result.summary, /skipped 5 of 7 reviewer calls \(security, tests, architecture, completeness, rule-check\)/);
 });
 
+test('context and selection spend count toward the ceiling, and spend equal to it skips every reviewer call', async () => {
+  const bySelection = await cappedReview({ cost: (role) => (role === 'selection' ? 12 : 0) });
+  assert.deepEqual(bySelection.roles, ['selection']);
+  assert.ok(bySelection.result.reviewers.every((r) => r.status === 'skipped' && r.error === runBudgetReason));
+  assert.match(bySelection.result.summary, /^No findings\.\n\n⚠️ This review reached its \$12\.00 cost ceiling \(\$12\.00 spent\) and skipped 6 of 6 reviewer calls/);
+
+  const rules: RuleFile[] = [{ name: 'repo.instructions.md', globs: [], text: '- Keep it small.\n' }];
+  const byContext = await cappedReview({ reviewRules: rules, cost: (role) => (role === 'context' ? 12 : 0) });
+  assert.deepEqual(byContext.roles, ['context', 'selection']);
+  assert.ok(byContext.result.reviewers.some((r) => r.name === ruleCheckName));
+  assert.ok(byContext.result.reviewers.every((r) => r.status === 'skipped' && r.error === runBudgetReason));
+  assert.match(byContext.result.summary, /\(\$12\.00 spent\) and skipped 7 of 7 reviewer calls/);
+});
+
 test('review enforces the ceiling CODE_REVIEW_MAX_RUN_USD sets', async () => {
   const raised = await cappedReview({ maxRunUsd: '30' });
   assert.ok(raised.result.reviewers.every((r) => r.status === 'ran'));
