@@ -79,7 +79,7 @@ async function main(): Promise<void> {
 
   const body = summaryComment(results, created.html_url, interactUrl);
   assertNoSecrets(body, [token], 'The summary comment');
-  await postSummary((method, url, body) => github(token, method, url, body), results, body);
+  await postSummary((method, url, payload) => github(token, method, url, payload), results, body);
 }
 
 main().catch((error) => {
