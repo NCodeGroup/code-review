@@ -1,12 +1,13 @@
-// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
+// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { verdictAfterVerification, verifyFindings, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -41,6 +42,9 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings verification refuted and dropped, with its reasons, and every verification call.
+  refuted: RefutedFinding[];
+  verification: VerificationCall[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -105,6 +109,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  verificationPrompt: string;
   reviewers: Map<string, string>;
 }
 
@@ -129,6 +134,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    verificationPrompt: prompt('verification'),
     reviewers,
   };
 }
@@ -407,7 +413,26 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     summary = 'No findings.';
   }
 
+  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  const verified = await verifyFindings({
+    run: reviewRun,
+    findings,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
+    log,
+    enabled: verificationOn(),
+  });
+  calls.push(...verified.calls);
+  findings = verified.findings;
+  if (verified.refuted.length) {
+    const n = verified.refuted.length;
+    summary += ` Verification refuted ${n === 1 ? 'one finding; the check run lists it with the reason' : `${n} findings; the check run lists them with the reasons`}.`;
+  }
+  if (verified.trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
+
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped };
 }

@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { verificationOn } from '../src/config.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, type Finding } from '../src/review.ts';
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
-  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, cost = 0;
+  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
 
   try {
     for (const c of cases) {
@@ -152,20 +153,22 @@ async function main(): Promise<void> {
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
       violations += forbidden.filter((f) => f.raisedBy.length).length;
       findingCount += outcome.findings.length;
+      seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
+      refutedCount += outcome.refuted.length;
       cost += caseCost;
       const status = [
         ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
       ].join(', ');
       console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, raw, calls, costUsd: caseCost });
+      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, refuted: outcome.refuted, raw, calls, costUsd: caseCost });
     }
   } finally {
     await proxy.close();
   }
 
-  const summary = { label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', expected, caught, caughtRaw, violations, findings: findingCount, costUsd: cost };
-  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all; $${cost.toFixed(2)}`);
+  const summary = { label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations, findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount, costUsd: cost };
+  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
 }

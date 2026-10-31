@@ -41,10 +41,21 @@ export const budgets = {
   // loses its findings.
   specialist: { haiku: 0.4, sonnet: 1, opus: 2 } as Record<ModelTier, number>,
   synthesis: 0.75,
+  // Per verification call, on Sonnet.
+  verification: 0.5,
   run: 4,
 };
 
-export const maxTurns = { specialist: 30 };
+export const maxTurns = { specialist: 30, verification: 20 };
+
+// Verification: after synthesis, Sonnet calls with the checkout try to prove or refute each blocker and should-fix, a
+// file's findings at a time, up to findingsPerVerification per call. It stays off until an eval shows it gains more than
+// it costs; CODE_REVIEW_VERIFICATION=on turns it on.
+export const findingsPerVerification = 8;
+
+export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? ''): boolean {
+  return value === 'on';
+}
 
 // Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
 // check each one against every part of the diff, so a rule a reviewer skims past still gets checked.

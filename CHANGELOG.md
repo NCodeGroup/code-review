@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A verification stage, off by default: with `CODE_REVIEW_VERIFICATION=on`, a Sonnet call with the checkout proves or refutes each merged blocker and should-fix, a file's findings at a time at up to $0.50 a call. Confirmed findings get the code path in their evidence, refuted ones are dropped and listed with the reason under "Refuted by verification" in the check run and in the trace, and ones it can't settle become questions one severity lower. Nits aren't verified, and the calls show as `verification` in the cost table. It stays off until the eval shows a gain, and the eval report now counts posted blockers and should-fixes and refuted findings ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.
