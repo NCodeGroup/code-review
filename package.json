@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "eval": "node evals/run.ts",
+    "eval:compare": "node evals/compare.ts",
+    "eval:confirm": "node evals/confirm.ts",
     "train": "node training/run.ts"
   },
   "dependencies": {

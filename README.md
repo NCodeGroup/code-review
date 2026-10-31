@@ -4,7 +4,8 @@ AI pull request review for NCodeGroup repositories: a GitHub composite action on
 Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
 merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
 the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
-Bedrock key does.
+Bedrock key does. A review whose credits run out partway reruns the refused call on Bedrock and makes the rest of its
+calls there; its check run and summary say so and split the cost by provider.
 
 ## How a review runs
 
@@ -15,6 +16,8 @@ reaches only the step that mints its token, after the agents exit, and that toke
 repository under review. Results and the trace are scanned for secrets before they're written.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
+
+A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
@@ -127,8 +130,9 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 Each review, all from `ncode-review[bot]`:
 
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
-  with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
-  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
+  with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
+  request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
+  that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
@@ -142,7 +146,7 @@ holds decides:
 
 | Outcome | When |
 |---|---|
-| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. |
+| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. |
 | dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". |
 | acknowledged | A 👍 or a reply from a writer, without a change. |
 | ignored | None of these. |
@@ -223,6 +227,12 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+
+**Precision.** Every posted blocker and should-fix that matches no expected concern goes to an Opus judge, which reads the case's checkout, locked down like the reviewers, with the finding passed as data, and answers `real`, `not-real` or `unsure`: is it a real defect the maintainer would act on? A finding that raises a must-not-flag concern counts as not real without a call. Precision is (matched + real) ÷ all posted blockers and should-fixes, with `unsure` counted apart. Verdicts are cached by case and finding fingerprint (file, severity and the title's words) in `evals/verdicts.json`, so a rerun judges only findings it hasn't seen; commit it with `cases.json` so every run is judged the same way. Each `evals/out/<label>.json` has the precision counts per case and in `summary.precision`, findings per case (`summary.findingsPerCase`: mean, max) and the review's own cost, without the eval's judges (`reviewCostUsd`, and `summary.reviewCostPerCase`).
+
+**Comparing two setups.** `npm run eval:compare -- <a.json> <b.json>` (or bare labels from `evals/out/`) prints recall, precision, findings per pull request and cost for both runs, then each case's differences. A recall difference of 2 or less is marked `(noise)`, within one run's variance; the other differences aren't marked, since their variance hasn't been measured. Outputs from before precision show `—` for it.
+
+**Growing the set from verdicts.** `npm run eval:confirm` lists the `real` and `not-real` verdicts nobody has confirmed yet (`--verdict real`, `--verdict unsure` or `--sample 5` of each narrow it), each with the command that confirms it. `npm run eval:confirm -- --case <id> --fingerprint <fp>` adds a `real` finding to its case in `cases.json` as an expected concern, and a `not-real` one as a must-not-flag concern, and marks the verdict confirmed. `--as expect` or `--as must-not` overrides the judge, and is needed for an `unsure` one. Review the new concern's wording in `cases.json` before committing it. In PowerShell, quote the separator: `npm run eval:confirm '--' --case <id> --fingerprint <fp>`.
 
 ## Checks
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -114,6 +114,7 @@ test('mergeSynthesis adds back every reviewer finding synthesis left out, most s
     ['F3', 'style', ['conventions']],
   ]);
   assert.equal(mergeSynthesis([], raw, 2).length, 2);
+  assert.equal(mergeSynthesis([], raw).length, raw.length);
 });
 
 test('mergeSynthesis does not count a finding in another file as merged', () => {
@@ -145,6 +146,145 @@ test('holdoutLabels names the reviews and decision records the eval cases draw o
     { id: 'lenient', repository: 'NCodeGroup/Identity', source: 'Fixed by #309 (163ad04c); ADR-0266.' },
   ]);
   assert.deepEqual([...labels].sort(), ['Identity ADR-0266', 'Identity review of #309', 'Identity review of #341', 'Identity review of #420']);
+});
+
+test('a guidance bullet learned from C# instruction files reaches a review of .cs files and not one of .ts files', async () => {
+  const { readGuidance } = await import('../src/gather.ts');
+  const { guidanceRules } = await import('../src/context.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'guidance-'));
+  writeFileSync(path.join(dir, 'code-organization.md'), [
+    '---', 'description: "x"', 'applyTo: "**"', '---', '', '# Code organization', '',
+    '- **Keep functions to three parameters.** Why. *Check:* Count them. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>',
+    '- **Name things by purpose.** Why. *Check:* Look. <sub>Identity ADR-0001</sub>',
+    '',
+  ].join('\n'));
+  const statements = (changed: string[]) => guidanceRules(readGuidance(dir, changed)).map((r) => r.summary);
+  assert.deepEqual(statements(['src/comments.ts']), ['Name things by purpose.']);
+  assert.deepEqual(statements(['src/Comments.cs']), ['Keep functions to three parameters.', 'Name things by purpose.']);
+  assert.deepEqual(statements(['src/comments.ts', 'src/Comments.cs']), ['Keep functions to three parameters.', 'Name things by purpose.']);
+  assert.deepEqual(guidanceRules(readGuidance(dir, ['src/Comments.cs']))[0]!.globs, ['**/*.cs']);
+});
+
+test('each part of a large diff gets only the guidance rules tagged for its files', async () => {
+  const { partFiles } = await import('../src/review.ts');
+  const { rulesForFiles } = await import('../src/context.ts');
+  const csharp = { id: 'G-a-1', reviewers: ['conventions'], summary: 'cs', text: 'cs', globs: ['**/*.cs'] };
+  const anywhere = { id: 'G-a-2', reviewers: ['conventions'], summary: 'any', text: 'any' };
+  const files: ChangedFile[] = [
+    { path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true },
+    { path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true },
+  ];
+  const tsPart = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+x\n';
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-2']);
+  // A changed file no part shows may be read by any part's reviewers, so its rules reach every part.
+  files[1]!.shown = false;
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-1', 'G-a-2']);
+  // A generated file isn't reviewed, so its rules don't reach the other parts.
+  files[1]!.generated = true;
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-2']);
+});
+
+test('a guidance bullet tagged with several globs reaches a review that changes a file any of them matches', async () => {
+  const { readGuidance } = await import('../src/gather.ts');
+  const { guidanceRules } = await import('../src/context.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'guidance-'));
+  writeFileSync(path.join(dir, 'public-api.md'), [
+    '---', 'description: "x"', 'applyTo: "**"', '---', '', '# Public API', '',
+    '- **Pin package versions.** Why. *Check:* Look. *Applies to:* `**/*.cs`, `**/*.csproj` <sub>Identity csharp-production.instructions.md</sub>',
+    '',
+  ].join('\n'));
+  const statements = (changed: string[]) => guidanceRules(readGuidance(dir, changed)).map((r) => r.summary);
+  assert.deepEqual(statements(['src/Identity.csproj']), ['Pin package versions.']);
+  assert.deepEqual(statements(['src/Comments.cs']), ['Pin package versions.']);
+  // A topic whose bullets are all tagged for other files is left out, rather than given to the reviewer as a bare header.
+  assert.deepEqual(readGuidance(dir, ['src/comments.ts']), []);
+});
+
+test('review jobs give each part of the diff only the rules tagged for its files, and skip a rule batch left empty', async () => {
+  const { outcomeNames, reviewJobs, ruleCheckName } = await import('../src/review.ts');
+  const csharp = { id: 'G-a-1', reviewers: ['conventions'], summary: 'cs', text: 'cs', globs: ['**/*.cs'] };
+  const anywhere = { id: 'G-a-2', reviewers: ['conventions'], summary: 'any', text: 'any' };
+  const files: ChangedFile[] = [
+    { path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true },
+    { path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true },
+  ];
+  const tsPart = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+x\n';
+  const csPart = 'diff --git a/src/A.cs b/src/A.cs\n--- a/src/A.cs\n+++ b/src/A.cs\n@@ -1 +1 @@\n+x\n';
+  const rulesFor = new Map([['conventions', [csharp, anywhere]]]);
+  const jobs = reviewJobs([tsPart, csPart], files, ['conventions', 'tests'], rulesFor, [[csharp], [anywhere]], { conventions: 'sonnet' });
+  const plan = jobs.map((job) => `${job.part} ${job.name} ${job.tier}: ${job.rules.map((r) => r.id).join(',')}`);
+  assert.deepEqual(plan, [
+    '0 conventions sonnet: G-a-2',
+    '0 tests haiku: ',
+    `0 ${ruleCheckName} sonnet: G-a-2`,
+    '1 conventions sonnet: G-a-1,G-a-2',
+    '1 tests haiku: ',
+    `1 ${ruleCheckName} sonnet: G-a-1`,
+    `1 ${ruleCheckName} sonnet: G-a-2`,
+  ]);
+  assert.deepEqual(outcomeNames(['conventions'], jobs), ['conventions', ruleCheckName]);
+  // A pull request that changes no C# file runs no rule check for a batch of C# rules, and reports none.
+  const tsOnly = reviewJobs([tsPart], files.slice(0, 1), ['conventions'], rulesFor, [[csharp]], {});
+  assert.deepEqual(tsOnly.map((job) => `${job.name}: ${job.rules.map((r) => r.id).join(',')}`), ['conventions: G-a-2']);
+  assert.deepEqual(outcomeNames(['conventions'], tsOnly), ['conventions']);
+});
+
+test('training tags a guidance rule with the files its instruction-file sources apply to', async () => {
+  const { generalGlob, retagGuidance, ruleScope, sourceScopes } = await import('../training/run.ts');
+  const { bulletGlobs, formatBullet, parseBullet } = await import('../src/guidance.ts');
+  assert.equal(generalGlob('src/**/*.cs'), '**/*.cs');
+  assert.equal(generalGlob('tests/**/*.cs'), '**/*.cs');
+  assert.equal(generalGlob('**'), '**');
+  const scopes = sourceScopes([
+    { label: 'Identity csharp-production.instructions.md', applyTo: ['src/**/*.cs'] },
+    { label: 'Identity repository.instructions.md', applyTo: ['**'] },
+    { label: 'Identity ADR-0001' },
+  ]);
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md'], scopes), ['**/*.cs']);
+  // Any source that applies to every file, or that isn't an instruction file, leaves the rule for every file.
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md', 'Identity repository.instructions.md'], scopes), []);
+  assert.deepEqual(ruleScope(['Identity csharp-production.instructions.md', 'Identity ADR-0001'], scopes), []);
+  const rule = { statement: 'Keep functions small.', why: 'Why.', check: 'Look.', note: 'Note.', sources: ['Identity csharp-production.instructions.md'] };
+  const tagged = formatBullet(rule, ['**/*.cs']);
+  assert.equal(tagged, '- **Keep functions small.** Why. *Check:* Look. *Note:* Note. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>');
+  assert.deepEqual(parseBullet(tagged), rule);
+  assert.deepEqual(bulletGlobs(tagged), ['**/*.cs']);
+  assert.equal(retagGuidance(formatBullet(rule, []), scopes), tagged);
+});
+
+test('retagging refuses a guidance bullet the formatter would not write back as it was', async () => {
+  const { retagGuidance } = await import('../training/run.ts');
+  assert.throws(() => retagGuidance('- **No sources.** Why. *Check:* Look.', new Map()), /Can't retag this bullet/);
+  assert.throws(() => retagGuidance('- **Empty note.** Why. *Check:* Look. *Note:*  <sub>Identity ADR-0001</sub>', new Map()), /Can't retag this bullet/);
+});
+
+test('a rerun of training keeps a saved extraction whose source is unchanged, with the source\'s current applyTo', async () => {
+  const { reuseExtraction, saveExtracted } = await import('../training/run.ts');
+  const saved = { hash: 'h', promptHash: 'p', label: 'Identity csharp.instructions.md', applyTo: ['src/**/*.cs'], rules: [] };
+  assert.equal(reuseExtraction(undefined, 'h', 'p', undefined), undefined);
+  assert.equal(reuseExtraction(saved, 'changed', 'p', ['src/**/*.cs']), undefined);
+  assert.equal(reuseExtraction(saved, 'h', 'changed', ['src/**/*.cs']), undefined);
+  assert.deepEqual(reuseExtraction(saved, 'h', 'p', ['src/**/*.cs']), { saved, changed: false });
+  const widened = reuseExtraction(saved, 'h', 'p', ['src/**/*.cs', 'tests/**/*.cs'])!;
+  assert.deepEqual(widened, { saved: { ...saved, applyTo: ['src/**/*.cs', 'tests/**/*.cs'] }, changed: true });
+  const dropped = reuseExtraction(saved, 'h', 'p', undefined)!;
+  assert.equal(dropped.changed, true);
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'extracted-')), 'instructions', 'csharp-1.json');
+  saveExtracted(file, widened.saved);
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).applyTo, ['src/**/*.cs', 'tests/**/*.cs']);
+  saveExtracted(file, dropped.saved);
+  assert.ok(!('applyTo' in JSON.parse(readFileSync(file, 'utf8'))));
+});
+
+test('the committed guidance carries the tags its sources give it', async () => {
+  const { retagGuidance, sourceScopes } = await import('../training/run.ts');
+  const scopes = sourceScopes();
+  assert.deepEqual(scopes.get('Identity csharp-production.instructions.md'), ['**/*.cs']);
+  const dir = path.resolve(import.meta.dirname, '..', 'guidance');
+  for (const name of readdirSync(dir)) {
+    const text = readFileSync(path.join(dir, name), 'utf8');
+    assert.equal(retagGuidance(text, scopes), text, `${name} is out of date: run node training/run.ts --retag`);
+  }
 });
 
 test('an eval concern with a minimum severity is judged only against findings at that severity or above', async () => {
@@ -265,6 +405,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
       summary: 'Adds a cache.\nIt works.',
       verdict: 'comment',
       findings: [{ ...finding, severity: 'should-fix', id: 'F1' }],
+      dropped: [],
       reviewers: [
         { name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' },
         { name: 'correctness', status: 'ran', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0 },
@@ -290,6 +431,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\| security \| sonnet-5-5 \| failed \| ⚠️ \|/);
   assert.match(body, /\| architecture \| — \| skipped \| ⏭️ \|/);
   assert.match(body, /\*Skipped: performance, data-model\*/);
+  assert.doesNotMatch(body, /Left out/);
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
 });
@@ -753,7 +895,170 @@ test('threadBody escapes HTML and carries the finding marker', async () => {
   const { threadBody } = await import('../src/threads.ts');
   const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
   assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
-  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker reviewers=security -->$/);
+  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker reviewer=security -->$/);
+});
+
+const suggested = (suggestion: { startLine: number; endLine: number; replacement: string }, line = 11) => ({
+  id: 'F1', file: 'src/A.ts', line, severity: 'should-fix' as const, title: 'Off by one', problem: 'p', consequence: 'c',
+  fix: 'Use <= instead.', evidence: 'e', confidence: 0.9, reviewers: ['correctness', 'tests'], suggestion,
+});
+
+test('a suggestion on added lines posts a multi-line comment with a suggestion block', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const placement = placeFindings([suggested({ startLine: 10, endLine: 12, replacement: 'a\n  b <= c\nd\n' })], { 'src/A.ts': [10, 11, 12] }, []);
+  const comment = reviewComment(placement.inline[0]!);
+  assert.deepEqual({ ...comment, body: undefined }, { path: 'src/A.ts', start_line: 10, start_side: 'RIGHT', line: 12, side: 'RIGHT', body: undefined });
+  assert.ok(String(comment['body']).includes('**Fix:** Use &lt;= instead.\n\n```suggestion\na\n  b <= c\nd\n```\n\n<details>'));
+});
+
+test('a one-line suggestion posts on its line without a start line', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const placement = placeFindings([suggested({ startLine: 11, endLine: 11, replacement: 'x' })], { 'src/A.ts': [11] }, []);
+  const comment = reviewComment(placement.inline[0]!);
+  assert.equal(comment['start_line'], undefined);
+  assert.equal(comment['line'], 11);
+  assert.match(String(comment['body']), /```suggestion\nx\n```/);
+});
+
+test('postThreads posts a suggested finding as a multi-line comment with its suggestion block', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const bodies: any[] = [];
+  const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
+    if (method === 'GET') return [];
+    bodies.push(body);
+    return {};
+  };
+  const results = { ...summaryResults, findings: [suggested({ startLine: 10, endLine: 12, replacement: 'a' })], changedLines: { 'src/A.ts': [10, 11, 12] } };
+  await postThreads(api, results, ['secret-token'], () => {});
+  const [comment] = bodies[0].comments;
+  assert.equal(comment.start_line, 10);
+  assert.equal(comment.line, 12);
+  assert.match(comment.body, /```suggestion\na\n```/);
+});
+
+// Places one suggested finding on the given added lines and checks it posts on `line` with the prose fix and no suggestion.
+async function assertProseOnly(finding: ReturnType<typeof suggested>, added: number[], line: number): Promise<void> {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const comment = reviewComment(placeFindings([finding], { 'src/A.ts': added }, []).inline[0]!);
+  assert.equal(comment['start_line'], undefined);
+  assert.equal(comment['line'], line);
+  assert.doesNotMatch(String(comment['body']), /suggestion/);
+  assert.match(String(comment['body']), /\*\*Fix:\*\* Use &lt;= instead\./);
+}
+
+test('a suggestion whose range includes an unchanged line posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 10, endLine: 12, replacement: 'a' }, 10), [10, 12], 10);
+});
+
+test('a suggestion on a finding snapped to another line posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 11, endLine: 11, replacement: 'a' }, 11), [12], 12);
+});
+
+test('a suggestion whose range leaves out the finding\'s line posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 12, endLine: 13, replacement: 'a' }), [11, 12, 13], 11);
+});
+
+test('a suggestion whose replacement is longer than the limit posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 10, endLine: 11, replacement: '1\n2\n3\n4\n5\n6' }), [10, 11], 11);
+});
+
+test('a suggestion exactly at the limit posts with its block', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 10, endLine: 14, replacement: '1\n2\n3\n4\n5' });
+  const comment = reviewComment(placeFindings([finding], { 'src/A.ts': [10, 11, 12, 13, 14] }, []).inline[0]!);
+  assert.equal(comment['start_line'], 10);
+  assert.equal(comment['line'], 14);
+  assert.ok(String(comment['body']).includes('\n```suggestion\n1\n2\n3\n4\n5\n```\n'));
+});
+
+test('a suggestion whose range is longer than the limit posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 10, endLine: 15, replacement: 'a' }), [10, 11, 12, 13, 14, 15], 11);
+});
+
+test('a suggestion starting before line 1 posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 0, endLine: 1, replacement: 'a' }, 1), [0, 1], 1);
+});
+
+test('a suggestion whose range ends before it starts posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 12, endLine: 10, replacement: 'a' }), [10, 11, 12], 11);
+});
+
+test('a suggestion with a line that is not an integer posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 10, endLine: 10.5, replacement: 'a' }, 10), [10, 11], 10);
+});
+
+test('a suggestion whose replacement is not text posts without its block', async () => {
+  await assertProseOnly(suggested({ startLine: 11, endLine: 11, replacement: ['a'] as unknown as string }), [11], 11);
+});
+
+test('an empty replacement posts a suggestion that deletes its lines', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const comment = reviewComment(placeFindings([suggested({ startLine: 10, endLine: 11, replacement: '' })], { 'src/A.ts': [10, 11] }, []).inline[0]!);
+  assert.equal(comment['start_line'], 10);
+  assert.equal(comment['line'], 11);
+  assert.ok(String(comment['body']).includes('\n```suggestion\n```\n'));
+});
+
+test('a suggestion with a code fence in it gets a longer fence', async () => {
+  const { suggestionBlock } = await import('../src/threads.ts');
+  assert.equal(suggestionBlock('a ```\n````\nb'), '`````suggestion\na ```\n````\nb\n`````');
+});
+
+test('a suggestion\'s line endings become line feeds', async () => {
+  const { suggestionBlock } = await import('../src/threads.ts');
+  assert.equal(suggestionBlock('a\r\nb\rc\r\n'), '```suggestion\na\nb\nc\n```');
+});
+
+test('a suggestion\'s text cannot pass for the finding marker', async () => {
+  const { threadBody, parsePosted, fingerprint } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 11, endLine: 11, replacement: '<!-- ncode-review:finding id=F9 fp=0000000000000000 severity=nit -->' });
+  const posted = parsePosted([{ path: 'src/A.ts', line: 11, body: threadBody(finding, finding.suggestion) }]);
+  assert.equal(posted[0]!.fingerprint, fingerprint(finding));
+});
+
+test('parsePosted reads the reviewers from the marker', async () => {
+  const { threadBody, parsePosted } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 11, endLine: 11, replacement: 'x' });
+  assert.deepEqual(parsePosted([{ path: 'src/A.ts', line: 11, body: threadBody(finding) }])[0]!.reviewers, ['correctness', 'tests']);
+});
+
+test('a finding may leave out its suggestion in both output schemas', async () => {
+  const { specialistSchema, synthesisSchema } = await import('../src/review.ts');
+  for (const schema of [specialistSchema, synthesisSchema]) {
+    const items = schema.properties.findings.items;
+    assert.ok('suggestion' in items.properties);
+    assert.ok(!items.required.includes('suggestion'));
+    assert.ok(items.required.includes('fix'));
+  }
+});
+
+test('the specialist prompt states the suggestion limit the engine enforces', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { maxSuggestionLines } = await import('../src/config.ts');
+  const prompt = readFileSync(path.resolve(import.meta.dirname, '..', 'prompts', 'specialist.md'), 'utf8');
+  const bullet = prompt.split('\n').find((line) => line.startsWith('- `suggestion`')) ?? '';
+  const limits = [...bullet.matchAll(/(\d+) lines/g)].map((m) => Number(m[1]));
+  assert.ok(limits.length > 0, 'the suggestion bullet names no line limit');
+  assert.deepEqual(limits, limits.map(() => maxSuggestionLines));
+});
+
+test('a marker from before the reviewer field still parses and dedupes', async () => {
+  const { placeFindings, fingerprint, parsePosted } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 11, endLine: 11, replacement: 'x' }, 40);
+  const old = `🟠 **Should fix: Off by one** <sub>F1 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F1 fp=${fingerprint(finding)} severity=should-fix -->`;
+  const posted = parsePosted([{ path: 'src/Elsewhere.ts', line: 1, body: old }]);
+  assert.deepEqual(posted, [{ path: 'src/Elsewhere.ts', line: 1, severity: 'should-fix', fingerprint: fingerprint(finding), reviewers: [] }]);
+  assert.deepEqual(placeFindings([finding], { 'src/A.ts': [40] }, posted).alreadyPosted.map((f) => f.id), ['F1']);
+});
+
+test('mergeSynthesis keeps the suggestion of a merged finding and of one it adds back', () => {
+  const suggestion = { startLine: 1, endLine: 1, replacement: 'x' };
+  const raw = [
+    { id: 'R1', reviewer: 'correctness', ...finding('a', 'should-fix'), suggestion },
+    { id: 'R2', reviewer: 'tests', ...finding('b', 'should-fix'), suggestion },
+  ];
+  const out = mergeSynthesis([{ ...finding('merged a', 'should-fix'), suggestion, sources: ['R1'] }], raw, 10);
+  assert.deepEqual(out.map((f) => [f.title, f.suggestion]), [['merged a', suggestion], ['b', suggestion]]);
 });
 
 test('closedIssues reads the issues a description closes', async () => {

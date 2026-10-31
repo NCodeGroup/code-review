@@ -9,6 +9,7 @@ import {
   isClosedEvent,
   isDeclining,
   lineChanged,
+  maxComparedFiles,
   maxOutcomeRows,
   maxThreadPages,
   outcomesMarker,
@@ -126,12 +127,15 @@ test('patchTouches finds an edited or removed line, and code added right next to
   assert.ok(!patchTouches('@@ -1,2 +1,2 @@\n-a\n+b\n c\n@@ -40,3 +40,3 @@\n x\n-y\n+z\n w', 20));
 });
 
-test('lineChanged follows a rename, counts a removed file, and leaves an unlisted file or a missing patch unchanged', () => {
+test('lineChanged follows a rename, counts a removed file and an unlisted one, and can\'t tell without a patch or past the file limit', () => {
   const patch = '@@ -1,3 +1,3 @@\n a\n-b\n+c\n d';
-  assert.ok(lineChanged([{ filename: 'new.cs', previous_filename: 'old.cs', status: 'renamed', patch }], 'old.cs', 2));
-  assert.ok(lineChanged([{ filename: 'gone.cs', status: 'removed' }], 'gone.cs', 9));
-  assert.ok(!lineChanged([{ filename: 'other.cs', status: 'modified', patch }], 'a.cs', 2));
-  assert.ok(!lineChanged([{ filename: 'big.cs', status: 'modified' }], 'big.cs', 2));
+  assert.equal(lineChanged([{ filename: 'new.cs', previous_filename: 'old.cs', status: 'renamed', patch }], 'old.cs', 2), true);
+  assert.equal(lineChanged([{ filename: 'gone.cs', status: 'removed' }], 'gone.cs', 9), true);
+  assert.equal(lineChanged([{ filename: 'other.cs', status: 'modified', patch }], 'a.cs', 2), false);
+  assert.equal(lineChanged([{ filename: 'big.cs', status: 'modified' }], 'big.cs', 2), undefined);
+  const capped = Array.from({ length: maxComparedFiles }, (_, i) => ({ filename: `f${i}.cs`, status: 'modified', patch }));
+  assert.equal(lineChanged(capped, 'a.cs', 2), undefined);
+  assert.equal(lineChanged(capped.slice(1), 'a.cs', 2), false);
 });
 
 function reviewed(overrides: Partial<ReviewedFinding>): ReviewedFinding {
@@ -149,8 +153,8 @@ test('parseFindingComment reads the marker, and the visible reviewers of a comme
   assert.equal(parseFindingComment('Just a comment.'), undefined);
 });
 
-test('parseFindingComment falls back to the visible reviewers when the marker encodes them badly', () => {
-  const damaged = '🔴 **Blocker: t** <sub>F2 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=blocker reviewers=a%,b -->';
+test('parseFindingComment falls back to the visible reviewers when the marker names them as blank', () => {
+  const damaged = '🔴 **Blocker: t** <sub>F2 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=blocker reviewer=, -->';
   assert.deepEqual(parseFindingComment(damaged), { id: 'F2', severity: 'blocker', reviewers: ['correctness'] });
 });
 
@@ -230,7 +234,7 @@ test("the summary comment records the review's cost, provider and models, and a 
     },
   ]);
   const summary = summaryComment(
-    { ...reviewResults, summary: 's', verdict: 'comment', findings: [], skipped: [], durationMs: 1000 } as unknown as Results,
+    { ...reviewResults, summary: 's', verdict: 'comment', findings: [], dropped: [], skipped: [], durationMs: 1000 } as unknown as Results,
     'https://check',
     'https://help',
   );
@@ -358,6 +362,20 @@ test('collectOutcomes counts every finding as unchanged when the comparison fail
   const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
   assert.equal(report?.findings[0]?.outcome, 'ignored');
   assert.ok(lines.some((line) => line.startsWith("::warning::Couldn't compare aaaaaaa with bbbbbbb")));
+});
+
+test('collectOutcomes lets an outdated thread decide, and warns, when the comparison has no patch for its file', async () => {
+  const { api: base } = fakeGitHub();
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url.includes('/compare/')) return { files: [{ filename: 'src/A.cs', status: 'modified' }, { filename: 'src/B.cs', status: 'modified' }] };
+    const answer = await base(method, url, body);
+    if (url === '/graphql') for (const thread of answer.data.repository.pullRequest.reviewThreads.nodes) thread.isOutdated = thread.path === 'src/A.cs';
+    return answer;
+  };
+  const lines: string[] = [];
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
+  assert.deepEqual(report?.findings.map((f) => f.outcome), ['fixed', 'dismissed', 'ignored']);
+  assert.deepEqual(lines.filter((line) => line.includes("doesn't show whether")).map((line) => / (F\d)'s /.exec(line)?.[1]), ['F1', 'F2']);
 });
 
 test('collectOutcomes records nothing on a pull request the bot never reviewed', async () => {
