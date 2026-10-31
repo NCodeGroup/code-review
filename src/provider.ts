@@ -27,11 +27,12 @@ export function stoppedBy(error: unknown, url?: string): { status: RunStatus; fa
     : { status: failureStatus(error, url), failed: true };
 }
 
+const bedrockQuotaErrors = new Set(['ThrottlingException', 'ServiceQuotaExceededException']);
+
 // A one-token call to Bedrock with the run's key; says why Bedrock refused it, or undefined. A 401 or 403 proves the key
 // is bad (missing, expired or revoked, or without model access). Throttling or a used-up quota (a 429, or one of these
 // error types in x-amzn-errortype) means the review couldn't get through either. A model still loading
 // (ModelNotReadyException), any other answer, or none, goes on with Bedrock.
-const bedrockQuotaErrors = new Set(['ThrottlingException', 'ServiceQuotaExceededException']);
 async function bedrockRefusal(key: string, fetchFn: typeof fetch): Promise<string | undefined> {
   try {
     const response = await fetchFn(`https://bedrock-runtime.${bedrockRegion}.amazonaws.com/model/${encodeURIComponent(modelIds.bedrock.haiku)}/invoke`, {
