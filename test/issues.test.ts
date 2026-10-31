@@ -150,9 +150,22 @@ test('a tracked finding is not posted as a new thread, and the review says which
     calls.push(`${method} ${url}`);
     return [];
   };
-  await postThreads(api, { repository: 'o/r', pullRequest: 1, headSha: 'h', findings: [reviewed('Known', 3, 12)], changedLines: { 'src/a.ts': [3] } }, [], (l) => logs.push(l));
+  await postThreads(api, { repository: 'o/r', pullRequest: 1, headSha: 'h', findings: [], tracked: [reviewed('Known', 3, 12)], changedLines: { 'src/a.ts': [3] } }, [], (l) => logs.push(l));
   assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1']);
   assert.deepEqual(logs, ['No new findings to post (1 tracked in open issues).']);
+});
+
+test('postThreads posts the new findings and names the issues that track the rest in the review\'s body', async () => {
+  const bodies: any[] = [];
+  const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
+    if (method === 'GET') return [];
+    bodies.push(body);
+    return {};
+  };
+  await postThreads(api, { repository: 'o/r', pullRequest: 1, headSha: 'h'.repeat(40), findings: [reviewed('New', 2)], tracked: [reviewed('Known', 3, 12)], changedLines: { 'src/a.ts': [2, 3] } }, [], () => {});
+  assert.equal(bodies.length, 1);
+  assert.deepEqual(bodies[0].comments.map((c: { line: number }) => c.line), [2]);
+  assert.match(bodies[0].body, /1 more is tracked in #12\./);
 });
 
 test('the summary comment and the check run list tracked findings apart, and leave them out of the counts', () => {
