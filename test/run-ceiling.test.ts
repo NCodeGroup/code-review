@@ -54,6 +54,7 @@ const charters: Charters = {
   synthesisPrompt: 'syn',
   ruleCheckPrompt: 'r',
   verificationPrompt: 'v',
+  reReviewPrompt: 're',
   reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, n])),
 };
 
@@ -90,15 +91,15 @@ async function cappedReview({
   const agent = async <T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
     roles.push(request.role);
     const record = { role: request.role, provider: run.provider, model: request.tier, costUsd: cost(request.role), inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
-    if (request.role === 'synthesis' && !synthesis) return { output: undefined, record, error: 'synthesis down' };
+    if (request.role === 'synthesis' && !synthesis) return { output: undefined, records: [record], error: 'synthesis down' };
     const failure = error(request.role);
-    if (failure) return { output: undefined, record, error: failure };
+    if (failure) return { output: undefined, records: [record], error: failure };
     const output =
       request.role === 'context' ? { rules: repositoryRules(reviewRules).map((r) => r.id), decisions: [] }
       : request.role === 'selection' ? { add: [] }
       : request.role === 'synthesis' ? synthesis
       : { findings: findings(request.role) };
-    return { output: output as T, record };
+    return { output: output as T, records: [record] };
   };
   const saved = ceilingEnv.map((name) => [name, process.env[name]] as const);
   for (const name of ceilingEnv) delete process.env[name];
@@ -134,6 +135,7 @@ test('the check run marks a reviewer the cost ceiling skipped as skipped: run bu
   const { result } = await cappedReview();
   const text = checkText({
     findings: [],
+    dropped: [],
     calls: result.calls,
     reviewers: result.reviewers.map((r) => ({ name: r.name, status: r.status, model: '', findingCount: r.findings.length, ...(r.error ? { error: r.error } : {}) })),
   } as unknown as Results);
