@@ -109,7 +109,7 @@ test('verifyFindings makes no call and changes nothing when verification is off'
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent, false));
   assert.equal(requests.length, 0);
-  assert.deepEqual(out, { findings, refuted: [], questioned: 0, demoted: 0, skipped: 0, calls: [], trace: [] });
+  assert.deepEqual(out, { findings, refuted: [], questioned: 0, demoted: 0, demotedBlockers: 0, skipped: 0, calls: [], trace: [] });
 });
 
 test('verifyFindings leaves nits unverified and makes no call when only nits remain', async () => {
@@ -186,6 +186,7 @@ test('a refuted blocker is kept as a question one severity lower, with the refut
   assert.match(out.findings[0]!.evidence, /Verification refuted it, but a refuted blocker stays as a question: reason F1 \(src\/c\.ts:9\)$/);
   assert.equal(out.questioned, 1);
   assert.equal(out.demoted, 1);
+  assert.equal(out.demotedBlockers, 1);
 });
 
 test('a refuted security finding is kept as a question one severity lower', () => {
@@ -195,6 +196,7 @@ test('a refuted security finding is kept as a question one severity lower', () =
   assert.equal(out.findings[0]!.severity, 'nit');
   assert.match(out.findings[0]!.evidence, /a refuted security finding stays as a question/);
   assert.equal(out.demoted, 1);
+  assert.equal(out.demotedBlockers, 0);
 });
 
 test('a refutation citing only the lines the pull request adds keeps the finding as a question', async () => {
@@ -204,7 +206,7 @@ test('a refutation citing only the lines the pull request adds keeps the finding
   assert.equal(out.findings[0]!.severity, 'nit');
   assert.match(out.findings[0]!.evidence, /Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: reason F1$/);
   assert.equal(out.questioned, 1);
-  assert.equal(out.demoted, 0);
+  assert.equal(out.demoted, 1);
 
   const pathless = applyVerifications([finding('F1', 'should-fix')], new Map([['F1', verdict('F1', 'refuted', { path: '' })]]), new Map(), lines);
   assert.deepEqual(pathless.refuted, []);
@@ -218,7 +220,7 @@ test('a refutation citing a file the checkout doesn\'t have keeps the finding as
   assert.equal(out.findings[0]!.severity, 'nit');
   assert.match(out.findings[0]!.evidence, /without citing code in the checkout outside the lines this pull request adds/);
   assert.equal(out.questioned, 1);
-  assert.equal(out.demoted, 0);
+  assert.equal(out.demoted, 1);
 });
 
 test('citesUnchangedCode needs a file:line of the checkout outside the lines the diff adds', () => {
@@ -393,9 +395,9 @@ test('verificationNote names the refuted findings and counts the ones verificati
   assert.equal(verificationNote([], 1), ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower.');
   assert.equal(
     verificationNote([], 2, 1),
-    ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower, and kept one refuted blocker or security finding as a question one severity lower.',
+    ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower, and kept one refuted finding as a question one severity lower.',
   );
-  assert.equal(verificationNote([], 2, 2), ' After this summary was written, verification kept 2 refuted blockers or security findings as questions one severity lower.');
+  assert.equal(verificationNote([], 2, 2), ' After this summary was written, verification kept 2 refuted findings as questions one severity lower.');
 });
 
 // What review() hands verification after synthesis, and what it takes back.
@@ -421,6 +423,13 @@ test('verifyReview drops a refuted should-fix, names it in the summary and eases
   assert.equal(out.verdict, 'comment');
   assert.equal(out.calls.length, 1);
   assert.equal(out.trace.length, 1);
+});
+
+test('verifyReview\'s summary says a finding refuted only on the change\'s own lines was refuted and kept, not unsettled', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { path: 'src/a.ts:2' })]]));
+  const out = await verifyReview({ summary: 'Risky.', verdict: 'comment', findings: [finding('F1', 'should-fix', 'src/a.ts', 2)] }, reviewInput(agent));
+  assert.match(out.summary, /kept one refuted finding as a question one severity lower\.$/);
+  assert.doesNotMatch(out.summary, /couldn't settle/);
 });
 
 test('verifyReview keeps a request for changes while a blocker or should-fix is left', async () => {
