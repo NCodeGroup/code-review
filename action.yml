@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain comment asks about, and to fetch the pull request's head.
+    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain or /review teach comment names, and to fetch the pull request's head.
     required: false
     default: ${{ github.token }}
   app-client-id:
@@ -56,8 +56,8 @@ runs:
 
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # The app's private key is not in this step's environment.
-    # For a comment that isn't a /review or /review explain command from someone with write access, it stops here and the
-    # later steps skip.
+    # For a comment that isn't a /review, /review explain or /review teach command from someone with write access, it stops
+    # here and the later steps skip.
     - name: Review
       id: review
       shell: bash
@@ -77,7 +77,7 @@ runs:
     # comments.
     - name: Get the app's token
       id: app-token
-      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -86,12 +86,29 @@ runs:
         permission-checks: write
         permission-pull-requests: write
 
+    # For /review teach only: a second token, able to write only issues, in the one repository the guidance issue opens
+    # in (this one, or NCodeGroup/code-review for /review teach org). It is separate so a review never asks for issues
+    # write, and it may fail: when the app lacks issues write there, or isn't installed there, the publish step replies
+    # that it lacks the permission instead of opening the issue.
+    - name: Get the app's token for the guidance issue
+      id: issues-token
+      if: steps.review.outputs.taught == 'true'
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ steps.review.outputs.guidance-owner }}
+        repositories: ${{ steps.review.outputs.guidance-repository }}
+        permission-issues: write
+
     - name: Publish
-      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        CODE_REVIEW_ISSUES_TOKEN: ${{ steps.issues-token.outputs.token }}
       run: node "$GITHUB_ACTION_PATH/src/publish.ts"
 
     - name: Upload the trace
