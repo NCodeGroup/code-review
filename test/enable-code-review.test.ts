@@ -19,7 +19,8 @@ function findPwsh(): string | undefined {
   }
 }
 const pwsh = findPwsh();
-const skip = pwsh ? false : 'pwsh is not installed';
+// Skipped locally without pwsh; in CI the tests run, and fail, so a runner without it can't pass them unchecked.
+const skip = pwsh || process.env['CI'] ? false : 'pwsh is not installed';
 
 const made: string[] = [];
 after(() => {
@@ -33,13 +34,14 @@ $line = $args -join ' '
 foreach ($answer in (Get-Content -Raw -LiteralPath $env:FAKE_GH_SCENARIO | ConvertFrom-Json)) {
     if ($line -match $answer.match) {
         if ($null -ne $answer.stdout) { $answer.stdout }
+        if ($null -ne $answer.stderr) { Write-Error $answer.stderr }
         exit [int]$answer.exit
     }
 }
 exit 0
 `;
 
-type Answer = { match: string; stdout?: string; exit?: number };
+type Answer = { match: string; stdout?: string; stderr?: string; exit?: number };
 type Call = { args: string[]; stdin: boolean };
 
 const org = 'NCodeGroup';
@@ -47,11 +49,12 @@ const appKey = 'NCODE_REVIEW_APP_PRIVATE_KEY';
 const bedrock = 'AWS_BEARER_TOKEN_BEDROCK';
 
 // An organization with the app installed on all repositories, the repositories alpha (id 101) and beta (id 102), and
-// the app key limited to code-review. The Bedrock key exists, limited to code-review, unless withBedrock is false.
-function scenario(withBedrock = true): Answer[] {
-  const secret = (name: string): Answer[] => [
+// the app key limited to code-review. The Bedrock key is limited to code-review, visible to all repositories, or
+// missing (gh answers 404).
+function scenario(bedrockKey: 'selected' | 'all' | 'missing' = 'selected'): Answer[] {
+  const secret = (name: string, visibility = 'selected'): Answer[] => [
     { match: `^api orgs/${org}/actions/secrets/${name}/repositories\\?`, stdout: `${org}/code-review` },
-    { match: `^api orgs/${org}/actions/secrets/${name}$`, stdout: JSON.stringify({ name, visibility: 'selected' }) },
+    { match: `^api orgs/${org}/actions/secrets/${name}$`, stdout: JSON.stringify({ name, visibility }) },
   ];
   return [
     { match: `^api orgs/${org}/installations`, stdout: JSON.stringify({ installations: [{ id: 5, app_slug: 'ncode-review', repository_selection: 'all' }] }) },
@@ -59,13 +62,21 @@ function scenario(withBedrock = true): Answer[] {
     { match: `^api repos/${org}/beta$`, stdout: JSON.stringify({ id: 102, full_name: `${org}/beta`, default_branch: 'main' }) },
     { match: '^api repos/[^ ]+$', exit: 1 },
     ...secret(appKey),
-    ...(withBedrock ? secret(bedrock) : [{ match: `^api orgs/${org}/actions/secrets/${bedrock}$`, exit: 1 }]),
+    ...(bedrockKey === 'missing'
+      ? [{ match: `^api orgs/${org}/actions/secrets/${bedrock}$`, stdout: '{"message":"Not Found","status":"404"}', stderr: 'gh: Not Found (HTTP 404)', exit: 1 }]
+      : secret(bedrock, bedrockKey)),
   ];
 }
 
-function run(args: string[], answers: Answer[]): { status: number | null; output: string; calls: Call[] } {
+function tempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'enable-code-review-'));
   made.push(dir);
+  return dir;
+}
+
+function run(args: string[], answers: Answer[]): { status: number | null; output: string; calls: Call[] } {
+  assert.ok(pwsh, 'pwsh is not installed, and CI needs it to test tools/Enable-CodeReview.ps1');
+  const dir = tempDir();
   writeFileSync(path.join(dir, 'gh.ps1'), fakeGh);
   const scenarioPath = path.join(dir, 'scenario.json');
   writeFileSync(scenarioPath, JSON.stringify(answers));
@@ -78,7 +89,7 @@ function run(args: string[], answers: Answer[]): { status: number | null; output
   env['PATH'] = dir;
   env['FAKE_GH_LOG'] = log;
   env['FAKE_GH_SCENARIO'] = scenarioPath;
-  const result = spawnSync(pwsh ?? 'pwsh', ['-NoProfile', '-NonInteractive', '-File', script, ...args], {
+  const result = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', script, ...args], {
     encoding: 'utf8',
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -87,7 +98,9 @@ function run(args: string[], answers: Answer[]): { status: number | null; output
   const calls = existsSync(log)
     ? readFileSync(log, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as Call)
     : [];
-  return { status: result.status, output: `${result.stdout}${result.stderr}`, calls };
+  // pwsh's error view colours the message and wraps it across lines that start with "|"; join them back up.
+  const output = `${result.stdout}${result.stderr}`.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s*\r?\n {5}\| /g, ' ');
+  return { status: result.status, output, calls };
 }
 
 const joined = (calls: Call[]): string[] => calls.map((call) => call.args.join(' '));
@@ -104,7 +117,7 @@ test('-SkipBedrock gives the opted-in repositories access to the existing Bedroc
 });
 
 test('-SkipBedrock skips the Bedrock key, without prompting, when the organization has none', { skip }, () => {
-  const { status, output, calls } = run(['-Repo', 'alpha', '-SkipBedrock'], scenario(false));
+  const { status, output, calls } = run(['-Repo', 'alpha', '-SkipBedrock'], scenario('missing'));
   assert.equal(status, 0, output);
   const lines = joined(calls);
   assert.ok(!lines.some((line) => line.includes(bedrock) && (line.startsWith('secret set') || line.includes('-X PUT'))), lines.join('\n'));
@@ -136,4 +149,60 @@ test('-UpdateBedrockKey and -SkipBedrock together are refused before any change'
   assert.notEqual(status, 0, output);
   assert.match(output, /Pass -UpdateBedrockKey or -SkipBedrock, not both\./);
   assert.deepEqual(calls, []);
+});
+
+test('-SkipBedrock sends no Bedrock grant when the Bedrock key is visible to all repositories', { skip }, () => {
+  const { status, output, calls } = run(['-Repo', 'alpha', '-SkipBedrock'], scenario('all'));
+  assert.equal(status, 0, output);
+  const lines = joined(calls);
+  assert.ok(!lines.some((line) => line.includes(bedrock) && (line.startsWith('secret set') || line.includes('-X PUT'))), lines.join('\n'));
+  assert.ok(lines.includes(grant(appKey, 101)), lines.join('\n'));
+});
+
+test('-SkipBedrock stops, instead of skipping the Bedrock key, when gh fails to read it for another reason than 404', { skip }, () => {
+  const failing: Answer = { match: `^api orgs/${org}/actions/secrets/${bedrock}$`, stderr: 'gh: Server Error (HTTP 500)', exit: 1 };
+  const { status, output, calls } = run(['-Repo', 'alpha', '-SkipBedrock'], [failing, ...scenario()]);
+  assert.notEqual(status, 0, output);
+  assert.match(output, /Couldn't read the organization secret AWS_BEARER_TOKEN_BEDROCK/);
+  assert.match(output, /HTTP 500/);
+  assert.doesNotMatch(output, /doesn't have it yet/);
+  assert.ok(!joined(calls).some((line) => line.includes(bedrock) && line.includes('-X PUT')), joined(calls).join('\n'));
+});
+
+test('-Repo takes <org>/<name> and ignores empty entries', { skip }, () => {
+  const { status, output, calls } = run(['-Repo', `${org}/alpha,,beta,`, '-SkipBedrock'], scenario());
+  assert.equal(status, 0, output);
+  const lines = joined(calls);
+  assert.deepEqual(lines.filter((line) => line.startsWith('api repos/') && !line.includes('/environments/')), [`api repos/${org}/alpha`, `api repos/${org}/beta`]);
+  const grants = lines.filter((line) => line.includes('-X PUT') && line.includes('/actions/secrets/'));
+  assert.deepEqual(grants.sort(), [grant(appKey, 101), grant(appKey, 102), grant(bedrock, 101), grant(bedrock, 102)].sort());
+});
+
+test('A failed grant stops the script with gh\'s exit code and the admin:org hint', { skip }, () => {
+  const failing: Answer = { match: `^api -X PUT orgs/${org}/actions/secrets/${appKey}/repositories/101 `, exit: 1 };
+  const { status, output, calls } = run(['-Repo', 'alpha,beta', '-SkipBedrock'], [failing, ...scenario()]);
+  assert.notEqual(status, 0, output);
+  assert.match(output, /Couldn't give NCodeGroup\/alpha access to NCODE_REVIEW_APP_PRIVATE_KEY/);
+  assert.match(output, /exited with code 1/);
+  assert.match(output, /admin:org/);
+  const lines = joined(calls);
+  assert.ok(lines.includes(grant(appKey, 101)), lines.join('\n'));
+  assert.ok(!lines.includes(grant(appKey, 102)), lines.join('\n'));
+  assert.ok(!lines.some((line) => line.includes(bedrock) && line.includes('-X PUT')), lines.join('\n'));
+});
+
+test('A failed secret set stops the script with gh\'s exit code and the admin:org hint', { skip }, () => {
+  const pem = path.join(tempDir(), 'app.pem');
+  writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+  const failing: Answer = { match: `^secret set ${appKey} `, exit: 1 };
+  const { status, output, calls } = run(['-Repo', 'alpha', '-AppPrivateKeyPath', pem, '-SkipBedrock'], [failing, ...scenario()]);
+  assert.notEqual(status, 0, output);
+  assert.match(output, /Couldn't set NCODE_REVIEW_APP_PRIVATE_KEY/);
+  assert.match(output, /exited with code 1/);
+  assert.match(output, /admin:org/);
+  assert.doesNotMatch(output, /not-a-real-key/);
+  const lines = joined(calls);
+  const set = calls.find((call) => call.args[0] === 'secret' && call.args[1] === 'set');
+  assert.ok(set?.stdin, lines.join('\n'));
+  assert.ok(!lines.some((line) => line.includes(bedrock) && line.includes('-X PUT')), lines.join('\n'));
 });

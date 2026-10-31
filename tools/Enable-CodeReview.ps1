@@ -62,6 +62,7 @@ $environment = 'code-review'
 $appSlug = 'ncode-review'
 $appKeySecret = 'NCODE_REVIEW_APP_PRIVATE_KEY'
 $bedrockSecret = 'AWS_BEARER_TOKEN_BEDROCK'
+$adminOrgHint = 'gh auth refresh -h github.com -s admin:org'
 
 function Invoke-Gh {
     $output = & gh @args
@@ -70,10 +71,18 @@ function Invoke-Gh {
 }
 
 # The organization secret's visibility and, when it's limited to selected repositories, their full names.
-# Returns $null when the secret doesn't exist.
+# Returns $null when the secret doesn't exist (HTTP 404), and throws on any other failure to read it.
 function Get-OrgSecret([string]$Name) {
-    $secret = gh api "orgs/$Org/actions/secrets/$Name" 2>$null | ConvertFrom-Json
-    if ($LASTEXITCODE) { return $null }
+    $ErrorActionPreference = 'Continue'
+    $output = @(gh api "orgs/$Org/actions/secrets/$Name" 2>&1)
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    $errorText = ($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() }) -join ' '
+    if ($exitCode) {
+        if ($errorText -match 'HTTP 404') { return $null }
+        throw "Couldn't read the organization secret ${Name}: gh api orgs/$Org/actions/secrets/$Name exited with code $exitCode ($errorText). If it's a 403, the token needs the admin:org scope: $adminOrgHint"
+    }
+    $secret = ($output | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] }) -join "`n" | ConvertFrom-Json
     $repos = @()
     if ($secret.visibility -eq 'selected') {
         $repos = @(Invoke-Gh api "orgs/$Org/actions/secrets/$Name/repositories?per_page=100" --jq '.repositories[].full_name')
@@ -89,7 +98,7 @@ function Set-OrgSecret([string]$Name, [string]$Value, [string[]]$Repos) {
     if ($current -and $current.Visibility -ne 'selected') { $visibility = @('--visibility', $current.Visibility) }
     if ($PSCmdlet.ShouldProcess("$Org organization secret $Name", 'Set the value')) {
         $Value | gh secret set $Name --org $Org @visibility
-        if ($LASTEXITCODE) { throw "Couldn't set $Name. Setting an organization secret needs the admin:org scope: gh auth refresh -h github.com -s admin:org" }
+        if ($LASTEXITCODE) { throw "Couldn't set ${Name}: gh secret set $Name --org $Org exited with code $LASTEXITCODE. If it's a 403, the token needs the admin:org scope: $adminOrgHint" }
     }
 }
 
@@ -97,7 +106,7 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'gh not found. 
 gh auth status *> $null
 if ($LASTEXITCODE) { throw 'gh isn''t signed in. Run: gh auth login' }
 gh secret list --org $Org *> $null
-if ($LASTEXITCODE) { throw "gh can't read $Org's organization secrets. Grant the scope with: gh auth refresh -h github.com -s admin:org" }
+if ($LASTEXITCODE) { throw "gh can't read $Org's organization secrets. Grant the scope with: $adminOrgHint" }
 if (-not $Repo -and -not $AppPrivateKeyPath -and -not $UpdateBedrockKey) { throw 'Nothing to do. Pass -Repo, -AppPrivateKeyPath or -UpdateBedrockKey.' }
 
 $installation = (Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations |
@@ -186,8 +195,8 @@ foreach ($name in $appKeySecret, $bedrockSecret) {
     elseif ($current.Visibility -eq 'selected') {
         foreach ($info in $repoInfos | Where-Object { $current.Repos -notcontains $_.full_name }) {
             if ($PSCmdlet.ShouldProcess("$Org organization secret $name", "Give $($info.full_name) access")) {
-                gh api -X PUT "orgs/$Org/actions/secrets/$name/repositories/$($info.id)" --silent
-                if ($LASTEXITCODE) { throw "Couldn't give $($info.full_name) access to $name. Changing which repositories can read an organization secret needs the admin:org scope: gh auth refresh -h github.com -s admin:org" }
+                try { Invoke-Gh api -X PUT "orgs/$Org/actions/secrets/$name/repositories/$($info.id)" --silent }
+                catch { throw "Couldn't give $($info.full_name) access to ${name}: $($_.Exception.Message) If it's a 403, the token needs the admin:org scope: $adminOrgHint" }
                 "Gave $($info.full_name) access to $name."
             }
         }
