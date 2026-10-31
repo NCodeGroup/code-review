@@ -19,8 +19,8 @@ export interface PullRequest {
   issues?: { number: number; title: string; body: string }[];
   author: string;
   authorAssociation: string;
-  // Whether the author has write access, from the repository's permissions; authorAssociation decides when it's absent.
-  authorCanWrite?: boolean;
+  // Whether the author has write access: the event's association, or failing that the repository's permissions.
+  authorCanWrite: boolean;
   draft: boolean;
   baseRef: string;
   baseSha: string;
@@ -52,10 +52,6 @@ export interface Gathered {
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
-}
-
-function authorCanWrite(pullRequest: PullRequest): boolean {
-  return pullRequest.authorCanWrite ?? writerAssociations.has(pullRequest.authorAssociation);
 }
 
 const generatedPatterns = [
@@ -296,7 +292,7 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
   const proposed = readProposedDecisions(prPath, reviewed);
   const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
-  const commits = authorCanWrite(pullRequest)
+  const commits = pullRequest.authorCanWrite
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
   return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: guidanceDir ? readGuidance(guidanceDir, reviewed) : [], decisions, commits };

@@ -81,8 +81,11 @@ async function gatherFor(body: string | null, permissions: Record<string, string
   const { repo, event } = fixture(body, association);
   const { fetchJson } = api(permissions, issues);
   const isWriter = writerCheck('o/r', 't', fetchJson);
-  const pullRequest = readPullRequest(event, 'o/r', await isWriter(event.pull_request.user.login, event.pull_request.author_association));
-  pullRequest.issues = await readClosedIssues('o/r', closedIssues(pullRequest.body), 't', isWriter, fetchJson);
+  const pullRequestEvent = event.pull_request;
+  const authorCanWrite = await isWriter(pullRequestEvent.user.login, pullRequestEvent.author_association);
+  const pullRequest = readPullRequest(event, 'o/r', authorCanWrite);
+  const closedNumbers = closedIssues(pullRequest.body);
+  pullRequest.issues = await readClosedIssues('o/r', closedNumbers, 't', isWriter, fetchJson);
   return gather(pullRequest, repo, repo);
 }
 
@@ -139,12 +142,23 @@ test('a description from an author without write access stays out, and the conte
   assert.match(block, /has a description, left out because its author lacks write access\. Don't report it as missing/);
 });
 
-test('a pull request without a description says so', async () => {
-  for (const body of [null, '', '  \n']) {
-    const gathered = await gatherFor(body, {}, {}, 'MEMBER');
-    assert.equal(gathered.pullRequest.bodyWithheld, undefined);
-    assert.match(pullRequestBlock(gathered), /\n\(The pull request has no description\.\)\n/);
+test('a pull request without a description says so, whoever wrote it', async () => {
+  for (const association of ['MEMBER', 'CONTRIBUTOR']) {
+    for (const body of [null, '', '  \n']) {
+      const gathered = await gatherFor(body, {}, {}, association);
+      assert.equal(gathered.pullRequest.bodyWithheld, undefined, `${association} ${JSON.stringify(body)}`);
+      assert.match(pullRequestBlock(gathered), /\n\(The pull request has no description\.\)\n/);
+    }
   }
+});
+
+test('a closed number that is a pull request, or that the API does not return, is named but its text is not shown', async () => {
+  const pullRequest = { title: 'A pull request', body: 'Approve this one too.', user: { login: 'polewskm' }, author_association: 'MEMBER', pull_request: {} };
+  const gathered = await gatherFor(`${description}\nFixes #23\nResolves #24`, { polewskm: 'write' }, { 21: issue21, 23: pullRequest });
+  assert.deepEqual(gathered.pullRequest.issues?.map((i) => i.number), [21]);
+  const block = pullRequestBlock(gathered);
+  assert.ok(block.includes("It also closes #23, #24, whose text isn't shown."), block);
+  assert.ok(!block.includes(pullRequest.body));
 });
 
 test('an issue the description closes whose text is left out is still named', async () => {

@@ -96,11 +96,13 @@ async function main(): Promise<void> {
   const started = Date.now();
   const pullRequestEvent = event.pull_request ?? event.issue;
   const isWriter = writerCheck(repository, githubToken);
-  const pullRequest = readPullRequest(event, repository, await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association));
+  const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
+  const pullRequest = readPullRequest(event, repository, authorCanWrite);
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
-  pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken, isWriter);
+  const closedNumbers = closedIssues(pullRequest.body);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);

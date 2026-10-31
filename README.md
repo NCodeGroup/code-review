@@ -18,6 +18,8 @@ The reviewers see a pull request's description, its commit subjects and the issu
 their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
 GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
 request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
+A `/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below
+checks before the engine starts, so a private organization member can't start a review that way.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
