@@ -297,7 +297,7 @@ test('supersededComment collapses an older summary so only the newest is still a
 const postedUrl = 'https://github.com/o/r/pull/1#issuecomment-9';
 
 // A fake GitHub API for postSummary: it records each call and answers like the real one.
-function fakeApi(summaryMarker: string, failOn?: { call: string; error: Error }) {
+function fakeApi(marker: string, failOn?: { call: string; error: Error }) {
   const bot = { login: 'ncode-review[bot]' };
   const calls: string[] = [];
   const bodies: unknown[] = [];
@@ -306,9 +306,9 @@ function fakeApi(summaryMarker: string, failOn?: { call: string; error: Error })
     if (failOn && `${method} ${url}`.endsWith(failOn.call)) throw failOn.error;
     if (method === 'GET') {
       return [
-        { id: 1, user: bot, body: `${summaryMarker}\nold` },
-        { id: 2, user: { login: 'someone' }, body: `${summaryMarker}\nnot ours` },
-        { id: 3, user: bot, body: `${summaryMarker}\nolder still` },
+        { id: 1, user: bot, body: `${marker}\nold` },
+        { id: 2, user: { login: 'someone' }, body: `${marker}\nnot ours` },
+        { id: 3, user: bot, body: `${marker}\nolder still` },
       ];
     }
     if (method === 'POST') return { html_url: postedUrl };
@@ -369,7 +369,24 @@ test('postSummary still posts, and warns, when the earlier summaries cannot be l
   assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
 });
 
-test('readCommentPages reads every page until a short one, and gives undefined when a page cannot be read', async () => {
+test('postSummary still posts, and warns, when the pull request has more comments than it reads', async () => {
+  const { postSummary, commentPageSize, maxCommentPages } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.equal(calls.filter((call) => call.startsWith('GET')).length, maxCommentPages);
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+  assert.ok(lines.includes(`::warning::Couldn't list the earlier summary comments (more than ${commentPageSize * maxCommentPages} comments), so they stay expanded.`));
+});
+
+test('readCommentPages reads every page until a short one', async () => {
   const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
   const pages: number[] = [];
   const all = await readCommentPages(async (page) => {
@@ -378,8 +395,23 @@ test('readCommentPages reads every page until a short one, and gives undefined w
   });
   assert.equal(all?.length, commentPageSize + 3);
   assert.deepEqual(pages, [1, 2]);
+});
+
+test('readCommentPages gives undefined when a page cannot be read', async () => {
+  const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
   const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : undefined));
   assert.equal(broken, undefined);
+});
+
+test('readCommentPages gives undefined when every page up to the cap is full', async () => {
+  const { commentPageSize, maxCommentPages, readCommentPages } = await import('../src/comments.ts');
+  const pages: number[] = [];
+  const all = await readCommentPages(async (page) => {
+    pages.push(page);
+    return Array.from({ length: commentPageSize }, (_, i) => i);
+  });
+  assert.equal(all, undefined);
+  assert.equal(pages.length, maxCommentPages);
 });
 
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
