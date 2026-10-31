@@ -116,7 +116,8 @@ of review converge:
   doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
 - its summary lists the earlier findings it checked, and says "No further findings above nits" when nothing at or
-  above should-fix is left, new or unresolved, so the author knows they can merge.
+  above should-fix is left, new or unresolved, so the author knows they can merge. When the earlier review threads
+  can't be read, it says so instead, and its verdict is never Approve.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
 gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records

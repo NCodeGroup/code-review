@@ -12,9 +12,9 @@ import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.t
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
-import { planReReview, readEarlierFindings, reReview } from './rereview.ts';
+import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { recordedHead, topSeverity, type Results } from './results.ts';
+import { topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -140,8 +140,13 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath };
-    const reReviewed = plan ? await reReview(run, gathered, loadCharters(root), plan, log) : undefined;
-    const outcome = reReviewed ?? (await review(run, gathered, loadCharters(root), log));
+    const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
+      plan,
+      headSha: pullRequest.headSha,
+      lastHead: last,
+      full: () => review(run, gathered, loadCharters(root), log),
+      again: (p) => reReview(run, gathered, loadCharters(root), p, log),
+    });
     results = {
       repository,
       pullRequest: pullRequest.number,
@@ -169,11 +174,8 @@ async function main(): Promise<void> {
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
-      recordedHead: recordedHead(outcome.reviewers, pullRequest.headSha, last),
+      recordedHead,
     };
-    const reReviewTrace = plan && reReviewed
-      ? { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlier: reReviewed.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, resolved: finding.resolved, status, note })) } }
-      : {};
     const trace = { results, rawFindings: outcome.reviewers, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
 
     const secrets = secretValues(credentials);

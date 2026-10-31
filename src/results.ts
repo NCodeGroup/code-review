@@ -31,7 +31,8 @@ export interface Results {
   notShown: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
-  // The head the summary records as reviewed, when it isn't headSha: see recordedHead.
+  // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
+  // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
   recordedHead?: string;
 }
 
@@ -64,7 +65,7 @@ export function reviewedHead(body: string): string | undefined {
 }
 
 // The head a summary records as reviewed. A run whose reviewers all failed reviewed nothing, so it records the last head
-// that was reviewed, or none, and the next re-review still covers what this run missed.
+// that was reviewed, or none (''), and the next re-review still covers what this run missed.
 export function recordedHead(reviewers: Pick<ReviewerResult, 'status'>[], headSha: string, lastHead: string | undefined): string {
   return reviewers.length && reviewers.every((r) => r.status === 'failed') ? (lastHead ?? '') : headSha;
 }

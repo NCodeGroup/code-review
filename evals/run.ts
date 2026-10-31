@@ -163,7 +163,7 @@ async function main(): Promise<void> {
         ensureCommit(repo, c.reviewed);
         const changed = sinceLastReview(head, c.base, gathered.mergeBase, gathered.pullRequest.headSha, c.reviewed);
         log(`Re-review since ${c.reviewed.slice(0, 7)}: ${changed.hunks} changed hunks in ${Object.keys(changed.lines).length} files`);
-        const plan = { lastHead: c.reviewed, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier: c.earlier ?? [] };
+        const plan = { lastHead: c.reviewed, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier: c.earlier ?? [], earlierUnread: false };
         reReviewed = await reReview({ ...run, checkout: head }, gathered, charters, plan, log);
         // A re-review posts nothing below should-fix, and nothing away from what the author changed since the last
         // review. That is worked out here apart from the engine: the lines the diff from the reviewed head adds, less

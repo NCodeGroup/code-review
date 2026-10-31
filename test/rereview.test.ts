@@ -19,14 +19,16 @@ import {
   reReview,
   reReviewSummary,
   reReviewVerdict,
+  runReview,
   sinceLastReview,
   takenBackText,
   type EarlierFinding,
   type EarlierStatus,
+  type ReReviewPlan,
   type ThreadNode,
 } from '../src/rereview.ts';
 import { headMarker, recordedHead, summaryComment } from '../src/results.ts';
-import type { Charters, Finding } from '../src/review.ts';
+import type { Charters, Finding, Review } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
 
 const made: string[] = [];
@@ -153,6 +155,7 @@ test('planReReview gives the reviewer only the changed hunks, with their context
   assert.doesNotMatch(plan.diff, /added after 50/);
   assert.doesNotMatch(plan.diff, /b from main|main 1/);
   assert.equal(plan.earlier, earlier);
+  assert.equal(plan.earlierUnread, false);
 });
 
 test('planReReview reviews in full on a first review and on a /review of the head already reviewed', async () => {
@@ -169,7 +172,27 @@ test('planReReview goes on without the earlier findings, and warns, when the thr
   const lines: string[] = [];
   const plan = await planReReview({ gathered: gather(pullRequest(first, head), repo, repo), checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => undefined, log: (l) => lines.push(l) });
   assert.deepEqual(plan?.earlier, []);
+  assert.equal(plan?.earlierUnread, true);
   assert.ok(lines.some((l) => l.startsWith("::warning::Couldn't read the earlier review threads")));
+});
+
+test('planReReview reviews in full, and says why, when the last reviewed head has no merge base with the base', async () => {
+  const { repo, first, reviewed } = pullRequestRepo();
+  git(repo, 'checkout', '-q', '--orphan', 'unrelated');
+  git(repo, 'rm', '-q', '-rf', '.');
+  const stranger = commit(repo, { 'c.ts': ['c'] }, 'unrelated history');
+  git(repo, 'checkout', '-q', 'topic');
+  const lines: string[] = [];
+  const plan = await planReReview({ gathered: gather(pullRequest(first, reviewed), repo, repo), checkout: repo, lastHead: stranger, fetchCommit: () => true, readEarlier: async () => [], log: (l) => lines.push(l) });
+  assert.equal(plan, undefined);
+  assert.ok(lines.some((l) => l.startsWith(`Couldn't compare with the last reviewed head ${stranger.slice(0, 7)} (`) && l.endsWith('), so this is a full review.') && !l.includes('\n')));
+});
+
+test('fetchCommit refuses a value that is not a full commit SHA', () => {
+  const dir = temp('rereview-nosha-');
+  assert.equal(fetchCommit({ path: dir, remoteUrl: 'file:///nowhere', sha: 'HEAD' }), false);
+  assert.equal(fetchCommit({ path: dir, remoteUrl: 'file:///nowhere', sha: '--upload-pack=x' }), false);
+  assert.equal(fetchCommit({ path: dir, remoteUrl: 'file:///nowhere', sha: 'abc1234' }), false);
 });
 
 // A remote whose pull request was reviewed at `reviewed`, then rebased onto a newer main with one more edit and
@@ -290,18 +313,26 @@ test('reReviewVerdict approves only when nothing at or above should-fix is left'
   assert.equal(reReviewVerdict([], [], true), 'comment');
 });
 
+test('reReviewSummary says when what changed is only in files the reviewers do not see', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: false, posted: [], nits: 0, outside: 0, earlier: [] });
+  assert.equal(summary, 'What changed since the last review at aaaaaaa is only in generated files or files over the size budget, so nothing was reviewed again. No further findings above nits.');
+});
+
+test('reReviewSummary never says there are no further findings when the earlier threads could not be read', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, earlierUnread: true, posted: [], nits: 0, outside: 0, earlier: [] });
+  assert.equal(summary, "Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness only. The earlier review threads couldn't be read, so their findings weren't checked.");
+});
+
+// GraphQL lists a thread's first comment, and its newest ones, which include the first while the thread is short.
 function thread(body: string, replies: { login: string; association: string; body: string }[] = [], resolved = false, login = 'ncode-review'): ThreadNode {
+  const first = { author: { login }, authorAssociation: 'NONE', body, url: 'https://github.com/o/r/pull/1#discussion_r9' };
   return {
     isResolved: resolved,
     path: 'src/a.ts',
     line: null,
     originalLine: 12,
-    comments: {
-      nodes: [
-        { author: { login }, authorAssociation: 'NONE', body, url: 'https://github.com/o/r/pull/1#discussion_r9' },
-        ...replies.map((r) => ({ author: { login: r.login }, authorAssociation: r.association, body: r.body, url: '' })),
-      ],
-    },
+    first: { nodes: [first] },
+    comments: { nodes: [first, ...replies.map((r, i) => ({ author: { login: r.login }, authorAssociation: r.association, body: r.body, url: `https://github.com/o/r/pull/1#discussion_r${100 + i}` }))] },
   };
 }
 
@@ -322,6 +353,17 @@ test('earlierFindings reads the bot\'s findings and only the replies from people
   assert.equal(earlierFindings([thread(starred)])[0]!.title, 'Trigger on release/** too');
 });
 
+test('earlierFindings takes the finding from the first comment and the replies from the newest ones', () => {
+  const body = threadBody({ ...finding('should-fix', 'src/a.ts', 12, 'Race'), id: 'F1', reviewers: ['correctness'] });
+  const long = thread(body, numbered(60).map((text) => ({ login: 'polewskm', association: 'MEMBER', body: text })));
+  // A thread longer than the page: the newest comments no longer hold the first.
+  long.comments.nodes = long.comments.nodes.slice(-50);
+  const found = earlierFindings([long]);
+  assert.equal(found[0]!.title, 'Race');
+  assert.equal(found[0]!.replies.length, 50);
+  assert.equal(found[0]!.replies.at(-1)!.body, 'line 60');
+});
+
 test('readEarlierFindings reads every page of threads, and gives undefined without a token or on a failed page', async () => {
   const body = threadBody({ ...finding('nit', 'src/a.ts', 12), id: 'F1', reviewers: ['correctness'] });
   const cursors: (string | null)[] = [];
@@ -338,6 +380,25 @@ test('readEarlierFindings reads every page of threads, and gives undefined witho
   assert.deepEqual(cursors, [null, 'c1']);
   assert.equal(await readEarlierFindings('o/r', 1, 'token', pages(true)), undefined);
   assert.equal(await readEarlierFindings('o/r', 1, undefined, pages(false)), undefined);
+  const rejecting = (async () => {
+    throw new Error('network down');
+  }) as unknown as typeof fetch;
+  assert.equal(await readEarlierFindings('o/r', 1, 'token', rejecting), undefined);
+});
+
+test('earlierBlock stops at its size cap with whole entries, the unresolved ones first', () => {
+  const many = Array.from({ length: 60 }, (_, i) => earlierFinding({ id: `F${i + 1}`, resolved: i % 2 === 0, text: 'x'.repeat(1_500) }));
+  const block = earlierBlock(many);
+  const parsed = JSON.parse(block) as { id: string; resolved: boolean; finding: string }[];
+  assert.ok(parsed.length > 0 && parsed.length < many.length);
+  assert.ok(parsed.reduce((sum, item) => sum + JSON.stringify(item).length, 0) <= 60_000);
+  assert.ok(parsed.every((item) => item.finding.length === 1_500));
+  assert.deepEqual(parsed.slice(0, 30).map((item) => item.resolved), Array(30).fill(false));
+});
+
+test('takenBackText stops before a file that would pass its size cap, and keeps whole files', () => {
+  const text = takenBackText({ 'a.ts': ['+' + 'a'.repeat(15_000)], 'b.ts': ['+' + 'b'.repeat(15_000)], 'c.ts': ['+c'] });
+  assert.equal(text, `a.ts:\n+${'a'.repeat(15_000)}\n`);
 });
 
 test('earlierBlock puts the unresolved findings first and keeps reply text from closing its tag', () => {
@@ -464,4 +525,41 @@ test('a run whose reviewers all failed records the head reviewed before it, or n
   assert.match(summaryComment({ ...results, recordedHead: reviewed } as never, 'https://check', 'https://help'), new RegExp(headMarker(reviewed)));
   assert.doesNotMatch(summaryComment({ ...results, recordedHead: '' } as never, 'https://check', 'https://help'), /ncode-review:head=/);
   assert.match(summaryComment(results as never, 'https://check', 'https://help'), new RegExp(headMarker(head)));
+});
+
+test('reReview never approves when the earlier threads could not be read', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => undefined, log: () => {} });
+  assert.ok(plan);
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [], earlier: [] }, []));
+  assert.equal(outcome.verdict, 'comment');
+  assert.match(outcome.summary, /The earlier review threads couldn't be read, so their findings weren't checked\.$/);
+  assert.doesNotMatch(outcome.summary, /no further findings/i);
+});
+
+function review(statuses: ('ran' | 'failed')[]): Review {
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], calls: [], skipped: [] };
+}
+
+test('runReview does the full review without a plan, and records the head it read', async () => {
+  const head = 'b'.repeat(40);
+  const run = await runReview({ plan: undefined, headSha: head, lastHead: reviewed, full: async () => review(['ran']), again: () => assert.fail('no re-review without a plan') });
+  assert.equal(run.outcome.summary, 's');
+  assert.equal(run.recordedHead, head);
+  assert.deepEqual(run.trace, {});
+});
+
+test('runReview re-reviews with a plan, traces it, and records the last reviewed head when the reviewer failed', async () => {
+  const head = 'b'.repeat(40);
+  const plan: ReReviewPlan = { lastHead: reviewed, changed: since, diff: 'd', takenBack: '', earlier: [earlierFinding()], earlierUnread: false };
+  const again = (statuses: ('ran' | 'failed')[]) => async (p: ReReviewPlan) => ({ ...review(statuses), earlier: [{ finding: p.earlier[0]!, status: 'fixed' as const, note: 'n' }] });
+  const ran = await runReview({ plan, headSha: head, lastHead: reviewed, full: () => assert.fail('no full review with a plan'), again: again(['ran']) });
+  assert.equal(ran.recordedHead, head);
+  assert.deepEqual(ran.trace, {
+    reReview: { lastHead: reviewed, changedLines: since.lines, earlierUnread: false, earlier: [{ id: 'F1', url: 'https://github.com/o/r/pull/1#discussion_r1', resolved: false, status: 'fixed', note: 'n' }] },
+  });
+  const failed = await runReview({ plan, headSha: head, lastHead: reviewed, full: () => assert.fail('no full review with a plan'), again: again(['failed']) });
+  assert.equal(failed.recordedHead, reviewed);
 });

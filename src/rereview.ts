@@ -10,15 +10,17 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun } from './agent.ts';
-import { budgets, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
+import { errorText } from './comments.ts';
+import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
-import { botLogin } from './results.ts';
+import { botLogin, recordedHead } from './results.ts';
 import {
   fileList,
   findingLimit,
   findingProperties,
   findingRequired,
   pullRequestBlock,
+  severityRank,
   type Charters,
   type Finding,
   type Review,
@@ -31,8 +33,6 @@ import { parsePosted, snapDistance } from './threads.ts';
 
 // The one reviewer a re-review runs.
 export const reReviewer = 'correctness';
-
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 // --- What changed since the last review ---
 
@@ -50,7 +50,7 @@ interface Hunk {
 }
 
 // A diff's hunks per file, keyed by the new path (the old one for a deletion), as splitDiff keys them.
-export function parseHunks(diff: string): Map<string, Hunk[]> {
+function parseHunks(diff: string): Map<string, Hunk[]> {
   const files = new Map<string, Hunk[]>();
   for (const [file, section] of splitDiff(diff)) {
     const hunks: Hunk[] = [];
@@ -193,13 +193,22 @@ export interface EarlierFinding {
   replies: Reply[];
 }
 
-// A review thread as GitHub's GraphQL API lists it.
+// A review thread as GitHub's GraphQL API lists it: its first comment, which holds the finding, and its newest ones,
+// which hold the latest replies.
 export interface ThreadNode {
   isResolved: boolean;
   path: string;
   line: number | null;
   originalLine: number | null;
-  comments: { nodes: { author: { login: string } | null; authorAssociation: string; body: string; url: string }[] };
+  first: { nodes: ThreadComment[] };
+  comments: { nodes: ThreadComment[] };
+}
+
+interface ThreadComment {
+  author: { login: string } | null;
+  authorAssociation: string;
+  body: string;
+  url: string;
 }
 
 // GraphQL names an app by its login without the "[bot]" the REST API adds.
@@ -221,12 +230,13 @@ function findingText(body: string): string {
     .slice(0, maxFindingTextChars);
 }
 
-// The bot's findings in a pull request's review threads, with the replies from people with write access.
+// The bot's findings in a pull request's review threads, with the newest replies from people with write access.
 export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
   const found: EarlierFinding[] = [];
   for (const thread of threads) {
-    const [first, ...rest] = thread.comments.nodes;
+    const first = thread.first.nodes[0];
     if (!first || first.author?.login !== botAuthor) continue;
+    const rest = thread.comments.nodes.filter((c) => c.url !== first.url);
     const posted = parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine }])[0];
     if (!posted) continue;
     found.push({
@@ -246,12 +256,13 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
   return found;
 }
 
+const threadComment = 'nodes { author { login } authorAssociation body url }';
 const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { isResolved path line originalLine comments(first: ${maxRepliesPerThread}) { nodes { author { login } authorAssociation body url } } }
+        nodes { isResolved path line originalLine first: comments(first: 1) { ${threadComment} } comments(last: ${maxRepliesPerThread}) { ${threadComment} } }
       }
     }
   }
@@ -300,6 +311,9 @@ export interface ReReviewPlan {
   // What the author took back since the last review, for the reviewer.
   takenBack: string;
   earlier: EarlierFinding[];
+  // True when the earlier review threads couldn't be read, so `earlier` is empty for want of them, not because there
+  // are none: the re-review then never says the pull request is done.
+  earlierUnread: boolean;
 }
 
 // A re-review's plan, or undefined for a full review: on a first review, on a /review of the head already reviewed, and
@@ -327,17 +341,15 @@ export async function planReReview(options: {
   try {
     changed = sinceLastReview(checkout, gathered.pullRequest.baseSha, gathered.mergeBase, head, lastHead);
   } catch (error) {
-    log(`Couldn't compare with the last reviewed head ${lastHead.slice(0, 7)} (${(error as Error).message.replace(/\s+/g, ' ').slice(0, 200)}), so this is a full review.`);
+    log(`Couldn't compare with the last reviewed head ${lastHead.slice(0, 7)} (${errorText(error)}), so this is a full review.`);
     return undefined;
   }
-  let earlier = await options.readEarlier();
-  if (!earlier) {
-    log("::warning::Couldn't read the earlier review threads, so the re-review goes without them.");
-    earlier = [];
-  }
+  const read = await options.readEarlier();
+  if (!read) log("::warning::Couldn't read the earlier review threads, so the re-review goes without them and won't approve.");
+  const earlier = read ?? [];
   const files = Object.keys(changed.lines).length;
   log(`Re-review since ${lastHead.slice(0, 7)}: ${changed.hunks} changed hunks in ${files} files, changes taken back in ${Object.keys(changed.removed).length} files, ${earlier.length} earlier findings`);
-  return { lastHead, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier };
+  return { lastHead, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier, earlierUnread: !read };
 }
 
 // --- The re-review ---
@@ -421,6 +433,8 @@ export function reReviewSummary(s: {
   // False when the changed lines are all in files the reviewers don't see.
   reviewed: boolean;
   error?: string;
+  // True when the earlier review threads couldn't be read.
+  earlierUnread?: boolean;
   posted: Pick<Finding, 'severity'>[];
   nits: number;
   outside: number;
@@ -447,14 +461,16 @@ export function reReviewSummary(s: {
   const waiting = s.earlier.filter(pending).length;
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
-  if (!s.posted.length && !waiting) parts.push('No further findings above nits.');
+  if (s.earlierUnread) parts.push("The earlier review threads couldn't be read, so their findings weren't checked.");
+  else if (!s.posted.length && !waiting) parts.push('No further findings above nits.');
   return parts.join(' ');
 }
 
-export function reReviewVerdict(posted: Pick<Finding, 'severity'>[], earlier: EarlierStatus[], failed: boolean): Verdict {
+// `incomplete`: the reviewer failed or the earlier findings couldn't be read, so the re-review can't approve.
+export function reReviewVerdict(posted: Pick<Finding, 'severity'>[], earlier: EarlierStatus[], incomplete: boolean): Verdict {
   const waiting = earlier.filter(pending);
   if (posted.some((f) => f.severity === 'blocker') || waiting.some((e) => e.finding.severity === 'blocker')) return 'request-changes';
-  return failed || posted.length || waiting.length ? 'comment' : 'approve';
+  return incomplete || posted.length || waiting.length ? 'comment' : 'approve';
 }
 
 // `agent` stands in for runAgent in tests.
@@ -465,12 +481,22 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
       .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
       .slice(0, findingLimit(1))
       .map((f, i) => ({ ...f, id: `F${i + 1}`, reviewers: [reReviewer] }));
-    const summary = reReviewSummary({ lastHead: plan.lastHead, changed: plan.changed, reviewed: outcomes.length > 0, ...(error ? { error } : {}), posted: findings, nits, outside, earlier: statuses });
-    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error)), findings, calls, skipped: [], earlier: statuses };
+    const summary = reReviewSummary({
+      lastHead: plan.lastHead,
+      changed: plan.changed,
+      reviewed: outcomes.length > 0,
+      ...(error ? { error } : {}),
+      earlierUnread: plan.earlierUnread,
+      posted: findings,
+      nits,
+      outside,
+      earlier: statuses,
+    });
+    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread), findings, calls, skipped: [], earlier: statuses };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 
-  const tier: ModelTier = reviewerTiers()[reReviewer] ?? 'sonnet';
+  const tier: ModelTier = reviewerTiers()[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
   const since = plan.lastHead.slice(0, 7);
   const context = [
     `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>`,
@@ -510,4 +536,36 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
   const { kept, nits, outside } = postable(reported, plan.changed.lines);
   log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${result.record.costUsd.toFixed(3)}`);
   return finish([{ name: reReviewer, status: 'ran', findings: reported }], kept, nits, outside, [result.record]);
+}
+
+// --- Choosing the review ---
+
+export interface ReviewRun {
+  outcome: Review;
+  // The head the summary records as reviewed: see recordedHead.
+  recordedHead: string;
+  // What the trace adds for a re-review.
+  trace: { reReview?: { lastHead: string; changedLines: Record<string, number[]>; earlierUnread: boolean; earlier: { id: string; url: string; resolved: boolean; status: EarlierState; note: string }[] } };
+}
+
+// A re-review when there's a plan for one, the full review otherwise, and the head the run's summary records.
+export async function runReview(options: {
+  plan: ReReviewPlan | undefined;
+  headSha: string;
+  lastHead: string | undefined;
+  full: () => Promise<Review>;
+  again: (plan: ReReviewPlan) => Promise<ReReview>;
+}): Promise<ReviewRun> {
+  const { plan, headSha, lastHead } = options;
+  if (!plan) {
+    const outcome = await options.full();
+    return { outcome, recordedHead: recordedHead(outcome.reviewers, headSha, lastHead), trace: {} };
+  }
+  const outcome = await options.again(plan);
+  const earlier = outcome.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, resolved: finding.resolved, status, note }));
+  return {
+    outcome,
+    recordedHead: recordedHead(outcome.reviewers, headSha, lastHead),
+    trace: { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlierUnread: plan.earlierUnread, earlier } },
+  };
 }

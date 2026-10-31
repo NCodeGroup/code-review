@@ -223,7 +223,7 @@ function synthesisDiff(gathered: Gathered, files: string[], budget: number): str
   return out || gathered.diff.slice(0, budget);
 }
 
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
