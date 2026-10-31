@@ -47,6 +47,7 @@ const charters = (performance: string, shadowPrompts: Partial<Record<PromptName,
   selectionPrompt: 'LIVE selection',
   synthesisPrompt: 'LIVE synthesis',
   ruleCheckPrompt: 'LIVE rule-check',
+  verificationPrompt: 'LIVE verification',
   reviewers: new Map([
     ...['correctness', 'hygiene', 'tests'].map((name) => [name, parseCharter(`# ${name}\n`)] as const),
     ['performance', parseCharter(performance)] as const,
@@ -70,9 +71,9 @@ function reviewAnswers(request: AgentRequest): { output?: unknown; error?: strin
 const context = { repository: 'o/r', pullRequest: 7, headSha: 'a'.repeat(40), provider: 'anthropic' as const, providerReason: 'stub', durationMs: 1000, notShown: [], diff };
 const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/nowhere' };
 
-// Each test sets the shadow and rule-check settings it depends on, so the runner's environment can't change the result.
+// Each test sets the shadow, rule-check and verification settings it depends on, so the runner's environment can't change the result.
 beforeEach(() => {
-  for (const name of ['CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_RULE_CHECKS']) delete process.env[name];
+  for (const name of ['CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_VERIFICATION']) delete process.env[name];
 });
 
 async function withEnv<T>(values: Record<string, string>, fn: () => Promise<T>): Promise<T> {
@@ -102,7 +103,7 @@ test('loadCharters reads shadow charters and prompts/<name>.shadow.md', () => {
   mkdirSync(path.join(root, 'prompts'));
   writeFileSync(path.join(root, 'reviewers', 'performance.md'), '---\nshadow: true\n---\n# performance\n');
   writeFileSync(path.join(root, 'reviewers', 'tests.md'), '# tests\n');
-  for (const name of ['specialist', 'selection', 'synthesis', 'rule-check']) writeFileSync(path.join(root, 'prompts', `${name}.md`), name);
+  for (const name of ['specialist', 'selection', 'synthesis', 'rule-check', 'verification']) writeFileSync(path.join(root, 'prompts', `${name}.md`), name);
   writeFileSync(path.join(root, 'prompts', 'synthesis.shadow.md'), 'shadow synthesis');
   const loaded = loadCharters(root);
   assert.deepEqual(loaded.reviewers.get('performance'), { text: '# performance\n', shadow: true });
@@ -162,6 +163,38 @@ test('a reviewer not marked shadow goes to synthesis and the verdict as before',
   assert.deepEqual(outcome.shadow, []);
   assert.equal(buildResults(outcome, context).shadow, undefined);
   assert.doesNotMatch(checkText(buildResults(outcome, context)), /Shadow findings/);
+});
+
+test("with verification on, a shadow reviewer's findings are never verified, refuted or posted", async () => {
+  const { agent, requests } = stubAgent((request) => {
+    if (request.role === 'reviewer:correctness') return { output: { findings: [finding('Live should-fix', 'should-fix')] } };
+    if (request.role === 'verification') {
+      return { output: { verifications: [{ id: 'F1', verdict: 'confirmed', path: 'src/A.cs:2', reason: 'it is', question: '' }] } };
+    }
+    return reviewAnswers(request);
+  });
+  const outcome = await withEnv({ CODE_REVIEW_VERIFICATION: 'on' }, () =>
+    review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent));
+
+  // The injected agent ran verification, on the live finding alone and without the shadow reviewer's charter.
+  const verification = requests.filter((r) => r.role === 'verification');
+  assert.equal(verification.length, 1);
+  const prompt = String(verification[0]!.prompt);
+  assert.match(prompt, /Live should-fix/);
+  assert.match(prompt, /<charter reviewer="correctness">/);
+  assert.doesNotMatch(prompt, /Shadow blocker|performance/);
+  assert.deepEqual(outcome.verification.flatMap((c) => c.findings.map((f) => f.title)), ['Live should-fix']);
+  assert.deepEqual(outcome.refuted, []);
+
+  assert.deepEqual(outcome.findings.map((f) => f.title), ['Live should-fix']);
+  assert.match(outcome.findings[0]!.evidence, /src\/A\.cs:2/);
+  assert.deepEqual(outcome.shadow.map((o) => [o.name, o.findings.map((f) => f.title)]), [['performance', ['Shadow blocker']]]);
+  const results = buildResults(outcome, context);
+  assert.deepEqual(results.refuted, []);
+  const [posted, shadowSection] = checkText(results).split('<details><summary>Shadow findings (not posted)</summary>');
+  assert.doesNotMatch(posted!, /Shadow blocker|Refuted by verification/);
+  assert.match(posted!, /\| verification \| ran \| \| \$0\.010 \|/);
+  assert.match(shadowSection!, /Shadow blocker/);
 });
 
 test('CODE_REVIEW_SHADOW puts the reviewers it names in shadow', async () => {
