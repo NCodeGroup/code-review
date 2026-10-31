@@ -325,8 +325,8 @@ function fakeGitHub(options: { summary?: boolean; threads?: boolean } = {}) {
   const api = async (method: string, url: string, body?: any): Promise<any> => {
     calls.push(`${method} ${url}`);
     if (url === '/graphql') {
-      const page = body.variables.after === null ? threads.slice(0, 2) : threads.slice(2);
-      const hasNextPage = body.variables.after === null && threads.length > 2;
+      const page = body.variables.cursor === null ? threads.slice(0, 2) : threads.slice(2);
+      const hasNextPage = body.variables.cursor === null && threads.length > 2;
       return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage, endCursor: hasNextPage ? 'c1' : null }, nodes: page } } } } };
     }
     if (url.startsWith('/repos/o/r/issues/5/comments')) {
