@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
 import { postSummary, postThreads } from './comments.ts';
+import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { annotations, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
@@ -30,6 +31,14 @@ async function main(): Promise<void> {
   const token = process.env['CODE_REVIEW_APP_TOKEN'];
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
+
+  // A closed pull request's run records outcomes and has no review to publish.
+  const report = readOutcomes(outDir);
+  if (report) {
+    await publishOutcomes((method, url, payload) => github(token, method, url, payload), report, [token]);
+    return;
+  }
+
   const results = JSON.parse(readFileSync(path.join(outDir, 'results.json'), 'utf8')) as Results;
 
   const output = { title: checkTitle(results), summary: checkSummary(results), text: checkText(results), annotations: annotations(results) };

@@ -1,5 +1,6 @@
 // The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step.
-// It holds the model credentials but never the app's private key, which only the publish step sees.
+// It holds the model credentials but never the app's private key, which only the publish step sees. On a closed pull
+// request it writes outcomes.json instead, without a model call (outcomes.ts).
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -9,6 +10,7 @@ import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
@@ -60,6 +62,13 @@ async function main(): Promise<void> {
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
 
+  // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
+  // no credentials. It never reviews.
+  if (isClosedEvent(event)) {
+    if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
+    await recordOutcomes(tokenApi(githubToken), event, repository, outDir);
+    return;
+  }
   // A /review comment carries the issue, not the pull request, so read the pull request from the API.
   if (event.comment) {
     const request = commandFromEvent(event);

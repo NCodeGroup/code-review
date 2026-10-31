@@ -753,7 +753,7 @@ test('threadBody escapes HTML and carries the finding marker', async () => {
   const { threadBody } = await import('../src/threads.ts');
   const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
   assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
-  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker -->$/);
+  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker reviewers=security -->$/);
 });
 
 test('closedIssues reads the issues a description closes', async () => {

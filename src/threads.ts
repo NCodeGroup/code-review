@@ -77,7 +77,8 @@ function text(value: string): string {
 }
 
 export function threadBody(finding: ReviewedFinding): string {
-  const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity} -->`;
+  const reviewers = finding.reviewers.map(encodeURIComponent).join(',');
+  const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity}${reviewers ? ` reviewers=${reviewers}` : ''} -->`;
   return [
     `${severityDot[finding.severity]} **${severityLabel[finding.severity]}: ${text(finding.title)}** <sub>${finding.id} · ${text(finding.reviewers.join(', '))}</sub>`,
     '',
