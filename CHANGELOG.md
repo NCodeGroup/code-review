@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A learned guidance rule that came only from instruction files, such as Identity's C# conventions, is tagged with the files they apply to (`` *Applies to:* `**/*.cs` ``) and reaches only reviews, and parts of a diff, that change such a file, so a C# rule no longer reaches a review of TypeScript. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them without a model ([#36](https://github.com/NCodeGroup/code-review/issues/36)).
+- The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
+- `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
 
 ## [0.3.1] - 2026-10-31
 
