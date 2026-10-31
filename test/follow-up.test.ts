@@ -82,20 +82,24 @@ test('planFollowUps never resolves anyone else\'s thread, a resolved one, or one
   assert.deepEqual(planFollowUps(all, { headSha }), []);
 });
 
-test('followUpThreads resolves a thread with resolveReviewThread, and only warns when GitHub refuses one', async () => {
+test('followUpThreads resolves a thread with resolveReviewThread, and only warns when GitHub refuses a resolve or a reply', async () => {
   const first = thread({ outdated: true });
+  const answerable = thread({ replies: [{ login: 'polewskm', body: 'Autopilot: fixed in abc123' }] });
   const second = thread({ outdated: true });
   const sent: [string, Record<string, unknown>][] = [];
   const graphql = async (query: string, variables: Record<string, unknown>) => {
     sent.push([query, variables]);
     if (variables['id'] === first.id) throw new Error('GitHub refused a GraphQL request: Resource not accessible\n::error::x');
+    if (variables['id'] === answerable.id) throw new Error('HTTP 502');
     return {};
   };
   const logs: string[] = [];
-  await followUpThreads(graphql, planFollowUps([first, second], reReviewed([[first, 'fixed'], [second, 'fixed']])), ['app-token'], (l) => logs.push(l));
-  assert.deepEqual(sent.map(([query, variables]) => [/resolveReviewThread\(input: \{ threadId: \$id \}\)/.test(query), variables]), [[true, { id: first.id }], [true, { id: second.id }]]);
+  const actions = planFollowUps([first, answerable, second], reReviewed([[first, 'fixed'], [answerable, 'open'], [second, 'fixed']]));
+  await followUpThreads(graphql, actions, ['app-token'], (l) => logs.push(l));
+  assert.deepEqual(sent.map(([query, variables]) => [/resolveReviewThread\(input: \{ threadId: \$id \}\)/.test(query), variables['id']]), [[true, first.id], [false, answerable.id], [true, second.id]]);
   assert.deepEqual(logs, [
     "::warning::Couldn't resolve the thread of F1 (GitHub refused a GraphQL request: Resource not accessible ::error::x).",
+    "::warning::Couldn't reply in the thread of F1 (HTTP 502).",
     'Resolved the thread of F1: the re-review found it fixed.',
   ]);
 });
@@ -163,10 +167,13 @@ test('stillOpenReply keeps the note to one line of text and asks the maintainer 
   assert.equal(stillOpenReply(headSha, 'x', 'not a login!').split('\n').at(-1), 'Maintainer: needs you.');
 });
 
-test('dismissedThreads counts the bot\'s threads resolved without a code change or with a 👎 from a writer', async () => {
+test('dismissedThreads counts the bot\'s threads resolved without a code change or with a 👎, both from a writer', async () => {
   const asIs = thread({ resolved: true, resolvedBy: 'polewskm' });
   const afterChange = thread({ resolved: true, resolvedBy: 'polewskm', outdated: true });
   const byApp = thread({ resolved: true });
+  // A pull request's author can resolve the bot's threads; without write access that doesn't dismiss the finding.
+  const byStranger = thread({ resolved: true, resolvedBy: 'drive-by' });
+  const byGhost = thread({ resolved: true, resolvedBy: 'ghost' });
   const writerDown = thread({ thumbsDown: ['drive-by', 'polewskm'] });
   const strangerDown = thread({ thumbsDown: ['drive-by'] });
   const unknown = thread({ thumbsDown: ['ghost'] });
@@ -177,9 +184,9 @@ test('dismissedThreads counts the bot\'s threads resolved without a code change 
     if (login === 'ghost') throw new Error('HTTP 404');
     return login === 'polewskm';
   };
-  const dismissed = await dismissedThreads([asIs, afterChange, byApp, writerDown, strangerDown, unknown, theirs], isWriter);
+  const dismissed = await dismissedThreads([asIs, afterChange, byApp, byStranger, byGhost, writerDown, strangerDown, unknown, theirs], isWriter);
   assert.deepEqual(dismissed.map((d) => [d.thread.id, d.posted.id]), [[asIs.id, 'F1'], [writerDown.id, 'F1']]);
-  assert.deepEqual(lookups, ['drive-by', 'polewskm', 'ghost']);
+  assert.deepEqual(lookups, ['polewskm', 'drive-by', 'ghost']);
 });
 
 // The bot's earlier comment as the REST API lists it, for postThreads.
@@ -265,5 +272,35 @@ test('on the next /review, the publish step resolves the thread of a fixed findi
   const mutations = requests.filter((r) => /^\s*mutation/.test(r.body?.query ?? ''));
   assert.deepEqual(mutations.map((r) => [r.authorization, /resolveReviewThread/.test(r.body.query), r.body.variables]), [['Bearer app-token', true, { id: fixed.id }]]);
   assert.ok(requests.every((r) => /^bearer app-token$/i.test(r.authorization ?? '')));
+  assert.ok(requests.some((r) => r.url === 'https://api.github.com/repos/o/r/issues/1/comments' && r.method === 'POST'));
+});
+
+test('when the review threads can\'t be read, the publish step warns, posts as before, and resolves or answers none', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'follow-up-unread-'));
+  made.push(dir);
+  const out = path.join(dir, 'out');
+  mkdirSync(out);
+  const results: Results = {
+    repository: 'o/r', pullRequest: 1, headSha, provider: 'bedrock', providerReason: 'test', summary: 's', verdict: 'comment', findings: [],
+    reviewers: [], skipped: [], synthesisModel: '', calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
+    reReview: { changedLines: {}, earlier: [{ url: 'https://github.com/o/r/pull/1#discussion_r1', status: 'fixed', note: '' }] },
+  };
+  writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
+  const { requests, stdout } = runStep(
+    'publish.ts',
+    dir,
+    {
+      rest: {
+        'POST https://api.github.com/repos/o/r/check-runs': { html_url: 'https://github.com/o/r/runs/1' },
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'POST https://api.github.com/repos/o/r/issues/1/comments': { html_url: 'https://github.com/o/r/pull/1#issuecomment-1' },
+      },
+      graphql: [],
+    },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
+  );
+  assert.match(stdout, /::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered\./);
+  assert.ok(!requests.some((r) => /^\s*mutation/.test(r.body?.query ?? '')));
   assert.ok(requests.some((r) => r.url === 'https://api.github.com/repos/o/r/issues/1/comments' && r.method === 'POST'));
 });

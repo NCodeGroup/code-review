@@ -1,8 +1,8 @@
 // Closing the loop on the bot's own review threads, in the publish step with the app's token. A re-review that finds an
 // earlier finding fixed, where the thread is outdated or its lines changed, resolves the thread. One that finds it still
 // open after the autopilot replied posts one reply saying why and asking the maintainer, and never a second. It never
-// resolves or answers anyone else's thread. A thread the maintainer dismissed, by resolving it without a code change or
-// with a 👎, counts as already posted, so its finding isn't posted again.
+// resolves or answers anyone else's thread. A thread someone with write access dismissed, by resolving it without a code
+// change or with a 👎, counts as already posted, so its finding isn't posted again.
 
 import { writers } from './command.ts';
 import { errorText } from './comments.ts';
@@ -20,8 +20,9 @@ function postedFinding(thread: ThreadNode): PostedThread | undefined {
   return parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine }])[0];
 }
 
-// The bot's threads the maintainer dismissed: resolved by a person while still on the code they were posted on, or with
-// a 👎 from someone with write access on the finding. A thread an app resolved, the bot included, has no resolver.
+// The bot's threads the maintainer dismissed: resolved by someone with write access while still on the code they were
+// posted on, or with a 👎 from someone with write access on the finding. A pull request's author can resolve threads
+// too, so a resolution by anyone else doesn't count. A thread an app resolved, the bot included, has no resolver.
 // `isWriter` looks up a login's access; one it can't look up doesn't count.
 export async function dismissedThreads(threads: ThreadNode[], isWriter: (login: string) => Promise<boolean>): Promise<{ thread: ThreadNode; posted: PostedThread }[]> {
   const dismissed: { thread: ThreadNode; posted: PostedThread }[] = [];
@@ -34,7 +35,7 @@ export async function dismissedThreads(threads: ThreadNode[], isWriter: (login: 
     const posted = postedFinding(thread);
     if (!posted) continue;
     const resolver = thread.resolvedBy?.login;
-    const resolvedAsIs = thread.isResolved && !thread.isOutdated && Boolean(resolver) && resolver !== botAuthor && resolver !== `${botAuthor}[bot]`;
+    const resolvedAsIs = thread.isResolved && !thread.isOutdated && !!resolver && resolver !== botAuthor && resolver !== `${botAuthor}[bot]` && (await writer(resolver));
     let thumbsDown = false;
     if (!resolvedAsIs) {
       for (const reaction of thread.first.nodes[0]!.reactions.nodes) {

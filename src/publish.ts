@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   const dismissed = threads
     ? await dismissedThreads(threads, (login) =>
         isWriter(token, results.repository, login).catch((error) => {
-          console.log(`::warning::Couldn't read ${login}'s access (${errorText(error)}), so their 👎 doesn't count.`);
+          console.log(`::warning::Couldn't read ${login}'s access (${errorText(error)}), so their 👎 or resolution doesn't count.`);
           return false;
         }),
       )

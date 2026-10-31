@@ -131,8 +131,8 @@ Each review, all from `ncode-review[bot]`:
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
   with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
   A finding already posted on the pull request isn't posted again, so `/review` adds only what's new. Nor is one whose
-  thread the maintainer dismissed, by resolving it while it was still on the code it was posted on or with a 👎 from
-  someone with write access, even at another severity;
+  thread someone with write access dismissed, by resolving it while it was still on the code it was posted on or with
+  a 👎, even at another severity;
 - marks a finding "Tracked in #N" instead of raising it as new, when an open issue someone with write access opened
   already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding stays in the summary
   and the check run but gets no thread;
