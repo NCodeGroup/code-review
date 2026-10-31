@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 - The `api-compat` reviewer joins every review that changes a public or protected member, its declaration or its body, of a public type in a packed project: one with `PublicAPI.Shipped.txt` beside its `.csproj`, or `IsPackable` true in it, read from the default branch so a pull request can't change the answer. The `data-model` reviewer joins every review whose diff touches `[JsonPropertyName]`, `[DataMember]`, `JsonSerializerContext`, `IEntityTypeConfiguration` or a `DbContext`, or that changes a `.proto` or `.schema.json` file. Both relied on the selection call before ([#55](https://github.com/NCodeGroup/code-review/issues/55)).
 
+### Fixed
+
+- The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
+- `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed
