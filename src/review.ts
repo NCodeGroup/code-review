@@ -328,6 +328,11 @@ export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] 
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
 }
 
+// The log line a deep review starts with, its file names made printable.
+export function deepReviewLine(sensitive: string[]): string {
+  return `Deep review: sensitive files ${sensitive.map(printable).join(', ')}`;
+}
+
 // A template update changes one of these, which hold only the template's version and the answers it was made with.
 const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
 
@@ -685,7 +690,7 @@ export async function review(
       sensitiveFiles: sensitive,
     };
   }
-  if (depth === 'deep') log(`Deep review: sensitive files ${sensitive.map(printable).join(', ')}`);
+  if (depth === 'deep') log(deepReviewLine(sensitive));
   if (light) log('Light review (documentation only): hygiene alone, with no context, selection or synthesis');
 
   // Context: the rules and decisions that bear on this change. A light review has none, beside the decision records
