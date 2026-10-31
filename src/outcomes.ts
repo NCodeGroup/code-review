@@ -5,7 +5,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { isFromFork, writerAssociations } from './command.ts';
+import { isFromFork } from './command.ts';
 
 export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
@@ -24,12 +24,13 @@ import {
   type ReviewRecord,
 } from './results.ts';
 import type { Severity } from './review.ts';
+import { maxReplyAuthorLookups, withLookupLimit } from './writers.ts';
 
 export type Outcome = 'fixed' | 'dismissed' | 'acknowledged' | 'ignored';
 export type ClosedState = 'merged' | 'closed';
 
-// Writers, as the /review command counts them (writerAssociations), for replies; reactions carry no association, so a
-// reactor's permission on the repository is looked up instead.
+// Writers, as the engine's writer check counts them (writers.ts): a reply's author by their association or, failing
+// that, their permission on the repository; a reactor, whose reaction carries no association, by their permission.
 const writerPermissions = new Set(['admin', 'maintain', 'write']);
 
 // GraphQL names the app's bot without the "[bot]" suffix the REST API adds.
@@ -324,12 +325,13 @@ export async function collectOutcomes(
         const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string };
         permissions.set(login, writerPermissions.has(answer.permission ?? '') || writerPermissions.has(answer.role_name ?? ''));
       } catch (error) {
-        log(`::warning::Couldn't read ${login}'s permission (${errorText(error)}); their reactions count as a non-writer's.`);
+        log(`::warning::Couldn't read ${login}'s permission (${errorText(error)}); their reactions and replies count as a non-writer's.`);
         permissions.set(login, false);
       }
     }
     return permissions.get(login)!;
   };
+  const isReplyWriter = withLookupLimit(async (login) => !!login && (await isWriter(login)), maxReplyAuthorLookups);
 
   const findings: FindingOutcome[] = [];
   for (const { thread, first, replies, finding } of threads) {
@@ -346,14 +348,17 @@ export async function collectOutcomes(
     if (changed === undefined) {
       log(`::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${printable(thread.path)} changed; its thread being outdated decides.`);
     }
+    const replyEvidence: Evidence['replies'] = [];
+    for (const reply of replies) {
+      if (botLogins.has(reply.author?.login ?? '')) continue;
+      replyEvidence.push({ body: reply.body, writer: await isReplyWriter(reply.author?.login, reply.authorAssociation) });
+    }
     const outcome = classify({
       linesChanged: changed ?? thread.isOutdated,
       isResolved: thread.isResolved,
       isOutdated: thread.isOutdated,
       reactions,
-      replies: replies
-        .filter((reply) => !botLogins.has(reply.author?.login ?? ''))
-        .map((reply) => ({ body: reply.body, writer: writerAssociations.has(reply.authorAssociation) })),
+      replies: replyEvidence,
     });
     const review = reviews.get(reviewedAt);
     const model = review && (finding.reviewers.map((r) => review.models[r]).find(Boolean) ?? review.synthesisModel);
