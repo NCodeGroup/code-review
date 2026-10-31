@@ -8,11 +8,10 @@ import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
-export type Severity = 'blocker' | 'should-fix' | 'nit';
-// Most severe first.
-export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export { severityRank, type Severity };
 
 export interface Finding {
   severity: Severity;

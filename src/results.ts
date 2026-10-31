@@ -2,7 +2,8 @@
 
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import type { Finding, ReviewedFinding, Verdict } from './review.ts';
+import { severityRank, type Severity } from './severity.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {

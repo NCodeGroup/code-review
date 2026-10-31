@@ -6,7 +6,8 @@ import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type Call
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency } from './config.ts';
 import { splitDiff } from './gather.ts';
-import { severityRank, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import type { ReviewedFinding, Verdict } from './review.ts';
+import { severityRank, type Severity } from './severity.ts';
 
 export type VerificationVerdict = 'confirmed' | 'refuted' | 'uncertain';
 
