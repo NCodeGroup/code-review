@@ -362,13 +362,13 @@ test('parseStatus reads status.json as data', () => {
 });
 
 // A fetch that records each request and answers with the status and body given for its host, or throws for 'throw'.
-function fakeFetch(answers: Record<string, { status: number; body?: unknown } | 'throw'>) {
+function fakeFetch(answers: Record<string, { status: number; body?: unknown; headers?: Record<string, string> } | 'throw'>) {
   const requests: { url: string; init: RequestInit | undefined }[] = [];
   const fn = (async (url: string | URL | Request, init?: RequestInit) => {
     requests.push({ url: String(url), init });
     const answer = answers[new URL(String(url)).host];
     if (!answer || answer === 'throw') throw new Error('network down');
-    return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? {}), { status: answer.status });
+    return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? {}), { status: answer.status, ...(answer.headers ? { headers: answer.headers } : {}) });
   }) as typeof fetch;
   return { requests, fn };
 }
@@ -507,8 +507,30 @@ test('chooseProvider gives no provider when the Anthropic login fails and there 
   assert.match(error.reason, /^Anthropic login failed: .*HTTP 401.*, and the run has no Bedrock key$/);
 });
 
+test('chooseProvider gives no provider when Bedrock throttles the key or its quota is used up', async () => {
+  const answers = [
+    [{ status: 429, headers: { 'x-amzn-errortype': 'ThrottlingException:http://internal.amazon.com/coral/com.amazon.bedrock/' } }, /, and Bedrock is throttling the key or over its quota: HTTP 429 ThrottlingException$/],
+    [{ status: 429 }, /, and Bedrock is throttling the key or over its quota: HTTP 429$/],
+    [{ status: 400, headers: { 'x-amzn-errortype': 'ServiceQuotaExceededException' } }, /, and Bedrock is throttling the key or over its quota: HTTP 400 ServiceQuotaExceededException$/],
+  ] as const;
+  for (const [bedrock, reason] of answers) {
+    const fetched = fakeFetch({ 'api.anthropic.com': noCredits, 'bedrock-runtime.us-west-2.amazonaws.com': bedrock });
+    const error = await chooseProvider({ anthropic, bedrockKey: 'k' }, fetched.fn).catch((e: unknown) => e);
+    assert.ok(error instanceof NoProviderError);
+    assert.match(error.reason, reason);
+  }
+});
+
 test('chooseProvider goes on with Bedrock unless Bedrock refuses the key outright', async () => {
-  for (const bedrock of [{ status: 200 }, { status: 400 }, { status: 500 }, 'throw'] as const) {
+  const answers = [
+    { status: 200 },
+    { status: 400 },
+    { status: 500 },
+    { status: 429, headers: { 'x-amzn-errortype': 'ModelNotReadyException' } },
+    { status: 400, headers: { 'x-amzn-errortype': 'ValidationException' } },
+    'throw',
+  ] as const;
+  for (const bedrock of answers) {
     const fetched = fakeFetch({ 'api.anthropic.com': noCredits, 'bedrock-runtime.us-west-2.amazonaws.com': bedrock });
     assert.equal((await chooseProvider({ anthropic, bedrockKey: 'k' }, fetched.fn)).provider, 'bedrock');
   }

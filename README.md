@@ -30,8 +30,9 @@ review, so there's never a second. When there's no review to publish, a last ste
 stays in progress:
 
 - **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
-  Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
-  and the job doesn't fail, so automation waiting on the check can carry on without it.
+  Anthropic login failed, and the Bedrock key is missing, or Bedrock refused it, is throttling it or has used up its
+  quota. No review ran, nothing was charged, and the job doesn't fail, so automation waiting on the check can carry on
+  without it.
 - **Review failed**, with the error, when the review failed, and a link to the run's log.
 - **Review cancelled** when the run was, usually because a newer run for the pull request started.
 
