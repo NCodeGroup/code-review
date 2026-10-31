@@ -44,15 +44,27 @@ function checkout(files: Record<string, string>): string {
 
 const blobSha = (text: string) => createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0${text}`).digest('hex');
 const treeSha = '1'.repeat(40);
+const commitSha = '2'.repeat(40);
 const repository = 'NCodeGroup/project-template';
 
 // A fake of GitHub's API for the template at one ref: its commit, its file list from `sources` (paths under template/)
-// and their blobs. Every request is recorded.
-function templateApi(ref: string, sources: Record<string, string>, requests: string[] = []): ReadApi {
+// and their blobs, and whether its default branch `main`, its tag v0.42.0, or neither reaches the commit. Every request
+// is recorded.
+function templateApi(ref: string, sources: Record<string, string>, requests: string[] = [], reach: 'branch' | 'tag' | 'none' = 'branch'): ReadApi {
   const blobs = new Map(Object.values(sources).map((text) => [blobSha(text), text]));
   return async (apiPath) => {
     requests.push(apiPath);
-    if (apiPath === `/repos/${repository}/commits/${ref}`) return { commit: { tree: { sha: treeSha } } };
+    if (apiPath === `/repos/${repository}/commits/${ref}`) return { sha: commitSha, commit: { tree: { sha: treeSha } } };
+    if (apiPath === `/repos/${repository}`) return { default_branch: 'main' };
+    if (apiPath === `/repos/${repository}/compare/main...${commitSha}`) return { status: reach === 'branch' ? 'behind' : 'diverged' };
+    if (apiPath === `/repos/${repository}/compare/v0.42.0...${commitSha}`) return { status: reach === 'tag' ? 'behind' : 'diverged' };
+    if (apiPath.startsWith(`/repos/${repository}/compare/`)) return { status: 'diverged' };
+    if (apiPath === `/repos/${repository}/git/matching-refs/tags`) {
+      return [
+        { ref: 'refs/tags/v0.41.0', object: { sha: '3'.repeat(40), type: 'commit' } },
+        { ref: 'refs/tags/v0.42.0', object: { sha: '4'.repeat(40), type: 'tag' } },
+      ];
+    }
     if (apiPath === `/repos/${repository}/git/trees/${treeSha}?recursive=1`) {
       return { truncated: false, tree: Object.entries(sources).map(([p, text]) => ({ path: `template/${p}`, type: 'blob', sha: blobSha(text) })) };
     }
@@ -102,4 +114,44 @@ test("confirmTemplateFiles confirms nothing, with a warning, when the template c
     assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read, (l) => lines.push(l)))], []);
     assert.match(lines.join('\n'), /^::warning::Couldn't read NCodeGroup\/project-template at "v0\.42\.0"/);
   }
+});
+
+test("confirmTemplateFiles trusts a commit on the template's default branch", async () => {
+  const requests: string[] = [];
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const confirmed = await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }, requests));
+  assert.deepEqual([...confirmed], ['.template/Get-PlanState.ps1']);
+  assert.ok(requests.includes(`/repos/${repository}/compare/main...${commitSha}`));
+  assert.ok(!requests.some((r) => r.includes('matching-refs')));
+});
+
+test('confirmTemplateFiles trusts a commit only a tag of the template reaches', async () => {
+  const requests: string[] = [];
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const confirmed = await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }, requests, 'tag'));
+  assert.deepEqual([...confirmed], ['.template/Get-PlanState.ps1']);
+  assert.ok(requests.includes(`/repos/${repository}/compare/v0.42.0...${commitSha}`));
+});
+
+test("confirmTemplateFiles confirms nothing for a commit off the template's branch and tags, as a fork's would be", async () => {
+  const requests: string[] = [];
+  const lines: string[] = [];
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const read = templateApi('abc1234', { '.template/Get-PlanState.ps1': script }, requests, 'none');
+  const confirmed = await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1'], 'v0.42.0-2-gabc1234'), repo, read, (l) => lines.push(l));
+  assert.deepEqual([...confirmed], []);
+  assert.ok(!requests.some((r) => r.includes('/git/trees/')));
+  assert.match(lines.join('\n'), /^::warning::Couldn't confirm that "v0\.42\.0-2-gabc1234" is NCodeGroup\/project-template's own commit \(it isn't on "main" or the 2 newest tag\(s\)/);
+});
+
+test('confirmTemplateFiles confirms nothing when the reachability check fails', async () => {
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const api = templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script });
+  const read: ReadApi = async (apiPath) => {
+    if (apiPath.includes('/compare/')) throw new Error('HTTP 502');
+    return api(apiPath);
+  };
+  const lines: string[] = [];
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read, (l) => lines.push(l)))], []);
+  assert.match(lines.join('\n'), /^::warning::Couldn't read NCodeGroup\/project-template at "v0\.42\.0" \(HTTP 502\)/);
 });

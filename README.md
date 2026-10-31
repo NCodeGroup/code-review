@@ -322,8 +322,10 @@ The engine also compares each changed file the template would own with NCodeGrou
 at the `_commit` the head's answers name, reading it through GitHub's API with the run's read-only token. A file that
 differs, such as one edited by hand in the same pull request, is the project's and reviewed as usual. A file the
 template renders from a `.jinja` source matches when its text outside the template's expressions and conditional blocks
-is the template's. When the template can't be read at that commit, every such file is the project's, and the run's log
-says why.
+is the template's. The engine trusts that commit only when the template's default branch or one of its tags reaches it:
+GitHub serves a commit from any fork of the template at the template's own address, so a commit made in a fork counts
+as one it can't read. When the template can't be read at that commit, every such file is the project's, and the run's
+log says why.
 
 The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
 finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs

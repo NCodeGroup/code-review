@@ -385,6 +385,7 @@ export function touchesPublicMember(section: string, head: string): boolean {
   }
   return false;
 }
+
 // DbContext has no leading \w*: it matches the same names, AppDbContext too, without backtracking through long words.
 const contractMarker = /\b(?:JsonPropertyName|DataMember|JsonSerializerContext|IEntityTypeConfiguration)\b|DbContext\b/;
 
