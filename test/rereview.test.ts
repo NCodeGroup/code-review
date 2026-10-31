@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import type { AgentRequest, AgentResult, AgentRun, BedrockFallback } from '../src/agent.ts';
 import { fetchCommit, fetchPullRequestHead } from '../src/fetch-head.ts';
-import { gather, type PullRequest } from '../src/gather.ts';
+import { gather, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import {
   changedHunksDiff,
   changedSince,
@@ -17,6 +17,7 @@ import {
   postable,
   readEarlierFindings,
   reReview,
+  reReviewRoster,
   reReviewSummary,
   reReviewVerdict,
   runReview,
@@ -749,4 +750,50 @@ test('runReview re-reviews with a plan, traces it, and records the last reviewed
   });
   const failed = await runReview({ plan, headSha: head, lastHead: reviewed, full: () => assert.fail('no full review with a plan'), again: again(['failed']) });
   assert.equal(failed.recordedHead, reviewed);
+});
+
+const changedFile = (p: string, extra: Partial<ChangedFile> = {}): ChangedFile => ({ path: p, additions: 1, deletions: 0, generated: false, shown: true, ...extra });
+const onLines = (...files: string[]) => ({ lines: Object.fromEntries(files.map((f) => [f, [1]])), hunks: files.length, removed: {} });
+
+test('reReviewRoster runs correctness alone on its standard tier when nothing sensitive or security-relevant changed since the last review', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/a.ts'), changedFile('src/auth.ts')], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/a.ts'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness']);
+  assert.deepEqual(roster.sensitiveFiles, []);
+  assert.equal(roster.tiers['correctness'], 'sonnet');
+});
+
+test('reReviewRoster adds security on its standard tier when the changes are code the selection floor gives to security', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: {} }, onLines('src/token.ts'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+  assert.deepEqual([roster.tiers['correctness'], roster.tiers['security']], ['sonnet', 'sonnet']);
+  assert.deepEqual(roster.sensitiveFiles, []);
+});
+
+test('reReviewRoster adds security and puts both on Opus when a changed file matches sensitive:', () => {
+  const roster = reReviewRoster({ files: [changedFile('docs/guide.md')], sensitive: ['docs/guide.md'], tiers: { correctness: 'haiku' } }, onLines('docs/guide.md'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+  assert.deepEqual([roster.tiers['correctness'], roster.tiers['security']], ['opus', 'opus']);
+  assert.deepEqual(roster.sensitiveFiles, ['docs/guide.md']);
+});
+
+test('reReviewRoster counts a file whose changes the author took back since the last review', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: {} }, { lines: {}, hunks: 0, removed: { 'src/token.ts': ['+x'] } }, charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+});
+
+test('reReviewRoster leaves out a generated sensitive file, and security when the charters have none', () => {
+  const generated = reReviewRoster({ files: [changedFile('src/auth.ts', { generated: true })], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/auth.ts'), charters, '');
+  assert.deepEqual(generated.reviewers, ['correctness']);
+  assert.deepEqual(generated.sensitiveFiles, []);
+  const alone = { reviewers: new Map([['correctness', charters.reviewers.get('correctness')!]]) };
+  const roster = reReviewRoster({ files: [changedFile('src/auth.ts')], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/auth.ts'), alone, '');
+  assert.deepEqual(roster.reviewers, ['correctness']);
+  assert.equal(roster.tiers['correctness'], 'opus');
+});
+
+test('reReviewRoster lets tiers: set a standard re-review\'s models and CODE_REVIEW_TIERS override a deep one', () => {
+  const standard = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: { security: 'haiku' } }, onLines('src/token.ts'), charters, '');
+  assert.equal(standard.tiers['security'], 'haiku');
+  const deep = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: ['src/token.ts'], tiers: { security: 'haiku' } }, onLines('src/token.ts'), charters, 'security=sonnet');
+  assert.deepEqual([deep.tiers['correctness'], deep.tiers['security']], ['opus', 'sonnet']);
 });

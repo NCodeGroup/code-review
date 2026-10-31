@@ -23,7 +23,10 @@ import {
   findingLimit,
   findingProperties,
   findingRequired,
+  partTiers,
   pullRequestBlock,
+  selectionFloor,
+  sensitiveFiles,
   severityRank,
   templateBlock,
   upstreamFindings,
@@ -38,7 +41,7 @@ import {
 import { parsePosted, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
 
-// The one reviewer a re-review runs.
+// The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
 export const reReviewer = 'correctness';
 
 // --- What changed since the last review ---
@@ -376,6 +379,28 @@ export async function planReReview(options: {
 }
 
 // --- The re-review ---
+
+export interface ReReviewRoster {
+  reviewers: string[];
+  tiers: Record<string, ModelTier>;
+  // The files changed since the last review that config.yml's sensitive: names, which make the re-review deep.
+  sensitiveFiles: string[];
+}
+
+// A re-review's reviewers and their models, from the files changed since the last review alone: security joins
+// correctness when one of them is sensitive or is code the selection floor gives to security, and a sensitive one puts
+// both on the deep review's tiers.
+export function reReviewRoster(gathered: Pick<Gathered, 'files' | 'sensitive' | 'tiers'>, changed: ChangedSince, charters: Pick<Charters, 'reviewers'>, override?: string): ReReviewRoster {
+  const paths = new Set([...Object.keys(changed.lines), ...Object.keys(changed.removed)]);
+  const files = gathered.files.filter((f) => paths.has(f.path));
+  const sensitive = sensitiveFiles(files, gathered.sensitive);
+  const security = (sensitive.length > 0 || selectionFloor(files, false).includes('security')) && charters.reviewers.has('security');
+  return {
+    reviewers: [reReviewer, ...(security ? ['security'] : [])],
+    tiers: partTiers(sensitive.length ? 'deep' : 'standard', sensitive.length > 0, gathered.tiers, override),
+    sensitiveFiles: sensitive,
+  };
+}
 
 export type EarlierState = 'fixed' | 'open' | 'answered' | 'unchecked';
 
