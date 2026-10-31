@@ -6,10 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Changed
 
-- The engine fetches the pull request's head itself, at the exact commit the event or the API named, once it has decided to review, so a calling workflow no longer checks out the pull request's code. Git runs without configuration, hooks or a credential helper, and the token goes through the environment. A workflow that still checks the head out into `pr` is accepted when it is at that commit ([#19](https://github.com/NCodeGroup/code-review/pull/19)).
-- The repository adopts NCodeGroup/project-template v0.41.1: the plan-then-execute workflow, `AGENTS.md` with its Landing policy, and the commit attribution check.
+- The engine fetches the pull request's head itself, at the exact commit the event or the API named, once it has decided to review, so a calling workflow no longer checks out the pull request's code and CodeQL no longer reports it. Git runs without configuration, hooks or a credential helper, and the token goes through the environment. A workflow that still checks the head out into `pr` is accepted when it is at that commit ([#19](https://github.com/NCodeGroup/code-review/pull/19)).
+- A fetch that takes longer than three minutes ends with its own error, and the engine refuses a pull request from a fork for an automatic review as well as for `/review` ([#22](https://github.com/NCodeGroup/code-review/pull/22)).
+- The repository adopts NCodeGroup/project-template v0.41.1: the plan-then-execute workflow, `AGENTS.md` with its Landing policy, and the commit attribution check ([#23](https://github.com/NCodeGroup/code-review/pull/23)).
 
 ## [0.2.1] - 2026-10-30
 
@@ -30,7 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/NCodeGroup/code-review/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/NCodeGroup/code-review/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/NCodeGroup/code-review/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/NCodeGroup/code-review/releases/tag/v0.1.0
