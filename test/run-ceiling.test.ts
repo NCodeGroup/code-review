@@ -139,6 +139,7 @@ test('the check run marks a reviewer the cost ceiling skipped as skipped: run bu
   const { result } = await cappedReview();
   const text = checkText({
     findings: [],
+    dropped: [],
     calls: result.calls,
     reviewers: result.reviewers.map((r) => ({ name: r.name, status: r.status, model: '', findingCount: r.findings.length, ...(r.error ? { error: r.error } : {}) })),
   } as unknown as Results);

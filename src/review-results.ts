@@ -59,6 +59,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     summary: outcome.summary,
     verdict: outcome.verdict,
     findings: outcome.findings,
+    dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),
     skipped: outcome.skipped,
