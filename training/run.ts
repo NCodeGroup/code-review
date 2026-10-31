@@ -305,7 +305,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
 async function updateFeedback(): Promise<void> {
   let token = process.env['GH_TOKEN'] || process.env['GITHUB_TOKEN'];
   if (!token) {
-    try { token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined; } catch { token = undefined; }
+    try { token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined; } catch { token = undefined; console.warn('No GitHub token from GH_TOKEN, GITHUB_TOKEN or `gh auth token`; reading the guidance issues without one.'); }
   }
   const rules = taughtRules(await fetchGuidanceIssues(orgGuidanceRepository, token));
   const file = path.join(root, 'training', 'feedback.md');
