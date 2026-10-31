@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import type { AgentRequest, AgentResult, AgentRun, BedrockFallback } from '../src/agent.ts';
 import { fetchCommit, fetchPullRequestHead } from '../src/fetch-head.ts';
-import { gather, type PullRequest } from '../src/gather.ts';
+import { gather, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import {
   changedHunksDiff,
   changedSince,
@@ -17,6 +17,7 @@ import {
   postable,
   readEarlierFindings,
   reReview,
+  reReviewRoster,
   reReviewSummary,
   reReviewVerdict,
   runReview,
@@ -288,6 +289,11 @@ test('reReviewSummary says there are no further findings above nits when nothing
     summary,
     'Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness only. Earlier findings: [F1](https://github.com/o/r/pull/1#discussion_r1) fixed, [F2](https://github.com/o/r/pull/1#discussion_r1) still open. 2 nits aren\'t posted on a re-review. No further findings above nits.',
   );
+});
+
+test('reReviewSummary names both reviewers when security ran too', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, reviewers: ['correctness', 'security'], posted: [], nits: 0, outside: 0, earlier: [] });
+  assert.equal(summary, 'Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness and security. No further findings above nits.');
 });
 
 test('reReviewSummary leaves out the done line while a should-fix is new or still open, or the review failed', () => {
@@ -622,6 +628,153 @@ test('reReview reports a failed reviewer and claims nothing about the changes', 
   assert.doesNotMatch(outcome.summary, /no further findings/i);
 });
 
+// Answers each reviewer with its own output, by role, and fails a reviewer that has none.
+function roleAgent(outputs: Record<string, unknown>, requests: AgentRequest[]) {
+  return (async (_run: AgentRun, request: AgentRequest): Promise<AgentResult<unknown>> => {
+    requests.push(request);
+    const output = outputs[request.role];
+    const records = [{ role: request.role, provider: 'bedrock' as const, model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: output === undefined ? 'error' : 'success' }];
+    return output === undefined ? { output: undefined, error: 'budget exceeded', records } : { output, records };
+  }) as never;
+}
+
+// The pull request's head after the last review changes a.ts again and adds token.ts, which the floor gives to security.
+function securityChange(): { repo: string; reviewed: string; gathered: ReturnType<typeof gather>; head: string } {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'], 'token.ts': ['export const token = 1;'] }, 'more');
+  return { repo, reviewed, gathered: gather(pullRequest(first, head), repo, repo), head };
+}
+
+test('reReview adds security on Sonnet when what changed since the last review is code the floor gives to security', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outputs = {
+    'reviewer:correctness': { findings: [finding('should-fix', 'a.ts', 62, 'Real')], earlier: [] },
+    'reviewer:security': { findings: [finding('blocker', 'token.ts', 1, 'Leak')], earlier: [] },
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, requests), { enabled: false });
+  assert.deepEqual(requests.map((r) => [r.role, r.tier]), [['reviewer:correctness', 'sonnet'], ['reviewer:security', 'sonnet']]);
+  const security = (requests[1]!.prompt as string[]).join('\n');
+  assert.match(security, /SECURITY CHARTER/);
+  assert.doesNotMatch(security, /CORRECTNESS CHARTER/);
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.reviewers]), [['F1', 'Leak', ['security']], ['F2', 'Real', ['correctness']]]);
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['correctness', 'ran'], ['security', 'ran']]);
+  assert.equal(outcome.verdict, 'request-changes');
+  assert.match(outcome.summary, /by correctness and security\./);
+  assert.equal(outcome.depth, 'standard');
+});
+
+test('reReview keeps an earlier finding open when either reviewer finds it open', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 20 })], log: () => {} });
+  assert.ok(plan);
+  const outputs = {
+    'reviewer:correctness': { findings: [], earlier: [{ key: 'E1', status: 'fixed', note: 'Looks fixed.' }] },
+    'reviewer:security': { findings: [], earlier: [{ key: 'E1', status: 'open', note: 'Still leaks.' }] },
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.earlier.map((e) => [e.finding.id, e.status, e.note]), [['F1', 'open', 'Still leaks.']]);
+  assert.equal(outcome.verdict, 'comment');
+});
+
+test('reReview posts nothing and records the last head when one of its reviewers fails', async () => {
+  const { repo, reviewed, gathered, head } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = { 'reviewer:correctness': { findings: [finding('should-fix', 'a.ts', 62, 'Real')], earlier: [] } };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status, r.error]), [['correctness', 'failed', "its findings weren't used, since security failed"], ['security', 'failed', 'budget exceeded']]);
+  assert.deepEqual(outcome.findings, []);
+  assert.match(outcome.summary, /failed \(security: budget exceeded\)/);
+  assert.equal(recordedHead(outcome.reviewers, head, reviewed), reviewed);
+});
+
+test('reReview counts answered over fixed, and open over answered, when its reviewers disagree on an earlier finding', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const earlier = [earlierFinding({ id: 'F1', file: 'a.ts', line: 20 }), earlierFinding({ id: 'F2', file: 'a.ts', line: 30, url: 'https://github.com/o/r/pull/1#discussion_r2' })];
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => earlier, log: () => {} });
+  assert.ok(plan);
+  const outputs = {
+    'reviewer:correctness': { findings: [], earlier: [{ key: 'E1', status: 'answered', note: 'Answered.' }, { key: 'E2', status: 'answered', note: 'Answered.' }] },
+    'reviewer:security': { findings: [], earlier: [{ key: 'E1', status: 'fixed', note: 'Looks fixed.' }, { key: 'E2', status: 'open', note: 'Still open.' }] },
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.earlier.map((e) => [e.finding.id, e.status, e.note]), [['F1', 'answered', 'Answered.'], ['F2', 'open', 'Still open.']]);
+});
+
+test('reReview posts nothing and records the last head when correctness fails and security ran', async () => {
+  const { repo, reviewed, gathered, head } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = { 'reviewer:security': { findings: [finding('blocker', 'token.ts', 1, 'Leak')], earlier: [] } };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status, r.error]), [['correctness', 'failed', 'budget exceeded'], ['security', 'failed', "its findings weren't used, since correctness failed"]]);
+  assert.deepEqual(outcome.findings, []);
+  assert.match(outcome.summary, /failed \(correctness: budget exceeded\)/);
+  assert.equal(recordedHead(outcome.reviewers, head, reviewed), reviewed);
+});
+
+test('reReview of a change to a sensitive: path runs correctness and security on Opus and says it went deep', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [], earlier: [] }, requests), { enabled: false });
+  assert.deepEqual(requests.map((r) => [r.role, r.tier]), [['reviewer:correctness', 'opus'], ['reviewer:security', 'opus']]);
+  assert.equal(outcome.depth, 'deep');
+  assert.deepEqual(outcome.sensitiveFiles, ['a.ts']);
+  assert.match(outcome.summary, /^Deep review \(sensitive paths\): Re-review of what changed since the last review at [0-9a-f]{7}: 1 hunk in 1 file, by correctness and security\. No further findings above nits\.$/);
+});
+
+test('reReview stays standard when the sensitive file changed only before the last review', async () => {
+  const { repo, first, reviewed } = pullRequestRepo();
+  const head = commit(repo, { 'c.ts': ['c'] }, 'c');
+  const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [], earlier: [] }, requests), { enabled: false });
+  assert.deepEqual(requests.map((r) => [r.role, r.tier]), [['reviewer:correctness', 'sonnet']]);
+  assert.equal(outcome.depth, 'standard');
+  assert.doesNotMatch(outcome.summary, /^Deep review/);
+});
+
+test('reReview of a sensitive change verifies its findings on Opus', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = { 'reviewer:correctness': { findings: [finding('blocker', 'a.ts', 62, 'Confirmed')], earlier: [] }, 'reviewer:security': { findings: [], earlier: [] } };
+  const verifications: AgentRequest[] = [];
+  const agent = verifier({ Confirmed: { verdict: 'confirmed', path: 'a.ts:62', reason: 'r', question: '' } }, verifications);
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: true, agent });
+  assert.equal(verifications.length, 1);
+  assert.equal(verifications[0]!.tier, 'opus');
+  assert.deepEqual(outcome.findings.map((f) => f.title), ['Confirmed']);
+});
+
+test('reReview of a sensitive change still says it went deep when one of its reviewers fails, and posts nothing', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outputs = { 'reviewer:correctness': { findings: [finding('blocker', 'a.ts', 62, 'Real')], earlier: [] } };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, requests), { enabled: false });
+  assert.deepEqual(requests.map((r) => [r.role, r.tier]), [['reviewer:correctness', 'opus'], ['reviewer:security', 'opus']]);
+  assert.equal(outcome.depth, 'deep');
+  assert.deepEqual(outcome.sensitiveFiles, ['a.ts']);
+  assert.match(outcome.summary, /^Deep review \(sensitive paths\): /);
+  assert.deepEqual(outcome.findings, []);
+  assert.deepEqual(outcome.reviewers.map((r) => r.status), ['failed', 'failed']);
+});
+
 test('reReview runs correctness on what the author took back when no hunk of the diff changed', async () => {
   const { repo, first, reviewed } = pullRequestRepo();
   const head = commit(repo, { 'a.ts': numbered(60) }, 'take it all back');
@@ -779,4 +932,50 @@ test('runReview re-reviews with a plan, traces it, and records the last reviewed
   });
   const failed = await runReview({ plan, headSha: head, lastHead: reviewed, full: () => assert.fail('no full review with a plan'), again: again(['failed']) });
   assert.equal(failed.recordedHead, reviewed);
+});
+
+const changedFile = (p: string, extra: Partial<ChangedFile> = {}): ChangedFile => ({ path: p, additions: 1, deletions: 0, generated: false, shown: true, ...extra });
+const onLines = (...files: string[]) => ({ lines: Object.fromEntries(files.map((f) => [f, [1]])), hunks: files.length, removed: {} });
+
+test('reReviewRoster runs correctness alone on its standard tier when nothing sensitive or security-relevant changed since the last review', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/a.ts'), changedFile('src/auth.ts')], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/a.ts'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness']);
+  assert.deepEqual(roster.sensitiveFiles, []);
+  assert.equal(roster.tiers['correctness'], 'sonnet');
+});
+
+test('reReviewRoster adds security on its standard tier when the changes are code the selection floor gives to security', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: {} }, onLines('src/token.ts'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+  assert.deepEqual([roster.tiers['correctness'], roster.tiers['security']], ['sonnet', 'sonnet']);
+  assert.deepEqual(roster.sensitiveFiles, []);
+});
+
+test('reReviewRoster adds security and puts both on Opus when a changed file matches sensitive:', () => {
+  const roster = reReviewRoster({ files: [changedFile('docs/guide.md')], sensitive: ['docs/guide.md'], tiers: { correctness: 'haiku' } }, onLines('docs/guide.md'), charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+  assert.deepEqual([roster.tiers['correctness'], roster.tiers['security']], ['opus', 'opus']);
+  assert.deepEqual(roster.sensitiveFiles, ['docs/guide.md']);
+});
+
+test('reReviewRoster counts a file whose changes the author took back since the last review', () => {
+  const roster = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: {} }, { lines: {}, hunks: 0, removed: { 'src/token.ts': ['+x'] } }, charters, '');
+  assert.deepEqual(roster.reviewers, ['correctness', 'security']);
+});
+
+test('reReviewRoster leaves out a generated sensitive file, and security when the charters have none', () => {
+  const generated = reReviewRoster({ files: [changedFile('src/auth.ts', { generated: true })], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/auth.ts'), charters, '');
+  assert.deepEqual(generated.reviewers, ['correctness']);
+  assert.deepEqual(generated.sensitiveFiles, []);
+  const alone = { reviewers: new Map([['correctness', charters.reviewers.get('correctness')!]]) };
+  const roster = reReviewRoster({ files: [changedFile('src/auth.ts')], sensitive: ['src/auth.ts'], tiers: {} }, onLines('src/auth.ts'), alone, '');
+  assert.deepEqual(roster.reviewers, ['correctness']);
+  assert.equal(roster.tiers['correctness'], 'opus');
+});
+
+test('reReviewRoster lets tiers: set a standard re-review\'s models and CODE_REVIEW_TIERS override a deep one', () => {
+  const standard = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: [], tiers: { security: 'haiku' } }, onLines('src/token.ts'), charters, '');
+  assert.equal(standard.tiers['security'], 'haiku');
+  const deep = reReviewRoster({ files: [changedFile('src/token.ts')], sensitive: ['src/token.ts'], tiers: { security: 'haiku' } }, onLines('src/token.ts'), charters, 'security=sonnet');
+  assert.deepEqual([deep.tiers['correctness'], deep.tiers['security']], ['opus', 'sonnet']);
 });
