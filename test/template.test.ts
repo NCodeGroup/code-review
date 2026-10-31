@@ -145,6 +145,14 @@ test('templateOf counts an answers-file change only when it adds the file or cha
   assert.equal(templateOf(pullRequest(), edit, head, base), undefined);
 });
 
+test('templateOf leaves the template when a pull request deletes the answers file', () => {
+  const base = temp('template-deleted-base-');
+  const head = temp('template-deleted-head-');
+  write(base, '.copier-answers.yml', answers);
+  const files = [changed('.copier-answers.yml'), changed('.template/Get-PlanState.ps1')];
+  assert.equal(templateOf(pullRequest(), files, head, base), undefined);
+});
+
 // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
 const home = temp('template-home-');
 function git(cwd: string, ...args: string[]): string {

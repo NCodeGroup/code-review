@@ -643,6 +643,7 @@ export function readPullRequest(event: any, repository: string, canWrite: boolea
 export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
   if (!pullRequest.authorCanWrite || !files.some((f) => f.path === answersFile)) return undefined;
   const head = readTemplate(prPath);
+  // Deleting the answers file leaves the template, so the pull request's changes are the project's own.
   if (!head) return undefined;
   if (!existsSync(path.join(basePath, answersFile))) return head;
   const base = readTemplate(basePath);
