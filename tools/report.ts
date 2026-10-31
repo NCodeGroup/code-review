@@ -16,7 +16,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { errorText, readCommentPages } from '../src/comments.ts';
 import type { Provider } from '../src/config.ts';
-import { parseOutcomesMarker, tokenApi, type Api, type Outcome } from '../src/outcomes.ts';
+import { githubApi, type Api } from '../src/github.ts';
+import { parseOutcomesMarker, type Outcome } from '../src/outcomes.ts';
 import { assertNoSecrets } from '../src/outputs.ts';
 import { botLogin, markerJson, reviewRecords, summaryMarker, supersededMarker } from '../src/results.ts';
 
@@ -546,7 +547,7 @@ export async function runReport(options: ReportOptions): Promise<ReportResult> {
   const log = options.log ?? console.log;
   if (!repositoryPattern.test(options.repository)) throw new Error(`${JSON.stringify(options.repository)} isn't a repository's owner/name.`);
   const month = monthWindow(options.month, options.now ?? new Date());
-  const api = tokenApi(options.token, options.fetch);
+  const api = githubApi(options.token, options.fetch, { terseErrors: true });
   const notes: string[] = [];
 
   const repositories = options.repositories?.length
