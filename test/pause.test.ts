@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import type { ListedComment } from '../src/comments.ts';
-import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, postPausedNotice, unansweredReviews } from '../src/pause.ts';
+import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import { pullRequestCheckout, reviewStep, runStep } from './steps.ts';
 
@@ -154,6 +154,7 @@ test('the fourth automatic review without a maintainer comment posts the pause n
   assert.equal(output, 'paused=true\n');
   assert.ok(!existsSync(path.join(out, 'results.json')));
   assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'paused.json'), 'utf8')), { repository: 'o/r', pullRequest: 1 });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')), pausedStatus());
 
   const { requests: posted } = runStep(
     'publish.ts',
@@ -164,6 +165,18 @@ test('the fourth automatic review without a maintainer comment posts the pause n
   assert.deepEqual(posted, [
     { method: 'POST', url: 'https://api.github.com/repos/o/r/issues/1/comments', authorization: 'Bearer app-token', body: { body: pausedNotice() } },
   ]);
+  // The publish step leaves the check run the acknowledgement started to the finish step, which completes it as paused.
+  const sha = 'f'.repeat(40);
+  const { requests: finished, stdout } = runStep(
+    'finish.ts',
+    temp('pause-finish-'),
+    { rest: { 'PATCH https://api.github.com/repos/o/r/check-runs/5': { id: 5 } }, graphql: [] },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token', GITHUB_REPOSITORY: 'o/r', CODE_REVIEW_CHECK_RUN_ID: '5', CODE_REVIEW_CHECK_RUN_SHA: sha },
+  );
+  assert.match(stdout, /Completed the check run: Review paused/);
+  assert.deepEqual(finished.map((r) => [r.method, r.url, r.body?.status, r.body?.conclusion, r.body?.output]), [
+    ['PATCH', 'https://api.github.com/repos/o/r/check-runs/5', 'completed', 'neutral', { title: pausedStatus().title, summary: pausedStatus().summary }],
+  ]);
 });
 
 test('an automatic review after the pause notice posts nothing more', () => {
@@ -172,6 +185,8 @@ test('an automatic review after the pause notice posts nothing more', () => {
   assert.equal(requests.length, 2);
   assert.equal(output, '');
   assert.ok(!existsSync(path.join(out, 'paused.json')));
+  // An acknowledged check run is still completed as paused.
+  assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')), pausedStatus());
 });
 
 test('a /review from a writer on a paused pull request reviews it', () => {
@@ -180,18 +195,19 @@ test('a /review from a writer on a paused pull request reviews it', () => {
   const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
   const event = { issue: { number: 1, pull_request: {} }, comment: { body: '/review', author_association: 'OWNER' } };
   const pullRequest = { number: 1, user: { login: 'polewskm' }, author_association: 'OWNER', base: { ref: 'main', sha: checkout.base }, head: { sha: checkout.head, repo: { full_name: 'o/r' } } };
-  const { out, output, requests, stderr } = reviewStep(
+  const { out, output, requests, stdout } = reviewStep(
     dir,
     event,
     {
       'GET https://api.github.com/repos/o/r/pulls/1': pullRequest,
       'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [...threeReviews(checkout.reviewed), notice],
     },
-    true,
+    false,
   );
   // It went past the loop limit, which it never looked up, to the review itself, which stops here without credentials.
-  assert.match(stderr, /::error::No provider available/);
+  assert.match(stdout, /::warning::No provider available/);
   assert.ok(!requests.some((r) => r.url.includes('/pulls/1/comments')));
-  assert.equal(output, '');
+  assert.equal(output, 'stopped=true\n');
+  assert.equal(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')).title, 'Review budget used up');
   assert.ok(!existsSync(path.join(out, 'paused.json')));
 });

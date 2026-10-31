@@ -3,6 +3,7 @@
 // autopilot posts as the maintainer's account, with comments that start with "Autopilot:", so those don't count as the
 // maintainer's. A /review comment from a writer is the maintainer's, so it always reviews and resumes.
 
+import type { RunStatus } from './checks.ts';
 import { writers } from './command.ts';
 import { readComments, type ListedComment } from './comments.ts';
 import { botLogin, summaryMarker, supersededMarker } from './results.ts';
@@ -18,6 +19,15 @@ export function pausedNotice(): string {
     '',
     `<sub>The last ${maxUnansweredReviews} reviews had no comment from someone with write access in between, so automatic reviews stop here.</sub>`,
   ].join('\n');
+}
+
+// How a paused run completes the check run the acknowledgement started, through the finish step.
+export function pausedStatus(): RunStatus {
+  return {
+    conclusion: 'neutral',
+    title: 'Review paused',
+    summary: `Paused: comment \`/review\` to resume. The last ${maxUnansweredReviews} reviews had no comment from someone with write access in between, so automatic reviews stop here.`,
+  };
 }
 
 // A comment from someone with write access in their own words: not a bot's, and not one the autopilot posted.

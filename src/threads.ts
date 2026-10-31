@@ -3,8 +3,11 @@
 // tracks.
 
 import { createHash } from 'node:crypto';
-import { maxSuggestionLines } from './config.ts';
 import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
+
+// The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
+// because the acknowledgement loads this module before npm ci.
+export const maxSuggestionLines = 5;
 
 const markerPattern = /<!-- ncode-review:finding (.+?) -->/g;
 const severityLabel: Record<Severity, string> = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' };
@@ -32,14 +35,19 @@ export interface PostedThread {
   reviewers: string[];
 }
 
+// The fields of an inline comment's finding marker (id, fp, severity, and reviewer on newer comments), or undefined
+// when it has none. The last marker is the one threadBody wrote: a suggestion's code comes before it and isn't escaped.
+export function markerFields(body: string | undefined): Map<string, string> | undefined {
+  const marker = [...(body ?? '').matchAll(markerPattern)].at(-1);
+  return marker ? new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string])) : undefined;
+}
+
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
 export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null }[]): PostedThread[] {
   const posted: PostedThread[] = [];
   for (const comment of comments) {
-    // The last marker is the one threadBody wrote: a suggestion's code comes before it and isn't escaped.
-    const marker = [...(comment.body ?? '').matchAll(markerPattern)].at(-1);
-    if (!marker || !comment.path) continue;
-    const fields = new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string]));
+    const fields = markerFields(comment.body);
+    if (!fields || !comment.path) continue;
     posted.push({
       id: fields.get('id') ?? '',
       path: comment.path,

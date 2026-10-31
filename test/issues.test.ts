@@ -77,7 +77,7 @@ const gathered: Gathered = {
   decisions: [],
   commits: [],
 };
-const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['correctness', 'c'], ['hygiene', 'h']]) };
+const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, { text: n, shadow: false }])), shadowPrompts: {} };
 
 async function synthesize(openIssues: { number: number; title: string }[] | undefined, tracked: number) {
   const prompts = new Map<string, string>();
@@ -145,7 +145,8 @@ test('the summary comment and the check run say "Tracked in #N" for a tracked fi
 });
 
 // main.ts on a pull request: a full review reads the open issues for synthesis, and a re-review, whose synthesis can't
-// mark a finding tracked, doesn't. Both stop at choosing a provider, with no model credentials, before any model call.
+// mark a finding tracked, doesn't. Both stop at choosing a provider, with no model credentials, before any model call,
+// and leave the budget status for the finish step.
 function automaticReview(earlierHead: (checkout: ReturnType<typeof pullRequestCheckout>) => string | undefined) {
   const dir = mkdtempSync(path.join(tmpdir(), 'issues-run-'));
   made.push(dir);
@@ -161,9 +162,9 @@ function automaticReview(earlierHead: (checkout: ReturnType<typeof pullRequestCh
       'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
       [`GET ${openIssuesUrl}`]: [issue(7)],
     },
-    true,
+    false,
   );
-  assert.match(run.stderr, /::error::No provider available/);
+  assert.match(run.stdout, /::warning::No provider available/);
   return run;
 }
 

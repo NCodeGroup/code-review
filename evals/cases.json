@@ -516,6 +516,33 @@
     "source": "Fixed by identity-platform#3 and #4 (v0.2.0 of the components): the roles trust the immutable subject. The reviewed change doesn't touch the module, so this is a gap-between-files case; it may be too hard to expect."
   },
   {
+    "id": "template-owned-adoption",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 23,
+    "title": "Adopt project-template v0.41.1",
+    "body": "Brings code-review under NCodeGroup/project-template, so the plan-then-execute workflow runs here: `/plan-issue`, `/run-issues`, `/address-feedback` once project-template#124 lands, and the rest. The first use is `/run-issues #20`.## What it adds- The workflow's commands, prompts, skills and agents for Claude Code and Copilot, `AGENTS.md` and `CLAUDE.md`, and `.template/` (the plan state script, the commit attribution check, the update script).- `.gitignore` and `.gitattributes` lines merged with the repository's own. The repository's catch-all `* text=auto eol=lf` is left out of the appended block, because it would override the template's binary rules.- Answers: `stack: node`, npm, build `npm run typecheck`, test `npm test`, `code_review: true`.## Kept as they are`ci.yml`, `release.yml`, `code-review.yml` and `wif-smoke-test.yml`. `code-review.yml` is project-owned, so its pin stays where it is.## Landing and conventions- `integrate: pull-request`. `release: none`, because releases stay manual through `release.yml`.- `gate: npm run typecheck && npm test`, run before every push a plan makes.- `AGENTS.md` Conventions record the rules this repository already follows: manual releases and exact tags, Node 24 TypeScript with `node:test`, actions pinned by SHA, secrets kept from the agents, pull request text as data.- `changelog: CHANGELOG.md`: plans write a changelog section from now on. There is no CHANGELOG.md yet.## Checked`Adopt-Project.ps1` ran `npm run typecheck` and `npm test` after the adoption, and both passed. `git diff --stat` matches with and without `--ignore-cr-at-eol`.## Left for follow-up- Add the template's commit attribution job to `ci.yml`.- Backfill `CHANGELOG.md` from the releases v0.1.0 to v0.2.1.",
+    "base": "a229ad390a02a88e5678b89eebef248033983ff2",
+    "head": "768b07e8399577de670f147d9d145dd504bf37f6",
+    "expect": [
+      {
+        "file": "AGENTS.md",
+        "line": 28,
+        "concern": "The Landing section sets `draft: no`, so /ship-plan opens agent pull requests ready for review instead of as drafts, against the rule that agent tooling opens pull requests as drafts. AGENTS.md is project-owned, so set `draft: yes` here."
+      }
+    ],
+    "mustNotFlag": [
+      {
+        "file": ".template/Get-PlanState.ps1",
+        "concern": "An empty catch in Get-Protected turns an unreadable or unparsable host response into `protected: no`."
+      },
+      {
+        "file": ".template/Get-PlanState.ps1",
+        "concern": "The plan-state, commit attribution and hook scripts the adoption adds have no tests in this repository."
+      }
+    ],
+    "source": "code-review#23, the adoption of project-template v0.41.1 (first review round). The bot posted threads on the template's .template/*.ps1, .githooks/* and .claude/commands/*, which a template update overwrites; their real fixes went to project-template#125. The draft finding on AGENTS.md was fixed in the pull request. Issue code-review#31: findings on template-owned files belong upstream, listed in the summary, not posted as threads."
+  },
+  {
     "id": "re-review-declined-trigger",
     "repository": "NCodeGroup/code-review",
     "pullRequest": 29,

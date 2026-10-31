@@ -1,4 +1,4 @@
-// Runs a step of the action, src/main.ts or src/publish.ts, as a child process, as the action runs it, with
+// Runs a step of the action, src/main.ts, src/publish.ts or src/finish.ts, as a child process, as the action runs it, with
 // fake-github.ts answering every fetch, so a test sees what the step does end to end and nothing reaches the network.
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -15,7 +15,7 @@ const baseEnv = () => ({ PATH: process.env['PATH'] ?? '', ...(process.env['Syste
 // `dir` holds the routes and the request log. The step gets only the variables in `env`, no secret from this process.
 // A step that exits non-zero throws, unless `fails` says the test expects it to.
 export function runStep(
-  script: 'main.ts' | 'publish.ts',
+  script: 'main.ts' | 'publish.ts' | 'finish.ts',
   dir: string,
   routes: FakeRoutes,
   env: Record<string, string>,
