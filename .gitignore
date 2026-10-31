@@ -28,7 +28,6 @@ dist/
 coverage/
 
 # Kept from this repository's own .gitignore when it adopted the project template
-node_modules/
 out/
 evals/.work/
 evals/out/

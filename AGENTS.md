@@ -25,7 +25,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - integrate: pull-request
 - release: none
 - changelog: CHANGELOG.md
-- draft: no
+- draft: yes
 - follow-ups: issues
 - follow-up-label: follow-up
 - gate: npm run typecheck && npm test

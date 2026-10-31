@@ -14,6 +14,3 @@
 *.pdf binary
 *.zip binary
 *.snk binary
-
-# Kept from this repository's own .gitattributes when it adopted the project template
-
