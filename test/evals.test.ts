@@ -227,6 +227,15 @@ test('compare reads an output from before precision was measured, and says which
   assert.match(text, /^two\s+—\s+0\/1\s+—/m);
   assert.match(text, /Only in old: none\. Only in new: two\./);
   assert.match(text, /predates the precision judge/);
+  assert.match(text, /reviewCostUsd predates it: its review cost includes the eval's judges/);
+});
+
+test('compare says a run without precision may have run with --precision off, and keeps its review cost apart', () => {
+  const off = output([caseOutput('one', 1, 3, 4, 2)], false);
+  const text = compare(off, output([caseOutput('one', 1, 3, 4, 2, 0.5)], true), ['off', 'on']);
+  assert.match(text, /^Precision\s+—\s+50%\s+—$/m);
+  assert.match(text, /ran with --precision off/);
+  assert.doesNotMatch(text, /reviewCostUsd predates it/);
 });
 
 test('outputPath takes a file path as given and a bare label from evals/out', () => {
