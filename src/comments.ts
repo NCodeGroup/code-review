@@ -3,7 +3,7 @@
 
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin, keptMarkerLines, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
-import { parsePosted, placeFindings, reviewBody, threadBody, type PostedThread } from './threads.ts';
+import { parsePosted, placeFindings, reviewBody, reviewComment, type PostedThread } from './threads.ts';
 
 // GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
 // comments and review comments share both.
@@ -74,7 +74,7 @@ export async function postThreads(
     commit_id: results.headSha,
     event: 'COMMENT',
     body: reviewBody(placement, results.headSha),
-    comments: placement.inline.map(({ finding, line }) => ({ path: finding.file, line, side: 'RIGHT', body: threadBody(finding) })),
+    comments: placement.inline.map(reviewComment),
   };
   assertNoSecrets(JSON.stringify(review), secrets, 'The review');
   try {

@@ -149,8 +149,8 @@ test('parseFindingComment reads the marker, and the visible reviewers of a comme
   assert.equal(parseFindingComment('Just a comment.'), undefined);
 });
 
-test('parseFindingComment falls back to the visible reviewers when the marker encodes them badly', () => {
-  const damaged = '🔴 **Blocker: t** <sub>F2 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=blocker reviewers=a%,b -->';
+test('parseFindingComment falls back to the visible reviewers when the marker names them as blank', () => {
+  const damaged = '🔴 **Blocker: t** <sub>F2 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=blocker reviewer=, -->';
   assert.deepEqual(parseFindingComment(damaged), { id: 'F2', severity: 'blocker', reviewers: ['correctness'] });
 });
 
@@ -230,7 +230,7 @@ test("the summary comment records the review's cost, provider and models, and a 
     },
   ]);
   const summary = summaryComment(
-    { ...reviewResults, summary: 's', verdict: 'comment', findings: [], skipped: [], durationMs: 1000 } as unknown as Results,
+    { ...reviewResults, summary: 's', verdict: 'comment', findings: [], dropped: [], skipped: [], durationMs: 1000 } as unknown as Results,
     'https://check',
     'https://help',
   );

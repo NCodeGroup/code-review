@@ -155,7 +155,7 @@ export interface OutcomesReport {
 }
 
 // The finding a bot comment carries, from its marker; reviewers come from the visible line for a comment posted before
-// the marker named them, or whose marker names them in a malformed encoding.
+// the marker named them, or whose marker names them as blank.
 export function parseFindingComment(body: string): { id: string; severity: Severity; reviewers: string[] } | undefined {
   const marker = /<!-- ncode-review:finding (.+?) -->/.exec(body);
   if (!marker) return undefined;
@@ -163,20 +163,11 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
   const id = fields.get('id');
   const severity = fields.get('severity') as Severity | undefined;
   if (!id || !severity) return undefined;
-  const listed = decodeAll(fields.get('reviewers')?.split(',') ?? []).filter(Boolean);
+  const listed = (fields.get('reviewer') ?? '').split(',').filter(Boolean);
   const reviewers = listed.length
     ? listed
     : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
   return { id, severity, reviewers: reviewers.filter(Boolean) };
-}
-
-// Every value decoded, or none when any is a malformed escape such as a stray `%`.
-function decodeAll(values: string[]): string[] {
-  try {
-    return values.map(decodeURIComponent);
-  } catch {
-    return [];
-  }
 }
 
 export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
