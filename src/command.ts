@@ -8,7 +8,7 @@
 // The set lives here, not in writers.ts, because the acknowledgement loads this file before npm ci and must not load
 // config.ts; writers.ts imports it from here.
 
-// The author associations that name a writer.
+// The author associations that name a writer, for the /review command, writers.ts and the replies outcomes count.
 export const writerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // Which finding `/review explain` asks about: an id such as F3, which means the newest review's F3; a link to one of the
@@ -78,6 +78,7 @@ export function parseCommand(body: string): Command | undefined {
 }
 
 export interface CommentEvent {
+  action?: string;
   issue?: { number?: number; pull_request?: unknown };
   comment?: { id?: number; body?: string; author_association?: string; html_url?: string; user?: { login?: string } };
   repository?: { private?: boolean };
@@ -121,6 +122,11 @@ export function skipReasonFor(
   return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
 }
 
+// A pull request closed, merged or not: the run records outcomes and never reviews. A comment's event is never one.
+export function isClosedEvent(event: { action?: string; comment?: unknown; pull_request?: unknown }): boolean {
+  return !event.comment && !!event.pull_request && event.action === 'closed';
+}
+
 type PullRequestLike = NonNullable<Parameters<typeof skipReason>[0]>;
 
 export type RunDecision<P extends PullRequestLike> =
@@ -128,14 +134,16 @@ export type RunDecision<P extends PullRequestLike> =
   | { run: false; reason: string };
 
 // Whether this run does anything, and what: a command from a writer's comment, or an automatic review, on a pull request
-// that isn't from a fork. The review step decides with this. `readPullRequest` reads the pull request a comment is on,
-// and `reviewedHead` the head the bot last reviewed; a comment that isn't a command costs no API call.
+// that isn't from a fork. The review step decides with this. A closed pull request is never reviewed: its run records
+// outcomes instead. `readPullRequest` reads the pull request a comment is on, and `reviewedHead` the head the bot last
+// reviewed; a comment that isn't a command, or a closed pull request, costs no API call.
 export async function decideRun<P extends PullRequestLike>(
   event: CommentEvent & { pull_request?: P },
   repository: string,
   readPullRequest: (number: number) => Promise<P>,
   reviewedHead: (number: number) => Promise<string | undefined>,
 ): Promise<RunDecision<P>> {
+  if (isClosedEvent(event)) return { run: false, reason: "The pull request closed; it isn't reviewed." };
   if (event.comment) {
     const request = commandFromEvent(event);
     if (!request) return { run: false, reason: 'Not a /review command from someone with write access; nothing to do.' };
@@ -157,8 +165,9 @@ export type ReviewDecision<P extends PullRequestLike> =
 
 // Whether this run reviews, and which pull request. The early acknowledgement decides with this, through the review
 // step's own decideRun, so a run acknowledges exactly what it goes on to review: a /review comment from a writer, or an
-// automatic run, on a pull request that isn't from a fork. `/review explain` and `/review teach` aren't reviews: they
-// answer with a comment, not the "Code review" check run, so they get no acknowledgement, and no API call decides that.
+// automatic run, on a pull request that isn't from a fork. A closed pull request is never reviewed, so it gets no
+// acknowledgement and no check run. `/review explain` and `/review teach` aren't reviews: they answer with a comment,
+// not the "Code review" check run, so they get no acknowledgement, and no API call decides that.
 export async function decideReview<P extends PullRequestLike>(
   event: CommentEvent & { pull_request?: P },
   repository: string,

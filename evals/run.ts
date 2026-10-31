@@ -2,14 +2,19 @@
 // must-not-flag concern may be. A re-review case, one with a last reviewed head, also may post nothing below should-fix
 // or off the lines changed since that head. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.
 //
-//   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--shadow performance] [--label name] [--guidance full]
+//   node evals/run.ts [--only id,id | --subset smoke] [--tiers "conventions=haiku"] [--shadow performance] [--label name]
+//                     [--guidance full] [--precision off] [--max-cost 8]
 //
 // Writes evals/out/<label>.json with every finding, the judge's verdicts, precision, findings per case and the cost.
 // Unmatched blockers and should-fixes are judged for precision (evals/precision.ts); verdicts are cached in
-// evals/verdicts.json. npm run eval:compare compares two outputs; npm run eval:confirm adds verdicts to the cases.
+// evals/verdicts.json. --precision off skips that judge and its Opus calls. npm run eval:compare compares two outputs;
+// npm run eval:confirm adds verdicts to the cases. --subset names a set of cases in evals/cases.ts.
 // Shadow reviewers (a charter marked shadow: true, or --shadow, which sets CODE_REVIEW_SHADOW) are scored on their own:
 // their catches and must-not violations are reported apart from the live reviewers', which never include them. Their
 // findings are never posted, so precision never counts them.
+//
+// --max-cost stops the run once its cost, judges included, passes that many dollars: the case that crossed it finishes,
+// the rest don't start, the output covers the cases that ran, and the run fails.
 //
 // A concern with a minSeverity counts as raised only by a finding at that severity or above: an expected should-fix
 // raised as a nit is missed, and a must-not concern at should-fix may still be raised as a nit.
@@ -24,7 +29,7 @@ import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather
 import { startProxy } from '../src/proxy.ts';
 import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
 import { changedLines, loadCharters, review, severityRank, type Finding } from '../src/review.ts';
-import type { Concern, EvalCase } from './cases.ts';
+import { subsets, type Concern, type EvalCase } from './cases.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
 interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[]; caughtShadow?: boolean; byShadow?: string[] }
@@ -118,16 +123,95 @@ async function raised<F extends Finding>(run: AgentRun, concern: Concern, findin
   return by;
 }
 
+// The --max-cost value in dollars, or undefined when the flag is absent. A flag without a positive number fails before
+// anything is spent, instead of running uncapped.
+export function parseMaxCost(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const text = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(text) || Number(text) <= 0) throw new Error(`--max-cost takes a positive number of dollars, such as 8, not ${JSON.stringify(value.slice(0, 40))}.`);
+  return Number(text);
+}
+
+// The --max-cost value in argv. A --max-cost with no value reaches parseMaxCost as '' and fails, instead of running
+// uncapped.
+export function maxCostFrom(argv: readonly string[]): number | undefined {
+  const index = argv.indexOf('--max-cost');
+  const value = index >= 0 ? (argv[index + 1] ?? '') : undefined;
+  return parseMaxCost(value);
+}
+
+// What a capped run's summary records about the cap, and the error that fails the run once the cap was passed. A run
+// without --max-cost records nothing.
+export function capOutcome(
+  maxCostUsd: number | undefined,
+  capped: { costUsd: number; ran: number; exceeded: boolean },
+  casesSelected: number,
+  label: string,
+): { record?: { maxCostUsd: number; casesRun: number; casesSelected: number }; error?: string } {
+  if (maxCostUsd === undefined) return {};
+  const record = { maxCostUsd, casesRun: capped.ran, casesSelected };
+  if (!capped.exceeded) return { record };
+  return {
+    record,
+    error: `Stopped over --max-cost: the run cost $${capped.costUsd.toFixed(2)}, more than $${maxCostUsd.toFixed(2)}, after ${capped.ran} of ${casesSelected} cases. evals/out/${label}.json has the cases that ran.`,
+  };
+}
+
+// Whether the precision judge runs: --precision on, the default, or off.
+export function parsePrecision(value: string | undefined): boolean {
+  const setting = value ?? 'on';
+  if (setting !== 'on' && setting !== 'off') throw new Error(`--precision takes on or off, not ${JSON.stringify(setting.slice(0, 40))}.`);
+  return setting === 'on';
+}
+
+// One case's precision, or undefined with --precision off, when the judge isn't asked about any finding.
+export function casePrecision(precisionOn: boolean, input: Parameters<typeof judgePosted>[0]): Promise<CasePrecision | undefined> {
+  return precisionOn ? judgePosted(input) : Promise.resolve(undefined);
+}
+
+// The cases --only or --subset names, in cases.json's order. A name that matches no case fails, and so does an --only
+// that names none, so a typo, a renamed case or an unset shell variable can't quietly shrink the run.
+export function selectCases(all: EvalCase[], only: string | undefined, subset: string | undefined): EvalCase[] {
+  if (only !== undefined && subset !== undefined) throw new Error('Use --only or --subset, not both.');
+  let ids: readonly string[] | undefined = only?.split(',').map((id) => id.trim()).filter(Boolean);
+  if (ids?.length === 0) throw new Error('--only names no case; give it case ids separated by commas.');
+  if (subset !== undefined) {
+    ids = Object.hasOwn(subsets, subset) ? subsets[subset] : undefined;
+    if (!ids) throw new Error(`No subset named ${JSON.stringify(subset)}; evals/cases.ts has ${Object.keys(subsets).join(', ')}.`);
+  }
+  if (!ids) return all;
+  const missing = ids.filter((id) => !all.some((c) => c.id === id));
+  if (missing.length) throw new Error(`No eval case named ${missing.join(', ')}; evals/cases.json lists the case ids.`);
+  return all.filter((c) => ids.includes(c.id));
+}
+
+// Runs the cases in order, each returning what it cost, and stops once the total passes maxCostUsd: the case that
+// crossed it finishes, since a review stopped partway has nothing to score, and the rest don't start.
+export async function runCapped<T>(
+  items: readonly T[],
+  runOne: (item: T) => Promise<number>,
+  maxCostUsd?: number,
+): Promise<{ costUsd: number; ran: number; exceeded: boolean }> {
+  let costUsd = 0, ran = 0;
+  for (const item of items) {
+    costUsd += await runOne(item);
+    ran++;
+    if (maxCostUsd !== undefined && costUsd > maxCostUsd) return { costUsd, ran, exceeded: true };
+  }
+  return { costUsd, ran, exceeded: false };
+}
+
 // How the output names a finding that raised a concern.
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
 async function main(): Promise<void> {
+  const maxCost = maxCostFrom(process.argv);
+  const precisionOn = parsePrecision(arg('precision'));
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
   if (arg('tiers')) process.env['CODE_REVIEW_TIERS'] = arg('tiers');
   if (arg('shadow')) process.env['CODE_REVIEW_SHADOW'] = arg('shadow');
-  const only = arg('only')?.split(',');
-  const cases = (JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as EvalCase[]).filter((c) => !only || only.includes(c.id));
+  const cases = selectCases(JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as EvalCase[], arg('only'), arg('subset'));
   const label = arg('label') ?? new Date().toISOString().replace(/[:.]/g, '-');
   const charters = loadCharters(root);
   // The held-out guidance was trained without the eval cases' own pull requests and decision records, so a catch
@@ -147,8 +231,9 @@ async function main(): Promise<void> {
   const findingsPerCase: number[] = [];
   const reviewCosts: number[] = [];
 
+  let capped: Awaited<ReturnType<typeof runCapped>>;
   try {
-    for (const c of cases) {
+    capped = await runCapped(cases, async (c) => {
       const repo = clone(c.repository);
       const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
       const head = worktree(repo, `${c.id}-head`, headSha);
@@ -228,7 +313,7 @@ async function main(): Promise<void> {
       }
 
       const diffs = splitDiff(gathered.diff);
-      const precision = await judgePosted({
+      const precision = await casePrecision(precisionOn, {
         caseId: c.id,
         findings: outcome.findings,
         matched,
@@ -236,8 +321,10 @@ async function main(): Promise<void> {
         cache: verdictCache,
         judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
       });
-      saveVerdicts(verdictFile, verdictCache);
-      precisions.push(precision);
+      if (precision) {
+        saveVerdicts(verdictFile, verdictCache);
+        precisions.push(precision);
+      }
       findingsPerCase.push(outcome.findings.length);
       const reviewCost = outcome.calls.reduce((sum, call) => sum + call.costUsd, 0);
       reviewCosts.push(reviewCost);
@@ -259,33 +346,38 @@ async function main(): Promise<void> {
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
         ...(reReviewed ? [offChanged.length ? `OFF THE CHANGED LINES: ${offChanged.join(', ')}` : 'stayed on the changed lines'] : []),
       ].join(', ');
+      const precisionText = precision ? `, precision ${percent(precision.precision)} (${precision.unsure} unsure)` : '';
       const shadowStatus = outcome.shadow.length
         ? `; shadow (${outcome.shadow.map((o) => o.name).join(', ')}): ${verdicts.filter((v) => v.caughtShadow).length} caught, ${forbidden.filter((f) => f.raisedByShadow?.length).length} must-not, ${shadow.length} findings`
         : '';
-      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, precision ${percent(precision.precision)} (${precision.unsure} unsure)${shadowStatus}, $${caseCost.toFixed(2)}`);
+      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings${precisionText}${shadowStatus}, $${caseCost.toFixed(2)}`);
       const reReviewReport = reReviewed
         ? { reReview: { summary: reReviewed.summary, offChanged, earlier: reReviewed.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, status, note })) } }
         : {};
       report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, upstream: outcome.upstream, refuted: outcome.refuted, raw, shadow, shadowPrompts: outcome.shadowPrompts, calls, reviewCostUsd: reviewCost, costUsd: caseCost, ...reReviewReport });
-    }
+      return caseCost;
+    }, maxCost);
   } finally {
     await proxy.close();
   }
 
-  const precision = totalPrecision(precisions);
+  const precision = precisionOn ? totalPrecision(precisions) : undefined;
+  const cap = capOutcome(maxCost, capped, cases.length, label);
   const summary = {
     label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations,
     findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount,
     precision, findingsPerCase: spread(findingsPerCase), reviewCostUsd: reviewCosts.reduce((a, b) => a + b, 0),
     reviewCostPerCase: spread(reviewCosts), costUsd: cost,
     shadow: { reviewers: [...shadowNames], caught: caughtShadow, violations: shadowViolations, findings: shadowFindingCount },
+    ...cap.record,
   };
   console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
-  console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
+  if (precision) console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
   console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
   if (shadowNames.size) console.log(`Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
+  if (cap.error) throw new Error(cap.error);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

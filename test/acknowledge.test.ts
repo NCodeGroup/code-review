@@ -146,6 +146,16 @@ test('decideReview gives nothing for an automatic review of a commit already rev
   assert.equal((await decideReview({ pull_request: fork }, repository, r.readPullRequest, r.reviewedHead)).review, false);
 });
 
+test('decideReview gives nothing for a closed pull request, merged or not, without an API call', async () => {
+  for (const merged of [true, false]) {
+    const r = readers(own, newer);
+    const closed = { ...own, merged };
+    const decision = await decideReview({ action: 'closed', pull_request: closed }, repository, r.readPullRequest, r.reviewedHead);
+    assert.equal(decision.review, false);
+    assert.deepEqual(r.counts, { pullRequest: 0, reviewedHead: 0 });
+  }
+});
+
 test('decideReview gives nothing for an automatic event without a pull request, without an API call', async () => {
   const r = readers(own);
   assert.deepEqual(await decideReview({}, repository, r.readPullRequest, r.reviewedHead), { review: false, reason: 'The event has no pull request.' });
@@ -577,21 +587,24 @@ test('action.yml passes the check run on to the publish and finish steps, and fi
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_ID'], '${{ steps.ack.outputs.check-run-id }}');
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_SHA'], '${{ steps.ack.outputs.head-sha }}');
   }
-  // The token is minted, after a failure too, for a review, a paused notice, an explain answer or a teach reply to
-  // publish, a stop to report, or an acknowledged check run.
+  // The token is minted, after a failure too, for a review, a closed pull request's outcomes, a paused notice, an
+  // explain answer or a teach reply to publish, a stop to report, or an acknowledged check run.
   assert.equal(
     steps.find((s) => s.id === 'app-token')?.if,
-    "always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true' || " +
+    "always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' || " +
+      "steps.review.outputs.paused == 'true' || " +
       "steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true' || " +
       "steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')",
   );
   assert.equal(
     publish?.if,
-    "steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true' || " +
+    "steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' || " +
+      "steps.review.outputs.paused == 'true' || " +
       "steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'",
   );
   // The finish step runs, after a failure too, only with the token, only when the publish step didn't complete the
-  // check run, and only when there's one to complete.
+  // check run, and only when there's one to complete: never for a closed pull request, which is never acknowledged
+  // and never stops with a commit to report on.
   assert.equal(
     finish?.if,
     "always() && steps.app-token.outcome == 'success' && steps.publish.outputs.check-completed != 'true' && " +

@@ -48,8 +48,9 @@ runs:
     # The acknowledgement: a sign on the pull request within seconds, before setup-node and npm ci, which are most of the
     # wait. It runs with the runner's own node and no npm package, and continues on error: without it, the review runs
     # as before. This step holds only the read-only token and makes the review step's own decision, so a comment that
-    # isn't a /review command from a writer, a fork, or an automatic run on a commit already reviewed gets nothing.
-    # Neither does /review explain or /review teach: they answer with a comment, not the "Code review" check run.
+    # isn't a /review command from a writer, a fork, an automatic run on a commit already reviewed, or a closed pull
+    # request gets nothing. Neither does /review explain or /review teach: they answer with a comment, not the "Code
+    # review" check run.
     - name: Decide whether to acknowledge
       id: ack-decide
       continue-on-error: true
@@ -100,7 +101,8 @@ runs:
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # Neither the app's private key nor a token minted from it is in this step's environment.
     # For a comment that isn't a /review, /review explain or /review teach command from someone with write access, it stops
-    # here and the later steps skip. After three automatic reviews with no comment from someone with write access, it
+    # here and the later steps skip. For a closed pull request it records each finding's outcome by rules, with no model
+    # call, so it gets no model key. After three automatic reviews with no comment from someone with write access, it
     # stops before any model call and sets `paused`, so the later steps post only the paused notice and complete an
     # acknowledged check run as paused.
     - name: Review
@@ -111,7 +113,7 @@ runs:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_PR_PATH: ${{ inputs.pr-path }}
         CODE_REVIEW_BASE_PATH: ${{ inputs.base-path }}
-        CODE_REVIEW_BEDROCK_KEY: ${{ inputs.bedrock-api-key }}
+        CODE_REVIEW_BEDROCK_KEY: ${{ github.event.action != 'closed' && inputs.bedrock-api-key || '' }}
         CODE_REVIEW_FEDERATION_RULE_ID: ${{ inputs.federation-rule-id }}
         CODE_REVIEW_ORGANIZATION_ID: ${{ inputs.organization-id }}
         CODE_REVIEW_SERVICE_ACCOUNT_ID: ${{ inputs.service-account-id }}
@@ -119,12 +121,13 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
-    # comments and review threads: to publish the review, the paused notice or a /review explain or /review teach reply, or
-    # to complete the check run with why there's no review.
+    # comments and review threads: to publish the review, a closed pull request's outcomes, the paused notice or a
+    # /review explain or /review teach reply, or to complete the check run with why there's no review.
     - name: Get the app's token
       id: app-token
       if: >-
-        always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true' ||
+        always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.paused == 'true' ||
           steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true' ||
           steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -154,7 +157,8 @@ runs:
     - name: Publish
       id: publish
       if: >-
-        steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true' ||
+        steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.paused == 'true' ||
           steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'
       shell: bash
       env:

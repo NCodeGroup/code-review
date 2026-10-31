@@ -2,10 +2,11 @@
 // one, when there was no acknowledgement), posts the findings as review threads, resolves or answers the bot's own
 // earlier threads, posts a new summary comment on the pull request and collapses the bot's earlier summary comments to
 // one line that links to it. For `/review explain` it posts answer.json's comment instead, and for `/review teach` it
-// opens teach.json's `review-guidance` issue and replies; neither has a check run. When the review step paused instead,
-// it posts the paused notice and nothing else, and the finish step completes an acknowledged check run. It runs after
-// the agents have exited, with the app's token, which is limited to the one repository under review and to check runs
-// and pull requests, and for a teach run an issues token as well.
+// opens teach.json's `review-guidance` issue and replies; neither has a check run. For a closed pull request it posts
+// outcomes.json's table on the summary comment, with no check run either. When the review step paused instead, it
+// posts the paused notice and nothing else, and the finish step completes an acknowledged check run. It runs after the
+// agents have exited, with the app's token, which is limited to the one repository under review and to check runs and
+// pull requests, and for a teach run an issues token as well.
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -15,6 +16,7 @@ import { errorText, postSummary, postThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
 import { githubApi, type Api } from './github.ts';
+import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
 import { readReviewThreads } from './rereview.ts';
 import { annotations, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
@@ -50,6 +52,13 @@ async function main(): Promise<void> {
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
   const api = githubApi(token);
+  // A closed pull request's run records outcomes and has no review to publish, nor a check run to complete. It never
+  // pauses, so it comes first.
+  const report = readOutcomes(outDir);
+  if (report) {
+    await publishOutcomes(api, report, [token]);
+    return;
+  }
   // A paused run posts only the notice. It leaves an acknowledged check run to the finish step, which completes it with
   // the review step's status.json, so it never stays in progress.
   const paused = readPaused(outDir);
