@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -478,6 +479,31 @@ test('revokeAcknowledgementToken counts a 401 as revoked already, and only warns
   await revokeAcknowledgementToken(githubApi('t', fakeFetch({ 'api.github.com': { status: 502 } }).fn), (line) => failed.push(line));
   assert.equal(failed.length, 1);
   assert.match(failed[0] ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
+});
+
+// src/acknowledge.ts picks its step when it's loaded, so these run it as action.yml does, in a node process of its own.
+// The process's fetch is a stub that prints each request and answers 204, so nothing reaches the network.
+const fetchStub = `data:text/javascript,${encodeURIComponent(
+  'globalThis.fetch = async (url, init) => { console.log(`fetch ${init.method} ${url} ${init.headers.authorization}`); return new Response(null, { status: 204 }); };',
+)}`;
+function runAcknowledge(mode: string, token?: string): { status: number | null; lines: string[] } {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'CODE_REVIEW_APP_TOKEN' && !name.startsWith('NODE_TEST')));
+  if (token) env['CODE_REVIEW_APP_TOKEN'] = token;
+  const run = spawnSync(process.execPath, ['--import', fetchStub, path.join(root, 'src', 'acknowledge.ts'), mode], { env, encoding: 'utf8' });
+  return { status: run.status, lines: run.stdout.split('\n').filter(Boolean) };
+}
+
+test('acknowledge.ts revoke revokes the token in CODE_REVIEW_APP_TOKEN', () => {
+  const { status, lines } = runAcknowledge('revoke', 'placeholder-token');
+  assert.equal(status, 0);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0] ?? '', /^fetch DELETE https:\/\/api\.github\.com\/installation\/token \S+ placeholder-token$/);
+});
+
+test('acknowledge.ts revoke warns and fails without CODE_REVIEW_APP_TOKEN', () => {
+  const { status, lines } = runAcknowledge('revoke');
+  assert.equal(status, 1);
+  assert.deepEqual(lines, ["::warning::The review couldn't be acknowledged: CODE_REVIEW_APP_TOKEN isn't set."]);
 });
 
 test('required throws for a missing variable, and take removes the variable it reads', () => {
