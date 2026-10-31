@@ -6,7 +6,7 @@ import { after, test } from 'node:test';
 import type { ListedComment } from '../src/comments.ts';
 import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
-import { runStep } from './steps.ts';
+import { pullRequestCheckout, reviewStep, runStep } from './steps.ts';
 
 const made: string[] = [];
 after(() => {
@@ -25,8 +25,8 @@ const at = (minute: number) => `2026-10-31T08:${String(minute).padStart(2, '0')}
 const reviewed = 'a'.repeat(40);
 let ids = 0;
 
-function summary(minute: number, collapsed = false): ListedComment {
-  const body = collapsed ? supersededComment(reviewed, 'https://github.com/o/r/pull/1#issuecomment-1') : `${summaryMarker}\n${headMarker(reviewed)}\n### 🤖 Review complete`;
+function summary(minute: number, collapsed = false, head = reviewed): ListedComment {
+  const body = collapsed ? supersededComment(head, 'https://github.com/o/r/pull/1#issuecomment-1') : `${summaryMarker}\n${headMarker(head)}\n### 🤖 Review complete`;
   return { id: ++ids, user: bot, author_association: 'NONE', created_at: at(minute), body };
 }
 
@@ -36,14 +36,14 @@ function said(minute: number, body: string, association = 'MEMBER', user: Listed
 
 // The maintainer spoke at minute 1; three reviews followed, the first two collapsed by the next, with the autopilot
 // answering in between, as the maintainer's account.
-const threeReviews = (): ListedComment[] => [
-  summary(0, true),
+const threeReviews = (head = reviewed): ListedComment[] => [
+  summary(0, true, head),
   said(1, 'Please also cover the empty case.'),
-  summary(2, true),
+  summary(2, true, head),
   said(3, 'Autopilot: fixed in abc123.'),
-  summary(4, true),
+  summary(4, true, head),
   said(5, 'Autopilot: fixed in def456.'),
-  summary(6),
+  summary(6, false, head),
 ];
 
 test('unansweredReviews counts the summaries, collapsed or not, since the last comment from someone with write access', () => {
@@ -170,6 +170,28 @@ test('an automatic review after the pause notice posts nothing more', () => {
   const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
   const { out, output, requests } = automaticRun([...threeReviews(), notice]);
   assert.equal(requests.length, 2);
+  assert.equal(output, '');
+  assert.ok(!existsSync(path.join(out, 'paused.json')));
+});
+
+test('a /review from a writer on a paused pull request reviews it', () => {
+  const dir = temp('pause-resume-');
+  const checkout = pullRequestCheckout(dir);
+  const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
+  const event = { issue: { number: 1, pull_request: {} }, comment: { body: '/review', author_association: 'OWNER' } };
+  const pullRequest = { number: 1, user: { login: 'polewskm' }, author_association: 'OWNER', base: { ref: 'main', sha: checkout.base }, head: { sha: checkout.head, repo: { full_name: 'o/r' } } };
+  const { out, output, requests, stderr } = reviewStep(
+    dir,
+    event,
+    {
+      'GET https://api.github.com/repos/o/r/pulls/1': pullRequest,
+      'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [...threeReviews(checkout.reviewed), notice],
+    },
+    true,
+  );
+  // It went past the loop limit, which it never looked up, to the review itself, which stops here without credentials.
+  assert.match(stderr, /::error::No provider available/);
+  assert.ok(!requests.some((r) => r.url.includes('/pulls/1/comments')));
   assert.equal(output, '');
   assert.ok(!existsSync(path.join(out, 'paused.json')));
 });

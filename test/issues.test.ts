@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { postThreads } from '../src/comments.ts';
 import type { Gathered } from '../src/gather.ts';
 import { maxOpenIssuePages, readOpenIssues } from '../src/issues.ts';
-import { checkText, summaryComment, type Results } from '../src/results.ts';
+import { botLogin, checkText, headMarker, summaryComment, summaryMarker, type Results } from '../src/results.ts';
 import { mergeSynthesis, review, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { placeFindings, reviewBody } from '../src/threads.ts';
+import { pullRequestCheckout, reviewStep } from './steps.ts';
+
+const made: string[] = [];
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 const issue = (number: number, association = 'MEMBER', extra: Record<string, unknown> = {}) => ({ number, title: `Issue ${number}`, author_association: association, ...extra });
 
@@ -132,4 +141,37 @@ test('the summary comment and the check run say "Tracked in #N" for a tracked fi
   assert.match(summary, /\*\*F2\*\* `src\/a\.ts:2`: New$/m);
   assert.match(checkText(results), /\*\*Known\*\* p\n\nTracked in #12\.\n/);
   assert.equal(checkText(results).match(/Tracked in/g)?.length, 1);
+});
+
+// main.ts on a pull request: a full review reads the open issues for synthesis, and a re-review, whose synthesis can't
+// mark a finding tracked, doesn't. Both stop at choosing a provider, with no model credentials, before any model call.
+function automaticReview(earlierHead: (checkout: ReturnType<typeof pullRequestCheckout>) => string | undefined) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'issues-run-'));
+  made.push(dir);
+  const checkout = pullRequestCheckout(dir);
+  const earlier = earlierHead(checkout);
+  const comments = earlier ? [{ id: 1, user: { login: botLogin, type: 'Bot' }, author_association: 'NONE', created_at: '2026-10-31T08:00:00Z', body: `${summaryMarker}\n${headMarker(earlier)}` }] : [];
+  const pullRequest = { number: 1, user: { login: 'polewskm' }, author_association: 'OWNER', base: { ref: 'main', sha: checkout.base }, head: { sha: checkout.head, repo: { full_name: 'o/r' } } };
+  const run = reviewStep(
+    dir,
+    { action: 'synchronize', pull_request: pullRequest },
+    {
+      'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': comments,
+      'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+      [`GET ${openIssuesUrl}`]: [issue(7)],
+    },
+    true,
+  );
+  assert.match(run.stderr, /::error::No provider available/);
+  return run;
+}
+
+const openIssuesUrl = 'https://api.github.com/repos/o/r/issues?state=open&sort=updated&direction=desc&per_page=100&page=1';
+
+test('a full review reads the open issues, and a re-review does not', () => {
+  const full = automaticReview(() => undefined);
+  assert.ok(full.requests.some((r) => r.url === openIssuesUrl && /^bearer read-token$/i.test(r.authorization ?? '')));
+  const again = automaticReview((checkout) => checkout.reviewed);
+  assert.match(again.stdout, /Re-review since/);
+  assert.ok(!again.requests.some((r) => r.url.includes('/issues?')));
 });
