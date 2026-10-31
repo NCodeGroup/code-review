@@ -390,6 +390,52 @@ test('the smoke eval workflow runs only on main and by hand, in the code-review 
   for (const line of uses) assert.match(line, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, line);
 });
 
+// The steps of the smoke eval workflow, read just far enough to see each step's name, id, if, uses and run.
+interface WorkflowStep { name: string; id: string; if: string; uses: string; run: string; text: string }
+function workflowSteps(): WorkflowStep[] {
+  const lines = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  const steps: WorkflowStep[] = [];
+  for (const line of lines.slice(lines.indexOf('    steps:') + 1)) {
+    if (line.startsWith('      - ')) steps.push({ name: '', id: '', if: '', uses: '', run: '', text: '' });
+    const step = steps.at(-1);
+    if (!step || line.trimStart().startsWith('#')) continue;
+    step.text += `${line}\n`;
+    const field = /^ {6}(?:- | {2})([\w-]+): ?(.*)$/.exec(line);
+    if (!field) continue;
+    const [, key = '', value = ''] = field;
+    if (key === 'name' || key === 'id' || key === 'if' || key === 'uses' || key === 'run') step[key] = value;
+  }
+  return steps;
+}
+
+test('the smoke eval workflow uploads the outputs only after the secret scan passes', () => {
+  const steps = workflowSteps();
+  const scan = steps.findIndex((s) => s.id === 'scan');
+  const upload = steps.findIndex((s) => s.uses.startsWith('actions/upload-artifact@'));
+  assert.ok(scan >= 0 && upload >= 0, 'a scan step and an upload step');
+  assert.ok(scan < upload, 'the scan runs before the upload');
+  assert.equal(steps[scan]!.if, '${{ !cancelled() }}');
+  assert.equal(steps[scan]!.run, 'node evals/smoke.ts scan evals/out');
+  assert.ok(steps[scan]!.text.includes('AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}'), 'the scan knows the Bedrock key');
+  assert.equal(steps[upload]!.if, "${{ !cancelled() && steps.scan.outcome == 'success' }}");
+  assert.ok(steps[upload]!.text.includes('path: evals/out/'), 'the upload takes the folder the scan read');
+  assert.equal(upload, steps.length - 1, 'nothing runs after the upload');
+});
+
+test('the smoke eval workflow fails the job when the run or the check fails, and checks out the full history', () => {
+  const steps = workflowSteps();
+  for (const step of steps) assert.doesNotMatch(step.text, /continue-on-error/, step.name || step.uses || step.run);
+  const run = steps.findIndex((s) => s.name === 'Run the smoke subset');
+  const compare = steps.findIndex((s) => s.name === 'Compare with the baseline');
+  assert.ok(run >= 0 && compare > run, 'the check runs after the run');
+  assert.equal(steps[run]!.if, '');
+  assert.ok(steps[run]!.run.includes('--label "$LABEL"'), steps[run]!.run);
+  assert.equal(steps[compare]!.if, '');
+  assert.equal(steps[compare]!.run, 'node evals/smoke.ts check "evals/out/$LABEL.json"');
+  assert.ok(steps[0]!.uses.startsWith('actions/checkout@'), steps[0]!.uses);
+  assert.ok(steps[0]!.text.includes('fetch-depth: 0'), 'the full history');
+});
+
 const evalCase: EvalCase = {
   id: 'x', repository: 'o/r', pullRequest: 5, title: 'T', body: 'Closes #3 and fixes #4', base: 'b'.repeat(40), head: 'h'.repeat(40),
   expect: [], mustNotFlag: [], source: '',
