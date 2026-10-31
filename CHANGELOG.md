@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
 - This repository's own workflow pins v0.4.0 and triggers on `closed`, so its pull requests are reviewed by the current engine and record each finding's outcome when they close.
 
 ## [0.4.0] - 2026-10-31
