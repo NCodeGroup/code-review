@@ -24,7 +24,7 @@ export interface Results {
   verdict: Verdict;
   findings: ReviewedFinding[];
   // Findings left out before posting because they say a file the pull request changes isn't changed.
-  dropped?: DroppedFinding[];
+  dropped: DroppedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -96,6 +96,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     '',
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
     '',
+    ...droppedNote(results.dropped, checkUrl),
     '| Reviewer | Model | Findings | Top |',
     '|---|---|---|---|',
   ];
@@ -120,6 +121,16 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     `<sub>Trial: findings are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
+}
+
+// Says in the summary comment that findings were left out, and how severe, so a dropped blocker is never silent.
+function droppedNote(dropped: DroppedFinding[], checkUrl: string): string[] {
+  if (!dropped.length) return [];
+  const counts = new Map<Severity, number>();
+  for (const { finding } of dropped) counts.set(finding.severity, (counts.get(finding.severity) ?? 0) + 1);
+  const severities = (['blocker', 'should-fix', 'nit'] as const).filter((s) => counts.has(s)).map((s) => `${counts.get(s)} ${s}`);
+  const one = dropped.length === 1;
+  return [`*Left out ${dropped.length} finding${one ? '' : 's'} (${severities.join(', ')}) that said a file this pull request changes isn't changed; [run details](${checkUrl}) list${one ? 's it' : 's them'}.*`, ''];
 }
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
@@ -147,7 +158,7 @@ export function checkSummary(results: Results): string {
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
   }
-  const dropped = results.dropped?.length ?? 0;
+  const dropped = results.dropped.length;
   if (dropped) {
     lines.push('', `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`);
   }
@@ -180,7 +191,7 @@ export function checkText(results: Results): string {
   for (const role of ['selection', 'synthesis']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
-  if (results.dropped?.length) {
+  if (results.dropped.length) {
     out.push('', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', '');
     for (const { finding: f, file, claim } of results.dropped) {
       out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`);

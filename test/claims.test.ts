@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { dropContradicted } from '../src/claims.ts';
-import { checkSummary, checkText, type Results } from '../src/results.ts';
-import { fileList, synthesisDiff, type ReviewedFinding } from '../src/review.ts';
+import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
+import { fileList, settleFindings, synthesisDiff, type Finding, type ReviewedFinding } from '../src/review.ts';
 
 // The shape of NCodeGroup/code-review#22 at ab5859f: six files, every one in the diff.
 const section = (file: string, line: string) =>
@@ -47,6 +47,16 @@ test('synthesisDiff leaves out what is over its budget and says which files it h
   assert.doesNotMatch(excerpt.diff, /src\/command\.ts b\//);
 });
 
+test('synthesisDiff falls back to the head of the diff, holding no file, when no file fits its budget', () => {
+  const excerpt = synthesisDiff({ diff: pr22 }, ['src/main.ts'], 10);
+  assert.equal(excerpt.files.size, 0);
+  assert.equal(excerpt.diff, pr22.slice(0, 10));
+  const files = pr22Files.map((path) => ({ path, additions: 1, deletions: 0, generated: false, shown: true }));
+  const list = fileList({ files }, excerpt.files, 'diff not in this excerpt').split('\n');
+  assert.equal(list.length, pr22Files.length);
+  for (const line of list) assert.match(line, / \[diff not in this excerpt\]$/);
+});
+
 test('fileList marks the changed files whose hunks are elsewhere', () => {
   const files = [
     { path: 'src/command.ts', additions: 14, deletions: 0, generated: false, shown: true },
@@ -75,6 +85,17 @@ test('dropContradicted drops the finding that said src/command.ts was not in the
   assert.equal(out.dropped[0]!.finding.title, f4.title);
 });
 
+test('dropContradicted reads only the finding\'s own words, not the lines its evidence and fix quote from the pull request', () => {
+  const quoted = finding({
+    severity: 'blocker',
+    title: 'Token check skipped for forks',
+    problem: 'The fork check returns early before the token is verified.',
+    evidence: '`// no changes to src/command.ts` above `if (isFork) return;`',
+    fix: 'Remove the early return under `// src/command.ts is unchanged`.',
+  });
+  assert.deepEqual(dropContradicted([quoted], pr22Files), { kept: [quoted], dropped: [] });
+});
+
 test('dropContradicted recognizes the ways a finding says a changed file is not changed', () => {
   const claims = [
     "The diff doesn't change src/command.ts.",
@@ -100,6 +121,8 @@ test('dropContradicted keeps findings that only mention a changed file, or say a
     'skipReason in src/command.ts does not change the message for forks.',
     'The caller in `src/command.ts` is not in the diff, but this change makes it reachable.',
     "The fix doesn't update command.ts's caller in src/main.ts.",
+    'The handler never touches src/command.ts, so the new setting is ignored.',
+    'skipReason does not update `src/command.ts` when the fork list changes.',
     'Moving the check into main.ts needs no changes to src/command.ts.',
     'src/other.ts is unchanged, so its copy of the check drifts.',
     'lib/command.ts is not in the diff.',
@@ -115,6 +138,65 @@ test('dropContradicted matches a bare file name only when one changed file has i
   const files = ['src/a/index.ts', 'src/b/index.ts'];
   assert.equal(dropContradicted([finding({ problem: 'index.ts is unchanged.' })], files).dropped.length, 0);
   assert.equal(dropContradicted([finding({ problem: 'src/b/index.ts is unchanged.' })], files).dropped[0]?.file, 'src/b/index.ts');
+});
+
+const raw = (title: string, severity: Finding['severity'], problem = 'p') => ({ ...finding({ title, severity, problem }), id: `R-${title}`, reviewer: 'tests' });
+const contradicted = 'The diff contains no changes to `command.ts`.';
+
+test('settleFindings drops a contradicted finding before the limit, so a valid one takes its place', () => {
+  const findings = [raw('false', 'should-fix', contradicted), raw('a', 'should-fix'), raw('b', 'nit'), raw('c', 'nit')];
+  const merged = findings.map(({ id, reviewer: _r, ...f }) => ({ ...f, sources: [id] }));
+  const out = settleFindings({ output: { summary: 'Looks fine.', verdict: 'comment', findings: merged } }, findings, pr22Files, 3);
+  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'a'], ['F2', 'b'], ['F3', 'c']]);
+  assert.deepEqual(out.dropped.map((d) => d.finding.title), ['false']);
+  assert.equal(out.summary, 'Looks fine.');
+  assert.equal(out.verdict, 'comment');
+});
+
+test('settleFindings drops a contradicted finding from the reviewers\' own findings when synthesis failed', () => {
+  const findings = [raw('false', 'blocker', contradicted), raw('a', 'nit'), raw('b', 'should-fix')];
+  const out = settleFindings({ output: undefined, error: 'timed out' }, findings, pr22Files, 1);
+  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'b']]);
+  assert.deepEqual(out.dropped.map((d) => d.finding.title), ['false']);
+  assert.match(out.summary, /^Synthesis failed \(timed out\)/);
+  assert.equal(out.verdict, 'comment');
+});
+
+test('settleFindings settles a verdict the dropped findings carried on the findings it keeps', () => {
+  const settle = (verdict: 'approve' | 'comment' | 'request-changes', findings: ReturnType<typeof raw>[]) =>
+    settleFindings({ output: { summary: 's', verdict, findings: [] } }, findings, pr22Files, 10).verdict;
+  // A dropped blocker was the only reason to request changes.
+  assert.equal(settle('request-changes', [raw('false', 'blocker', contradicted), raw('a', 'should-fix')]), 'comment');
+  assert.equal(settle('request-changes', [raw('false', 'blocker', contradicted)]), 'approve');
+  assert.equal(settle('comment', [raw('false', 'should-fix', contradicted)]), 'approve');
+  // Synthesis's judgment stands where the dropped finding didn't carry it.
+  assert.equal(settle('request-changes', [raw('false', 'blocker', contradicted), raw('a', 'blocker')]), 'request-changes');
+  assert.equal(settle('request-changes', [raw('false', 'nit', contradicted), raw('a', 'should-fix')]), 'request-changes');
+  assert.equal(settle('approve', [raw('false', 'nit', contradicted), raw('a', 'nit')]), 'approve');
+  assert.equal(settle('request-changes', [raw('a', 'should-fix')]), 'request-changes');
+});
+
+test('the summary comment says how many findings were left out, and how severe', () => {
+  const results = {
+    summary: 's',
+    verdict: 'comment',
+    provider: 'bedrock',
+    costUsd: 0.1,
+    durationMs: 1000,
+    headSha: 'abcdef1234',
+    findings: [],
+    reviewers: [],
+    skipped: [],
+    dropped: [
+      { finding: finding({ severity: 'blocker' }), file: 'src/command.ts', claim: 'no changes to `command.ts`' },
+      { finding: finding({ severity: 'nit' }), file: 'src/command.ts', claim: 'src/command.ts is unchanged' },
+    ],
+  } as unknown as Results;
+  assert.match(
+    summaryComment(results, 'https://check', 'https://help'),
+    /\*Left out 2 findings \(1 blocker, 1 nit\) that said a file this pull request changes isn't changed; \[run details\]\(https:\/\/check\) lists them\.\*/,
+  );
+  assert.match(summaryComment({ ...results, dropped: results.dropped.slice(0, 1) }, 'https://check', 'https://help'), /Left out 1 finding \(1 blocker\) .* lists it\./);
 });
 
 test('the check run lists the dropped findings and why', () => {

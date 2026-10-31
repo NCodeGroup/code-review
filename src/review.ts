@@ -3,7 +3,7 @@
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
@@ -221,7 +221,7 @@ export function findingLimit(parts: number): number {
 }
 
 // What synthesis sees of the diff: the files the findings name first, then every other file that fits the budget, and
-// the files it holds. With only the named files, synthesis once said a changed file wasn't in the diff (#32).
+// the files it holds. Synthesis sees every changed file it can, or it can wrongly say one isn't in the diff (issue #32).
 export function synthesisDiff(gathered: Pick<Gathered, 'diff'>, files: string[], budget: number): { diff: string; files: Set<string> } {
   const sections = splitDiff(gathered.diff);
   let out = '';
@@ -240,11 +240,11 @@ const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, ni
 
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
-// naming it doesn't count.
+// naming it doesn't count. Without a limit, it keeps every finding.
 export function mergeSynthesis(
   merged: (Finding & { sources: string[] })[],
   raw: (Finding & { id: string; reviewer: string })[],
-  limit: number,
+  limit?: number,
 ): ReviewedFinding[] {
   const byId = new Map(raw.map((f) => [f.id, f]));
   for (const f of merged) f.sources = f.sources.filter((id) => byId.get(id)?.file === f.file);
@@ -257,6 +257,45 @@ export function mergeSynthesis(
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+}
+
+type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] };
+
+const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
+
+function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
+  return findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+}
+
+// Synthesis gave its verdict with the dropped findings in view, so a verdict they carried gives way to the one the kept
+// findings call for. Its request-changes on should-fixes that together make the change unsafe stands while one is kept
+// and no blocker was dropped.
+function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], dropped: DroppedFinding[]): Verdict {
+  const fromFindings = verdictFor(findings);
+  if (!verdict) return fromFindings;
+  if (!dropped.length) return verdict;
+  if (verdict === 'request-changes' && findings.length && !dropped.some((d) => d.finding.severity === 'blocker')) return verdict;
+  return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
+}
+
+// What a review posts from synthesis's answer, or from the reviewers' own findings when synthesis failed: the findings
+// that say a changed file isn't changed are dropped before the limit, so each frees its place, and the rest are numbered.
+export function settleFindings(
+  synthesis: Pick<AgentResult<SynthesisOutput>, 'output' | 'error'>,
+  raw: (Finding & { id: string; reviewer: string })[],
+  changedFiles: string[],
+  limit: number,
+): Pick<Review, 'summary' | 'verdict' | 'findings' | 'dropped'> {
+  // Without synthesis, fall back to the reviewers' own findings, most severe first.
+  const merged = mergeSynthesis(synthesis.output?.findings ?? [], raw);
+  const { kept, dropped } = dropContradicted(merged, changedFiles);
+  const findings = kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  return {
+    summary: synthesis.output?.summary ?? `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`,
+    verdict: settleVerdict(synthesis.output?.verdict, findings, dropped),
+    findings,
+    dropped,
+  };
 }
 
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -391,12 +430,12 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const limit = findingLimit(parts.length);
   const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
   let summary = '';
-  let verdict: Verdict | undefined;
+  let verdict: Verdict = 'approve';
   let findings: ReviewedFinding[] = [];
   let dropped: DroppedFinding[] = [];
   if (raw.length) {
     const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
-    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
+    const synthesis = await runAgent<SynthesisOutput>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
       {
         role: 'synthesis',
@@ -410,25 +449,12 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       },
     );
     calls.push(synthesis.record);
-    // Merge without the limit, so a finding the guard below drops frees its place.
-    if (synthesis.output) {
-      summary = synthesis.output.summary;
-      verdict = synthesis.output.verdict;
-      findings = mergeSynthesis(synthesis.output.findings, raw, Number.MAX_SAFE_INTEGER);
-    } else {
-      // Without synthesis, fall back to the reviewers' own findings, most severe first.
-      summary = `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`;
-      findings = mergeSynthesis([], raw, Number.MAX_SAFE_INTEGER);
-    }
-    const guarded = dropContradicted(findings, gathered.files.map((f) => f.path));
-    dropped = guarded.dropped;
-    findings = guarded.kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, gathered.files.map((f) => f.path), limit));
     if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
   } else {
     summary = 'No findings.';
   }
 
   const skipped = roster.filter((name) => !selected.has(name));
-  verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
   return { reviewers: outcomes, summary, verdict, findings, dropped, calls, skipped };
 }
