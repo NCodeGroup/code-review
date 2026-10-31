@@ -676,6 +676,31 @@ test('reReview posts nothing and records the last head when one of its reviewers
   assert.equal(recordedHead(outcome.reviewers, head, reviewed), reviewed);
 });
 
+test('reReview counts answered over fixed, and open over answered, when its reviewers disagree on an earlier finding', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const earlier = [earlierFinding({ id: 'F1', file: 'a.ts', line: 20 }), earlierFinding({ id: 'F2', file: 'a.ts', line: 30, url: 'https://github.com/o/r/pull/1#discussion_r2' })];
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => earlier, log: () => {} });
+  assert.ok(plan);
+  const outputs = {
+    'reviewer:correctness': { findings: [], earlier: [{ key: 'E1', status: 'answered', note: 'Answered.' }, { key: 'E2', status: 'answered', note: 'Answered.' }] },
+    'reviewer:security': { findings: [], earlier: [{ key: 'E1', status: 'fixed', note: 'Looks fixed.' }, { key: 'E2', status: 'open', note: 'Still open.' }] },
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.earlier.map((e) => [e.finding.id, e.status, e.note]), [['F1', 'answered', 'Answered.'], ['F2', 'open', 'Still open.']]);
+});
+
+test('reReview posts nothing and records the last head when correctness fails and security ran', async () => {
+  const { repo, reviewed, gathered, head } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = { 'reviewer:security': { findings: [finding('blocker', 'token.ts', 1, 'Leak')], earlier: [] } };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status, r.error]), [['correctness', 'failed', 'budget exceeded'], ['security', 'failed', "its findings weren't used, since correctness failed"]]);
+  assert.deepEqual(outcome.findings, []);
+  assert.match(outcome.summary, /failed \(correctness: budget exceeded\)/);
+  assert.equal(recordedHead(outcome.reviewers, head, reviewed), reviewed);
+});
+
 test('reReview of a change to a sensitive: path runs correctness and security on Opus and says it went deep', async () => {
   const { repo, first, reviewed, a } = pullRequestRepo();
   const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
@@ -716,6 +741,23 @@ test('reReview of a sensitive change verifies its findings on Opus', async () =>
   assert.equal(verifications.length, 1);
   assert.equal(verifications[0]!.tier, 'opus');
   assert.deepEqual(outcome.findings.map((f) => f.title), ['Confirmed']);
+});
+
+test('reReview of a sensitive change still says it went deep when one of its reviewers fails, and posts nothing', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const outputs = { 'reviewer:correctness': { findings: [finding('blocker', 'a.ts', 62, 'Real')], earlier: [] } };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, requests), { enabled: false });
+  assert.deepEqual(requests.map((r) => [r.role, r.tier]), [['reviewer:correctness', 'opus'], ['reviewer:security', 'opus']]);
+  assert.equal(outcome.depth, 'deep');
+  assert.deepEqual(outcome.sensitiveFiles, ['a.ts']);
+  assert.match(outcome.summary, /^Deep review \(sensitive paths\): /);
+  assert.deepEqual(outcome.findings, []);
+  assert.deepEqual(outcome.reviewers.map((r) => r.status), ['failed', 'failed']);
 });
 
 test('reReview runs correctness on what the author took back when no hunk of the diff changed', async () => {
