@@ -3,13 +3,15 @@
 //   node evals/smoke.ts check <run.json> [--baseline <file>]
 //     Compares the run with evals/baseline-smoke.json in eval:compare's table and fails when caught drops by more than
 //     2, when a must-not-flag concern was raised, or when the two cover different cases. With no baseline yet it fails
-//     only on a must-not-flag concern, with a notice. Writes the table to $GITHUB_STEP_SUMMARY (stdout outside
-//     Actions), and the run, trimmed to what compare reads, to proposed-baseline-smoke.json beside it.
+//     only on a must-not-flag concern, with a notice. Once one was committed, a missing one fails, naming the commit
+//     that deleted it. Writes the table to $GITHUB_STEP_SUMMARY (stdout outside Actions), and the run, trimmed to what
+//     compare reads, to proposed-baseline-smoke.json beside it.
 //   node evals/smoke.ts scan <dir>
 //     Fails when a file under <dir> holds one of the job's secrets or anything shaped like a credential, before the
 //     workflow uploads the folder: artifacts on a public repository are public.
 
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoSecrets } from '../src/outputs.ts';
@@ -40,7 +42,7 @@ function runTable(run: EvalOutput): string {
 // Model output reaches the summary only inside a code block, which a run of backticks could otherwise close.
 const fenced = (text: string) => `\`\`\`text\n${text.replace(/`{3,}/g, (ticks) => "'".repeat(ticks.length)).trimEnd()}\n\`\`\`\n`;
 
-export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined): SmokeVerdict {
+export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined, deletedIn?: string): SmokeVerdict {
   const failures: string[] = [];
   const notices: string[] = [];
   for (const c of run.cases) {
@@ -56,6 +58,8 @@ export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined): S
       const drop = baseline.summary.caught - run.summary.caught;
       if (drop > noiseLimit) failures.push(`Caught dropped by ${drop}, from ${baseline.summary.caught}/${baseline.summary.expected} to ${run.summary.caught}/${run.summary.expected}: more than the ${noiseLimit} a run varies by.`);
     }
+  } else if (deletedIn) {
+    failures.push(`${baselineFile} is missing, but commit ${deletedIn} deleted it: restore it, or adopt a new baseline from this run's ${proposedName} in a pull request.`);
   } else {
     notices.push(`There is no ${baselineFile} yet, so caught wasn't compared. This run is the proposed baseline: ${proposedName} in the smoke-eval artifact. The README's Smoke eval section says how to adopt it.`);
   }
@@ -121,11 +125,19 @@ export function baselinePathFrom(argv: readonly string[], root: string): string 
 }
 
 // Reads the run and the baseline, a missing one as none, checks them, and writes the proposed baseline beside the run.
-export function checkFiles(runFile: string, baselinePath: string): SmokeVerdict {
+export function checkFiles(runFile: string, baselinePath: string, deletedIn?: string): SmokeVerdict {
   const run = readOutput(runFile);
-  const verdict = smokeCheck(run, readBaseline(baselinePath));
+  const verdict = smokeCheck(run, readBaseline(baselinePath), deletedIn);
   writeFileSync(path.join(path.dirname(runFile), proposedName), `${JSON.stringify(trimmed(run), null, 2)}\n`);
   return verdict;
+}
+
+// The last commit that changed baselineFile in root's history, or undefined when none did. A shallow checkout can't
+// tell, so it throws rather than pass a deleted baseline.
+export function lastBaselineCommit(root: string): string | undefined {
+  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  if (git('rev-parse', '--is-shallow-repository') === 'true') throw new Error(`The checkout is shallow, so it can't tell whether ${baselineFile} was deleted; check out with fetch-depth: 0.`);
+  return git('log', '-1', '--format=%h', '--', baselineFile) || undefined;
 }
 
 function main(): void {
@@ -134,7 +146,10 @@ function main(): void {
     console.log(process.env['GITHUB_ACTIONS'] === 'true' ? `::${kind} title=Smoke eval::${commandData(message)}` : `${kind}: ${message}`);
   if (command === 'check' && target) {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const verdict = checkFiles(path.resolve(target), baselinePathFrom(process.argv, root));
+    const baselinePath = baselinePathFrom(process.argv, root);
+    // Only the committed baseline has a history; a --baseline file is the caller's.
+    const deletedIn = baselinePath === path.join(root, baselineFile) && !existsSync(baselinePath) ? lastBaselineCommit(root) : undefined;
+    const verdict = checkFiles(path.resolve(target), baselinePath, deletedIn);
     const summaryFile = process.env['GITHUB_STEP_SUMMARY'];
     if (summaryFile) appendFileSync(summaryFile, verdict.markdown);
     else process.stdout.write(verdict.markdown);

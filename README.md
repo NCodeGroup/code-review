@@ -42,8 +42,11 @@ The reviewers see a pull request's description, its commit subjects and the issu
 their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
 GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
 request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
-A `/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below
-checks before the engine starts, so a private organization member can't start a review that way.
+The loop limit's count of maintainer comments, the open issues a finding can be tracked in and the `Autopilot:` replies
+the bot answers use the same check. A `/review` comment still counts only when its `author_association` names a writer,
+as the workflow's `if:` below checks before the engine starts: a permission lookup there would let more people start a
+run that holds the model credentials. So a private organization member can't start a review that way;
+[Commands](#commands) says what they can do.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
@@ -194,6 +197,9 @@ the source above but hasn't been tried on a consumer yet.
 ## Commands
 
 Comment on a pull request, as a top-level comment, not a reply in a review thread. Only people with write access can.
+GitHub reports an organization member whose membership is private as a contributor, so their commands are ignored.
+To use them, change your membership from Private to Public on the organization's People page, or have an admin add
+you to the repository as a collaborator.
 
 | Comment | What happens |
 |---|---|
@@ -346,7 +352,9 @@ After three reviews with no comment from someone with write access in between, c
 automatic review stops before any model call and posts once "Paused: comment `/review` to resume". An acknowledged
 "Code review" check run is completed as "Review paused", so it never stays in progress. Comments the
 autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. A
-`/review` from someone with write access always reviews, and counts as their comment.
+`/review` from someone with write access always reviews, and counts as their comment. A comment counts as from someone
+with write access by its author's association or, when that doesn't say so, their permission on the repository; one
+whose permission can't be read doesn't count.
 
 ### Re-reviews
 
@@ -381,8 +389,9 @@ of review converge:
   says so instead, and its verdict is never Approve;
 - it closes the loop on the bot's own threads, never anyone else's: it resolves the thread of an earlier finding it
   found fixed when the thread is outdated or its lines changed since the last review. When it finds one still open
-  and the thread's last comment is an `Autopilot:` reply, it replies once to say why it stays open, ending with a line
-  that asks the maintainer (`@<them>: needs you.`), and never a second time in that thread.
+  and the thread's last comment is an `Autopilot:` reply from someone with write access, it replies once to say why it
+  stays open, ending with a line that asks the maintainer (`@<them>: needs you.`), and never a second time in that
+  thread.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
 gets a full review instead. A review whose reviewers all failed doesn't count as the last review, nor does a re-review
@@ -508,7 +517,7 @@ Each case's pull request is built as the review step builds it: `author` and `au
 
 **Capping the cost.** `--max-cost <usd>` stops a run once its cost, judges included, passes that many dollars: the case that crossed it finishes, the rest don't start, the output covers the cases that ran, and the run fails. `--subset <name>` runs a named set of cases from `evals/cases.ts` instead of `--only id,id`; a name that matches no case fails the run.
 
-**Smoke eval.** The [Smoke eval](.github/workflows/smoke-eval.yml) workflow runs on every push to `main` that changes `prompts/`, `reviewers/`, `src/config.ts` or `guidance/`, and by hand (`gh workflow run smoke-eval.yml`). It runs in the `code-review` environment with the organization's Bedrock key, so it never runs on a pull request. It runs the `smoke` subset, 4 cases with the must-not case and one large diff, with the production guidance, `--precision off` and `--max-cost 8`. `node evals/smoke.ts check` then compares the run with `evals/baseline-smoke.json`, posts the comparison to the job summary, and fails when caught drops by more than 2, when the must-not case is flagged, or when the two cover different cases. `evals/out` is scanned for secrets before it's uploaded as the `smoke-eval` artifact, since artifacts on a public repository are public. With no baseline yet, the run passes with a notice, failing only on a flagged must-not case. To adopt a run as the baseline, the first time or after an intended change in what the smoke cases catch or a change to the subset, take `proposed-baseline-smoke.json` from that run's artifact, which is the run without its agent calls and raw findings, and commit it in a pull request:
+**Smoke eval.** The [Smoke eval](.github/workflows/smoke-eval.yml) workflow runs on every push to `main` that changes `prompts/`, `reviewers/`, `src/config.ts` or `guidance/`, and by hand (`gh workflow run smoke-eval.yml`). It runs in the `code-review` environment with the organization's Bedrock key, so it never runs on a pull request. It runs the `smoke` subset, 4 cases with the must-not case and one large diff, with the production guidance, `--precision off` and `--max-cost 8`. `node evals/smoke.ts check` then compares the run with `evals/baseline-smoke.json`, posts the comparison to the job summary, and fails when caught drops by more than 2, when the must-not case is flagged, or when the two cover different cases. `evals/out` is scanned for secrets before it's uploaded as the `smoke-eval` artifact, since artifacts on a public repository are public. Until `evals/baseline-smoke.json` is first committed, the run passes with a notice, failing only on a flagged must-not case. Once it has been, a run without it fails and names the commit that deleted it, so deleting the file can't turn the gate off; the workflow checks out the full history so the check can tell, and the check fails on a shallow checkout. To adopt a run as the baseline, the first time or after an intended change in what the smoke cases catch or a change to the subset, take `proposed-baseline-smoke.json` from that run's artifact, which is the run without its agent calls and raw findings, and commit it in a pull request:
 
 ```powershell
 gh run download <run id> -n smoke-eval -D evals/out/smoke
