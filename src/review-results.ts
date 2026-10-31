@@ -10,6 +10,9 @@ export interface ReviewContext {
   repository: string;
   pullRequest: number;
   headSha: string;
+  // Whether the pull request's author can write to the repository: only then do findings keep their one-click
+  // suggestions. Absent counts as no.
+  authorCanWrite?: boolean;
   provider: Provider;
   providerReason: string;
   switchedToBedrock?: string;
@@ -59,6 +62,10 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
         prompts: shadowPrompts,
       }
     : undefined;
+  // A suggestion can be applied with one click, so a model-written change prompted by an outsider's code never gets one.
+  const trusted = context.authorCanWrite === true;
+  const withheld = trusted ? 0 : outcome.findings.filter((f) => f.suggestion).length;
+  const findings = trusted ? outcome.findings : outcome.findings.map(({ suggestion: _suggestion, ...f }) => f);
   return {
     repository: context.repository,
     pullRequest: context.pullRequest,
@@ -68,8 +75,9 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     ...(context.switchedToBedrock ? { switchedToBedrock: context.switchedToBedrock } : {}),
     summary: outcome.summary,
     verdict: outcome.verdict,
-    findings: outcome.findings,
+    findings,
     ...(outcome.upstream.length && context.template ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: context.template } : {}),
+    ...(outcome.tracked?.length ? { tracked: outcome.tracked } : {}),
     dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),
@@ -81,7 +89,8 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     notShown: context.notShown,
     ...(context.skippedByConfig ? { skippedByConfig: context.skippedByConfig } : {}),
     warnings: [...(context.warnings ?? []), ...outcome.warnings],
-    changedLines: changedLinesFor(context.diff, outcome.findings.map((f) => f.file)),
+    ...(withheld ? { suggestionsWithheld: withheld } : {}),
+    changedLines: changedLinesFor(context.diff, findings.map((f) => f.file)),
     depth: outcome.depth,
     sensitiveFiles: outcome.sensitiveFiles,
     ...(context.recordedHead !== undefined ? { recordedHead: context.recordedHead } : {}),

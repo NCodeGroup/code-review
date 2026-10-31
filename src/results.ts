@@ -44,6 +44,9 @@ export interface Results {
   upstreamOmitted?: number;
   // The template's repository, such as NCodeGroup/project-template.
   template?: string;
+  // Findings an open issue already tracks, numbered T1, T2 and so on: listed apart, never posted as threads, and left
+  // out of the verdict and the counts. Absent when there are none.
+  tracked?: ReviewedFinding[];
   // Findings left out before posting because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
@@ -60,6 +63,9 @@ export interface Results {
   skippedByConfig?: string[];
   // What in the repository's .github/code-review/ settings couldn't be used.
   warnings?: string[];
+  // Findings whose one-click suggestion was left out because the pull request's author can't write to the repository;
+  // absent when none was.
+  suggestionsWithheld?: number;
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
   // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.
@@ -253,15 +259,32 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   if (count) {
     lines.push('<details><summary>Findings</summary>', '');
     for (const f of results.findings) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}${f.tracked ? ` (tracked in #${f.tracked})` : ''}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
     }
     lines.push('', '</details>', '');
   }
+  lines.push(...trackedList(results));
   lines.push(...upstreamList(results));
   lines.push(
     `<sub>Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
+}
+
+// Findings an open issue already tracks, once, in the summary: they aren't threads, and don't count toward the verdict.
+function trackedList(results: Results): string[] {
+  const tracked = results.tracked ?? [];
+  if (!tracked.length) return [];
+  return [
+    `<details><summary>Tracked in open issues (${tracked.length})</summary>`,
+    '',
+    "Open issues already track these, so they aren't posted as threads or counted in the verdict.",
+    '',
+    ...tracked.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)} (tracked in #${f.tracked})`),
+    '',
+    '</details>',
+    '',
+  ];
 }
 
 // Findings on the template's files, once, in the summary: they can't be fixed in this repository, so they aren't threads.
@@ -326,6 +349,18 @@ export function checkSummary(results: Results): string {
     const one = upstreamTotal === 1;
     lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
   }
+  const trackedCount = results.tracked?.length ?? 0;
+  if (trackedCount) {
+    lines.push('', trackedCount === 1
+      ? "1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict."
+      : `${trackedCount} findings already tracked in open issues are listed after the findings, and aren't posted as threads or counted in the verdict.`);
+  }
+  const withheld = results.suggestionsWithheld ?? 0;
+  if (withheld) {
+    lines.push('', withheld === 1
+      ? "1 finding's code change is in prose only: the pull request's author can't write to this repository, so no one-click suggestion is posted."
+      : `${withheld} findings' code changes are in prose only: the pull request's author can't write to this repository, so no one-click suggestions are posted.`);
+  }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
   }
@@ -350,7 +385,6 @@ export function checkText(results: Results): string {
       '',
       `**${cell(f.title)}** ${f.problem.replace(/</g, '&lt;')}`,
       '',
-      ...(f.tracked ? [`Tracked in #${f.tracked}.`, ''] : []),
       `*Consequence:* ${f.consequence.replace(/</g, '&lt;')}`,
       '',
       `*Fix:* ${f.fix.replace(/</g, '&lt;')}`,
@@ -358,6 +392,14 @@ export function checkText(results: Results): string {
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     );
+  }
+  const tracked = results.tracked ?? [];
+  if (tracked.length) {
+    out.push('### Tracked in open issues', '');
+    for (const f of tracked) {
+      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — tracked in #${f.tracked}.`);
+    }
+    out.push('');
   }
   const upstream = results.upstream ?? [];
   if (upstream.length) {
