@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 - The Release workflow fails before it tags when `CHANGELOG.md` has no dated `## [<version>] - YYYY-MM-DD` section with entries for the version, and publishes that section as the release's notes instead of generated ones. The README says why Dependabot proposed no bump of the action to consumers, every release so far being marked as a pre-release, and how to bump them meanwhile ([#33](https://github.com/NCodeGroup/code-review/issues/33)).
 
+### Fixed
+
+- The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
+- `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed
