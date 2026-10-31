@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 - A review whose API credits run out partway no longer loses the reviewer that hit it: with a Bedrock key, that call reruns on Bedrock at the same tier and every later call goes straight there. The trace records both calls with their providers, and the check run and summary say "Switched to Bedrock partway: credits ran out" with the cost on each provider. A call that ends on an API error now counts as failed rather than as a run with no findings ([#49](https://github.com/NCodeGroup/code-review/issues/49)).
 
+### Fixed
+
+- The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
+- `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed

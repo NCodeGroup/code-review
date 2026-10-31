@@ -200,8 +200,11 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
   await mapWithConcurrency(sources, 6, async (source) => {
     const file = path.join(outDir, source.kind, `${source.id}.json`);
     const hash = sha(source.text);
-    if (existsSync(file)) {
-      const saved = JSON.parse(readFileSync(file, 'utf8')) as Extracted;
+    // Read it directly rather than checking first, so the file can't change between the check and the read.
+    let text: string | undefined;
+    try { text = readFileSync(file, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (text !== undefined) {
+      const saved = JSON.parse(text) as Extracted;
       if (saved.hash === hash && saved.promptHash === promptHash) { reused++; return; }
     }
     const result = await runAgent<{ rules: Rule[] }>(run, {
