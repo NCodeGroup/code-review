@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequestEvent = event.pull_request ?? event.issue;
-  const isWriter = writerCheck(repository, githubToken);
+  const isWriter = writerCheck(repository, githubToken, fetch, log);
   const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
   const pullRequest = readPullRequest(event, repository, authorCanWrite);
   run.headSha = pullRequest.headSha || undefined;
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter, fetch, log);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
