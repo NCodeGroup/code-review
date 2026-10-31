@@ -6,9 +6,9 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
-import { gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
+import { broadSkipWarnings, gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
-import { fileList, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
+import { fileList, partTiers, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
 import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
 
 const made: string[] = [];
@@ -359,6 +359,29 @@ test('tiers: overrides the engine defaults, and CODE_REVIEW_TIERS overrides both
   assert.equal(reviewerTiers('correctness=opus', { correctness: 'haiku' })['correctness'], 'opus');
 });
 
+test("tiers: can't put the security reviewer below Sonnet", () => {
+  const warning = '"tiers.security" in .github/code-review/config.yml is haiku, below the security reviewer\'s minimum; it runs on sonnet.';
+  const lowered = validateConfig(parseYaml('tiers:\n  security: haiku\n  tests: haiku\n'));
+  assert.deepEqual([lowered.errors, lowered.config.tiers, lowered.warnings], [[], { security: 'sonnet', tests: 'haiku' }, [warning]]);
+  const raised = validateConfig(parseYaml('tiers:\n  security: opus\n'));
+  assert.deepEqual([raised.config.tiers, raised.warnings], [{ security: 'opus' }, []]);
+  const base = temp('settings-tier-');
+  write(base, '.github/code-review/config.yml', 'tiers:\n  security: haiku\n');
+  const settings = readProjectSettings(base);
+  assert.deepEqual([settings.config.tiers, settings.warnings], [{ security: 'sonnet' }, [warning]]);
+});
+
+test("a repository's tiers: security: haiku leaves the security reviewer on Sonnet in the tiers a review runs", () => {
+  const base = temp('settings-tier-run-');
+  write(base, '.github/code-review/config.yml', 'tiers:\n  security: haiku\n');
+  const { tiers } = readProjectSettings(base).config;
+  assert.deepEqual([partTiers('standard', false, tiers, '')['security'], reviewerTiers('', tiers)['security']], ['sonnet', 'sonnet']);
+});
+
+test("CODE_REVIEW_TIERS isn't held to the security minimum", () => {
+  assert.equal(partTiers('standard', false, {}, 'security=haiku')['security'], 'haiku');
+});
+
 test('guidance.md applies to every file unless applyTo: narrows it', () => {
   const text = '- 👁 **One.** a';
   assert.deepEqual(projectGuidanceRules(text, ['README.md']).map((r) => r.globs), [['**']]);
@@ -467,4 +490,28 @@ test('a pull request whose every changed file is skipped by config runs no model
   assert.deepEqual(outcome.skipped, ['security', 'project:oauth', 'project:security']);
   // The fixture's tiers: names api-compat, which this roster lacks.
   assert.deepEqual(outcome.warnings, ['"tiers" in .github/code-review/config.yml names no reviewer: api-compat; the reviewers are security, project:oauth, project:security.']);
+});
+
+test('a skip: glob that matches nearly every path is a warning', () => {
+  const warning = '"skip" in .github/code-review/config.yml has "**", which matches nearly every file; the review leaves out every changed file it matches.';
+  assert.deepEqual(broadSkipWarnings(['vendor/**', 'src/**', '*.md', '**/*.Designer.cs']), []);
+  const broad = broadSkipWarnings(['**', '**/*', '**/*.*']);
+  assert.equal(broad.length, 3);
+  assert.equal(broad[0], warning);
+
+  const base = temp('settings-broad-');
+  write(base, '.github/code-review/config.yml', 'skip: ["**"]\n');
+  const head = temp('settings-broad-head-');
+  git(head, 'init', '-q', '-b', 'main');
+  write(head, 'src/a.ts', 'export const a = 1;\n');
+  git(head, 'add', '.');
+  git(head, 'commit', '-q', '-m', 'base');
+  const baseSha = git(head, 'rev-parse', 'HEAD');
+  write(head, 'src/a.ts', 'export const a = 2;\n');
+  git(head, 'commit', '-q', '-am', 'change');
+
+  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha: '' };
+  const gathered = gather(pullRequest, head, base);
+  assert.deepEqual(gathered.skippedByConfig, ['src/a.ts']);
+  assert.deepEqual(gathered.warnings, [warning]);
 });
