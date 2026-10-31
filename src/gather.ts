@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
+import { bulletGlobs } from './guidance.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -202,15 +203,6 @@ function frontmatter(text: string): { fields: Map<string, string>; body: string 
 // The globs an instruction file's frontmatter applyTo lists.
 export function applyToGlobs(text: string): string[] {
   return (frontmatter(text).fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
-}
-
-// A learned guidance bullet names the files it applies to in an "*Applies to:*" field, from the instruction files it
-// was learned from, such as "*Applies to:* `**/*.cs`". An empty list means the bullet applies to every file.
-export const appliesToLabel = '*Applies to:*';
-
-export function bulletGlobs(line: string): string[] {
-  const field = / \*Applies to:\* (.*?)(?: <sub>.*<\/sub>)?$/.exec(line)?.[1] ?? '';
-  return [...field.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
 }
 
 // Drops the bullets tagged for files this pull request doesn't change. Untagged bullets and other lines stay.

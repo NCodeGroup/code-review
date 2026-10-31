@@ -180,8 +180,54 @@ test('each part of a large diff gets only the guidance rules tagged for its file
   assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-1', 'G-a-2']);
 });
 
+test('a guidance bullet tagged with several globs reaches a review that changes a file any of them matches', async () => {
+  const { readGuidance } = await import('../src/gather.ts');
+  const { guidanceRules } = await import('../src/context.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'guidance-'));
+  writeFileSync(path.join(dir, 'public-api.md'), [
+    '---', 'description: "x"', 'applyTo: "**"', '---', '', '# Public API', '',
+    '- **Pin package versions.** Why. *Check:* Look. *Applies to:* `**/*.cs`, `**/*.csproj` <sub>Identity csharp-production.instructions.md</sub>',
+    '',
+  ].join('\n'));
+  const statements = (changed: string[]) => guidanceRules(readGuidance(dir, changed)).map((r) => r.summary);
+  assert.deepEqual(statements(['src/Identity.csproj']), ['Pin package versions.']);
+  assert.deepEqual(statements(['src/Comments.cs']), ['Pin package versions.']);
+  // A topic whose bullets are all tagged for other files is left out, rather than given to the reviewer as a bare header.
+  assert.deepEqual(readGuidance(dir, ['src/comments.ts']), []);
+});
+
+test('review jobs give each part of the diff only the rules tagged for its files, and skip a rule batch left empty', async () => {
+  const { outcomeNames, reviewJobs, ruleCheckName } = await import('../src/review.ts');
+  const csharp = { id: 'G-a-1', reviewers: ['conventions'], summary: 'cs', text: 'cs', globs: ['**/*.cs'] };
+  const anywhere = { id: 'G-a-2', reviewers: ['conventions'], summary: 'any', text: 'any' };
+  const files: ChangedFile[] = [
+    { path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true },
+    { path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true },
+  ];
+  const tsPart = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+x\n';
+  const csPart = 'diff --git a/src/A.cs b/src/A.cs\n--- a/src/A.cs\n+++ b/src/A.cs\n@@ -1 +1 @@\n+x\n';
+  const rulesFor = new Map([['conventions', [csharp, anywhere]]]);
+  const jobs = reviewJobs([tsPart, csPart], files, ['conventions', 'tests'], rulesFor, [[csharp], [anywhere]], { conventions: 'sonnet' });
+  const plan = jobs.map((job) => `${job.part} ${job.name} ${job.tier}: ${job.rules.map((r) => r.id).join(',')}`);
+  assert.deepEqual(plan, [
+    '0 conventions sonnet: G-a-2',
+    '0 tests haiku: ',
+    `0 ${ruleCheckName} sonnet: G-a-2`,
+    '1 conventions sonnet: G-a-1,G-a-2',
+    '1 tests haiku: ',
+    `1 ${ruleCheckName} sonnet: G-a-1`,
+    `1 ${ruleCheckName} sonnet: G-a-2`,
+  ]);
+  assert.deepEqual(outcomeNames(['conventions'], jobs), ['conventions', ruleCheckName]);
+  // A pull request that changes no C# file runs no rule check for a batch of C# rules, and reports none.
+  const tsOnly = reviewJobs([tsPart], files.slice(0, 1), ['conventions'], rulesFor, [[csharp]], {});
+  assert.deepEqual(tsOnly.map((job) => `${job.name}: ${job.rules.map((r) => r.id).join(',')}`), ['conventions: G-a-2']);
+  assert.deepEqual(outcomeNames(['conventions'], tsOnly), ['conventions']);
+});
+
 test('training tags a guidance rule with the files its instruction-file sources apply to', async () => {
-  const { formatBullet, generalGlob, parseBullet, retagGuidance, ruleScope, sourceScopes } = await import('../training/run.ts');
+  const { generalGlob, retagGuidance, ruleScope, sourceScopes } = await import('../training/run.ts');
+  const { formatBullet, parseBullet } = await import('../src/guidance.ts');
   assert.equal(generalGlob('src/**/*.cs'), '**/*.cs');
   assert.equal(generalGlob('tests/**/*.cs'), '**/*.cs');
   assert.equal(generalGlob('**'), '**');
@@ -199,6 +245,30 @@ test('training tags a guidance rule with the files its instruction-file sources 
   assert.equal(tagged, '- **Keep functions small.** Why. *Check:* Look. *Note:* Note. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>');
   assert.deepEqual(parseBullet(tagged), rule);
   assert.equal(retagGuidance(formatBullet(rule, []), scopes), tagged);
+});
+
+test('retagging refuses a guidance bullet the formatter would not write back as it was', async () => {
+  const { retagGuidance } = await import('../training/run.ts');
+  assert.throws(() => retagGuidance('- **No sources.** Why. *Check:* Look.', new Map()), /Can't retag this bullet/);
+  assert.throws(() => retagGuidance('- **Empty note.** Why. *Check:* Look. *Note:*  <sub>Identity ADR-0001</sub>', new Map()), /Can't retag this bullet/);
+});
+
+test('a rerun of training keeps a saved extraction whose source is unchanged, with the source\'s current applyTo', async () => {
+  const { reuseExtraction, saveExtracted } = await import('../training/run.ts');
+  const saved = { hash: 'h', promptHash: 'p', label: 'Identity csharp.instructions.md', applyTo: ['src/**/*.cs'], rules: [] };
+  assert.equal(reuseExtraction(undefined, 'h', 'p', undefined), undefined);
+  assert.equal(reuseExtraction(saved, 'changed', 'p', ['src/**/*.cs']), undefined);
+  assert.equal(reuseExtraction(saved, 'h', 'changed', ['src/**/*.cs']), undefined);
+  assert.deepEqual(reuseExtraction(saved, 'h', 'p', ['src/**/*.cs']), { saved, changed: false });
+  const widened = reuseExtraction(saved, 'h', 'p', ['src/**/*.cs', 'tests/**/*.cs'])!;
+  assert.deepEqual(widened, { saved: { ...saved, applyTo: ['src/**/*.cs', 'tests/**/*.cs'] }, changed: true });
+  const dropped = reuseExtraction(saved, 'h', 'p', undefined)!;
+  assert.equal(dropped.changed, true);
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'extracted-')), 'instructions', 'csharp-1.json');
+  saveExtracted(file, widened.saved);
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).applyTo, ['src/**/*.cs', 'tests/**/*.cs']);
+  saveExtracted(file, dropped.saved);
+  assert.ok(!('applyTo' in JSON.parse(readFileSync(file, 'utf8'))));
 });
 
 test('the committed guidance carries the tags its sources give it', async () => {

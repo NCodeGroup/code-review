@@ -25,7 +25,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
-import { appliesToLabel, applyToGlobs, bulletGlobs } from '../src/gather.ts';
+import { applyToGlobs } from '../src/gather.ts';
+import { bulletGlobs, formatBullet, parseBullet, type GuidanceRule } from '../src/guidance.ts';
 import { startProxy } from '../src/proxy.ts';
 import { mapWithConcurrency } from '../src/review.ts';
 
@@ -200,10 +201,20 @@ const guidanceSchema = {
   additionalProperties: false,
 };
 
-function saveExtracted(file: string, { hash, promptHash, label, applyTo, rules }: Extracted): void {
+export function saveExtracted(file: string, { hash, promptHash, label, applyTo, rules }: Extracted): void {
   mkdirSync(path.dirname(file), { recursive: true });
   const saved: Extracted = { hash, promptHash, label, ...(applyTo?.length ? { applyTo } : {}), rules };
   writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`);
+}
+
+// A saved extraction a rerun reuses instead of calling the model: one whose source text and prompt are unchanged. It
+// takes the source's current applyTo, so an instruction file whose globs changed and whose text didn't keeps its rules
+// with the new globs; changed says it differs from what was saved. Undefined when the source must be extracted again.
+export function reuseExtraction(saved: Extracted | undefined, hash: string, promptHash: string, applyTo: string[] | undefined): { saved: Extracted; changed: boolean } | undefined {
+  if (!saved || saved.hash !== hash || saved.promptHash !== promptHash) return undefined;
+  const { applyTo: before, ...rest } = saved;
+  const changed = (before ?? []).join(',') !== (applyTo ?? []).join(',');
+  return { saved: { ...rest, ...(applyTo?.length ? { applyTo } : {}) }, changed };
 }
 
 async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[]): Promise<void> {
@@ -216,14 +227,11 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
     // Read it directly rather than checking first, so the file can't change between the check and the read.
     let text: string | undefined;
     try { text = readFileSync(file, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    if (text !== undefined) {
-      const saved = JSON.parse(text) as Extracted;
-      if (saved.hash === hash && saved.promptHash === promptHash) {
-        // An instruction file whose applyTo changed and whose text didn't keeps its rules with the new globs.
-        if ((saved.applyTo ?? []).join(',') !== (source.applyTo ?? []).join(',')) saveExtracted(file, { ...saved, applyTo: source.applyTo ?? [] });
-        reused++;
-        return;
-      }
+    const reuse = reuseExtraction(text === undefined ? undefined : (JSON.parse(text) as Extracted), hash, promptHash, source.applyTo);
+    if (reuse) {
+      if (reuse.changed) saveExtracted(file, reuse.saved);
+      reused++;
+      return;
     }
     const result = await runAgent<{ rules: Rule[] }>(run, {
       role: `extract:${source.kind}`,
@@ -286,21 +294,6 @@ export function ruleScope(sources: string[], scopes: Map<string, string[]>): str
     for (const glob of scope) globs.add(glob);
   }
   return [...globs].sort();
-}
-
-export interface GuidanceRule { statement: string; why: string; check: string; sources: string[]; note?: string }
-
-// One guidance bullet: "- **statement** why *Check:* check *Note:* note *Applies to:* `glob` <sub>sources</sub>".
-export function formatBullet(rule: GuidanceRule, globs: string[]): string {
-  const scope = globs.length ? ` ${appliesToLabel} ${globs.map((g) => `\`${g}\``).join(', ')}` : '';
-  return `- **${rule.statement}** ${rule.why} *Check:* ${rule.check}${rule.note ? ` *Note:* ${rule.note}` : ''}${scope} <sub>${rule.sources.join('; ')}</sub>`;
-}
-
-export function parseBullet(line: string): GuidanceRule | undefined {
-  const match = /^- \*\*(.+?)\*\* (.*?) \*Check:\* (.*?)(?: \*Note:\* (.*?))?(?: \*Applies to:\* (?:`[^`]+`(?:, )?)+)? <sub>(.*)<\/sub>$/.exec(line);
-  if (!match) return undefined;
-  const [, statement, why, check, note, sources] = match;
-  return { statement: statement!, why: why!, check: check!, ...(note ? { note } : {}), sources: sources!.split('; ') };
 }
 
 // Rewrites each bullet's "*Applies to:*" tag in a guidance file from its sources, with the same formatter a training

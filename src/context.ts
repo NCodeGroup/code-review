@@ -6,7 +6,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { runAgent, type AgentRun, type AgentResult } from './agent.ts';
-import { bulletGlobs, matchesAnyFile, type Gathered, type RuleFile } from './gather.ts';
+import { matchesAnyFile, type Gathered, type RuleFile } from './gather.ts';
+import { bulletGlobs } from './guidance.ts';
 
 export interface IndexedRule {
   id: string;

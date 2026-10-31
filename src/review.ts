@@ -123,6 +123,38 @@ export function partFiles(files: ChangedFile[], diff: string): string[] {
   return [...splitDiff(diff).keys(), ...files.filter((f) => !f.generated && !f.shown).map((f) => f.path)];
 }
 
+export interface ReviewJob { name: string; part: number; label: string; tier: ModelTier; rules: IndexedRule[] }
+
+// The reviewer calls for each part of the diff: every selected reviewer with its picked rules, and each rule batch.
+// A rule learned for some files reaches only the parts that change them, and a batch left with no rules for a part
+// doesn't run on it.
+export function reviewJobs(
+  parts: string[],
+  files: ChangedFile[],
+  selected: string[],
+  rulesFor: Map<string, IndexedRule[]>,
+  batches: IndexedRule[][],
+  tiers: Record<string, ModelTier>,
+): ReviewJob[] {
+  return parts.flatMap((diff, part) => {
+    const shown = partFiles(files, diff);
+    const scoped = (rules: IndexedRule[] | undefined) => rulesForFiles(rules ?? [], shown);
+    return [
+      ...selected.map((reviewer) => ({ name: reviewer, part, label: '', tier: tiers[reviewer] ?? ('haiku' as ModelTier), rules: scoped(rulesFor.get(reviewer)) })),
+      ...batches.flatMap((batch, i) => {
+        const rules = scoped(batch);
+        const label = `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`;
+        return rules.length ? [{ name: ruleCheckName, part, label, tier: 'sonnet' as ModelTier, rules }] : [];
+      }),
+    ];
+  });
+}
+
+// The reviewers that get an outcome: every selected one, and the rule check when any of its calls is planned.
+export function outcomeNames(selected: string[], jobs: Pick<ReviewJob, 'name'>[]): string[] {
+  return [...selected, ...(jobs.some((job) => job.name === ruleCheckName) ? [ruleCheckName] : [])];
+}
+
 export function loadCharters(root: string): Charters {
   const reviewers = new Map<string, string>();
   for (const name of readdirSync(path.join(root, 'reviewers')).filter((n) => n.endsWith('.md')).sort()) {
@@ -320,36 +352,14 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
   // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
   // writing it again.
-  const tiers = reviewerTiers();
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
-  const jobs = parts.flatMap((diff, part) => {
-    const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
-    const files = partFiles(gathered.files, diff);
-    const scoped = (rules: IndexedRule[] | undefined) => rulesForFiles(rules ?? [], files);
-    return [
-      ...[...selected].map((reviewer) => ({
-        name: reviewer,
-        part,
-        label: '',
-        tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-        prompt: [sharedBlock, `${rulesBlock(scoped(context.rulesFor.get(reviewer))).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
-      })),
-      ...batches.flatMap((batch, i) => {
-        const rules = scoped(batch);
-        return rules.length
-          ? [{
-              name: ruleCheckName,
-              part,
-              label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
-              tier: 'sonnet' as ModelTier,
-              prompt: [sharedBlock, `${rulesBlock(rules).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
-            }]
-          : [];
-      }),
-    ];
-  });
+  const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
+  const jobs = reviewJobs(parts, gathered.files, [...selected], context.rulesFor, batches, reviewerTiers()).map((job) => ({
+    ...job,
+    prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!}`],
+  }));
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
   const reviewOne = async ({ name, part, label, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
     const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
@@ -374,7 +384,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
   ];
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran.
-  const outcomes: ReviewerOutcome[] = [...selected, ...(jobs.some((job) => job.name === ruleCheckName) ? [ruleCheckName] : [])].map((name) => {
+  const outcomes: ReviewerOutcome[] = outcomeNames([...selected], jobs).map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const errors = mine.flatMap((o) => (o.error ? [o.error] : []));
     return {
