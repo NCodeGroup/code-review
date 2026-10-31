@@ -321,7 +321,8 @@ function fakeApi(summaryMarker: string, failOn?: { call: string; error: Error })
 const summaryResults = { repository: 'o/r', pullRequest: 1, headSha: 'b'.repeat(40) };
 
 test('postSummary posts the new summary before collapsing only the earlier bot summaries', async () => {
-  const { postSummary, supersededComment, summaryMarker } = await import('../src/results.ts');
+  const { postSummary } = await import('../src/comments.ts');
+  const { supersededComment, summaryMarker } = await import('../src/results.ts');
   const { api, calls, bodies } = fakeApi(summaryMarker);
   const lines: string[] = [];
   const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
@@ -337,7 +338,8 @@ test('postSummary posts the new summary before collapsing only the earlier bot s
 });
 
 test('postSummary only warns when an earlier summary cannot be collapsed', async () => {
-  const { postSummary, summaryMarker } = await import('../src/results.ts');
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
   const { api, calls } = fakeApi(summaryMarker, { call: '/comments/1', error: new Error('HTTP 403') });
   const lines: string[] = [];
   const url = await postSummary(api,summaryResults, 'new body', (line) => lines.push(line));
@@ -347,7 +349,8 @@ test('postSummary only warns when an earlier summary cannot be collapsed', async
 });
 
 test('postSummary collapses nothing when the new summary cannot be posted', async () => {
-  const { postSummary, summaryMarker } = await import('../src/results.ts');
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
   const { api, calls } = fakeApi(summaryMarker, { call: '/issues/1/comments', error: new Error('HTTP 500') });
   const lines: string[] = [];
   await assert.rejects(postSummary(api, summaryResults, 'new body', (line) => lines.push(line)));
@@ -355,7 +358,7 @@ test('postSummary collapses nothing when the new summary cannot be posted', asyn
 });
 
 test('readCommentPages reads every page until a short one, and gives undefined when a page cannot be read', async () => {
-  const { readCommentPages } = await import('../src/results.ts');
+  const { readCommentPages } = await import('../src/comments.ts');
   const pages: number[] = [];
   const all = await readCommentPages(async (page) => {
     pages.push(page);

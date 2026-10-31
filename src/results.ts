@@ -74,44 +74,6 @@ export function supersededComment(headSha: string, commentUrl: string): string {
   return [supersededMarker, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
 }
 
-// Reads a pull request's comments, oldest first, up to ten pages of 100, stopping after a short page; undefined when a page can't be read.
-export async function readCommentPages<T>(readPage: (page: number) => Promise<T[] | undefined>): Promise<T[] | undefined> {
-  const all: T[] = [];
-  for (let page = 1; page <= 10; page++) {
-    const comments = await readPage(page);
-    if (!comments) return undefined;
-    all.push(...comments);
-    if (comments.length < 100) break;
-  }
-  return all;
-}
-
-// Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
-// posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact; a failed
-// collapse only warns.
-export async function postSummary(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
-  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
-  body: string,
-  log: (line: string) => void = console.log,
-): Promise<string> {
-  const comments = `/repos/${results.repository}/issues/${results.pullRequest}/comments`;
-  const listed = await readCommentPages((page) => api('GET', `${comments}?per_page=100&page=${page}`) as Promise<{ id: number; body?: string; user?: { login?: string } }[]>);
-  const older = summaryComments(listed ?? []);
-  const comment = (await api('POST', comments, { body })) as { html_url: string };
-  log(`Posted ${comment.html_url}`);
-  const superseded = supersededComment(results.headSha, comment.html_url);
-  for (const { id } of older) {
-    try {
-      await api('PATCH', `/repos/${results.repository}/issues/comments/${id}`, { body: superseded });
-      log(`Collapsed the earlier summary comment ${id}`);
-    } catch (error) {
-      log(`::warning::Couldn't collapse the earlier summary comment ${id} (${(error as Error).message.slice(0, 200)}).`);
-    }
-  }
-  return comment.html_url;
-}
-
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;

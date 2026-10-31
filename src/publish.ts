@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
-import { annotations, botLogin, checkSummary, checkText, checkTitle, postSummary, summaryComment, type Results } from './results.ts';
+import { postSummary } from './comments.ts';
+import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
