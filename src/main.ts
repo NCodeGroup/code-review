@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { commandFromEvent, skipReasonFor } from './command.ts';
-import { commentPageSize, readCommentPages } from './comments.ts';
+import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
@@ -13,7 +13,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { newestReviewedHead, topSeverity, type Results } from './results.ts';
+import { topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,17 +34,6 @@ function take(name: string): string | undefined {
 function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
   const all = changedLines(diff);
   return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
-}
-
-// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it can't be read.
-async function lastReviewedHead(repository: string, number: number, token: string | undefined): Promise<string | undefined> {
-  const all = await readCommentPages(async (page) => {
-    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`, {
-      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    });
-    return response.ok ? ((await response.json()) as { body?: string; user?: { login?: string } }[]) : undefined;
-  });
-  return newestReviewedHead(all);
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its

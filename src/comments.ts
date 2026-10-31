@@ -1,7 +1,7 @@
 // The GitHub calls behind the summary comment: reading a pull request's comments page by page, posting a new summary
 // and collapsing the earlier ones.
 
-import { summaryComments, supersededComment, type Results } from './results.ts';
+import { newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
 
 // GitHub's largest page of issue comments, and how many pages a run reads at most (10,000 comments), to bound calls.
 export const commentPageSize = 100;
@@ -59,4 +59,15 @@ export async function postSummary(
     }
   }
   return comment.html_url;
+}
+
+// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it can't be read.
+export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
+  const all = await readCommentPages(async (page) => {
+    const response = await fetchPage(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`, {
+      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    return response.ok ? ((await response.json()) as { body?: string; user?: { login?: string } }[]) : undefined;
+  });
+  return newestReviewedHead(all);
 }

@@ -498,6 +498,40 @@ test('readCommentPages gives undefined when every page up to the cap is full', a
   assert.equal(pages.length, maxCommentPages);
 });
 
+test('lastReviewedHead takes the head of the newest bot summary across pages', async () => {
+  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker, headMarker } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const urls: string[] = [];
+  const fetchPage = (async (url: string | URL | Request) => {
+    urls.push(String(url));
+    const page = String(url).endsWith('page=1')
+      ? [{ user: bot, body: `${summaryMarker}\n${headMarker(a)}` }, ...Array.from({ length: commentPageSize - 1 }, () => ({ user: { login: 'someone' }, body: 'hi' }))]
+      : [{ user: bot, body: `${summaryMarker}\n${headMarker(b)}` }];
+    return new Response(JSON.stringify(page), { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), b);
+  assert.deepEqual(urls, [
+    'https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1',
+    'https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=2',
+  ]);
+});
+
+test('lastReviewedHead gives undefined when a page cannot be read', async () => {
+  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker, headMarker } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const fetchPage = (async (url: string | URL | Request) => {
+    if (!String(url).endsWith('page=1')) return new Response('', { status: 500 });
+    const page = [{ user: bot, body: `${summaryMarker}\n${headMarker(a)}` }, ...Array.from({ length: commentPageSize - 1 }, () => ({ user: { login: 'someone' }, body: 'hi' }))];
+    return new Response(JSON.stringify(page), { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
   const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
   const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
