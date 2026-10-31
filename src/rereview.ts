@@ -493,7 +493,7 @@ export function reReviewSummary(s: {
   outside: number;
   earlier: EarlierStatus[];
   // What verification did to what the re-review would post, when it ran.
-  verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped'>;
+  verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped' | 'refutedKeptPosted' | 'refutedKeptDropped'>;
 }): string {
   const since = s.lastHead.slice(0, 7);
   const ran = s.reviewers ?? [reReviewer];
@@ -520,13 +520,21 @@ export function reReviewSummary(s: {
     const titles = v.refuted.map((r) => `"${r.finding.title}"`).join('; ');
     parts.push(`Verification refuted ${plural(v.refuted.length, 'finding')}, which the check run lists with ${v.refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}.`);
   }
+  if (v?.refutedKeptPosted) {
+    const n = v.refutedKeptPosted;
+    parts.push(`Verification refuted ${plural(n, 'blocker')} but kept ${n === 1 ? 'it as a should-fix question' : 'them as should-fix questions'}.`);
+  }
   if (v?.questionedPosted) parts.push(`Verification couldn't settle ${plural(v.questionedPosted, 'blocker')}, now ${v.questionedPosted === 1 ? 'a should-fix question' : 'should-fix questions'}.`);
+  if (v?.refutedKeptDropped) {
+    const n = v.refutedKeptDropped;
+    parts.push(`Verification refuted ${n === 1 ? "1 should-fix but kept it as a nit, which isn't" : `${n} should-fixes but kept them as nits, which aren't`} posted on a re-review.`);
+  }
   if (v?.questionedDropped) {
     const n = v.questionedDropped;
     parts.push(`Verification couldn't settle ${n === 1 ? '1 should-fix, now a nit, which isn\'t' : `${n} should-fixes, now nits, which aren't`} posted on a re-review.`);
   }
   // What verification took away is for the maintainer to look at, so the re-review doesn't say it's done.
-  const verifiedAway = Boolean(v && (v.refuted.length || v.questionedDropped));
+  const verifiedAway = Boolean(v && (v.refuted.length || v.refutedKeptDropped || v.questionedDropped));
   const waiting = s.earlier.filter(pending).length;
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
@@ -554,6 +562,10 @@ interface ReReviewVerification {
   // Blockers verification couldn't settle, posted as should-fix questions, and should-fixes it made nits, not posted.
   questionedPosted: number;
   questionedDropped: number;
+  // Blockers it refuted but kept, posted as should-fix questions, and should-fixes it refuted but kept, now nits and not
+  // posted.
+  refutedKeptPosted: number;
+  refutedKeptDropped: number;
   trace: VerificationCall[];
 }
 
@@ -587,11 +599,20 @@ async function verifyPosted(
     ...call,
     findings: call.findings.map(({ postedAs, ...f }) => (postedAs && ids.has(postedAs) ? { ...f, postedAs } : f)),
   }));
-  const questionedDropped = outcome.findings.length - posted.length;
+  const dropped = outcome.findings.length - posted.length;
+  const refutedKeptPosted = outcome.demotedBlockers;
+  const refutedKeptDropped = outcome.demoted - outcome.demotedBlockers;
   return {
     findings: posted,
     calls: outcome.calls,
-    verified: { refuted: outcome.refuted, questionedPosted: outcome.questioned - questionedDropped, questionedDropped, trace },
+    verified: {
+      refuted: outcome.refuted,
+      questionedPosted: outcome.questioned - dropped - refutedKeptPosted,
+      questionedDropped: dropped - refutedKeptDropped,
+      refutedKeptPosted,
+      refutedKeptDropped,
+      trace,
+    },
   };
 }
 

@@ -906,7 +906,22 @@ test('reReview with verification on keeps a refuted blocker as a should-fix ques
   assert.match(outcome.findings[0]!.evidence, /a refuted blocker stays as a question: Not reachable\. \(a\.ts:1\)$/);
   assert.deepEqual(outcome.refuted, []);
   assert.equal(outcome.verdict, 'comment');
-  assert.match(outcome.summary, /1 blocker, now a should-fix question\. 1 new finding at should-fix or above\.$/);
+  assert.match(outcome.summary, /Verification refuted 1 blocker but kept it as a should-fix question\. 1 new finding at should-fix or above\.$/);
+});
+
+test('reReview with verification on says a should-fix refuted only on the change\'s own lines was kept as a nit, not posted, and never approves', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const agent = verifier({ Shaky: { verdict: 'refuted', path: 'a.ts:62', reason: 'Only the new line guards it.', question: '' } }, []);
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('should-fix', 'a.ts', 62, 'Shaky')], earlier: [] }, []), { enabled: true, agent });
+  assert.deepEqual(outcome.findings, []);
+  assert.deepEqual(outcome.refuted, []);
+  assert.equal(outcome.verdict, 'comment');
+  assert.match(outcome.summary, /Verification refuted 1 should-fix but kept it as a nit, which isn't posted on a re-review\./);
+  assert.doesNotMatch(outcome.summary, /couldn't settle|No further findings/);
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
