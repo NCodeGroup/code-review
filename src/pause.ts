@@ -2,12 +2,16 @@
 // after that, an automatic review is skipped before any model call, and the bot posts once that it has paused. The
 // autopilot posts as the maintainer's account, with comments that start with "Autopilot:", so those don't count as the
 // maintainer's. A /review comment from a writer is the maintainer's, so it always reviews and resumes.
+//
+// Write access is the engine's writer check (writers.ts): the comment's association, or failing that its author's
+// permission on the repository, so a private organization member's comment counts, and one whose permission can't be
+// read doesn't.
 
 import type { RunStatus } from './checks.ts';
-import { writerAssociations } from './command.ts';
 import { readComments, type ListedComment } from './comments.ts';
 import { writeLog } from './log.ts';
 import { botLogin, summaryMarker, supersededMarker } from './results.ts';
+import type { WriterCheck } from './writers.ts';
 
 export const maxUnansweredReviews = 3;
 export const pausedMarker = '<!-- ncode-review:paused -->';
@@ -32,9 +36,10 @@ export function pausedStatus(): RunStatus {
 }
 
 // A comment from someone with write access in their own words: not a bot's, and not one the autopilot posted.
-export function isMaintainerComment(comment: ListedComment): boolean {
+export async function isMaintainerComment(comment: ListedComment, isWriter: WriterCheck): Promise<boolean> {
   if (comment.user?.type === 'Bot' || comment.user?.login === botLogin) return false;
-  return writerAssociations.has(comment.author_association ?? '') && !(comment.body ?? '').trimStart().startsWith(autopilotPrefix);
+  if ((comment.body ?? '').trimStart().startsWith(autopilotPrefix)) return false;
+  return isWriter(comment.user?.login, comment.author_association);
 }
 
 export interface PauseState {
@@ -47,8 +52,10 @@ export interface PauseState {
 const time = (comment: ListedComment) => Date.parse(comment.created_at ?? '');
 
 // Counts from a pull request's issue comments and review comments together, in any order.
-export function unansweredReviews(comments: ListedComment[]): PauseState {
-  const since = Math.max(...comments.filter(isMaintainerComment).map(time).filter(Number.isFinite));
+export async function unansweredReviews(comments: ListedComment[], isWriter: WriterCheck): Promise<PauseState> {
+  const maintainers: ListedComment[] = [];
+  for (const comment of comments) if (await isMaintainerComment(comment, isWriter)) maintainers.push(comment);
+  const since = Math.max(...maintainers.map(time).filter(Number.isFinite));
   const later = comments.filter((c) => c.user?.login === botLogin && time(c) > since);
   const body = (c: ListedComment) => c.body ?? '';
   return {
@@ -73,6 +80,7 @@ export async function checkPause(options: {
   number: number;
   token: string | undefined;
   issueComments: ListedComment[] | undefined;
+  isWriter: WriterCheck;
   fetchPage?: typeof fetch;
   log: (line: string) => void;
 }): Promise<PauseDecision> {
@@ -82,7 +90,7 @@ export async function checkPause(options: {
     log("::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.");
     return 'review';
   }
-  const state = unansweredReviews([...issueComments, ...reviewComments]);
+  const state = await unansweredReviews([...issueComments, ...reviewComments], options.isWriter);
   const decision = pauseDecision(state);
   if (decision !== 'review') log(`${state.reviews} reviews since the last comment from someone with write access; paused until a /review.`);
   return decision;

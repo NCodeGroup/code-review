@@ -3,9 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
+import { writerAssociations } from '../src/command.ts';
 import type { ListedComment } from '../src/comments.ts';
 import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
+import { writerCheck, type WriterCheck } from '../src/writers.ts';
 import { pullRequestCheckout, reviewStep, runStep } from './steps.ts';
 
 const made: string[] = [];
@@ -24,6 +26,8 @@ const maintainer = { login: 'polewskm', type: 'User' };
 const at = (minute: number) => `2026-10-31T08:${String(minute).padStart(2, '0')}:00Z`;
 const reviewed = 'a'.repeat(40);
 let ids = 0;
+// Writers by their association alone, with no permission lookup.
+const byAssociation: WriterCheck = async (_login, association) => writerAssociations.has(association ?? '');
 
 function summary(minute: number, collapsed = false, head = reviewed): ListedComment {
   const body = collapsed ? supersededComment(head, 'https://github.com/o/r/pull/1#issuecomment-1') : `${summaryMarker}\n${headMarker(head)}\n### 🤖 Review complete`;
@@ -46,12 +50,12 @@ const threeReviews = (head = reviewed): ListedComment[] => [
   summary(6, false, head),
 ];
 
-test('unansweredReviews counts the summaries, collapsed or not, since the last comment from someone with write access', () => {
-  assert.deepEqual(unansweredReviews(threeReviews()), { reviews: 3, noticePosted: false });
-  assert.deepEqual(unansweredReviews([summary(0), summary(1)]), { reviews: 2, noticePosted: false });
+test('unansweredReviews counts the summaries, collapsed or not, since the last comment from someone with write access', async () => {
+  assert.deepEqual(await unansweredReviews(threeReviews(), byAssociation), { reviews: 3, noticePosted: false });
+  assert.deepEqual(await unansweredReviews([summary(0), summary(1)], byAssociation), { reviews: 2, noticePosted: false });
 });
 
-test('comments from the autopilot, a bot or someone without write access are not the maintainer\'s', () => {
+test('comments from the autopilot, a bot or someone without write access are not the maintainer\'s', async () => {
   const comments = [
     ...threeReviews(),
     said(7, '  Autopilot: replied in the thread.'),
@@ -59,24 +63,40 @@ test('comments from the autopilot, a bot or someone without write access are not
     said(9, 'Bump the version', 'MEMBER', { login: 'dependabot[bot]', type: 'Bot' }),
     said(10, 'I am the bot', 'MEMBER', bot),
   ];
-  assert.equal(unansweredReviews(comments).reviews, 3);
-  assert.ok(isMaintainerComment(said(0, 'Fine as is.', 'COLLABORATOR')));
-  assert.ok(!isMaintainerComment(said(0, 'Autopilot: fixed in abc123.', 'OWNER')));
+  assert.equal((await unansweredReviews(comments, byAssociation)).reviews, 3);
+  assert.ok(await isMaintainerComment(said(0, 'Fine as is.', 'COLLABORATOR'), byAssociation));
+  assert.ok(!(await isMaintainerComment(said(0, 'Autopilot: fixed in abc123.', 'OWNER'), byAssociation)));
 });
 
-test('a maintainer comment in a review thread, or a /review, starts the count again', () => {
-  assert.equal(unansweredReviews([...threeReviews(), said(7, 'This one can stay.')]).reviews, 0);
-  assert.equal(unansweredReviews([...threeReviews(), said(7, '/review', 'OWNER'), summary(8)]).reviews, 1);
+test('a maintainer comment in a review thread, or a /review, starts the count again', async () => {
+  assert.equal((await unansweredReviews([...threeReviews(), said(7, 'This one can stay.')], byAssociation)).reviews, 0);
+  assert.equal((await unansweredReviews([...threeReviews(), said(7, '/review', 'OWNER'), summary(8)], byAssociation)).reviews, 1);
 });
 
-test('the fourth review without a maintainer comment pauses, once', () => {
+test('the fourth review without a maintainer comment pauses, once', async () => {
   assert.equal(maxUnansweredReviews, 3);
   assert.equal(pauseDecision({ reviews: 2, noticePosted: false }), 'review');
-  assert.equal(pauseDecision(unansweredReviews(threeReviews())), 'pause');
+  assert.equal(pauseDecision(await unansweredReviews(threeReviews(), byAssociation)), 'pause');
   const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
-  assert.equal(pauseDecision(unansweredReviews([...threeReviews(), notice])), 'paused');
+  assert.equal(pauseDecision(await unansweredReviews([...threeReviews(), notice], byAssociation)), 'paused');
   // A notice from before the maintainer last spoke is from an earlier pause.
-  assert.equal(pauseDecision(unansweredReviews([summary(0), notice, said(8, 'Carry on.'), summary(9), summary(10), summary(11)])), 'pause');
+  assert.equal(pauseDecision(await unansweredReviews([summary(0), notice, said(8, 'Carry on.'), summary(9), summary(10), summary(11)], byAssociation)), 'pause');
+});
+
+test("a private organization member's comment counts as the maintainer's when the permission lookup says write, and not when it fails", async () => {
+  const comments = [...threeReviews(), said(7, 'Looks fine.', 'CONTRIBUTOR', { login: 'private-member', type: 'User' })];
+  const urls: string[] = [];
+  const writes = (async (url: string | URL | Request) => {
+    urls.push(String(url));
+    return Response.json({ permission: 'write' });
+  }) as typeof fetch;
+  assert.equal((await unansweredReviews(comments, writerCheck('o/r', 't', writes))).reviews, 0);
+  // The bot's summaries and the autopilot's comments are never looked up.
+  assert.deepEqual(urls, ['https://api.github.com/repos/o/r/collaborators/private-member/permission']);
+  const lines: string[] = [];
+  const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
+  assert.equal((await unansweredReviews(comments, writerCheck('o/r', 't', outage, (line) => lines.push(line)))).reviews, 3);
+  assert.equal(lines.length, 1);
 });
 
 test('the paused notice says how to resume and carries its marker', () => {
@@ -92,13 +112,13 @@ test('checkPause reads the review comments too, and reviews when it cannot read 
     return Response.json([said(7, 'Fine as is.')]);
   }) as typeof fetch;
   const logs: string[] = [];
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), fetchPage, log: (l) => logs.push(l) }), 'review');
+  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage, log: (l) => logs.push(l) }), 'review');
   assert.deepEqual(urls, ['https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1']);
   const empty = (async () => Response.json([])) as unknown as typeof fetch;
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), fetchPage: empty, log: (l) => logs.push(l) }), 'pause');
+  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage: empty, log: (l) => logs.push(l) }), 'pause');
   const refused = (async () => new Response('', { status: 500 })) as unknown as typeof fetch;
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), fetchPage: refused, log: (l) => logs.push(l) }), 'review');
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: undefined, fetchPage: empty, log: (l) => logs.push(l) }), 'review');
+  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage: refused, log: (l) => logs.push(l) }), 'review');
+  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: undefined, isWriter: byAssociation, fetchPage: empty, log: (l) => logs.push(l) }), 'review');
   assert.equal(logs.filter((l) => l === "::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.").length, 2);
   assert.ok(logs.includes("::warning::Couldn't read /repos/o/r/pulls/1/comments (HTTP 500); the run goes on without those comments."));
 });
