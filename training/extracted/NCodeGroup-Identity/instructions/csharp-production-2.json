@@ -2,6 +2,9 @@
   "hash": "dd0ee657c251e90f",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-production.instructions.md",
+  "applyTo": [
+    "src/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Declare one type per file, so an interface and its implementation go in separate files; the only exception is a generic interface and its non-generic sibling of the same name (IFoo and IFoo<T>), which may share a file.",

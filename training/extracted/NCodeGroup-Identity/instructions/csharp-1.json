@@ -2,6 +2,9 @@
   "hash": "fd282c7ea1dc68e5",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp.instructions.md",
+  "applyTo": [
+    "**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Place each test file in the same relative folder as the code under test, and give it the production namespace with a `.Tests` suffix.",

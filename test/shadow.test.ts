@@ -47,6 +47,7 @@ const charters = (performance: string, shadowPrompts: Partial<Record<PromptName,
   selectionPrompt: 'LIVE selection',
   synthesisPrompt: 'LIVE synthesis',
   ruleCheckPrompt: 'LIVE rule-check',
+  reReviewPrompt: 'LIVE re-review',
   verificationPrompt: 'LIVE verification',
   reviewers: new Map([
     ...['correctness', 'hygiene', 'tests'].map((name) => [name, parseCharter(`# ${name}\n`)] as const),
@@ -103,7 +104,7 @@ test('loadCharters reads shadow charters and prompts/<name>.shadow.md', () => {
   mkdirSync(path.join(root, 'prompts'));
   writeFileSync(path.join(root, 'reviewers', 'performance.md'), '---\nshadow: true\n---\n# performance\n');
   writeFileSync(path.join(root, 'reviewers', 'tests.md'), '# tests\n');
-  for (const name of ['specialist', 'selection', 'synthesis', 'rule-check', 'verification']) writeFileSync(path.join(root, 'prompts', `${name}.md`), name);
+  for (const name of ['specialist', 'selection', 'synthesis', 'rule-check', 're-review', 'verification']) writeFileSync(path.join(root, 'prompts', `${name}.md`), name);
   writeFileSync(path.join(root, 'prompts', 'synthesis.shadow.md'), 'shadow synthesis');
   const loaded = loadCharters(root);
   assert.deepEqual(loaded.reviewers.get('performance'), { text: '# performance\n', shadow: true });

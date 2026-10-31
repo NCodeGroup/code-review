@@ -2,6 +2,9 @@
   "hash": "b485de1d78d99618",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-testing.instructions.md",
+  "applyTo": [
+    "tests/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Test persistence behavior that depends on SaveChanges side effects (concurrency tokens, cascade deletes, SaveChanges interceptors, value converters) against a real EF Core DbContext provider, not only through a mocked store.",

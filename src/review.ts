@@ -9,7 +9,7 @@ import { parseCharter, type Charter } from './charter.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
-import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
+import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
@@ -85,7 +85,7 @@ export interface Review {
   skipped: string[];
 }
 
-const findingProperties = {
+export const findingProperties = {
   severity: { type: 'string', enum: ['blocker', 'should-fix', 'nit'] },
   file: { type: 'string' },
   line: { type: 'integer', minimum: 1 },
@@ -107,7 +107,7 @@ const findingProperties = {
     additionalProperties: false,
   },
 };
-const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
+export const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
 export const specialistSchema = {
   type: 'object',
@@ -155,10 +155,11 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  reReviewPrompt: string;
+  verificationPrompt: string;
   reviewers: Map<string, Charter>;
   // prompts/<name>.shadow.md, for each prompt that has one: run alongside the live prompt on a sample of reviews.
   shadowPrompts: Partial<Record<PromptName, string>>;
-  verificationPrompt: string;
 }
 
 // The rules the context stage picked for any reviewer, once each and in catalog order so a topic's rules share a batch,
@@ -169,6 +170,43 @@ export function ruleBatches(catalog: IndexedRule[], rulesFor: Map<string, Indexe
   const batches: IndexedRule[][] = [];
   for (let i = 0; i < rules.length; i += size) batches.push(rules.slice(i, i + size));
   return batches;
+}
+
+// The files one part of the diff covers, and the changed files no part shows, which every part's reviewers may read.
+export function partFiles(files: ChangedFile[], diff: string): string[] {
+  return [...splitDiff(diff).keys(), ...files.filter((f) => !f.generated && !f.shown).map((f) => f.path)];
+}
+
+export interface ReviewJob { name: string; part: number; label: string; tier: ModelTier; rules: IndexedRule[] }
+
+// The reviewer calls for each part of the diff: every selected reviewer with its picked rules, and each rule batch.
+// A rule learned for some files reaches only the parts that change them, and a batch left with no rules for a part
+// doesn't run on it.
+export function reviewJobs(
+  parts: string[],
+  files: ChangedFile[],
+  selected: string[],
+  rulesFor: Map<string, IndexedRule[]>,
+  batches: IndexedRule[][],
+  tiers: Record<string, ModelTier>,
+): ReviewJob[] {
+  return parts.flatMap((diff, part) => {
+    const shown = partFiles(files, diff);
+    const scoped = (rules: IndexedRule[] | undefined) => rulesForFiles(rules ?? [], shown);
+    return [
+      ...selected.map((reviewer) => ({ name: reviewer, part, label: '', tier: tiers[reviewer] ?? ('haiku' as ModelTier), rules: scoped(rulesFor.get(reviewer)) })),
+      ...batches.flatMap((batch, i) => {
+        const rules = scoped(batch);
+        const label = `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`;
+        return rules.length ? [{ name: ruleCheckName, part, label, tier: 'sonnet' as ModelTier, rules }] : [];
+      }),
+    ];
+  });
+}
+
+// The reviewers that get an outcome: every selected one, and the rule check when any of its calls is planned.
+export function outcomeNames(selected: string[], jobs: Pick<ReviewJob, 'name'>[]): string[] {
+  return [...selected, ...(jobs.some((job) => job.name === ruleCheckName) ? [ruleCheckName] : [])];
 }
 
 export function loadCharters(root: string): Charters {
@@ -190,6 +228,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    reReviewPrompt: prompt('re-review'),
     verificationPrompt: prompt('verification'),
     reviewers,
     shadowPrompts,
@@ -248,7 +287,7 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
-function pullRequestBlock(gathered: Gathered): string {
+export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
@@ -266,7 +305,7 @@ export function fileList(gathered: Pick<Gathered, 'files'>, inDiff?: Set<string>
     .join('\n');
 }
 
-const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
+export const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
 
 function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
   const scope = parts > 1
@@ -459,41 +498,21 @@ export async function review(
   }
   log(`Reviewers: ${[...selected].map((name) => (shadow.has(name) ? `${name} (shadow)` : name)).join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
-  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
-  // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
-  // rest read the cache instead of each writing it again.
-  const tiers = reviewerTiers();
+  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
+  // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
+  // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
+  // writing it again.
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
-  interface Job { name: string; part: number; label: string; tier: ModelTier; role: string; systemPrompt: string; shared: string; rules: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
-  const jobs: Job[] = parts.flatMap((diff, part) => {
-    const shared = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
-    return [
-      ...[...selected].map((reviewer) => ({
-        name: reviewer,
-        part,
-        label: '',
-        tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-        role: `reviewer:${reviewer}`,
-        systemPrompt: charters.specialistPrompt,
-        shared,
-        rules: rulesBlock(context.rulesFor.get(reviewer)),
-        charter: charters.reviewers.get(reviewer)!.text,
-      })),
-      ...batches.map((batch, i) => ({
-        name: ruleCheckName,
-        part,
-        label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
-        tier: 'sonnet' as ModelTier,
-        role: `reviewer:${ruleCheckName}`,
-        systemPrompt: charters.specialistPrompt,
-        shared,
-        rules: rulesBlock(batch),
-        charter: charters.ruleCheckPrompt,
-      })),
-    ];
-  });
+  const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
+  interface Job extends ReviewJob { role: string; systemPrompt: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
+  const jobs: Job[] = reviewJobs(parts, gathered.files, [...selected], context.rulesFor, batches, reviewerTiers()).map((job) => ({
+    ...job,
+    role: `reviewer:${job.name}`,
+    systemPrompt: charters.specialistPrompt,
+    charter: job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!.text,
+  }));
   // A sampled review runs each job again with the shadow prompts, after the live jobs have written the shared cache.
   const twins: Job[] = jobs.flatMap((job) => {
     const charter = job.name === ruleCheckName ? variants['rule-check'] : undefined;
@@ -517,7 +536,7 @@ export async function review(
       role: job.role,
       tier,
       systemPrompt: job.systemPrompt,
-      prompt: [job.shared, `${job.rules.trimStart()}\n\nYour charter:\n${job.charter}`],
+      prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.charter}`],
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
@@ -540,7 +559,7 @@ export async function review(
   const perJob = jobs.map((job) => outcomeOf.get(job)!);
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
   // all of them were.
-  const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
+  const outcomes: ReviewerOutcome[] = outcomeNames([...selected], jobs).map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
     const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));

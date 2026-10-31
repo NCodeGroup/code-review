@@ -16,6 +16,8 @@ export interface ReviewContext {
   durationMs: number;
   notShown: string[];
   diff: string;
+  // The head the summary records as reviewed: see recordedHead.
+  recordedHead?: string;
 }
 
 function reviewerResults(outcomes: ReviewerOutcome[], calls: CallRecord[]): ReviewerResult[] {
@@ -69,6 +71,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     durationMs: context.durationMs,
     notShown: context.notShown,
     changedLines: changedLinesFor(context.diff, outcome.findings.map((f) => f.file)),
+    ...(context.recordedHead !== undefined ? { recordedHead: context.recordedHead } : {}),
     ...(shadow ? { shadow } : {}),
   };
 }
