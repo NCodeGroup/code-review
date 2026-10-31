@@ -1,9 +1,11 @@
-// The GitHub calls behind the summary comment: reading a pull request's comments page by page, posting a new summary
-// and collapsing the earlier ones.
+// The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
+// posting a new summary and collapsing the earlier ones.
 
-import { newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
+import { botLogin, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
+import { parsePosted, type PostedThread } from './threads.ts';
 
-// GitHub's largest page of issue comments, and how many pages a run reads at most (10,000 comments), to bound calls.
+// GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
+// comments and review comments share both.
 export const commentPageSize = 100;
 export const maxCommentPages = 100;
 
@@ -13,12 +15,13 @@ export function errorText(error: unknown): string {
   return (error as Error).message.replace(/\s+/g, ' ').slice(0, maxErrorChars);
 }
 
-// Reads a pull request's comments, oldest first, until a short page; undefined when a page can't be read, or when
-// every page up to maxCommentPages is full, since the newest comments, which hold the newest summary, would be missing.
-export async function readCommentPages<T>(readPage: (page: number) => Promise<T[] | undefined>): Promise<T[] | undefined> {
+// Reads a comment endpoint, such as a pull request's issue comments or review comments, oldest first, until a short
+// page; undefined when a page can't be read, or when every page up to maxCommentPages is full, since the newest
+// comments, which hold the newest summary and the newest threads, would be missing. readPage gets each page's URL.
+export async function readCommentPages<T>(endpoint: string, readPage: (url: string) => Promise<T[] | undefined>): Promise<T[] | undefined> {
   const all: T[] = [];
   for (let page = 1; page <= maxCommentPages; page++) {
-    const comments = await readPage(page);
+    const comments = await readPage(`${endpoint}?per_page=${commentPageSize}&page=${page}`);
     if (!comments) return undefined;
     all.push(...comments);
     if (comments.length < commentPageSize) return all;
@@ -26,11 +29,23 @@ export async function readCommentPages<T>(readPage: (page: number) => Promise<T[
   return undefined;
 }
 
-// A comment as GitHub lists it, and the API path of one page of a pull request's comments. The publish and review
-// steps read them through different transports: the app's token, which throws, and an optional token, which gives up.
+// A comment as GitHub lists it, and the API path of a pull request's issue comments. The publish and review steps read
+// them through different transports: the app's token, which throws, and an optional token, which gives up.
 type ListedComment = { id: number; body?: string; user?: { login?: string } };
-function commentsPage(repository: string, number: number, page: number): string {
-  return `/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`;
+function issueComments(repository: string, number: number): string {
+  return `/repos/${repository}/issues/${number}/comments`;
+}
+
+// The bot's earlier inline threads on a pull request, from its review comments, or undefined when the pull request
+// has more review comments than readCommentPages reads. A page that can't be read throws, as api does.
+export async function readPostedThreads(
+  api: (method: string, url: string) => Promise<any>,
+  repository: string,
+  number: number,
+): Promise<PostedThread[] | undefined> {
+  type ReviewComment = Parameters<typeof parsePosted>[0][number] & { user?: { login?: string } };
+  const listed = await readCommentPages(`/repos/${repository}/pulls/${number}/comments`, async (url) => (await api('GET', url)) as ReviewComment[]);
+  return listed && parsePosted(listed.filter((comment) => comment.user?.login === botLogin));
 }
 
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
@@ -42,11 +57,11 @@ export async function postSummary(
   body: string,
   log: (line: string) => void = console.log,
 ): Promise<string> {
-  const comments = `/repos/${results.repository}/issues/${results.pullRequest}/comments`;
+  const comments = issueComments(results.repository, results.pullRequest);
   let listError = `more than ${commentPageSize * maxCommentPages} comments`;
-  const listed = await readCommentPages(async (page) => {
+  const listed = await readCommentPages(comments, async (url) => {
     try {
-      return (await api('GET', commentsPage(results.repository, results.pullRequest, page))) as ListedComment[];
+      return (await api('GET', url)) as ListedComment[];
     } catch (error) {
       listError = errorText(error);
       return undefined;
@@ -68,13 +83,18 @@ export async function postSummary(
   return comment.html_url;
 }
 
-// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable.
+// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable:
+// a refused request, a fetch that rejects, such as on a DNS failure or a reset connection, or a body that isn't JSON.
 export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
-  const all = await readCommentPages(async (page) => {
-    const response = await fetchPage(`https://api.github.com${commentsPage(repository, number, page)}`, {
-      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    });
-    return response.ok ? ((await response.json()) as ListedComment[]) : undefined;
+  const all = await readCommentPages(issueComments(repository, number), async (url) => {
+    try {
+      const response = await fetchPage(`https://api.github.com${url}`, {
+        headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      });
+      return response.ok ? ((await response.json()) as ListedComment[]) : undefined;
+    } catch {
+      return undefined;
+    }
   });
   return newestReviewedHead(all);
 }
