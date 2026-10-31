@@ -631,32 +631,129 @@ test('postSummary still posts, and warns, when a later page of comments cannot b
   assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
 });
 
-test('readCommentPages reads every page until a short one', async () => {
+test('readCommentPages reads every page of the endpoint until a short one', async () => {
   const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
-  const pages: number[] = [];
-  const all = await readCommentPages(async (page) => {
-    pages.push(page);
-    return page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : [100, 101, 102];
+  const urls: string[] = [];
+  const all = await readCommentPages('/repos/o/r/pulls/1/comments', async (url) => {
+    urls.push(url);
+    return url.endsWith('page=1') ? Array.from({ length: commentPageSize }, (_, i) => i) : [100, 101, 102];
   });
   assert.equal(all?.length, commentPageSize + 3);
-  assert.deepEqual(pages, [1, 2]);
+  assert.deepEqual(urls, ['/repos/o/r/pulls/1/comments?per_page=100&page=1', '/repos/o/r/pulls/1/comments?per_page=100&page=2']);
 });
 
 test('readCommentPages gives undefined when a page cannot be read', async () => {
   const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
-  const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : undefined));
+  const broken = await readCommentPages('/c', async (url) => (url.endsWith('page=1') ? Array.from({ length: commentPageSize }, (_, i) => i) : undefined));
   assert.equal(broken, undefined);
 });
 
 test('readCommentPages gives undefined when every page up to the cap is full', async () => {
   const { commentPageSize, maxCommentPages, readCommentPages } = await import('../src/comments.ts');
-  const pages: number[] = [];
-  const all = await readCommentPages(async (page) => {
-    pages.push(page);
+  const urls: string[] = [];
+  const all = await readCommentPages('/c', async (url) => {
+    urls.push(url);
     return Array.from({ length: commentPageSize }, (_, i) => i);
   });
   assert.equal(all, undefined);
-  assert.equal(pages.length, maxCommentPages);
+  assert.equal(urls.length, maxCommentPages);
+});
+
+test('readPostedThreads reads the bot threads from every page of review comments', async () => {
+  const { commentPageSize, readPostedThreads } = await import('../src/comments.ts');
+  const { threadBody } = await import('../src/threads.ts');
+  const finding = { id: 'F1', file: 'src/A.cs', line: 3, severity: 'nit' as const, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (url.endsWith('page=1')) return Array.from({ length: commentPageSize }, () => ({ user: { login: 'someone' }, path: 'src/A.cs', line: 1, body: threadBody(finding) }));
+    return [{ user: { login: 'ncode-review[bot]' }, path: 'src/A.cs', line: 3, body: threadBody(finding) }];
+  };
+  const posted = await readPostedThreads(api, 'o/r', 1);
+  assert.deepEqual(posted?.map((p) => [p.path, p.line]), [['src/A.cs', 3]]);
+  assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1', 'GET /repos/o/r/pulls/1/comments?per_page=100&page=2']);
+});
+
+test('readPostedThreads gives undefined when every page up to the cap is full', async () => {
+  const { commentPageSize, maxCommentPages, readPostedThreads } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    return Array.from({ length: commentPageSize }, () => ({ user: { login: 'someone' }, body: 'hi' }));
+  };
+  assert.equal(await readPostedThreads(api, 'o/r', 1), undefined);
+  assert.equal(calls.length, maxCommentPages);
+});
+
+test('readPostedThreads throws when a page of review comments cannot be read', async () => {
+  const { readPostedThreads } = await import('../src/comments.ts');
+  const api = async (): Promise<any> => {
+    throw new Error('HTTP 502');
+  };
+  await assert.rejects(readPostedThreads(api, 'o/r', 1), /HTTP 502/);
+});
+
+const threadFinding = { id: 'F1', file: 'src/A.cs', line: 3, severity: 'should-fix' as const, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
+const threadResults = { ...summaryResults, findings: [threadFinding, { ...threadFinding, id: 'F2', severity: 'nit' as const, title: 'U' }], changedLines: { 'src/A.cs': [3] } };
+
+test('postThreads posts only the findings the bot has not posted yet', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const { threadBody } = await import('../src/threads.ts');
+  const calls: string[] = [];
+  const bodies: any[] = [];
+  const api = async (method: string, url: string, body?: unknown): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return [{ user: { login: 'ncode-review[bot]' }, path: 'src/A.cs', line: 3, body: threadBody(threadFinding) }];
+    bodies.push(body);
+    return {};
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1', 'POST /repos/o/r/pulls/1/reviews']);
+  assert.deepEqual(bodies[0].comments.map((c: { path: string; line: number }) => [c.path, c.line]), [['src/A.cs', 3]]);
+  assert.ok(bodies[0].comments[0].body.includes('F2'));
+  assert.ok(lines.includes('Posted a review with 1 threads and 0 findings in its body.'));
+});
+
+test('postThreads posts nothing, and warns, when the pull request has more review comments than it reads', async () => {
+  const { commentPageSize, maxCommentPages, postThreads } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    return Array.from({ length: commentPageSize }, () => ({ user: { login: 'someone' }, body: 'hi' }));
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.equal(calls.length, maxCommentPages);
+  assert.ok(calls.every((call) => call.startsWith('GET ')));
+  assert.deepEqual(lines, [`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`]);
+});
+
+test('postThreads throws, posting nothing, when a page of review comments cannot be read', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    throw new Error('HTTP 502');
+  };
+  await assert.rejects(postThreads(api, threadResults, ['secret-token'], () => {}), /HTTP 502/);
+  assert.deepEqual(calls, ['GET /repos/o/r/pulls/1/comments?per_page=100&page=1']);
+});
+
+test('postThreads posts the findings in the review body when GitHub refuses the inline threads', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const bodies: any[] = [];
+  const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
+    if (method === 'GET') return [];
+    bodies.push(body);
+    if (bodies.length === 1) throw new Error('HTTP 422');
+    return {};
+  };
+  const lines: string[] = [];
+  await postThreads(api, threadResults, ['secret-token'], (line) => lines.push(line));
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].comments, undefined);
+  assert.ok(lines.includes("::warning::GitHub refused the inline threads (HTTP 422); posting them in the review's body."));
 });
 
 test('lastReviewedHead takes the head of the newest bot summary across pages', async () => {
@@ -697,6 +794,44 @@ test('lastReviewedHead gives undefined when the first page cannot be read', asyn
   const { lastReviewedHead } = await import('../src/comments.ts');
   const fetchPage = (async () => new Response('', { status: 500 })) as typeof fetch;
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('lastReviewedHead gives undefined when the fetch rejects', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const fetchPage = (async () => {
+    throw new TypeError('fetch failed');
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('lastReviewedHead gives undefined when a page body is not JSON', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const fetchPage = (async () => new Response('not json', { status: 200 })) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('lastReviewedHead sends no authorization header without a token', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const sent: Headers[] = [];
+  const fetchPage = (async (_url: string | URL | Request, init?: RequestInit) => {
+    sent.push(new Headers(init?.headers));
+    return new Response('[]', { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, undefined, fetchPage), undefined);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.get('accept'), 'application/vnd.github+json');
+  assert.equal(sent[0]!.has('authorization'), false);
+});
+
+test('lastReviewedHead sends the token as a bearer authorization header', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const sent: Headers[] = [];
+  const fetchPage = (async (_url: string | URL | Request, init?: RequestInit) => {
+    sent.push(new Headers(init?.headers));
+    return new Response('[]', { status: 200 });
+  }) as typeof fetch;
+  await lastReviewedHead('o/r', 1, 't', fetchPage);
+  assert.equal(sent[0]!.get('authorization'), 'Bearer t');
 });
 
 test('errorText keeps an error message on one line', async () => {
