@@ -202,8 +202,9 @@ async function main(): Promise<void> {
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
+  for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
-  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
+  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
   // A pull request the bot reviewed before gets a re-review of what changed since then.
   const last = await reviewedHead(pullRequest.number);
   const plan = await planReReview({
@@ -231,6 +232,7 @@ async function main(): Promise<void> {
       full: () => review(agentRun, gathered, loadCharters(root), log),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
+    for (const warning of outcome.warnings) log(`::warning::${warning}`);
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = buildResults(outcome, {
       repository,
@@ -242,6 +244,8 @@ async function main(): Promise<void> {
       ...(gathered.template ? { template: gathered.template.repository } : {}),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
+      skippedByConfig: gathered.skippedByConfig,
+      warnings: gathered.warnings,
       diff: gathered.diff,
       recordedHead,
     });
@@ -253,6 +257,12 @@ async function main(): Promise<void> {
       shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
       files: gathered.files,
       conventionsChars: gathered.conventions.length,
+      settings: {
+        policies: gathered.policies,
+        projectReviewers: gathered.projectReviewers.map((r) => ({ name: r.name, paths: r.paths, ...(r.shadow ? { shadow: true } : {}) })),
+        sensitive: gathered.sensitive,
+        tiers: gathered.tiers,
+      },
       ...reReviewTrace,
     };
     writeForPublish(outDir, { 'results.json': results, 'trace.json': trace }, secretValues(credentials), 'reviewed');

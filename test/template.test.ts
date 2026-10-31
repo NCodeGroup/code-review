@@ -275,6 +275,12 @@ test('review leaves out a template finding that says a changed file isn\'t chang
     guidance: [],
     decisions: [],
     commits: [],
+    sensitive: [],
+    skippedByConfig: [],
+    policies: [],
+    tiers: {},
+    projectReviewers: [],
+    warnings: [],
     template,
   };
   const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['hygiene', { text: 'hygiene', shadow: false }]]), shadowPrompts: {} };

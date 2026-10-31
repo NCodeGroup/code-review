@@ -594,12 +594,16 @@ export async function reReview(
       verification: verified?.trace ?? [],
       calls,
       skipped: [],
+      // A re-review has one reviewer and no settings of its own to warn about, and never goes deep or light.
+      warnings: [],
+      depth: 'standard',
+      sensitiveFiles: [],
       earlier: statuses,
     };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 
-  const tier: ModelTier = reviewerTiers()[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
+  const tier: ModelTier = reviewerTiers(undefined, gathered.tiers)[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
   const since = plan.lastHead.slice(0, 7);
   const context = [
     `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${templateBlock(gathered)}`,

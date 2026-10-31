@@ -3,9 +3,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
+import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
+import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
 import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
 
 export interface PullRequest {
@@ -61,6 +62,19 @@ export interface Gathered {
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
+  // From the repository's .github/code-review/ on the default branch, never the pull request's copy:
+  // path globs config.yml marks sensitive, for deeper review (issue #42);
+  sensitive: string[];
+  // changed files config.yml's skip: leaves out of the review, listed in the check run;
+  skippedByConfig: string[];
+  // the policies config.yml names that reached the conventions, by path;
+  policies: string[];
+  // each reviewer's model, from config.yml's tiers:;
+  tiers: Record<string, ModelTier>;
+  // the project's own reviewers, which join the roster as project:<name>;
+  projectReviewers: ProjectCharter[];
+  // and what in those settings couldn't be used, for the check run.
+  warnings: string[];
   // The project template the repository is made from, when it's one whose files the engine knows.
   template?: Template;
 }
@@ -81,6 +95,10 @@ export function isGenerated(file: string): boolean {
 
 const docPattern = /(\.md|\.txt|\.rst)$|(^|\/)docs?\//i;
 const testPattern = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec|tests)\.[a-z]+$|Tests?\.cs$/i;
+
+export function isDocumentation(file: string): boolean {
+  return docPattern.test(file);
+}
 
 // Product code first, then tests, then everything else: when the diff is over budget, what's left out is the least risky.
 export function reviewOrder(file: string): number {
@@ -428,20 +446,21 @@ export function matchesAnyFile(globs: string[], files: string[]): boolean {
   return files.some((file) => patterns.some((p) => p.test(file)));
 }
 
+// The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
+// YAML the settings parser would refuse. The split and the glob lists are shared with the project reviewers' paths:.
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
   const fields = new Map<string, string>();
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
-  if (!match) return { fields, body: text };
-  for (const line of match[1]!.split(/\r?\n/)) {
+  const { frontmatter: yaml, body } = splitFrontmatter(text);
+  for (const line of yaml?.split(/\r?\n/) ?? []) {
     const field = /^([A-Za-z]+):\s*(.*)$/.exec(line);
     if (field) fields.set(field[1]!, field[2]!.trim().replace(/^["']|["']$/g, ''));
   }
-  return { fields, body: text.slice(match[0].length) };
+  return { fields, body };
 }
 
 // The globs an instruction file's frontmatter applyTo lists.
 export function applyToGlobs(text: string): string[] {
-  return (frontmatter(text).fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
+  return globList(frontmatter(text).fields.get('applyTo') ?? '');
 }
 
 // Drops the bullets tagged for files this pull request doesn't change. Untagged bullets and other lines stay.
@@ -502,14 +521,32 @@ function readRuleFolder(folder: string, suffix: string, changed: string[], label
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
   for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
-    const text = readFileSync(path.join(folder, name), 'utf8');
-    const { body } = frontmatter(text);
-    const globs = applyToGlobs(text);
-    if (!matchesAnyFile(globs, changed)) continue;
-    files.push({ name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}` });
+    const file = ruleFile(name, label, readFileSync(path.join(folder, name), 'utf8'), changed, [], filter);
+    if (file) files.push(file);
   }
   const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
   return files.sort((a, b) => general(a) - general(b));
+}
+
+// A rule file when its applyTo (or, without one, defaultGlobs) matches a changed file.
+function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = [], filter = (body: string) => body): RuleFile | undefined {
+  const { body } = frontmatter(text);
+  const applyTo = applyToGlobs(text);
+  const globs = applyTo.length ? applyTo : defaultGlobs;
+  if (!matchesAnyFile(globs, changed)) return undefined;
+  return { name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}` };
+}
+
+// The project's rules in .github/code-review/guidance.md, which join the catalog like the instruction files. Without
+// an applyTo, they apply to every file.
+export function projectGuidanceRules(text: string | undefined, changed: string[]): RuleFile[] {
+  const file = text === undefined ? undefined : ruleFile('guidance.md', settingsFolder, text, changed, ['**']);
+  return file ? [file] : [];
+}
+
+// The conventions with the policies config.yml names after them, each with its path.
+export function withPolicies(conventions: string, policies: { path: string; text: string }[]): string {
+  return [conventions, ...policies.map((p) => `From ${p.path} (a policy named in ${settingsFolder}/config.yml):\n${p.text}`)].filter(Boolean).join('\n\n');
 }
 
 // The issue numbers a description closes ("Closes #12", "fixes #3", "Resolves #7").
@@ -556,8 +593,14 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
   const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, pullRequest.headSha]).trim();
   const range = [mergeBase, pullRequest.headSha];
-  const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
-  const template = templateOf(pullRequest, files, prPath, basePath);
+  // The repository's settings come from the default branch only, so a pull request can't soften its own review.
+  const settings = readProjectSettings(basePath);
+  const skip = settings.config.skip.map(globToRegExp);
+  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
+  // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
+  const template = templateOf(pullRequest, changed, prPath, basePath);
+  const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
+  const files = changed.filter((f) => !skippedByConfig.includes(f.path));
   for (const file of files) if (isTemplateOwned(file.path, template)) file.templateOwned = true;
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
   const sections = splitDiff(fullDiff);
@@ -578,5 +621,23 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const commits = pullRequest.authorCanWrite
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
-  return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, own), guidance: guidanceDir ? readGuidance(guidanceDir, own) : [], decisions, commits, ...(template ? { template } : {}) };
+  return {
+    pullRequest,
+    mergeBase,
+    files,
+    diff: chunks.join(''),
+    chunks,
+    conventions: withPolicies(readConventions(basePath), settings.policies),
+    reviewRules: [...readReviewRules(basePath, own), ...projectGuidanceRules(settings.guidance, own)],
+    guidance: guidanceDir ? readGuidance(guidanceDir, own) : [],
+    decisions,
+    commits,
+    sensitive: settings.config.sensitive,
+    skippedByConfig,
+    policies: settings.policies.map((p) => p.path),
+    tiers: settings.config.tiers,
+    projectReviewers: settings.reviewers,
+    warnings: settings.warnings,
+    ...(template ? { template } : {}),
+  };
 }
