@@ -196,10 +196,10 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
   }
 });
 
-test('fetchPullRequestHead refuses a time limit that is not positive, before it touches anything', () => {
+test('fetchPullRequestHead refuses a time limit Node would not take, before it touches anything', () => {
   const dir = target();
-  for (const timeoutMs of [0, -1, Number.NaN]) {
-    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'd'.repeat(40), timeoutMs }), /time limit must be positive/);
+  for (const timeoutMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5, 2 ** 31]) {
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'd'.repeat(40), timeoutMs }), /time limit must be a positive whole number of milliseconds/);
   }
   assert.ok(!existsSync(dir));
 });

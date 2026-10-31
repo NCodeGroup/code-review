@@ -97,7 +97,8 @@ export function fetchPullRequestHead(options: FetchHead): void {
   if (!/^[0-9a-f]{40}$/i.test(options.sha)) throw new Error(`"${options.sha}" isn't a full commit SHA.`);
   if (!Number.isInteger(options.number) || options.number < 1) throw new Error(`"${options.number}" isn't a pull request number.`);
   const limit = options.timeoutMs ?? fetchTimeoutMs;
-  if (!(limit > 0)) throw new Error(`The fetch's time limit must be positive, not ${limit}.`);
+  // Node takes a timeout only as a whole number of milliseconds that fits a 32-bit signed integer.
+  if (!Number.isInteger(limit) || limit < 1 || limit > 2 ** 31 - 1) throw new Error(`The fetch's time limit must be a positive whole number of milliseconds, not ${limit}.`);
   const empty = mkdtempSync(path.join(os.tmpdir(), 'code-review-git-'));
   const where = { cwd: options.path, empty };
   try {
