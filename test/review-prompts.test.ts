@@ -90,3 +90,22 @@ test("review() gives each part's reviewers that part's diff, and marks the other
   assert.match(String(reviewerCalls(requests, 1)[0]!.prompt[0]), /\nsrc\/A\.cs \(\+1 -0\)\nsrc\/B\.cs \(\+1 -0\) \[diff in another part\]\n/);
   assert.match(String(reviewerCalls(requests, 2)[0]!.prompt[0]), /\nsrc\/A\.cs \(\+1 -0\) \[diff in another part\]\nsrc\/B\.cs \(\+1 -0\)\n/);
 });
+
+test("review() gives each reviewer call its part's rules and its own charter, and the rule check the rule-check prompt", async () => {
+  const { agent, requests } = stubAgent(answers);
+  await review(run, twoParts(), charters, () => {}, agent);
+
+  for (const [part, own, other] of [[1, 'Rule for A', 'Rule for B'], [2, 'Rule for B', 'Rule for A']] as const) {
+    const calls = reviewerCalls(requests, part);
+    const charter = (role: string) => String(calls.find((r) => r.role === role)!.prompt[1]);
+    for (const role of ['reviewer:correctness', 'reviewer:rule-check']) {
+      assert.ok(charter(role).includes(own), `${role} in part ${part} has its part's rule`);
+      assert.ok(!charter(role).includes(other), `${role} in part ${part} has no other part's rule`);
+    }
+    assert.match(charter('reviewer:correctness'), /Your charter:\nCORRECTNESS CHARTER$/);
+    assert.match(charter('reviewer:rule-check'), /Your charter:\nRULE-CHECK CHARTER$/);
+    assert.match(charter('reviewer:hygiene'), /^\n\nYour charter:\nHYGIENE CHARTER$/);
+    assert.match(charter('reviewer:tests'), /^\n\nYour charter:\nTESTS CHARTER$/);
+    assert.ok(calls.every((r) => r.systemPrompt === 'SPECIALIST PROMPT'));
+  }
+});
