@@ -350,4 +350,3 @@ test('decision records the pull request adds or changes are read from its head a
   assert.equal(result, undefined);
   assert.deepEqual(context.decisions.map((d) => d.id), ['ADR-0009']);
 });
-

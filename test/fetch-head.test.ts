@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { authEnvironment, fetchHeadFor, fetchPullRequestHead } from '../src/fetch-head.ts';
+import { authEnvironment, fetchHeadFor, fetchPullRequestHead, fetchTimeoutMs } from '../src/fetch-head.ts';
 
 const made: string[] = [];
 after(() => {
@@ -216,4 +216,8 @@ test('fetchPullRequestHead refuses a time limit Node would not take, before it t
     assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'd'.repeat(40), timeoutMs }), /time limit must be a positive whole number of milliseconds/);
   }
   assert.ok(!existsSync(dir));
+});
+
+test('the default fetch time limit is the three minutes the README promises', () => {
+  assert.equal(fetchTimeoutMs, 180_000);
 });
