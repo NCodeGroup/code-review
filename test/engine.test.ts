@@ -286,6 +286,36 @@ test('the committed guidance carries the tags its sources give it', async () => 
   }
 });
 
+test('an eval concern with a minimum severity is judged only against findings at that severity or above', async () => {
+  const { candidate } = await import('../evals/run.ts');
+  const concern = { file: 'src/main.ts', minSeverity: 'should-fix' as const, concern: 'c' };
+  assert.ok(candidate(concern, { file: 'src/main.ts', severity: 'blocker' }));
+  assert.ok(candidate(concern, { file: 'src/main.ts', severity: 'should-fix' }));
+  assert.ok(!candidate(concern, { file: 'src/main.ts', severity: 'nit' }));
+  assert.ok(!candidate(concern, { file: 'src/other.ts', severity: 'should-fix' }));
+  assert.ok(candidate({ concern: 'c' }, { file: 'src/other.ts', severity: 'nit' }));
+});
+
+async function evalCases() {
+  const { readFileSync } = await import('node:fs');
+  return JSON.parse(readFileSync(path.resolve(import.meta.dirname, '..', 'evals', 'cases.json'), 'utf8')) as {
+    id: string; expect: { minSeverity?: string }[]; mustNotFlag: { minSeverity?: string }[];
+  }[];
+}
+
+test('every eval concern with a minimum severity names a known severity', async () => {
+  const severities = new Set(['blocker', 'should-fix', 'nit']);
+  for (const c of await evalCases()) {
+    for (const concern of [...c.expect, ...c.mustNotFlag]) assert.ok(!concern.minSeverity || severities.has(concern.minSeverity), `${c.id} has an unknown minSeverity`);
+  }
+});
+
+test('the eval cases calibrate test gaps from code-review#30 on both sides of should-fix', async () => {
+  const gaps = (await evalCases()).filter((c) => c.id.startsWith('test-gap-'));
+  assert.ok(gaps.some((c) => c.expect.some((e) => e.minSeverity === 'should-fix')), 'no test gap is expected at should-fix');
+  assert.ok(gaps.some((c) => c.mustNotFlag.some((e) => e.minSeverity === 'should-fix')), 'no test gap must stay below should-fix');
+});
+
 test('findingLimit grows with the parts of a large diff', () => {
   assert.equal(findingLimit(1), 40);
   assert.equal(findingLimit(3), 80);
