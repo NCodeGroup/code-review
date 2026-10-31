@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { commandFromEvent, isFromFork, skipReason, skipReasonFor } from '../src/command.ts';
+import { commandFromEvent, isFromFork, maxQuestionChars, parseCommand, skipReason, skipReasonFor } from '../src/command.ts';
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
   const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
@@ -14,6 +14,72 @@ test('commandFromEvent accepts only an exact /review from a writer on a pull req
   assert.equal(commandFromEvent(event('/review', 'CONTRIBUTOR')), undefined);
   assert.equal(commandFromEvent(event('/review', 'NONE')), undefined);
   assert.equal(commandFromEvent(event('/review', 'MEMBER', null)), undefined);
+});
+
+test('parseCommand reads /review explain with a finding id and no question', () => {
+  assert.deepEqual(parseCommand('/review explain F3'), { kind: 'explain', ref: { kind: 'id', id: 'F3' }, question: '' });
+  assert.deepEqual(parseCommand('  /review explain f12\n'), { kind: 'explain', ref: { kind: 'id', id: 'F12' }, question: '' });
+  assert.deepEqual(parseCommand('/review explain F3:'), { kind: 'explain', ref: { kind: 'id', id: 'F3' }, question: '' });
+});
+
+test('parseCommand takes the rest of the comment after the ref as the question', () => {
+  assert.deepEqual(parseCommand('/review explain F3 why is a null here a problem?'), {
+    kind: 'explain',
+    ref: { kind: 'id', id: 'F3' },
+    question: 'why is a null here a problem?',
+  });
+  assert.deepEqual(parseCommand('/review explain F3\n\nThe caller checks it first.\nDoesn\'t that cover it?'), {
+    kind: 'explain',
+    ref: { kind: 'id', id: 'F3' },
+    question: 'The caller checks it first.\nDoesn\'t that cover it?',
+  });
+  const long = parseCommand(`/review explain F1 ${'x'.repeat(maxQuestionChars + 50)}`);
+  assert.equal(long?.kind === 'explain' && long.question.length, maxQuestionChars);
+});
+
+test('parseCommand reads a link to a review comment as the ref', () => {
+  const ref = (url: string) => {
+    const command = parseCommand(`/review explain ${url} is this still true?`);
+    return command?.kind === 'explain' ? command.ref : undefined;
+  };
+  const expected = { kind: 'url', host: 'github.com', repository: 'NCodeGroup/code-review', number: 7, commentId: 1234 };
+  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234'), expected);
+  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7/files#r1234'), expected);
+  assert.deepEqual(ref('<https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234>'), expected);
+  assert.equal(parseCommand('/review explain https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234 why?')?.kind, 'explain');
+});
+
+test('parseCommand reads a ref that is neither an id nor a review-comment link as invalid', () => {
+  const ref = (text: string) => {
+    const command = parseCommand(text);
+    return command?.kind === 'explain' ? command.ref : undefined;
+  };
+  assert.deepEqual(ref('/review explain'), { kind: 'invalid', text: '' });
+  assert.deepEqual(ref('/review explain the null check'), { kind: 'invalid', text: 'the' });
+  assert.deepEqual(ref('/review explain F0'), { kind: 'invalid', text: 'F0' });
+  assert.equal(ref('/review explain http://github.com/NCodeGroup/code-review/pull/7#discussion_r1234')?.kind, 'invalid');
+  assert.equal(ref('/review explain https://github.com/NCodeGroup/code-review/pull/7')?.kind, 'invalid');
+  assert.equal(ref('/review explain https://github.com/NCodeGroup/code-review/issues/7#issuecomment-1234')?.kind, 'invalid');
+  assert.equal(ref('/review explain https://github.com/NCodeGroup/code-review/pull/7?x=1#discussion_r1234')?.kind, 'invalid');
+});
+
+test('parseCommand ignores a comment that only mentions /review explain', () => {
+  assert.equal(parseCommand('/review explainer F3'), undefined);
+  assert.equal(parseCommand('/review please explain F3'), undefined);
+  assert.equal(parseCommand('Could you /review explain F3?'), undefined);
+  assert.equal(parseCommand('/review\nexplain F3'), undefined);
+  assert.equal(parseCommand('/reviewexplain F3'), undefined);
+});
+
+test('commandFromEvent accepts /review explain only from a writer on a pull request', () => {
+  const event = (association: string, pullRequest: unknown = {}) => ({
+    issue: { number: 7, pull_request: pullRequest },
+    comment: { body: '/review explain F2 why?', author_association: association },
+  });
+  assert.deepEqual(commandFromEvent(event('COLLABORATOR')), { command: { kind: 'explain', ref: { kind: 'id', id: 'F2' }, question: 'why?' }, number: 7 });
+  assert.equal(commandFromEvent(event('CONTRIBUTOR')), undefined);
+  assert.equal(commandFromEvent(event('NONE')), undefined);
+  assert.equal(commandFromEvent(event('MEMBER', null)), undefined);
 });
 
 test('isFromFork treats a head in another repository, or in none, as a fork', () => {
