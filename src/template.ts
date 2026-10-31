@@ -144,6 +144,8 @@ export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?
   return rendered;
 }
 
+const plainAnswer = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/;
+
 // The answers file's top-level keys whose values are plain scalars, as a Jinja expression naming them renders them. A
 // list, a mapping, a multi-line string, an alias, a tagged value or an empty one is left out, so an expression naming
 // it can't be rendered and its file isn't confirmed.
@@ -154,7 +156,11 @@ export function answerValues(text: string): Map<string, string> {
     if (!entry) continue;
     const raw = entry[2]!.replace(/\s+#.*$/, '').trim();
     if (!raw || /^[[{|>&*!]/.test(raw)) continue;
-    values.set(entry[1]!, unquote(raw));
+    const value = unquote(raw);
+    // The pull request writes the answers file, so a value is its author's to choose: only a plain one can't carry code
+    // or instructions into a file left to the template.
+    if (!plainAnswer.test(value)) continue;
+    values.set(entry[1]!, value);
   }
   return values;
 }

@@ -326,7 +326,9 @@ differs, such as one edited by hand in the same pull request, is the project's a
 template renders from a `.jinja` source matches only when that source has no blocks or comments and every expression in
 it is a plain name the head's `.copier-answers.yml` holds a single value for, and putting those values in gives the
 file exactly; any other `.jinja` file, such as one with an `{% if %}` block or a filter, is the project's, since the
-engine doesn't render Jinja and can't tell what a block's text should be. The engine trusts that commit only when the
+engine doesn't render Jinja and can't tell what a block's text should be. The pull request writes those answers, so each
+value put in must be only letters, digits, spaces, dots, hyphens and underscores, up to 80 characters, or the file is
+the project's. The engine trusts that commit only when the
 template's default branch or one of its tags reaches it: GitHub serves a commit from any fork of the template at the
 template's own address, so a commit made in a fork counts as one it can't read. Past the default branch, a tag that
 points straight at the commit counts, and otherwise it compares at most three tags, the one `_commit` names and the

