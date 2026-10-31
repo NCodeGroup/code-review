@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
@@ -41,6 +42,8 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings left out because they say a file the pull request changes isn't changed.
+  dropped: DroppedFinding[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -172,19 +175,26 @@ function pullRequestBlock(gathered: Gathered): string {
   return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
-function fileList(gathered: Gathered): string {
+// Every file the pull request changes. Given the files a diff holds, it marks the others that have a diff as `elsewhere`.
+export function fileList(gathered: Pick<Gathered, 'files'>, inDiff?: Set<string>, elsewhere = ''): string {
   return gathered.files
-    .map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`)
+    .map((f) => {
+      const notShown = !f.shown ? ' [diff not shown: over the size budget]' : inDiff && !inDiff.has(f.path) ? ` [${elsewhere}]` : '';
+      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${notShown}`;
+    })
     .join('\n');
 }
+
+const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
 
 function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
   const scope = parts > 1
     ? ` This pull request is too large for one review, so its diff is reviewed in ${parts} parts and this is part ${part + 1}. Review the files in this part's diff; other reviewers have the rest. Read any other file when you need its context.`
     : '';
+  const inPart = parts > 1 ? new Set(splitDiff(diff).keys()) : undefined;
   return [
     pullRequestBlock(gathered),
-    `Changed files:\n${fileList(gathered)}`,
+    `${completeList}\n${fileList(gathered, inPart, 'diff in another part')}`,
     `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.${scope}\n<diff>\n${diff}\n</diff>`,
   ].join('\n\n');
 }
@@ -210,15 +220,20 @@ export function findingLimit(parts: number): number {
   return Math.min(maxFindingsCap, maxFindings + findingsPerExtraChunk * Math.max(0, parts - 1));
 }
 
-// What synthesis sees of the diff: the files the findings name, then the start of the diff, within the budget.
-function synthesisDiff(gathered: Gathered, files: string[], budget: number): string {
+// What synthesis sees of the diff: the files the findings name first, then every other file that fits the budget, and
+// the files it holds. With only the named files, synthesis once said a changed file wasn't in the diff (#32).
+export function synthesisDiff(gathered: Pick<Gathered, 'diff'>, files: string[], budget: number): { diff: string; files: Set<string> } {
   const sections = splitDiff(gathered.diff);
   let out = '';
-  for (const file of new Set(files)) {
+  const shown = new Set<string>();
+  for (const file of new Set([...files, ...sections.keys()])) {
     const section = sections.get(file);
-    if (section && out.length + section.length <= budget) out += section;
+    if (section && out.length + section.length <= budget) {
+      out += section;
+      shown.add(file);
+    }
   }
-  return out || gathered.diff.slice(0, budget);
+  return out ? { diff: out, files: shown } : { diff: gathered.diff.slice(0, budget), files: shown };
 }
 
 const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
@@ -378,15 +393,16 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
+  let dropped: DroppedFinding[] = [];
   if (raw.length) {
-    const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
+    const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
       {
         role: 'synthesis',
         tier: 'opus',
         systemPrompt: charters.synthesisPrompt,
-        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
+        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n${completeList}\n${fileList(gathered, excerpt.files, 'diff not in this excerpt')}\n\n<diff>\n${excerpt.diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
         schema: synthesisSchema,
         maxTurns: 3,
         budgetUsd: budgets.synthesis,
@@ -394,20 +410,25 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       },
     );
     calls.push(synthesis.record);
+    // Merge without the limit, so a finding the guard below drops frees its place.
     if (synthesis.output) {
       summary = synthesis.output.summary;
       verdict = synthesis.output.verdict;
-      findings = mergeSynthesis(synthesis.output.findings, raw, limit);
+      findings = mergeSynthesis(synthesis.output.findings, raw, Number.MAX_SAFE_INTEGER);
     } else {
       // Without synthesis, fall back to the reviewers' own findings, most severe first.
       summary = `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`;
-      findings = mergeSynthesis([], raw, limit);
+      findings = mergeSynthesis([], raw, Number.MAX_SAFE_INTEGER);
     }
+    const guarded = dropContradicted(findings, gathered.files.map((f) => f.path));
+    dropped = guarded.dropped;
+    findings = guarded.kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+    if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
   } else {
     summary = 'No findings.';
   }
 
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, dropped, calls, skipped };
 }

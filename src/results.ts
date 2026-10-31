@@ -1,6 +1,7 @@
 // What the review step hands the publish step, and how it reads in the check run and the summary comment.
 
 import type { CallRecord } from './agent.ts';
+import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
 import type { Finding, ReviewedFinding, Severity, Verdict } from './review.ts';
 
@@ -22,6 +23,8 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings left out before posting because they say a file the pull request changes isn't changed.
+  dropped?: DroppedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -144,6 +147,10 @@ export function checkSummary(results: Results): string {
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
   }
+  const dropped = results.dropped?.length ?? 0;
+  if (dropped) {
+    lines.push('', `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`);
+  }
   return lines.join('\n');
 }
 
@@ -172,6 +179,12 @@ export function checkText(results: Results): string {
   }
   for (const role of ['selection', 'synthesis']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+  }
+  if (results.dropped?.length) {
+    out.push('', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', '');
+    for (const { finding: f, file, claim } of results.dropped) {
+      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`);
+    }
   }
   return out.join('\n');
 }
