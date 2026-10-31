@@ -35,12 +35,16 @@ export type Resolution = { found: FoundFinding } | { validIds: string[] };
 // Reads an API path with the read-only token: the parsed body, or undefined when GitHub has no such thing.
 export type ReadApi = (path: string) => Promise<unknown>;
 
+// How long one read may take before it fails, so a hung connection doesn't hold the run until the job's time limit.
+const githubReadTimeoutMs = 30_000;
+
 // The ReadApi of a run, with the read-only token when there is one. A 404 reads as undefined, as a deleted comment
 // would; any other refusal throws, so a rate limit or an outage isn't taken for a comment that isn't a finding.
 export function githubReader(token: string | undefined, fetchApi: typeof fetch = fetch): ReadApi {
   return async (apiPath) => {
     const response = await fetchApi(`https://api.github.com${apiPath}`, {
       headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      signal: AbortSignal.timeout(githubReadTimeoutMs),
     });
     if (response.status === 404) return undefined;
     if (!response.ok) throw new Error(`GitHub refused GET ${apiPath}: HTTP ${response.status}`);
@@ -169,7 +173,7 @@ export function answerBody(found: FoundFinding, explanation: Explanation): strin
 }
 
 export function failedBody(found: FoundFinding, error: string): string {
-  return `${reference(found)}: I couldn't finish looking into this (${text(errorText(new Error(error)))}). Comment the command again to retry.`;
+  return `${reference(found)}: I couldn't finish looking into this (${text(errorText(error))}). Comment the command again to retry.`;
 }
 
 // How much of an unrecognized ref the reply repeats back.

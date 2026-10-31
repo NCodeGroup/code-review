@@ -10,7 +10,7 @@ export const maxCommentPages = 100;
 // Error text for a warning line: on one line, so a newline followed by "::" can't start a workflow command, and short.
 const maxErrorChars = 200;
 export function errorText(error: unknown): string {
-  return (error as Error).message.replace(/\s+/g, ' ').slice(0, maxErrorChars);
+  return (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, maxErrorChars);
 }
 
 // Reads a pull request's comments, oldest first, until a short page; undefined when a page can't be read, or when

@@ -43,9 +43,9 @@ test('parseCommand reads a link to a review comment as the ref', () => {
     return command?.kind === 'explain' ? command.ref : undefined;
   };
   const expected = { kind: 'url', host: 'github.com', repository: 'NCodeGroup/code-review', number: 7, commentId: 1234 };
-  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234'), { ...expected, url: 'https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234' });
-  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7/files#r1234'), { ...expected, url: 'https://github.com/NCodeGroup/code-review/pull/7/files#r1234' });
-  assert.deepEqual(ref('<https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234>'), { ...expected, url: 'https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234' });
+  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234'), expected);
+  assert.deepEqual(ref('https://github.com/NCodeGroup/code-review/pull/7/files#r1234'), expected);
+  assert.deepEqual(ref('<https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234>'), expected);
   assert.equal(parseCommand('/review explain https://github.com/NCodeGroup/code-review/pull/7#discussion_r1234 why?')?.kind, 'explain');
 });
 

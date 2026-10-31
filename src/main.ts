@@ -116,7 +116,7 @@ async function answer(
   const files: Record<string, unknown> = { [answerFile]: { repository, pullRequest: number, body } satisfies Answer };
   if (explained) {
     const { found, result } = explained;
-    if (result.error) console.log(`::warning::The explain call failed: ${errorText(new Error(result.error))}`);
+    if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
     files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, call: result.record } };
     const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
     console.log(`${outcome}, $${result.record.costUsd.toFixed(2)}`);

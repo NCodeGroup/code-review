@@ -6,7 +6,7 @@
 // bot's inline finding comments; or something that is neither, which gets the list of valid ids.
 export type FindingRef =
   | { kind: 'id'; id: string }
-  | { kind: 'url'; url: string; host: string; repository: string; number: number; commentId: number }
+  | { kind: 'url'; host: string; repository: string; number: number; commentId: number }
   | { kind: 'invalid'; text: string };
 
 export type Command = { kind: 'review' } | { kind: 'explain'; ref: FindingRef; question: string };
@@ -33,7 +33,7 @@ export function parseFindingRef(token: string): FindingRef {
   const where = commentUrlPath.exec(url.pathname);
   const comment = commentUrlHash.exec(url.hash);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || !where || !comment) return { kind: 'invalid', text };
-  return { kind: 'url', url: url.href, host: url.host.toLowerCase(), repository: where[1]!, number: Number(where[2]), commentId: Number(comment[1]) };
+  return { kind: 'url', host: url.host.toLowerCase(), repository: where[1]!, number: Number(where[2]), commentId: Number(comment[1]) };
 }
 
 // The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
