@@ -8,12 +8,13 @@ import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
+import { depthLabel, type ReviewDepth } from './depth.ts';
 import { globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
-export { severityRank, type Severity };
+export { depthLabel, severityRank, type ReviewDepth, type Severity };
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {
@@ -50,8 +51,6 @@ export interface ReviewerOutcome {
 
 export type Verdict = 'approve' | 'request-changes' | 'comment';
 
-// How deep a review goes: deep for a change to a sensitive path, light for one to documentation only.
-export type ReviewDepth = 'standard' | 'deep' | 'light';
 
 export interface Review {
   reviewers: ReviewerOutcome[];
@@ -720,10 +719,3 @@ export async function review(
   }
   return { reviewers: outcomes, summary, verdict, findings, dropped, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings, depth, sensitiveFiles: sensitive };
 }
-
-// How the summary and the check run name a review that isn't standard.
-export const depthLabel: Record<ReviewDepth, string> = {
-  standard: 'Standard review',
-  deep: 'Deep review (sensitive paths)',
-  light: 'Light review (documentation only)',
-};

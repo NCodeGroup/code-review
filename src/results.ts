@@ -3,8 +3,9 @@
 import type { CallRecord } from './agent.ts';
 import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
-import { creditsRanOutReason } from './provider.ts';
-import { depthLabel, type Finding, type ReviewDepth, type ReviewedFinding, type Verdict } from './review.ts';
+import { creditsRanOutReason } from './credits.ts';
+import { depthLabel, type ReviewDepth } from './depth.ts';
+import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 import type { RefutedFinding } from './verify.ts';
 
