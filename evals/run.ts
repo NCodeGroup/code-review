@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
-import { loadCharters, review, type Finding, type Severity } from '../src/review.ts';
+import { loadCharters, review, severityRank, type Finding, type Severity } from '../src/review.ts';
 
 export interface Concern { file?: string; line?: number; minSeverity?: Severity; concern: string }
 interface Case {
@@ -69,7 +69,6 @@ function worktree(repo: string, name: string, sha: string): string {
 }
 
 const sameFile = (a: string, b: string) => a.replace(/\\/g, '/').endsWith(b.replace(/\\/g, '/')) || b.replace(/\\/g, '/').endsWith(a.replace(/\\/g, '/'));
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 // Whether the judge should compare a finding with a concern: it is in the concern's file and at its severity or above.
 export function candidate(concern: Concern, finding: Pick<Finding, 'file' | 'severity'>): boolean {
