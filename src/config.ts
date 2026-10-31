@@ -34,7 +34,7 @@ export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? '')
   return tiers;
 }
 
-// Per-run cost caps in USD, checked by the Agent SDK against its own estimate, which can overshoot a little.
+// Per-call cost caps in USD, checked by the Agent SDK against its own estimate, which can overshoot a little.
 export const budgets = {
   selection: 0.25,
   // Per reviewer, by model: Opus costs twice what Sonnet does for the same work, and a reviewer cut off at its cap
@@ -45,8 +45,27 @@ export const budgets = {
   explain: 0.5,
   // Per verification call, on Sonnet.
   verification: 0.5,
-  run: 4,
 };
+
+// The ceiling on one review's total cost: a guard against a runaway review only, far above normal spend (about $0.60 to
+// $2.10 for a normal pull request, $6 to $7 for a 2 MB one in six parts). Once the calls so far reach it, the reviewer and
+// rule-check calls not yet started are skipped, and synthesis still runs on what was found.
+// CODE_REVIEW_MAX_RUN_USD overrides it with a positive number of dollars; anything else warns and keeps the default.
+export const runCeilingBase = 8;
+export const runCeilingPerPart = 4;
+
+export function runCeiling(
+  parts: number,
+  override = process.env['CODE_REVIEW_MAX_RUN_USD'] ?? '',
+  warn: (message: string) => void = () => {},
+): number {
+  const fallback = runCeilingBase + runCeilingPerPart * Math.max(1, parts);
+  const value = override.trim();
+  if (!value) return fallback;
+  if (/^\d+(\.\d+)?$/.test(value) && Number(value) > 0) return Number(value);
+  warn(`CODE_REVIEW_MAX_RUN_USD isn't a positive number of dollars (${JSON.stringify(value.slice(0, 40))}), so the run's cost ceiling stays at $${fallback.toFixed(2)}.`);
+  return fallback;
+}
 
 export const maxTurns = { specialist: 30, explain: 20, verification: 20 };
 
