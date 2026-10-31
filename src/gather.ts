@@ -5,7 +5,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
-import { writerAssociations } from './writers.ts';
 
 export interface PullRequest {
   repository: string;
@@ -255,22 +254,21 @@ export function closedIssues(body: string | undefined): number[] {
   return [...new Set(numbers)].slice(0, 5);
 }
 
-// canWrite is whether the author has write access, as the repository's permissions say; without it, the event's
-// author_association decides, which reports a private organization member as CONTRIBUTOR.
-export function readPullRequest(event: any, repository: string, canWrite?: boolean): PullRequest {
+// canWrite is whether the author has write access, from writerCheck. It is required: the event's author_association
+// alone reports a private organization member as CONTRIBUTOR.
+export function readPullRequest(event: any, repository: string, canWrite: boolean): PullRequest {
   const pr = event.pull_request ?? event.issue;
   if (!pr) throw new Error('The event has no pull request.');
   const association = String(pr.author_association ?? '');
-  const writer = canWrite ?? writerAssociations.has(association);
   const body = typeof pr.body === 'string' && pr.body.trim() ? pr.body.slice(0, maxPullRequestTextChars) : undefined;
   return {
     repository,
     number: Number(pr.number),
     title: String(pr.title ?? ''),
-    ...(body ? (writer ? { body } : { bodyWithheld: true }) : {}),
+    ...(body ? (canWrite ? { body } : { bodyWithheld: true }) : {}),
     author: String(pr.user?.login ?? ''),
     authorAssociation: association,
-    authorCanWrite: writer,
+    authorCanWrite: canWrite,
     draft: Boolean(pr.draft),
     baseRef: String(pr.base?.ref ?? ''),
     baseSha: String(pr.base?.sha ?? ''),
