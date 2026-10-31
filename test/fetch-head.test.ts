@@ -172,6 +172,8 @@ test('fetchPullRequestHead fetches the named commit when no branch or pull reque
   assert.equal(git(dir, 'rev-parse', 'HEAD'), head);
 });
 
+// Like the header test, this needs a real server: only a remote that accepts a connection and then never answers
+// makes git wait until its time limit.
 test('fetchPullRequestHead gives up on a remote that never answers, instead of waiting for the job to be killed', async () => {
   const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
   let output = '';
@@ -180,10 +182,26 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
     const deadline = Date.now() + 10_000;
     while (!/^P \d+$/m.test(output) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
     const port = /^P (\d+)$/m.exec(output)![1];
+    const dir = target();
     const started = Date.now();
-    assert.throws(() => fetchPullRequestHead({ path: target(), remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc/);
-    assert.ok(Date.now() - started < 30_000, 'it waited far longer than its limit');
+    // The time limit, and nothing else, ends it: the error says git was timed out, and it came soon after the limit.
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc.*ETIMEDOUT/s);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
+    assert.ok(elapsed < 10_000, `it ended after ${elapsed} ms, far past its 1500 ms limit`);
+    // The folder the failed fetch made is gone, so the next attempt starts clean. On Windows the killed git's own child
+    // (git-remote-http) lives on and holds the folder, so it can stay; the fetch's error above still comes through, and
+    // the next attempt refuses a repository with no commit. The review runs on Linux, where the folder can always go.
+    if (process.platform !== 'win32') assert.ok(!existsSync(dir), 'the failed fetch left its folder behind');
   } finally {
     server.kill();
   }
+});
+
+test('fetchPullRequestHead refuses a time limit that is not positive, before it touches anything', () => {
+  const dir = target();
+  for (const timeoutMs of [0, -1, Number.NaN]) {
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'd'.repeat(40), timeoutMs }), /time limit must be positive/);
+  }
+  assert.ok(!existsSync(dir));
 });

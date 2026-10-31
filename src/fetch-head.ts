@@ -16,6 +16,11 @@ import path from 'node:path';
 // How long a fetch may take before the run reports it instead of waiting for the job's own limit.
 export const fetchTimeoutMs = 180_000;
 
+// A failed fetch's folder is removed with these retries, about two seconds in all: a git killed at its time limit can leave
+// a child holding the folder for a moment.
+const cleanupRetries = 10;
+const cleanupRetryDelayMs = 200;
+
 export interface FetchHead {
   // The folder to fill. A folder that is already a repository at the named commit is left alone, as a workflow that
   // checks the head out itself expects.
@@ -26,7 +31,7 @@ export interface FetchHead {
   // The commit to check out.
   sha: string;
   token?: string;
-  // Replaces the default limit on each fetch, in milliseconds.
+  // Replaces the default limit on each fetch, in milliseconds. It must be positive: there is no way to turn the limit off.
   timeoutMs?: number;
 }
 
@@ -60,7 +65,7 @@ function git(where: { cwd: string; empty: string }, args: string[], extra: Recor
   const { cwd, empty } = where;
   return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...args], {
     encoding: 'utf8',
-    ...(timeout ? { timeout, killSignal: 'SIGKILL' as const } : {}),
+    ...(timeout === undefined ? {} : { timeout, killSignal: 'SIGKILL' as const }),
     stdio: ['ignore', 'pipe', 'inherit'],
     env: {
       PATH: process.env['PATH'] ?? '',
@@ -89,6 +94,8 @@ function has(where: { cwd: string; empty: string }, sha: string): boolean {
 export function fetchPullRequestHead(options: FetchHead): void {
   if (!/^[0-9a-f]{40}$/i.test(options.sha)) throw new Error(`"${options.sha}" isn't a full commit SHA.`);
   if (!Number.isInteger(options.number) || options.number < 1) throw new Error(`"${options.number}" isn't a pull request number.`);
+  const limit = options.timeoutMs ?? fetchTimeoutMs;
+  if (!(limit > 0)) throw new Error(`The fetch's time limit must be positive, not ${limit}.`);
   const empty = mkdtempSync(path.join(os.tmpdir(), 'code-review-git-'));
   const where = { cwd: options.path, empty };
   try {
@@ -108,7 +115,6 @@ export function fetchPullRequestHead(options: FetchHead): void {
     if (readdirSync(options.path).length) throw new Error(`${options.path} isn't empty and isn't a repository.`);
     try {
       const auth = authEnvironment(options.remoteUrl, options.token);
-      const limit = options.timeoutMs ?? fetchTimeoutMs;
       git(where, ['init', '-q']);
       git(where, ['remote', 'add', 'origin', options.remoteUrl]);
       // The branches give the merge base its history; the pull request's own ref carries the head, which a pull request
@@ -122,7 +128,7 @@ export function fetchPullRequestHead(options: FetchHead): void {
       // git killed at its time limit can leave a child holding the folder for a moment, so retry, and never let a failed
       // cleanup hide the fetch's own error.
       try {
-        rmSync(options.path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+        rmSync(options.path, { recursive: true, force: true, maxRetries: cleanupRetries, retryDelay: cleanupRetryDelayMs });
       } catch {
         // The error below says what went wrong; the folder is refused as it is by the next attempt.
       }
