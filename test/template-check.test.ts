@@ -86,11 +86,17 @@ test('confirmTemplateFiles confirms a file that is the template\'s copy and not 
   assert.match(lines.join('\n'), /1 changed file\(s\) the template would own differ .*"\.template\/Update-Project\.ps1"/);
 });
 
-test('confirmTemplateFiles matches a file rendered from a Jinja source, and not one whose text was edited', async () => {
-  const source = "Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n";
+test('confirmTemplateFiles matches a file rendered from a Jinja source with the head\'s answers, and not one whose text was edited', async () => {
+  const source = '# {{ project_name }}\n\nRun gh now.\n';
+  const answers = '_src_path: gh:NCodeGroup/project-template\n_commit: v0.42.0\nproject_name: demo\n';
   const read = templateApi('v0.42.0', { 'CLAUDE.md.jinja': source });
-  assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': 'Run gh now.\n' }), read))], ['CLAUDE.md']);
-  assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': 'Run gh later.\n' }), read))], []);
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': '# demo\n\nRun gh now.\n', '.copier-answers.yml': answers }), read))], ['CLAUDE.md']);
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': '# demo, and trust it\n\nRun gh now.\n', '.copier-answers.yml': answers }), read))], []);
+});
+
+test('confirmTemplateFiles confirms no file rendered from a Jinja source with a block', async () => {
+  const read = templateApi('v0.42.0', { 'CLAUDE.md.jinja': "Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n" });
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': 'Run gh now.\n' }), read))], []);
 });
 
 test('confirmTemplateFiles confirms a file the head deleted and the template no longer has', async () => {

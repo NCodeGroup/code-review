@@ -144,44 +144,38 @@ export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?
   return rendered;
 }
 
-const jinjaTag = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\{#[\s\S]*?#\}/g;
-const blockTags = new Set(['if', 'for', 'macro', 'call', 'filter', 'block', 'raw', 'with', 'autoescape']);
+// The answers file's top-level keys whose values are plain scalars, as a Jinja expression naming them renders them. A
+// list, a mapping, a multi-line string, an alias, a tagged value or an empty one is left out, so an expression naming
+// it can't be rendered and its file isn't confirmed.
+export function answerValues(text: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const line of text.split(/\r?\n/)) {
+    const entry = /^([A-Za-z_]\w*):[ \t]+(.+)$/.exec(line);
+    if (!entry) continue;
+    const raw = entry[2]!.replace(/\s+#.*$/, '').trim();
+    if (!raw || /^[[{|>&*!]/.test(raw)) continue;
+    values.set(entry[1]!, unquote(raw));
+  }
+  return values;
+}
 
-// Whether a file could be a rendering of a Jinja source, without rendering it: the source's text outside every tag and
-// block appears in the file in order, with each expression and block standing for any text. Whitespace next to a tag
-// is left out, since Jinja's whitespace control can remove it. A source whose blocks don't balance matches nothing.
-export function matchesTemplateSource(source: string, text: string): boolean {
-  const normalized = text.replace(/\r\n/g, '\n');
-  const pieces: string[] = [''];
-  let depth = 0;
+// Whether a file is the exact rendering of a Jinja source with the head's answers. Rendering Jinja in full would need
+// Jinja, and treating a tag as a stand-in for any text would confirm a file edited where the tag was, so only the plain
+// case is rendered: no blocks or comments, and every expression a bare answer name. Any other source matches nothing,
+// and its file is reviewed as the project's.
+export function matchesTemplateSource(source: string, text: string, answers: ReadonlyMap<string, string>): boolean {
+  if (source.includes('{%') || source.includes('{#')) return false;
+  let rendered = '';
   let at = 0;
-  const literal = (piece: string) => {
-    if (depth === 0) pieces[pieces.length - 1] += piece;
-  };
-  const template = source.replace(/\r\n/g, '\n');
-  for (const tag of template.matchAll(jinjaTag)) {
-    literal(template.slice(at, tag.index));
+  for (const tag of source.matchAll(/\{\{[\s\S]*?\}\}/g)) {
+    const name = /^\{\{[ \t]*([A-Za-z_]\w*)[ \t]*\}\}$/.exec(tag[0])?.[1];
+    const value = name === undefined ? undefined : answers.get(name);
+    if (value === undefined) return false;
+    rendered += source.slice(at, tag.index) + value;
     at = tag.index + tag[0].length;
-    if (depth === 0) pieces.push('');
-    const name = /^\{%-?\s*(\w+)/.exec(tag[0])?.[1];
-    if (name && (blockTags.has(name) || (name === 'set' && !tag[0].includes('=')))) depth++;
-    else if (name?.startsWith('end') && --depth < 0) return false;
   }
-  literal(template.slice(at));
-  if (depth !== 0) return false;
-  if (pieces.length === 1) return normalized === pieces[0];
-  const last = pieces.length - 1;
-  const trimmed = pieces.map((piece, i) => (i === 0 ? piece.trimEnd() : i === last ? piece.trimStart() : piece.trim()));
-  const first = trimmed[0]!;
-  const end = trimmed[last]!;
-  if (!normalized.startsWith(first) || !normalized.endsWith(end) || first.length + end.length > normalized.length) return false;
-  let cursor = first.length;
-  const limit = normalized.length - end.length;
-  for (const piece of trimmed.slice(1, last)) {
-    if (!piece) continue;
-    const found = normalized.indexOf(piece, cursor);
-    if (found < 0 || found + piece.length > limit) return false;
-    cursor = found + piece.length;
-  }
-  return true;
+  const rest = source.slice(at);
+  // An expression left open is an error in Jinja, so no file renders from it.
+  if (rest.includes('{{')) return false;
+  return rendered + rest === text;
 }

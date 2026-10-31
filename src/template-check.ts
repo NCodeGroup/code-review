@@ -7,7 +7,7 @@
 import { errorText } from './comments.ts';
 import type { ReadApi } from './explain.ts';
 import { git, readBlobs } from './gather.ts';
-import { matchesTemplateSource, renderedTemplatePaths, templateRef, type TemplateCandidate } from './template.ts';
+import { answersFile, answerValues, matchesTemplateSource, renderedTemplatePaths, templateRef, type TemplateCandidate } from './template.ts';
 
 const sha = /^[0-9a-f]{40}$/;
 
@@ -51,9 +51,9 @@ async function notTemplateCommit(repository: string, commit: string, ref: string
   return `it isn't on ${JSON.stringify(branch)} or the ${tried.length} newest tag(s), as a commit from a fork wouldn't be`;
 }
 
-// The candidate's files that match the template's own copies. A file the template renders from a .jinja source is
-// compared with matchesTemplateSource; any other must be the same blob. A file neither has, such as one the template
-// removed and the pull request deleted, matches.
+// The candidate's files that match the template's own copies. A file the template renders from a .jinja source must be
+// its exact rendering with the head's answers, as matchesTemplateSource reads it; any other must be the same blob. A
+// file neither has, such as one the template removed and the pull request deleted, matches.
 export async function confirmTemplateFiles(candidate: TemplateCandidate, checkout: string, read: ReadApi, log: (line: string) => void = () => {}): Promise<Set<string>> {
   const confirmed = new Set<string>();
   const { files, template } = candidate;
@@ -83,7 +83,9 @@ export async function confirmTemplateFiles(candidate: TemplateCandidate, checkou
     return unread(errorText(error));
   }
   const heads = headBlobShas(checkout);
-  const headTexts = readBlobs(checkout, 'HEAD', files.filter((f) => rendered.get(f)?.jinja && heads.has(f)));
+  const jinjaFiles = files.filter((f) => rendered.get(f)?.jinja && heads.has(f));
+  const headTexts = readBlobs(checkout, 'HEAD', jinjaFiles.length ? [...jinjaFiles, answersFile] : []);
+  const answers = answerValues(headTexts.get(answersFile) ?? '');
   for (const file of files) {
     const source = rendered.get(file);
     const head = heads.get(file);
@@ -100,7 +102,7 @@ export async function confirmTemplateFiles(candidate: TemplateCandidate, checkou
     try {
       const blob = (await read(`/repos/${repository}/git/blobs/${source.sha}`)) as { content?: unknown; encoding?: unknown } | undefined;
       if (blob?.encoding !== 'base64' || typeof blob.content !== 'string') continue;
-      if (matchesTemplateSource(Buffer.from(blob.content, 'base64').toString('utf8'), text)) confirmed.add(file);
+      if (matchesTemplateSource(Buffer.from(blob.content, 'base64').toString('utf8'), text, answers)) confirmed.add(file);
     } catch {
       // A source that can't be read leaves the file the project's.
     }
