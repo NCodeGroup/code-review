@@ -70,7 +70,7 @@ function fakeAgent(answers: Map<string, Verification>, cost = 0.1) {
     requests.push({ run, request });
     const text = Array.isArray(request.prompt) ? request.prompt.join('\n') : request.prompt;
     const ids = [...text.matchAll(/<finding id="(F\d+)"/g)].map((m) => m[1]!);
-    return { output: { verifications: ids.flatMap((id) => (answers.has(id) ? [answers.get(id)!] : [])) }, record: record(cost) };
+    return { output: { verifications: ids.flatMap((id) => (answers.has(id) ? [answers.get(id)!] : [])) }, records: [record(cost)] };
   };
   return { agent, requests };
 }
@@ -186,7 +186,7 @@ test('an uncertain finding becomes a question one severity lower', async () => {
 });
 
 test('a failed verification call leaves its findings as they were and records the error', async () => {
-  const agent: VerificationAgent = async () => ({ output: undefined, record: { ...record(0.02), outcome: 'error' }, error: 'budget' });
+  const agent: VerificationAgent = async () => ({ output: undefined, records: [{ ...record(0.02), outcome: 'error' }], error: 'budget' });
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent));
   assert.deepEqual(out.findings, findings);
@@ -233,12 +233,30 @@ test('a verification agent that throws leaves its findings as they were and reco
   assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd, c.outcome]), [['verification', 0, 'error'], ['verification', 0, 'error']]);
 });
 
+test('a verification call rerun on Bedrock records both calls and costs them together', async () => {
+  const refused: CallRecord = { ...record(0.01), provider: 'anthropic', model: 'claude-sonnet-5-5', outcome: 'credits ran out' };
+  const agent: VerificationAgent = async () => ({ output: { verifications: [verdict('F1', 'confirmed')] }, records: [refused, record(0.1)] });
+  const out = await verifyFindings(input([finding('F1', 'blocker')], agent));
+  assert.deepEqual(out.calls.map((c) => [c.provider, c.costUsd]), [['anthropic', 0.01], ['bedrock', 0.1]]);
+  assert.equal(out.trace[0]!.costUsd, 0.11);
+  assert.match(out.findings[0]!.evidence, /Verified:/);
+});
+
+test('a verification agent that throws after the run switched to Bedrock records the call on Bedrock', async () => {
+  const agent: VerificationAgent = async () => {
+    throw new Error('socket hang up');
+  };
+  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work', fallback: { switched: true } };
+  const out = await verifyFindings({ ...input([finding('F1', 'blocker')], agent), run });
+  assert.deepEqual(out.calls.map((c) => [c.provider, c.outcome]), [['bedrock', 'error']]);
+});
+
 test('a verdict for a finding outside the call\'s batch is ignored', async () => {
   const agent: VerificationAgent = async (_run, request) => {
     const text = (request.prompt as string[]).join('\n');
     // Every call claims to refute F2, but only the call on src/b.ts was given it, and that one confirms it.
     const own = text.includes('id="F2"') ? [verdict('F2', 'confirmed')] : [verdict('F2', 'refuted')];
-    return { output: { verifications: own }, record: record(0.1) };
+    return { output: { verifications: own }, records: [record(0.1)] };
   };
   const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')], agent));
   assert.deepEqual(out.refuted, []);
@@ -250,7 +268,7 @@ test('a verdict for a finding outside the call\'s batch is ignored', async () =>
 test('when a call names a finding twice, its first verdict holds', async () => {
   const agent: VerificationAgent = async () => ({
     output: { verifications: [verdict('F1', 'confirmed'), verdict('F1', 'refuted')] },
-    record: record(0.1),
+    records: [record(0.1)],
   });
   const out = await verifyFindings(input([finding('F1', 'blocker')], agent));
   assert.deepEqual(out.refuted, []);
