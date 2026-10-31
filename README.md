@@ -156,6 +156,36 @@ model, for the monthly report. When there's no summary comment, a final one is p
 sit on, posted in the review's body rather than as a thread, gets no outcome. The caller needs `closed` in its
 `pull_request_target` types for this.
 
+### Monthly report
+
+At 06:00 UTC on the 1st of each month, the `Monthly report` workflow (`tools/report.ts`) opens an issue in this
+repository, "Review report YYYY-MM", labelled `review-report`, for the month just ended. It reads every pull request
+closed that month, merged or not, in each NCodeGroup public repository with `.github/workflows/code-review.yml`, and
+counts those the bot reviewed:
+
+- precision per reviewer and per repository: fixed ÷ (fixed + dismissed), with acknowledged and ignored findings shown
+  apart. A finding several reviewers raised counts for each of them;
+- findings per pull request, among those with outcomes recorded;
+- the total cost, split between the Claude API and Amazon Bedrock, and the cost per fixed finding: the cost of the pull
+  requests with outcomes recorded ÷ their fixed findings;
+- the change in each from the previous month's report, read from the hidden `<!-- ncode-review:report {...} -->` marker
+  in its issue.
+
+Findings come from each pull request's outcomes marker and cost from every review's summary comment, including collapsed
+ones; a summary posted before summaries recorded their cost gives it from its visible line, or is counted as unknown.
+Only the bot's comments and the workflow's own report issues are read, so a marker someone else writes changes nothing.
+A pull request whose comments can't be read is left out and named under "Notes". Running it again for the same month
+updates that month's issue instead of opening another. The workflow uses only its `GITHUB_TOKEN`, since every reviewed
+repository is public, and its manual run takes a `month` (YYYY-MM, the current month included) and a `repositories`
+list (owner/name, separated by commas) to read instead of scanning:
+
+```powershell
+gh workflow run monthly-report.yml -R NCodeGroup/code-review -f month=2026-10
+```
+
+To see a month's report without publishing it, run `node tools/report.ts` with `GITHUB_TOKEN`,
+`GITHUB_REPOSITORY=NCodeGroup/code-review`, `REPORT_MONTH` and `REPORT_DRY_RUN=1`; it prints the issue's body.
+
 ## Opting a repository in
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:
