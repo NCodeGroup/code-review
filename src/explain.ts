@@ -1,6 +1,8 @@
 // `/review explain <ref>`: finds the finding a comment asks about, has one agent read the code again, and words the
 // answer the publish step posts as a top-level comment on the pull request.
 
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
 import { commentPageSize, errorText, readCommentPages } from './comments.ts';
@@ -30,8 +32,21 @@ export interface FoundFinding {
 
 export type Resolution = { found: FoundFinding } | { validIds: string[] };
 
-// Reads an API path with the read-only token: the parsed body, or undefined when GitHub refused it.
+// Reads an API path with the read-only token: the parsed body, or undefined when GitHub has no such thing.
 export type ReadApi = (path: string) => Promise<unknown>;
+
+// The ReadApi of a run, with the read-only token when there is one. A 404 reads as undefined, as a deleted comment
+// would; any other refusal throws, so a rate limit or an outage isn't taken for a comment that isn't a finding.
+export function githubReader(token: string | undefined, fetchApi: typeof fetch = fetch): ReadApi {
+  return async (apiPath) => {
+    const response = await fetchApi(`https://api.github.com${apiPath}`, {
+      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(`GitHub refused GET ${apiPath}: HTTP ${response.status}`);
+    return response.json();
+  };
+}
 
 // What the review step hands the publish step instead of results.json: one top-level comment to post.
 export interface Answer {
@@ -82,7 +97,14 @@ export function dataBlock(tag: string, text: string): string {
   return `<${tag}>\n${text.replace(new RegExp(`<(/?${tag})\\b`, 'gi'), '&lt;$1')}\n</${tag}>`;
 }
 
-export function explainPrompt(found: FoundFinding, question: string, checkout: string, headSha: string): string {
+// What one explain call is asked: the finding, the question about it, which may be empty, and the commit to read.
+export interface ExplainRequest {
+  found: FoundFinding;
+  question: string;
+  headSha: string;
+}
+
+export function explainPrompt({ found, question, headSha }: ExplainRequest, checkout: string): string {
   const c = found.comment;
   const line = c.line ?? c.original_line;
   const moved = c.line == null ? ' The code there has changed since, so find where it is now.' : '';
@@ -107,13 +129,19 @@ const explanationSchema = {
   additionalProperties: false,
 };
 
-// One Sonnet call with Read, Grep and Glob confined to the checkout, under the same lockdown as the reviewers.
-export function explainFinding(run: AgentRun & { checkout: string }, systemPrompt: string, found: FoundFinding, question: string, headSha: string): Promise<AgentResult<Explanation>> {
-  return runAgent<Explanation>(run, {
+// One Sonnet call with Read, Grep and Glob confined to the checkout, under the same lockdown as the reviewers. Tests
+// pass their own agent.
+export function explainFinding(
+  run: AgentRun & { checkout: string },
+  systemPrompt: string,
+  request: ExplainRequest,
+  agent: typeof runAgent<Explanation> = runAgent,
+): Promise<AgentResult<Explanation>> {
+  return agent(run, {
     role: 'explain',
     tier: 'sonnet',
     systemPrompt,
-    prompt: explainPrompt(found, question, run.checkout, headSha),
+    prompt: explainPrompt(request, run.checkout),
     schema: explanationSchema,
     maxTurns: maxTurns.explain,
     budgetUsd: budgets.explain,
@@ -144,6 +172,9 @@ export function failedBody(found: FoundFinding, error: string): string {
   return `${reference(found)}: I couldn't finish looking into this (${text(errorText(new Error(error)))}). Comment the command again to retry.`;
 }
 
+// How much of an unrecognized ref the reply repeats back.
+const maxEchoedRefChars = 100;
+
 export function unknownRefBody(ref: FindingRef, validIds: string[]): string {
   const asked =
     ref.kind === 'id'
@@ -151,16 +182,46 @@ export function unknownRefBody(ref: FindingRef, validIds: string[]): string {
       : ref.kind === 'url'
         ? "That link isn't to one of NCode Review's finding comments on this pull request."
         : ref.text
-          ? `\`${text(ref.text.replace(/[`\r\n]/g, ''), 100)}\` isn't a finding id or a link to a finding comment.`
+          ? `\`${text(ref.text.replace(/[`\r\n]/g, ''), maxEchoedRefChars)}\` isn't a finding id or a link to a finding comment.`
           : 'Name the finding to explain, such as `/review explain F1`.';
   const valid = validIds.length ? `The newest review's findings are ${validIds.join(', ')}.` : 'This pull request has no findings posted as inline comments yet.';
   return `${asked} ${valid} To ask about a finding from an earlier review, use its comment's link: \`/review explain <link> <question>\`.`;
 }
 
+export interface Explained {
+  found: FoundFinding;
+  result: AgentResult<Explanation>;
+}
+
+// The comment a `/review explain` run posts, and the call behind it when there was one. An unknown ref gets the newest
+// review's ids without asking the agent; a call that fails gets a comment saying so.
+export async function answerFor(
+  ref: FindingRef,
+  resolution: Resolution,
+  ask: (found: FoundFinding) => Promise<AgentResult<Explanation>>,
+): Promise<{ body: string; explained?: Explained }> {
+  if ('validIds' in resolution) return { body: unknownRefBody(ref, resolution.validIds) };
+  const { found } = resolution;
+  const result = await ask(found);
+  const body = result.output ? answerBody(found, result.output) : failedBody(found, result.error ?? 'no answer');
+  return { body, explained: { found, result } };
+}
+
+export type GitHubApi = (method: string, url: string, body?: unknown) => Promise<any>;
+
 // Posts the answer as a top-level comment, with the app's token, after the agent has exited. It is scanned for secrets
 // first, and nothing is posted when it holds one.
-export async function postAnswer(api: (method: string, url: string, body?: unknown) => Promise<any>, answer: Answer, secrets: string[]): Promise<string> {
+export async function postAnswer(api: GitHubApi, answer: Answer, secrets: string[]): Promise<string> {
   assertNoSecrets(answer.body, secrets, 'The answer');
   const comment = (await api('POST', `/repos/${answer.repository}/issues/${answer.pullRequest}/comments`, { body: answer.body })) as { html_url: string };
   return comment.html_url;
+}
+
+// The publish step's explain branch: posts the answer the review step left in outDir and returns the comment's URL, or
+// returns undefined, without a call, when there's none because the run was a review.
+export async function publishAnswer(outDir: string, api: GitHubApi, secrets: string[]): Promise<string | undefined> {
+  const answerPath = path.join(outDir, answerFile);
+  if (!existsSync(answerPath)) return undefined;
+  const answer = JSON.parse(readFileSync(answerPath, 'utf8')) as Answer;
+  return postAnswer(api, answer, secrets);
 }

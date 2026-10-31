@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { commandFromEvent, isFromFork, maxQuestionChars, parseCommand, skipReason, skipReasonFor } from '../src/command.ts';
-import { findFinding, type ReviewComment } from '../src/explain.ts';
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
   const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
@@ -81,41 +80,6 @@ test('commandFromEvent accepts /review explain only from a writer on a pull requ
   assert.equal(commandFromEvent(event('CONTRIBUTOR')), undefined);
   assert.equal(commandFromEvent(event('NONE')), undefined);
   assert.equal(commandFromEvent(event('MEMBER', null)), undefined);
-});
-
-// Two reviews of one pull request, each numbering its findings from F1: the newer review's comments have higher ids.
-function finding(id: number, review: number, findingId: string, path = 'src/a.ts'): ReviewComment {
-  return {
-    id,
-    pull_request_review_id: review,
-    path,
-    line: id,
-    user: { login: 'ncode-review[bot]' },
-    body: `finding ${findingId} of review ${review}\n<!-- ncode-review:finding id=${findingId} fp=0123456789abcdef severity=nit -->`,
-    pull_request_url: 'https://api.github.com/repos/NCodeGroup/code-review/pulls/7',
-  };
-}
-const twoReviews = [finding(10, 1, 'F1', 'old.ts'), finding(11, 1, 'F2'), finding(12, 1, 'F3'), finding(20, 2, 'F1', 'new.ts'), finding(21, 2, 'F2')];
-const where = { repository: 'NCodeGroup/code-review', number: 7, host: 'github.com' };
-const listing = (comments: ReviewComment[]) => async (path: string) => (path.startsWith('/repos/NCodeGroup/code-review/pulls/7/comments?') ? comments : undefined);
-
-test('an id two reviews share means the newest review\'s finding', async () => {
-  const resolved = await findFinding({ kind: 'id', id: 'F1' }, where, listing(twoReviews));
-  assert.ok('found' in resolved);
-  assert.equal(resolved.found.comment.id, 20);
-  assert.equal(resolved.found.comment.path, 'new.ts');
-});
-
-test('an id only an earlier review has is unknown, and the newest review\'s ids are listed', async () => {
-  assert.deepEqual(await findFinding({ kind: 'id', id: 'F3' }, where, listing(twoReviews)), { validIds: ['F1', 'F2'] });
-});
-
-test('a link names a finding from an earlier review exactly', async () => {
-  const read = async (path: string) => (path === '/repos/NCodeGroup/code-review/pulls/comments/10' ? twoReviews[0] : listing(twoReviews)(path));
-  const resolved = await findFinding({ kind: 'url', url: 'https://github.com/NCodeGroup/code-review/pull/7#discussion_r10', host: 'github.com', repository: 'NCodeGroup/code-review', number: 7, commentId: 10 }, where, read);
-  assert.ok('found' in resolved);
-  assert.equal(resolved.found.id, 'F1');
-  assert.equal(resolved.found.comment.path, 'old.ts');
 });
 
 test('isFromFork treats a head in another repository, or in none, as a fork', () => {

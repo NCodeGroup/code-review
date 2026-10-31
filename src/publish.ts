@@ -3,11 +3,11 @@
 // it. For `/review explain` it posts answer.json's comment instead. It runs after the agents have exited, with the app's
 // token, which is limited to the one repository under review and to check runs and pull requests.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
 import { errorText, postSummary } from './comments.ts';
-import { answerFile, postAnswer, type Answer } from './explain.ts';
+import { publishAnswer } from './explain.ts';
 import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
 
@@ -69,10 +69,9 @@ async function main(): Promise<void> {
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
   // A `/review explain` run leaves one comment to post instead of a review.
-  const answerPath = path.join(outDir, answerFile);
-  if (existsSync(answerPath)) {
-    const answer = JSON.parse(readFileSync(answerPath, 'utf8')) as Answer;
-    console.log(`Posted ${await postAnswer((method, url, payload) => github(token, method, url, payload), answer, [token])}`);
+  const answerUrl = await publishAnswer(outDir, (method, url, payload) => github(token, method, url, payload), [token]);
+  if (answerUrl !== undefined) {
+    console.log(`Posted ${answerUrl}`);
     return;
   }
   const results = JSON.parse(readFileSync(path.join(outDir, 'results.json'), 'utf8')) as Results;

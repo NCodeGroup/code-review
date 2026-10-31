@@ -5,10 +5,10 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReasonFor, type FindingRef } from './command.ts';
+import { commandFromEvent, skipReasonFor, type Command } from './command.ts';
 import { errorText, lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
-import { answerBody, answerFile, explainFinding, failedBody, findFinding, unknownRefBody, type Answer } from './explain.ts';
+import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
@@ -90,50 +90,38 @@ function writeForPublish(outDir: string, files: Record<string, unknown>, secrets
 // answer for the publish step. An unknown ref gets the newest review's ids, without a model call.
 async function answer(
   where: { outDir: string; prPath: string; repository: string; number: number; headSha: string; githubToken: string | undefined },
-  ref: FindingRef,
-  question: string,
+  command: Extract<Command, { kind: 'explain' }>,
 ): Promise<void> {
   const { outDir, prPath, repository, number, headSha, githubToken } = where;
   const credentials = takeCredentials();
   const secrets = [...secretValues(credentials), ...(githubToken ? [githubToken] : [])];
-  const read = async (apiPath: string): Promise<unknown> => {
-    const response = await fetch(`https://api.github.com${apiPath}`, {
-      headers: { accept: 'application/vnd.github+json', ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}) },
-    });
-    return response.ok ? response.json() : undefined;
-  };
   const host = new URL(process.env['GITHUB_SERVER_URL'] || 'https://github.com').host;
-  const resolution = await findFinding(ref, { repository, number, host }, read);
-  if ('validIds' in resolution) {
-    console.log(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
-    writeForPublish(outDir, { [answerFile]: { repository, pullRequest: number, body: unknownRefBody(ref, resolution.validIds) } satisfies Answer }, secrets, 'answered');
-    return;
-  }
-  const { found } = resolution;
-  console.log(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
-  fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number, headSha, token: githubToken }));
+  const resolution = await findFinding(command.ref, { repository, number, host }, githubReader(githubToken));
+  if ('validIds' in resolution) console.log(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
 
-  const choice = await chooseProvider(credentials);
-  console.log(`Provider: ${choice.reason}`);
-  const proxy = await startProxy(credentials);
-  try {
-    const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
-    const result = await explainFinding({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, systemPrompt, found, question, headSha);
+  const ask = async (found: FoundFinding) => {
+    console.log(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
+    fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number, headSha, token: githubToken }));
+    const choice = await chooseProvider(credentials);
+    console.log(`Provider: ${choice.reason}`);
+    const proxy = await startProxy(credentials);
+    try {
+      const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
+      return await explainFinding({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, systemPrompt, { found, question: command.question, headSha });
+    } finally {
+      await proxy.close();
+    }
+  };
+  const { body, explained } = await answerFor(command.ref, resolution, ask);
+  const files: Record<string, unknown> = { [answerFile]: { repository, pullRequest: number, body } satisfies Answer };
+  if (explained) {
+    const { found, result } = explained;
     if (result.error) console.log(`::warning::The explain call failed: ${errorText(new Error(result.error))}`);
-    const body = result.output ? answerBody(found, result.output) : failedBody(found, result.error ?? 'no answer');
-    writeForPublish(
-      outDir,
-      {
-        [answerFile]: { repository, pullRequest: number, body } satisfies Answer,
-        'trace.json': { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question, output: result.output, call: result.record } },
-      },
-      secrets,
-      'answered',
-    );
-    console.log(`${result.output ? (result.output.holds ? 'Holds' : "Doesn't hold") : 'No answer'}, $${result.record.costUsd.toFixed(2)}`);
-  } finally {
-    await proxy.close();
+    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, call: result.record } };
+    const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
+    console.log(`${outcome}, $${result.record.costUsd.toFixed(2)}`);
   }
+  writeForPublish(outDir, files, secrets, 'answered');
 }
 
 async function main(): Promise<void> {
@@ -162,7 +150,7 @@ async function main(): Promise<void> {
       return;
     }
     if (request.command.kind === 'explain') {
-      await answer({ outDir, prPath, repository, number: request.number, headSha: pullRequest.head?.sha ?? '', githubToken }, request.command.ref, request.command.question);
+      await answer({ outDir, prPath, repository, number: request.number, headSha: pullRequest.head?.sha ?? '', githubToken }, request.command);
       return;
     }
     event = { pull_request: pullRequest };
