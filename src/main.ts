@@ -7,7 +7,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bedrockFallbackFor, totalCost, type AgentRun } from './agent.ts';
+import { bedrockFallbackFor, runAgent, totalCost, type AgentRun } from './agent.ts';
 import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
@@ -246,7 +246,7 @@ async function main(): Promise<void> {
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
-  if (!plan) gathered.openIssues = await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
+  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -261,7 +261,7 @@ async function main(): Promise<void> {
       plan,
       headSha: pullRequest.headSha,
       lastHead: last,
-      full: () => review(agentRun, gathered, loadCharters(root), log),
+      full: () => review(agentRun, gathered, loadCharters(root), log, runAgent, openIssues),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
     for (const warning of outcome.warnings) log(`::warning::${warning}`);

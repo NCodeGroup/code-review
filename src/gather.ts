@@ -62,8 +62,6 @@ export interface Gathered {
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
-  // The repository's open issues opened by people with write access, for synthesis to mark a finding one already tracks.
-  openIssues?: { number: number; title: string }[];
   // From the repository's .github/code-review/ on the default branch, never the pull request's copy:
   // path globs config.yml marks sensitive, for deeper review (issue #42);
   sensitive: string[];
