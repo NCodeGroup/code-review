@@ -3,12 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
+import { writerAssociations } from '../src/command.ts';
 import { postThreads } from '../src/comments.ts';
 import { dismissedThreads, followUpThreads, planFollowUps, stillOpenMarker, stillOpenReply } from '../src/follow-up.ts';
 import type { EarlierState, ThreadNode } from '../src/rereview.ts';
 import type { Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
+import { writerCheck, type WriterCheck } from '../src/writers.ts';
 import { runStep } from './steps.ts';
 
 const made: string[] = [];
@@ -54,6 +56,8 @@ function thread(o: ThreadOptions = {}): ThreadNode {
 }
 
 const url = (t: ThreadNode) => t.first.nodes[0]!.url;
+// Writers by their association alone, with no permission lookup.
+const byAssociation: WriterCheck = async (_login, association) => writerAssociations.has(association ?? '');
 const headSha = 'c'.repeat(40);
 
 // What a re-review hands the publish step about each earlier thread.
@@ -61,15 +65,15 @@ function reReviewed(statuses: [ThreadNode, EarlierState, string?][], changedLine
   return { headSha, reReview: { changedLines, earlier: statuses.map(([t, status, note]) => ({ url: url(t), status, note: note ?? '' })) } };
 }
 
-test('planFollowUps resolves the bot\'s thread of a fixed finding when the thread is outdated or its lines changed', () => {
+test('planFollowUps resolves the bot\'s thread of a fixed finding when the thread is outdated or its lines changed', async () => {
   const outdated = thread({ outdated: true });
   const changed = thread({ finding: finding({ id: 'F2', file: 'src/b.ts', line: 20 }) });
   const untouched = thread({ finding: finding({ id: 'F3', file: 'src/c.ts', line: 40 }) });
-  const actions = planFollowUps([outdated, changed, untouched], reReviewed([[outdated, 'fixed'], [changed, 'fixed'], [untouched, 'fixed']], { 'src/b.ts': [22], 'src/c.ts': [10] }));
+  const actions = await planFollowUps([outdated, changed, untouched], reReviewed([[outdated, 'fixed'], [changed, 'fixed'], [untouched, 'fixed']], { 'src/b.ts': [22], 'src/c.ts': [10] }), byAssociation);
   assert.deepEqual(actions.map((a) => [a.kind, a.id, a.thread.id]), [['resolve', 'F1', outdated.id], ['resolve', 'F2', changed.id]]);
 });
 
-test('planFollowUps never resolves anyone else\'s thread, a resolved one, or one the re-review did not find fixed', () => {
+test('planFollowUps never resolves anyone else\'s thread, a resolved one, or one the re-review did not find fixed', async () => {
   const theirs = thread({ author: 'polewskm', outdated: true });
   const resolved = thread({ outdated: true, resolved: true });
   const open = thread({ outdated: true });
@@ -77,9 +81,9 @@ test('planFollowUps never resolves anyone else\'s thread, a resolved one, or one
   const unchecked = thread({ outdated: true });
   const unlisted = thread({ outdated: true });
   const all = [theirs, resolved, open, answered, unchecked, unlisted];
-  assert.deepEqual(planFollowUps(all, reReviewed([[theirs, 'fixed'], [resolved, 'fixed'], [open, 'open'], [answered, 'answered'], [unchecked, 'unchecked']])), []);
+  assert.deepEqual(await planFollowUps(all, reReviewed([[theirs, 'fixed'], [resolved, 'fixed'], [open, 'open'], [answered, 'answered'], [unchecked, 'unchecked']]), byAssociation), []);
   // A full review gives no status for the earlier threads, so it resolves nothing.
-  assert.deepEqual(planFollowUps(all, { headSha }), []);
+  assert.deepEqual(await planFollowUps(all, { headSha }, byAssociation), []);
 });
 
 test('followUpThreads resolves a thread with resolveReviewThread, and only warns when GitHub refuses a resolve or a reply', async () => {
@@ -94,7 +98,7 @@ test('followUpThreads resolves a thread with resolveReviewThread, and only warns
     return {};
   };
   const logs: string[] = [];
-  const actions = planFollowUps([first, answerable, second], reReviewed([[first, 'fixed'], [answerable, 'open'], [second, 'fixed']]));
+  const actions = await planFollowUps([first, answerable, second], reReviewed([[first, 'fixed'], [answerable, 'open'], [second, 'fixed']]), byAssociation);
   await followUpThreads(graphql, actions, ['app-token'], (l) => logs.push(l));
   assert.deepEqual(sent.map(([query, variables]) => [/resolveReviewThread\(input: \{ threadId: \$id \}\)/.test(query), variables['id']]), [[true, first.id], [false, answerable.id], [true, second.id]]);
   assert.deepEqual(logs, [
@@ -129,11 +133,11 @@ test('an Autopilot reply on a still-valid finding gets exactly one bot reply acr
   const logs: string[] = [];
   store.reply(stillValid, 'Autopilot: fixed in abc123');
   // The next review finds it still open, and says why, once.
-  const second = planFollowUps([stillValid], reReviewed([[stillValid, 'open', 'The second run still reads `state` before\nthe lock.']]));
+  const second = await planFollowUps([stillValid], reReviewed([[stillValid, 'open', 'The second run still reads `state` before\nthe lock.']]), byAssociation);
   await followUpThreads(store.graphql, second, ['app-token'], (l) => logs.push(l));
   // The autopilot answers again, and the review after that still finds it open.
   store.reply(stillValid, 'Autopilot: fixed in def456');
-  const third = planFollowUps([stillValid], reReviewed([[stillValid, 'open', 'Still reads `state` before the lock.']]));
+  const third = await planFollowUps([stillValid], reReviewed([[stillValid, 'open', 'Still reads `state` before the lock.']]), byAssociation);
   await followUpThreads(store.graphql, third, ['app-token'], (l) => logs.push(l));
   assert.equal(store.replies.length, 1);
   assert.deepEqual(third, []);
@@ -144,7 +148,7 @@ test('an Autopilot reply on a still-valid finding gets exactly one bot reply acr
   assert.deepEqual(logs, ['Replied in the thread of F1 that it stays open.']);
 });
 
-test('planFollowUps replies only to the autopilot, from someone with write access, and never on a dismissed thread or one it cannot read whole', () => {
+test('planFollowUps replies only to the autopilot, from someone with write access, and never on a dismissed thread or one it cannot read whole', async () => {
   const answeredByHand = thread({ replies: [{ login: 'polewskm', body: 'I will look at this.' }] });
   const stranger = thread({ replies: [{ login: 'drive-by', association: 'NONE', body: 'Autopilot: fixed in abc123' }] });
   const dismissed = thread({ replies: [{ login: 'polewskm', body: 'Autopilot: fixed in abc123' }] });
@@ -154,10 +158,24 @@ test('planFollowUps replies only to the autopilot, from someone with write acces
   long.comments.nodes = long.comments.nodes.slice(1);
   const answerable = thread({ replies: [{ login: 'polewskm', body: '  Autopilot: fixed in abc123' }] });
   const all = [answeredByHand, stranger, dismissed, long, answerable];
-  const actions = planFollowUps(all, reReviewed(all.map((t) => [t, 'open'])), new Set([dismissed.id]));
+  const actions = await planFollowUps(all, reReviewed(all.map((t) => [t, 'open'])), byAssociation, new Set([dismissed.id]));
   assert.deepEqual(actions.map((a) => [a.kind, a.thread.id]), [['reply', answerable.id]]);
   // A finding the re-review found fixed is never answered as still open, even when its thread can't be resolved.
-  assert.deepEqual(planFollowUps([answerable], reReviewed([[answerable, 'fixed']])), []);
+  assert.deepEqual(await planFollowUps([answerable], reReviewed([[answerable, 'fixed']]), byAssociation), []);
+});
+
+test("planFollowUps answers a private organization member's Autopilot reply when the permission lookup says write, and not when it fails", async () => {
+  const privateReply = () => thread({ replies: [{ login: 'private-member', association: 'CONTRIBUTOR', body: 'Autopilot: fixed in abc123' }] });
+  const writes = (async () => Response.json({ permission: 'write' })) as unknown as typeof fetch;
+  const answered = privateReply();
+  const actions = await planFollowUps([answered], reReviewed([[answered, 'open']]), writerCheck('o/r', 't', writes));
+  assert.deepEqual(actions.map((a) => [a.kind, a.thread.id]), [['reply', answered.id]]);
+  assert.equal(actions[0]!.kind === 'reply' && actions[0]!.body.split('\n').at(-1), '@private-member: needs you.');
+  const lines: string[] = [];
+  const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
+  const unread = privateReply();
+  assert.deepEqual(await planFollowUps([unread], reReviewed([[unread, 'open']]), writerCheck('o/r', 't', outage, (line) => lines.push(line))), []);
+  assert.equal(lines.length, 1);
 });
 
 test('stillOpenReply keeps the note to one line of text and asks the maintainer on its last line', () => {
