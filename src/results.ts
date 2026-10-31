@@ -39,7 +39,7 @@ export interface Results {
   warnings?: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
-  // Deep for a change to a sensitive path, light for one to documentation only; absent in results from before #42.
+  // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.
   depth?: ReviewDepth;
   // The changed files config.yml's sensitive: names, which made the review deep.
   sensitiveFiles?: string[];

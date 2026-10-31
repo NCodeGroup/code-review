@@ -3,7 +3,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentRequest, AgentRun, CallRecord } from '../src/agent.ts';
-import { budgets, findingsPerVerification, verificationOn } from '../src/config.ts';
+import { budgets, findingsPerVerification, modelIds, verificationOn } from '../src/config.ts';
 import { checkText, type Results } from '../src/results.ts';
 import { loadCharters, type ReviewedFinding } from '../src/review.ts';
 import {
@@ -231,6 +231,16 @@ test('a verification agent that throws leaves its findings as they were and reco
   assert.deepEqual(out.refuted, []);
   assert.deepEqual(out.trace.map((c) => c.error), ['socket hang up', 'socket hang up']);
   assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd, c.outcome]), [['verification', 0, 'error'], ['verification', 0, 'error']]);
+});
+
+test('a deep verification call that throws records Opus as its model and leaves its findings as they were', async () => {
+  const agent: VerificationAgent = async () => {
+    throw new Error('socket hang up');
+  };
+  const findings = [finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')];
+  const out = await verifyFindings({ ...input(findings, agent), deep: (file) => file === 'src/a.ts' });
+  assert.deepEqual(out.findings, findings);
+  assert.deepEqual(out.calls.map((c) => c.model).sort(), [modelIds.bedrock.opus, modelIds.bedrock.sonnet].sort());
 });
 
 test('a verdict for a finding outside the call\'s batch is ignored', async () => {
