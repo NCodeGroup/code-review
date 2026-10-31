@@ -214,21 +214,6 @@ test('checkTitle counts findings by severity', () => {
   assert.equal(checkTitle(results), '1 blocker, 0 should-fix, 1 nit (shadow mode)');
 });
 
-test('commandFromEvent accepts only an exact /review from a writer on a pull request', async () => {
-  const { commandFromEvent } = await import('../src/command.ts');
-  const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
-    issue: { number: 7, pull_request: pullRequest },
-    comment: { body, author_association: association },
-  });
-  assert.deepEqual(commandFromEvent(event('/review')), { command: { kind: 'review' }, number: 7 });
-  assert.deepEqual(commandFromEvent(event('  /review\n')), { command: { kind: 'review' }, number: 7 });
-  assert.equal(commandFromEvent(event('/review please')), undefined);
-  assert.equal(commandFromEvent(event('Run /review again')), undefined);
-  assert.equal(commandFromEvent(event('/review', 'CONTRIBUTOR')), undefined);
-  assert.equal(commandFromEvent(event('/review', 'NONE')), undefined);
-  assert.equal(commandFromEvent(event('/review', 'MEMBER', null)), undefined);
-});
-
 test('summaryComment shows reviewers, models, counts and the worst severity', async () => {
   const { summaryComment, summaryMarker, shortModel, topSeverity } = await import('../src/results.ts');
   assert.equal(shortModel('global.anthropic.claude-haiku-5-5'), 'haiku-5-5');

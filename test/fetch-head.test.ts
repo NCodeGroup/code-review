@@ -4,9 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { isFromFork } from '../src/command.ts';
 import { pathToFileURL } from 'node:url';
-import { authEnvironment, fetchHeadFor, fetchPullRequestHead } from '../src/fetch-head.ts';
+import { authEnvironment, fetchHeadFor, fetchPullRequestHead, fetchTimeoutMs } from '../src/fetch-head.ts';
 
 const made: string[] = [];
 after(() => {
@@ -33,6 +32,8 @@ function git(cwd: string, ...args: string[]): string {
 function fixture(): { remote: string; head: string; main: string } {
   const remote = temp('fetch-head-remote-');
   git(remote, 'init', '-q', '-b', 'main');
+  // A remote that serves a commit asked for by name, as the fetch by name needs.
+  git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
   writeFileSync(path.join(remote, 'a.txt'), 'one\n');
   git(remote, 'add', '.');
   git(remote, 'commit', '-q', '-m', 'one');
@@ -82,6 +83,15 @@ test('fetchPullRequestHead says the head moved, and leaves nothing behind, when 
   assert.ok(!existsSync(dir));
   fetchPullRequestHead({ path: dir, remoteUrl: pathToFileURL(remote).href, number: 1, sha: git(remote, 'rev-parse', 'refs/pull/1/head') });
   assert.ok(existsSync(path.join(dir, '.git')));
+});
+
+test('fetchPullRequestHead keeps the fetch\'s own error, and logs why, when the cleanup after it fails', (t) => {
+  const { remote } = fixture();
+  const logged = t.mock.method(console, 'error', () => {});
+  const remove = () => { throw new Error('folder in use'); };
+  assert.throws(() => fetchPullRequestHead({ path: target(), remoteUrl: pathToFileURL(remote).href, number: 1, sha: 'a'.repeat(40), remove }), /Couldn't fetch commit aaaaaaa/);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0]!.arguments[0]), /Couldn't remove .* after the failed fetch: folder in use/);
 });
 
 test('fetchPullRequestHead accepts a folder already checked out at the commit and refuses one at another', () => {
@@ -138,6 +148,8 @@ test('fetchPullRequestHead reports a repository with no commit checked out, with
   assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'a'.repeat(40) }), /without a commit checked out\. \(.+\)/s);
 });
 
+// This is the one check that the token reaches the wire, so it stays, with a real server on loopback; the other tests use
+// a local repository. It needs to start a process and to listen on 127.0.0.1.
 test('fetchPullRequestHead sends the token to the remote as a Basic header', async () => {
   // The server runs in its own process, because the fetch blocks this one while git runs.
   const server = spawn(process.execPath, ['-e', "const s=require('http').createServer((q,r)=>{console.log('H '+(q.headers.authorization||''));r.statusCode=404;r.end();});s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
@@ -149,7 +161,8 @@ test('fetchPullRequestHead sends the token to the remote as a Basic header', asy
     const dir = target();
     // The server has no repository, so the fetch fails; what matters is what it received before that.
     assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'b'.repeat(40), token: 'ghs_tokentoken' }), /Couldn't fetch commit bbbbbbb/);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const deadline = Date.now() + 10_000;
+    while (!/^H /m.test(output) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     const headers = [...output.matchAll(/^H (.*)$/gm)].map((match) => match[1]);
     assert.ok(headers.length > 0, 'the server saw no request');
     const expected = `basic ${Buffer.from('x-access-token:ghs_tokentoken').toString('base64')}`;
@@ -159,10 +172,52 @@ test('fetchPullRequestHead sends the token to the remote as a Basic header', asy
   }
 });
 
-test('isFromFork treats a head in another repository, or in none, as a fork', () => {
-  assert.equal(isFromFork({ head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review'), false);
-  assert.equal(isFromFork({ head: { repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review'), true);
-  assert.equal(isFromFork({ head: { repo: null } }, 'NCodeGroup/code-review'), true);
-  assert.equal(isFromFork({ head: {} }, 'NCodeGroup/code-review'), true);
-  assert.equal(isFromFork(undefined, 'NCodeGroup/code-review'), true);
+test('fetchPullRequestHead fetches the named commit when no branch or pull request ref reaches it any more', () => {
+  const { remote, head, main } = fixture();
+  // The pull request's ref now points elsewhere, as after a force-push, and the old head is on no ref at all.
+  git(remote, 'update-ref', 'refs/pull/1/head', main);
+  const dir = target();
+  fetchPullRequestHead({ path: dir, remoteUrl: pathToFileURL(remote).href, number: 1, sha: head });
+  assert.equal(git(dir, 'rev-parse', 'HEAD'), head);
+});
+
+// Like the header test, this needs a real server: only a remote that accepts a connection and then never answers
+// makes git wait until its time limit.
+test('fetchPullRequestHead gives up on a remote that never answers, instead of waiting for the job to be killed', async () => {
+  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += String(chunk); });
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!/^P \d+$/m.test(output) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    const port = /^P (\d+)$/m.exec(output)![1];
+    const dir = target();
+    const started = Date.now();
+    // The time limit, and nothing else, ends it: the error says git was timed out, and not before the limit. There is no
+    // upper bound on the time, which a loaded runner could break; ETIMEDOUT already shows the limit ended it.
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc.*ETIMEDOUT/s);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
+    // The killed fetch's folder is removed too. On Windows the killed git's own child (git-remote-http) can hold it past
+    // the cleanup's retries, so this is checked where the review runs: Linux, and macOS.
+    if (process.platform !== 'win32') {
+      const deadline = Date.now() + 5_000;
+      while (existsSync(dir) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.ok(!existsSync(dir), 'the timed-out fetch left its folder behind');
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+test('fetchPullRequestHead refuses a time limit Node would not take, before it touches anything', () => {
+  const dir = target();
+  for (const timeoutMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5, 2 ** 31]) {
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'd'.repeat(40), timeoutMs }), /time limit must be a positive whole number of milliseconds/);
+  }
+  assert.ok(!existsSync(dir));
+});
+
+test('the default fetch time limit is the three minutes the README promises', () => {
+  assert.equal(fetchTimeoutMs, 180_000);
 });

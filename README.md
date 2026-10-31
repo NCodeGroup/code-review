@@ -60,10 +60,11 @@ jobs:
 ```
 
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
-its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head out: the
-engine fetches the exact commit itself, after it has decided to review, with git started without configuration, hooks or
-a credential helper (a workflow that checks the head out into `pr` itself is also accepted, if it is at that commit). Pushes start nothing; comment `/review`
-to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
+its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head
+out: the engine fetches the exact commit itself, after it has decided to review, with git started without
+configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
+that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
+`/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
 ## Versions
 

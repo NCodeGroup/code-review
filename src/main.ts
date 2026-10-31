@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, isFromFork } from './command.ts';
+import { commandFromEvent, skipReasonFor } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
@@ -85,22 +85,20 @@ async function main(): Promise<void> {
       headers: { accept: 'application/vnd.github+json', ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}) },
     });
     if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
-    const pullRequest = (await response.json()) as { head?: { repo?: { full_name?: string } } };
-    if (isFromFork(pullRequest, repository)) {
-      console.log(`#${request.number} comes from a fork, and forks aren't reviewed.`);
+    const pullRequest = (await response.json()) as { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } };
+    const reason = await skipReasonFor('comment', pullRequest, repository, () => lastReviewedHead(repository, request.number, githubToken));
+    if (reason) {
+      console.log(reason);
       return;
     }
     event = { pull_request: pullRequest };
   } else {
-    if (isFromFork(event.pull_request, repository)) {
-      console.log(`#${event.pull_request?.number} comes from a fork, and forks aren't reviewed.`);
-      return;
-    }
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
     // the same review. /review still reviews it.
-    const head = event.pull_request?.head?.sha;
-    if (head && (await lastReviewedHead(repository, event.pull_request.number, githubToken)) === head) {
-      console.log(`${String(head).slice(0, 7)} was already reviewed; comment /review to review it again.`);
+    const pullRequest = event.pull_request;
+    const reason = await skipReasonFor('automatic', pullRequest, repository, () => lastReviewedHead(repository, pullRequest.number, githubToken));
+    if (reason) {
+      console.log(reason);
       return;
     }
   }

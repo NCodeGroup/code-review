@@ -28,3 +28,28 @@ export function commandFromEvent(event: CommentEvent): { command: Command; numbe
 export function isFromFork(pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined, repository: string): boolean {
   return pullRequest?.head?.repo?.full_name !== repository;
 }
+
+// Why a review is skipped, if it is: the pull request comes from a fork, or its head was already reviewed.
+// `reviewedHead` looks up the head the bot last reviewed; it is called only for a pull request that isn't from a fork
+// and has a head, so a fork costs no API call. /review passes none, because it reviews a commit again on purpose.
+export async function skipReason(
+  pullRequest: { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } } | undefined,
+  repository: string,
+  reviewedHead?: () => Promise<string | undefined>,
+): Promise<string | undefined> {
+  if (isFromFork(pullRequest, repository)) return `#${pullRequest?.number} comes from a fork, and forks aren't reviewed.`;
+  const head = pullRequest?.head?.sha;
+  if (head && reviewedHead && (await reviewedHead()) === head) return `${head.slice(0, 7)} was already reviewed; comment /review to review it again.`;
+  return undefined;
+}
+
+// The skip rules for one run. A /review comment reviews a commit again on purpose, so only the fork rule applies and the
+// reviewed head is never looked up; an automatic run also skips a head already reviewed.
+export function skipReasonFor(
+  trigger: 'comment' | 'automatic',
+  pullRequest: Parameters<typeof skipReason>[0],
+  repository: string,
+  reviewedHead: () => Promise<string | undefined>,
+): Promise<string | undefined> {
+  return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
+}
