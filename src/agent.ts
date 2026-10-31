@@ -263,8 +263,10 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
   };
   if (result?.subtype !== 'success' || apiError) {
     const reason = error ?? apiError ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
-    // The billing category when Claude Code reports one; the message text when only text is there, as for a thrown error.
-    return { output: undefined, record, error: reason, creditsRanOut: apiErrorKind === 'billing_error' || creditsRanOut(reason) };
+    // Claude Code's billing category decides. A thrown error carries no category or code (the SDK throws plain Errors),
+    // so only for it does the message text decide; a reported API error without the category never moves the run.
+    const outOfCredits = apiErrorKind === 'billing_error' || (error !== undefined && creditsRanOut(error));
+    return { output: undefined, record, error: reason, creditsRanOut: outOfCredits };
   }
   return { output: result.structured_output as T, record, creditsRanOut: false };
 }

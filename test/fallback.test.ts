@@ -282,6 +282,25 @@ test('an API error that isn\'t about credits fails the call without moving the r
   }
 });
 
+test('credit wording on a reported API error without the billing category doesn\'t move the run', async () => {
+  for (const kind of ['unknown', undefined] as const) {
+    const seen: SeenCall[] = [];
+    const failing: QueryFunction = async function* ({ options }) {
+      seen.push({ model: options.model ?? '', env: options.env ?? {} });
+      if (kind) yield apiErrorMessage(kind, creditMessage);
+      yield resultMessage({ is_error: true, result: creditMessage, total_cost_usd: 0 });
+    };
+    const fallback: BedrockFallback = { switched: false };
+    const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', fallback, query: failing };
+    const result = await runAgent(run, request());
+
+    assert.equal(result.error, creditMessage);
+    assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', 'error']]);
+    assert.equal(seen.length, 1);
+    assert.deepEqual(fallback, { switched: false });
+  }
+});
+
 test('without a Bedrock key a credit error fails the call as before, with nothing rerun', async () => {
   const seen: SeenCall[] = [];
   const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', query: fakeQuery(seen, () => true) };
