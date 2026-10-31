@@ -99,12 +99,12 @@ test('chunkDiff opens a new part when one is full', () => {
 });
 
 test('reviewOrder ranks only what the light review calls documentation last, and code in docs/ with product code', () => {
-  for (const doc of ['README.md', 'docs/guide.rst', 'notes.txt', 'docs/img/a.png']) {
+  for (const doc of ['README.md', 'docs/guide.rst', 'notes.txt', 'docs/img/a.png', 'docs/licenses.txt', 'doc/api/notes.TXT']) {
     assert.ok(isDocumentation(doc), doc);
     assert.equal(reviewOrder(doc), 3, doc);
     assert.equal(documentationOnly([file(doc)]), true, doc);
   }
-  for (const code of ['docs/build.ps1', 'docs/conf.py', 'CMakeLists.txt', 'requirements-dev.txt', 'src/PublicAPI.Shipped.txt']) {
+  for (const code of ['docs/build.ps1', 'docs/conf.py', 'CMakeLists.txt', 'requirements-dev.txt', 'src/PublicAPI.Shipped.txt', 'src/fixtures/input.txt', 'licenses/THIRD-PARTY-NOTICES.txt', 'docs/img/logo.svg', 'assets/icon.svg']) {
     assert.ok(!isDocumentation(code), code);
     assert.equal(reviewOrder(code), 0, code);
     assert.equal(documentationOnly([file(code)]), false, code);
@@ -341,6 +341,7 @@ test('isGenerated recognizes lock files, designer files and binaries', () => {
   assert.ok(isGenerated('src/frontend/pnpm-lock.yaml'));
   assert.ok(isGenerated('src/Data/Migrations/AppDbContextModelSnapshot.cs'));
   assert.ok(isGenerated('assets/logo.PNG'));
+  assert.ok(!isGenerated('docs/img/logo.svg'));
   assert.ok(!isGenerated('src/NCode.Identity.Jose/JoseSerializer.cs'));
 });
 

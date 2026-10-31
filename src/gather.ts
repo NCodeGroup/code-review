@@ -87,7 +87,7 @@ const generatedPatterns = [
   /ModelSnapshot\.cs$/,
   /\.g\.(cs|ts|js)$/,
   /\.min\.(js|css)$/,
-  /\.(snap|svg|png|jpg|jpeg|gif|ico|pdf|zip|dll|exe|nupkg)$/i,
+  /\.(snap|png|jpg|jpeg|gif|ico|pdf|zip|dll|exe|nupkg)$/i,
   /(^|\/)(dist|node_modules|bin|obj)\//,
 ];
 
@@ -97,18 +97,21 @@ export function isGenerated(file: string): boolean {
 
 export const publicApiPath = /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/;
 
-// Documentation, as an allowlist: a Markdown, reStructuredText or text file anywhere, and an image or a PDF in a doc/ or
-// docs/ folder. Any other file, one with no extension included, isn't, wherever it is: a script, a config file or a git
-// hook in docs/ or in a template's folders is code. A text file that is a build or dependency list, such as
-// CMakeLists.txt or a pip requirements file, isn't documentation, and neither is a public API listing: it is the API.
-// The light review and the review order both use this one definition.
-const documentationFile = /\.(md|rst|txt)$/i;
-const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|svg|webp|pdf)$/i;
+// Documentation, as an allowlist: a Markdown or reStructuredText file anywhere; a text file only at the repository root
+// or in a doc/ or docs/ folder, since elsewhere one is as often a fixture, a data input or a license list; and an image
+// other than an SVG, or a PDF, in a doc/ or docs/ folder. An SVG can carry script, so it is code wherever it is. Any
+// other file, one with no extension included, isn't documentation, wherever it is: a script, a config file or a git hook
+// in docs/ or in a template's folders is code. A text file that is a build or dependency list, such as CMakeLists.txt or
+// a pip requirements file, isn't documentation, and neither is a public API listing: it is the API. The light review
+// and the review order both use this one definition.
+const documentationFile = /\.(md|rst)$/i;
+const documentationText = /^[^/]+\.txt$|(^|\/)docs?\/.+\.txt$/i;
+const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|webp|pdf)$/i;
 const listingFile = /(^|\/)(CMakeLists\.txt|(requirements|constraints)[^/]*\.txt)$/i;
 
 export function isDocumentation(file: string): boolean {
   if (publicApiPath.test(file) || listingFile.test(file)) return false;
-  return documentationFile.test(file) || documentationAsset.test(file);
+  return documentationFile.test(file) || documentationText.test(file) || documentationAsset.test(file);
 }
 
 const testPattern = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec|tests)\.[a-z]+$|Tests?\.cs$/i;

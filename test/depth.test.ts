@@ -58,8 +58,15 @@ test('reviewDepth is standard for a file in docs/ that isn\'t documentation, an 
   for (const path of ['docs/conf.json', 'docs/mkdocs.yml', 'docs/Makefile', 'docs/Dockerfile', 'docs/app.jsx', 'docs/index.php', 'doc/x.c', 'docs/build', 'docs/x.sql', 'docs/requirements.txt']) {
     assert.equal(reviewDepth([file('docs/guide.md'), file(path)], []), 'standard', path);
   }
-  assert.equal(reviewDepth([file('docs/img/a.svg'), file('docs/a.jpeg'), file('doc/manual.pdf'), file('docs/guide.md')], []), 'light');
+  assert.equal(reviewDepth([file('docs/img/a.gif'), file('docs/a.jpeg'), file('doc/manual.pdf'), file('docs/guide.md')], []), 'light');
   assert.equal(reviewDepth([file('assets/logo.png')], []), 'standard', 'an image outside docs/');
+});
+
+test('reviewDepth is standard for an SVG, and for a text file outside the root, doc/ and docs/', () => {
+  for (const path of ['docs/img/a.svg', 'assets/logo.svg', 'data/input.txt', 'src/Fixtures/expected.txt', 'licenses/THIRD-PARTY.txt']) {
+    assert.equal(reviewDepth([file('docs/guide.md'), file(path)], []), 'standard', path);
+  }
+  assert.equal(reviewDepth([file('notes.txt'), file('docs/notes.txt'), file('src/Lib/docs/usage.txt')], []), 'light');
 });
 
 test('reviewDepth is standard for a text file that lists a build or dependencies', () => {
