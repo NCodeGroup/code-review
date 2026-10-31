@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `/review explain F3`, or `/review explain <link to a finding comment>`, with an optional question, answers in a top-level comment whether the finding still holds: one Sonnet agent with Read, Grep and Glob, locked down like the reviewers and capped at about $0.50, reads the latest commit again. An id means the newest review's finding; an id or link that isn't one gets a comment listing the newest review's ids. Writers only, no forks, as for `/review` ([#44](https://github.com/NCodeGroup/code-review/issues/44)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.

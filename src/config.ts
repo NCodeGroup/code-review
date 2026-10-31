@@ -41,10 +41,12 @@ export const budgets = {
   // loses its findings.
   specialist: { haiku: 0.4, sonnet: 1, opus: 2 } as Record<ModelTier, number>,
   synthesis: 0.75,
+  // One Sonnet call that answers `/review explain` about one finding.
+  explain: 0.5,
   run: 4,
 };
 
-export const maxTurns = { specialist: 30 };
+export const maxTurns = { specialist: 30, explain: 20 };
 
 // Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
 // check each one against every part of the diff, so a rule a reviewer skims past still gets checked.
