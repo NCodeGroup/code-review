@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Consumers pin the action by a release's full commit SHA, with the tag in a comment, as the README now says: CodeQL's `extended` suite reports a tag pin, even an immutable release's, as an unpinned action. This repository's own workflow pins v0.3.1 that way.
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 
+### Fixed
+
+- The reviewers see the description, commit subjects and closed issues of a pull request by an organization member whose membership is private. GitHub reports such a member as a contributor, so the engine dropped them, and the first review of #30 said it had no description. The engine now asks the repository's permissions when the event doesn't name a writer, and the prompt says whether there's a description, when one was left out, and which closed issues it couldn't show ([#35](https://github.com/NCodeGroup/code-review/issues/35)).
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed

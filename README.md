@@ -14,6 +14,11 @@ environment holds no secret: model calls go through a localhost proxy that adds 
 reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
 repository under review. Results and the trace are scanned for secrets before they're written.
 
+The reviewers see a pull request's description, its commit subjects and the issues its description closes only when
+their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
+GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
+request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
+
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
 ## Using it

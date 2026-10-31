@@ -8,12 +8,13 @@ import { commandFromEvent, skipReasonFor } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
-import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
+import { readClosedIssues, writerCheck } from './writers.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,22 +35,6 @@ function take(name: string): string | undefined {
 function changedLinesFor(diff: string, files: string[]): Record<string, number[]> {
   const all = changedLines(diff);
   return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
-}
-
-// The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
-// text could steer the review.
-async function readClosedIssues(repository: string, numbers: number[], token: string | undefined) {
-  const issues: { number: number; title: string; body: string }[] = [];
-  for (const number of numbers) {
-    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}`, {
-      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    });
-    if (!response.ok) continue;
-    const issue = (await response.json()) as { title?: string; body?: string; author_association?: string; pull_request?: unknown };
-    if (issue.pull_request || !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(issue.author_association ?? '')) continue;
-    issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
-  }
-  return issues;
 }
 
 async function main(): Promise<void> {
@@ -109,13 +94,16 @@ async function main(): Promise<void> {
 
   const log = (line: string) => console.log(line);
   const started = Date.now();
-  const pullRequest = readPullRequest(event, repository);
+  const pullRequestEvent = event.pull_request ?? event.issue;
+  const isWriter = writerCheck(repository, githubToken);
+  const pullRequest = readPullRequest(event, repository, await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association));
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
-  pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
+  pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken, isWriter);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
+  log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
 
