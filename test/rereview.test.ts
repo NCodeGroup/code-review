@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
+import type { AgentRequest, AgentResult, AgentRun, BedrockFallback } from '../src/agent.ts';
 import { fetchCommit, fetchPullRequestHead } from '../src/fetch-head.ts';
 import { gather, type PullRequest } from '../src/gather.ts';
 import {
@@ -438,7 +438,7 @@ function fakeAgent(output: unknown, requests: AgentRequest[]) {
     requests.push(request);
     return {
       output,
-      record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' },
+      records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' }],
     };
   }) as never;
 }
@@ -476,6 +476,27 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
   assert.deepEqual(outcome.skipped, []);
   assert.equal(outcome.verdict, 'comment');
   assert.match(outcome.summary, /1 nit and 1 finding away from the changed lines aren't posted on a re-review\. 1 new finding at should-fix or above\.$/);
+});
+
+test('reReview gives its correctness call the Bedrock fallback of the run, and keeps both calls of a rerun on Bedrock', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const fallback = { switched: false } as BedrockFallback;
+  const record = (provider: 'anthropic' | 'bedrock', outcome: string) => ({ role: 'reviewer:correctness', provider, model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome });
+  const seen: (BedrockFallback | undefined)[] = [];
+  const switching = (async (run: AgentRun) => {
+    seen.push(run.fallback);
+    run.fallback!.switched = true;
+    run.fallback!.reason = 'credits ran out';
+    return { output: { findings: [], earlier: [] }, records: [record('anthropic', 'credits ran out'), record('bedrock', 'success')] };
+  }) as never;
+  const outcome = await reReview({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: repo, fallback }, gathered, charters, plan, () => {}, switching, { enabled: false });
+  assert.deepEqual(seen, [fallback]);
+  assert.equal(fallback.switched, true);
+  assert.deepEqual(outcome.calls.map((c) => [c.provider, c.outcome]), [['anthropic', 'credits ran out'], ['bedrock', 'success']]);
 });
 
 test('reReview makes no model call when nothing in the pull request changed', async () => {
@@ -519,7 +540,7 @@ test('reReview reports a failed reviewer and claims nothing about the changes', 
   const failing = (async (_run: AgentRun, request: AgentRequest) => ({
     output: undefined,
     error: 'budget exceeded',
-    record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'error' },
+    records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'error' }],
   })) as never;
   const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, failing);
   assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status, r.error]), [['correctness', 'failed', 'budget exceeded']]);
@@ -581,7 +602,7 @@ function verifier(answers: Record<string, Omit<Verification, 'id'>>, requests: A
     });
     return {
       output: { verifications },
-      record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.05, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' },
+      records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.05, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' }],
     };
   };
 }

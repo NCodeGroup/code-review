@@ -9,7 +9,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
@@ -616,8 +616,8 @@ export async function reReview(
   );
   if (result.error || !result.output) {
     const error = result.error ?? 'no output';
-    log(`  ${reReviewer}: failed (${error}) $${result.record.costUsd.toFixed(3)}`);
-    return finish([{ name: reReviewer, status: 'failed', findings: [], error }], [], 0, 0, [result.record], error);
+    log(`  ${reReviewer}: failed (${error}) $${totalCost(result.records).toFixed(3)}`);
+    return finish([{ name: reReviewer, status: 'failed', findings: [], error }], [], 0, 0, result.records, error);
   }
   for (const reported of result.output.earlier) {
     const index = Number(/^E(\d+)$/.exec(reported.key)?.[1] ?? 0) - 1;
@@ -626,9 +626,9 @@ export async function reReview(
   }
   const reported = result.output.findings.filter((f) => f.confidence >= minConfidence);
   const { kept, nits, outside } = postable(reported, plan.changed.lines);
-  log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${result.record.costUsd.toFixed(3)}`);
+  log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(result.records).toFixed(3)}`);
   const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(kept), log, verification);
-  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [result.record, ...calls], undefined, verified.trace.length ? verified : undefined);
+  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [...result.records, ...calls], undefined, verified.trace.length ? verified : undefined);
 }
 
 // --- Choosing the review ---
