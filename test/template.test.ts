@@ -104,8 +104,8 @@ test('readTemplate reads a checkout\'s answers file, and nothing when there is n
   assert.deepEqual(readTemplate(dir), template);
 });
 
-const pullRequest = (association = 'MEMBER'): PullRequest => ({
-  repository: 'o/r', number: 23, title: 'Adopt project-template', author: 'a', authorAssociation: association, draft: false,
+const pullRequest = (association = 'MEMBER', authorCanWrite = association !== 'CONTRIBUTOR'): PullRequest => ({
+  repository: 'o/r', number: 23, title: 'Adopt project-template', author: 'a', authorAssociation: association, authorCanWrite, draft: false,
   baseRef: 'main', baseSha: '', headSha: '',
 });
 const changed = (p: string): ChangedFile => ({ path: p, additions: 1, deletions: 0, generated: false, shown: true });
@@ -117,6 +117,8 @@ test('templateOf counts only an adoption or template update by a writer, and pre
   const adoption = [changed('.copier-answers.yml'), changed('.template/Get-PlanState.ps1')];
   assert.deepEqual(templateOf(pullRequest(), adoption, head, base), template);
   assert.equal(templateOf(pullRequest('CONTRIBUTOR'), adoption, head, base), undefined);
+  // A private organization member shows as CONTRIBUTOR; the repository's permissions say they can write.
+  assert.deepEqual(templateOf(pullRequest('CONTRIBUTOR', true), adoption, head, base), template);
   assert.equal(templateOf(pullRequest(), [changed('.template/Get-PlanState.ps1')], head, base), undefined);
   write(base, '.copier-answers.yml', `${answers}project_owned_files: [.githooks/pre-push]\n`);
   assert.deepEqual(templateOf(pullRequest(), adoption, head, base)?.projectOwned, ['.githooks/pre-push']);
@@ -260,7 +262,7 @@ test('the verdict drops to what the findings left here call for when settling mo
 test('review leaves out a template finding that says a changed file isn\'t changed, and lists the rest upstream', async () => {
   const diff = ['diff --git a/AGENTS.md b/AGENTS.md', '--- a/AGENTS.md', '+++ b/AGENTS.md', '@@ -27,1 +27,2 @@', ' a', '+draft: no', ''].join('\n');
   const gathered: Gathered = {
-    pullRequest: { repository: 'o/r', number: 23, title: 'Adopt', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+    pullRequest: { repository: 'o/r', number: 23, title: 'Adopt', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
     mergeBase: 'b',
     files: [
       { path: 'AGENTS.md', additions: 1, deletions: 0, generated: false, shown: true },

@@ -36,6 +36,13 @@ a second. When there's no review to publish, a last step completes it with why, 
 A failed review posts this check run even when the acknowledgement didn't happen, once the run has decided which commit
 to review.
 
+The reviewers see a pull request's description, its commit subjects and the issues its description closes only when
+their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
+GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
+request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
+A `/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below
+checks before the engine starts, so a private organization member can't start a review that way.
+
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
 A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.

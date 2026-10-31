@@ -36,7 +36,7 @@ const diff = ['diff --git a/src/auth/Token.cs b/src/auth/Token.cs', '--- a/src/a
 // hygiene and tests on Haiku, the rest on Sonnet. No rules or decisions by default, so there are no context or rule-check
 // calls.
 const gathered: Gathered = {
-  pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+  pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
   mergeBase: 'b',
   files: [{ path: 'src/auth/Token.cs', additions: 100, deletions: 0, generated: false, shown: true }],
   diff,

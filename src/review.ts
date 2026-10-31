@@ -11,7 +11,7 @@ import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
-import { globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { closedIssues, globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -375,6 +375,7 @@ export function partTiers(depth: ReviewDepth, deepPart: boolean, repository: Rec
   const tiers = depth === 'light' ? lightReviewerTiers : depth === 'deep' && deepPart ? deepReviewerTiers : {};
   return reviewerTiers(override, repository, tiers);
 }
+const contractPath = /\.proto$|\.schema\.json$/i;
 
 // The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove. The
 // template's files don't count: they aren't this repository's code to test or redesign.
@@ -385,9 +386,11 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   if (code.length) floor.add('correctness');
   if (code.some((f) => securityPath.test(f.path))) floor.add('security');
   if (reviewed.some((f) => publicApiPath.test(f.path))) floor.add('api-compat');
+  if (code.some((f) => f.packable && f.publicMember)) floor.add('api-compat');
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
   if (reviewed.some((f) => /(^|\/)Migrations\//i.test(f.path) || /\.sql$/i.test(f.path))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
+  if (code.some((f) => f.serializedContract) || reviewed.some((f) => contractPath.test(f.path) && !testPath.test(f.path))) floor.add('data-model');
   if (reviewed.some((f) => infrastructurePath.test(f.path))) floor.add('infrastructure');
   if (hasReviewRules) floor.add('conventions');
   // Duct tape and unfinished capabilities build up in changes big enough to have a design; a one-line fix rarely does.
@@ -403,12 +406,20 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
+// The pull request as every stage sees it. Whether it has a description is stated either way, so no reviewer takes a
+// description it wasn't shown for a missing one.
 export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
-  const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
+  const description = pr.body
+    ? `\nDescription:\n${pr.body}`
+    : pr.bodyWithheld
+      ? "\n(The pull request has a description, left out because its author lacks write access. Don't report it as missing, or anything as absent from it.)"
+      : '\n(The pull request has no description.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
+  const unread = closedIssues(pr.body).filter((n) => !(pr.issues ?? []).some((i) => i.number === n));
+  const unreadIssues = unread.length ? `\nIt also closes ${unread.map((n) => `#${n}`).join(', ')}, whose text isn't shown.` : '';
   const commits = gathered.commits.length ? `\nCommits:\n${gathered.commits.map((c) => `- ${c}`).join('\n')}` : '';
-  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
+  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${unreadIssues}${commits}\n</pull_request>`;
 }
 
 // Every file the pull request changes, the ones the repository's config skips last. Given the files a diff holds, it
@@ -457,7 +468,7 @@ export function templateBlock(gathered: Gathered): string {
 }
 
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
-function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
+export function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
   return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}${templateBlock(gathered)}\n\n${changeContext(gathered, diff, part, parts)}`;
 }
 
