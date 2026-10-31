@@ -1,0 +1,51 @@
+name: Monthly report
+
+# On the 1st of each month, reports how useful the review was in the month just ended: precision per reviewer and per
+# repository, findings per pull request, cost by provider and cost per fixed finding, each with the change from the
+# previous month's report. It opens the issue "Review report YYYY-MM", or updates that issue when it already exists, so a
+# re-run never adds a second one. Every reviewed repository is public, so the workflow's own token reads their comments:
+# no app key and no model key. tools/report.ts says how it finds the repositories and what it reads.
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to report, as YYYY-MM; the previous month when empty'
+        required: false
+        type: string
+      repositories:
+        description: "Repositories to read, as owner/name separated by commas; when empty, the owner's public repositories with .github/workflows/code-review.yml"
+        required: false
+        type: string
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: monthly-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # The inputs reach the script as environment variables, never as shell text, and it checks both.
+      - name: Open or update the report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPORT_MONTH: ${{ inputs.month }}
+          REPORT_REPOSITORIES: ${{ inputs.repositories }}
+        run: node tools/report.ts
