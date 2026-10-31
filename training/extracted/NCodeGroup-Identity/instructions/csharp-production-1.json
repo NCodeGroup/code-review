@@ -2,6 +2,9 @@
   "hash": "da34a067269577be",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-production.instructions.md",
+  "applyTo": [
+    "src/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Async methods return ValueTask/ValueTask<T>, carry an Async suffix, and take a CancellationToken as the last parameter; use Task only where a framework contract you don't own requires it, such as middleware InvokeAsync, minimal-API handlers or mediator handlers.",
