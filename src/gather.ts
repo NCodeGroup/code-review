@@ -82,6 +82,9 @@ export function reviewOrder(file: string): number {
   return 0;
 }
 
+// After every rank reviewOrder gives: the template's files go last, so they're the first left out of an oversized diff.
+const templateOrder = Number.MAX_SAFE_INTEGER;
+
 function git(repository: string, args: string[]): string {
   return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
     encoding: 'utf8',
@@ -110,7 +113,7 @@ export function splitDiff(diff: string): Map<string, string> {
 export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, chunkChars: number, maxChunks: number): string[] {
   const chunks: string[][] = [[]];
   const used = [0];
-  const order = (file: ChangedFile) => (file.templateOwned ? 4 : reviewOrder(file.path));
+  const order = (file: ChangedFile) => (file.templateOwned ? templateOrder : reviewOrder(file.path));
   const ordered = [...files].sort((a, b) => order(a) - order(b) || a.path.localeCompare(b.path));
   for (const file of ordered) {
     const section = sections.get(file.path);
@@ -279,14 +282,13 @@ export function readPullRequest(event: any, repository: string): PullRequest {
   };
 }
 
-// The template the default branch's answers file names. A pull request that adopts the template adds the answers file,
-// so the default branch has none: then the head's counts, but only from an author with write access, since it decides
-// which files the review leaves to the template's repository.
+// The template whose files the review leaves to the template's repository, only for a pull request that adopts or
+// updates the template, which changes the answers file, from an author with write access. Anywhere else a change to
+// one of the template's files is an edit by hand, which the review treats as the project's. The default branch's answers
+// count; an adoption adds the answers file, so the default branch has none, and then the head's count.
 export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
-  const base = readTemplate(basePath);
-  if (base || existsSync(path.join(basePath, answersFile))) return base;
   if (!writers.has(pullRequest.authorAssociation) || !files.some((f) => f.path === answersFile)) return undefined;
-  return readTemplate(prPath);
+  return existsSync(path.join(basePath, answersFile)) ? readTemplate(basePath) : readTemplate(prPath);
 }
 
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.

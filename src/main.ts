@@ -135,7 +135,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
-      ...(outcome.upstream.length ? { upstream: outcome.upstream, template: gathered.template!.repository } : {}),
+      ...(outcome.upstream.length ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: gathered.template!.repository } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
         return {

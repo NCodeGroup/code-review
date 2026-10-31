@@ -44,6 +44,8 @@ export interface Review {
   findings: ReviewedFinding[];
   // Findings on the template's files: they belong in the template's repository, not in threads on this pull request.
   upstream: ReviewedFinding[];
+  // Places on the template's files past the upstream list's limit.
+  upstreamOmitted: number;
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -209,7 +211,7 @@ function decisionsBlock(decisions: Decision[]): string {
 export function templateBlock(gathered: Gathered): string {
   const template = gathered.template;
   if (!template || !gathered.files.some((f) => f.templateOwned)) return '';
-  return `\n\nThis repository is made from the project template ${template.repository}${template.commit ? ` (${template.commit})` : ''}. The changed files marked [template-owned] are the template's: a template update replaces them and discards any edit, so this repository can't fix them. Don't review them as this repository's code: don't ask for tests of them here, and don't report their style, comments or wording. Report a defect in one only when it's a real bug in the template; it goes on a list for ${template.repository}, never on this pull request. Every other file is the project's, so review it as usual, including what the project chose when it adopted or updated the template: its answers in .copier-answers.yml, the files it merges with the template's (such as .gitignore, .gitattributes, editor and tool settings and the workflows), AGENTS.md, and its own files.`;
+  return `\n\nThis repository is made from the project template ${template.repository}${template.commit ? ` (${template.commit})` : ''}. The changed files marked [template-owned] are the template's: a template update replaces them and discards any edit, so this repository can't fix them. Don't review them as this repository's code: don't ask for tests of them here, and don't report their style, comments or wording. Report a defect in one only when it's a real bug in the template; it goes on a list for ${template.repository}, not on this pull request. A blocker stays on this pull request: report one when a change in these files makes the change unsafe to merge, such as a hook, script or agent prompt that leaks secrets, weakens a check or runs code from outside the repository. Every other file is the project's, so review it as usual, including what the project chose when it adopted or updated the template: its answers in .copier-answers.yml, the files it merges with the template's (such as .gitignore, .gitattributes, editor and tool settings and the workflows), AGENTS.md, and its own files.`;
 }
 
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
@@ -256,17 +258,17 @@ export function mergeSynthesis(
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
 }
 
-// Splits findings into the repository's own, which become threads, and the template's, which belong upstream.
-export function byOwner<T extends Pick<Finding, 'file'>>(findings: T[], template: Template | undefined): { own: T[]; upstream: T[] } {
-  return {
-    own: findings.filter((f) => !isTemplateOwned(f.file, template)),
-    upstream: findings.filter((f) => isTemplateOwned(f.file, template)),
-  };
+// Splits findings into the repository's own, which become threads, and the template's, which belong upstream. A blocker
+// stays on the pull request even in the template's file: it makes the change unsafe to merge, whoever has to fix it.
+export function byOwner<T extends Pick<Finding, 'file' | 'severity'>>(findings: T[], template: Template | undefined): { own: T[]; upstream: T[] } {
+  const upstream = (f: T) => f.severity !== 'blocker' && isTemplateOwned(f.file, template);
+  return { own: findings.filter((f) => !upstream(f)), upstream: findings.filter(upstream) };
 }
 
 // The findings on the template's files, for the summary's list for the template's repository: one per file and line,
-// keeping the most severe and naming every reviewer that raised it.
-export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]): ReviewedFinding[] {
+// keeping the most severe and naming every reviewer that raised it. The list stops at maxUpstreamFindings; omitted
+// counts the places past it.
+export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]): { upstream: ReviewedFinding[]; omitted: number } {
   const byPlace = new Map<string, Finding & { reviewers: string[] }>();
   const ranked = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
   for (const f of ranked) {
@@ -275,7 +277,31 @@ export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]
     if (kept) kept.reviewers = [...new Set([...kept.reviewers, ...f.reviewers])];
     else byPlace.set(key, { ...f, reviewers: [...f.reviewers] });
   }
-  return [...byPlace.values()].slice(0, maxUpstreamFindings).map((f, i) => ({ ...f, id: `U${i + 1}` }));
+  const places = [...byPlace.values()];
+  return {
+    upstream: places.slice(0, maxUpstreamFindings).map((f, i) => ({ ...f, id: `U${i + 1}` })),
+    omitted: Math.max(0, places.length - maxUpstreamFindings),
+  };
+}
+
+// After synthesis, which may still place a finding in one of the template's files: moves those to the upstream list,
+// renumbers the rest, and, when only the template's findings remain, says so in the summary.
+export function settleUpstream(
+  findings: ReviewedFinding[],
+  upstreamRaw: (Finding & { reviewers: string[] })[],
+  template: Template | undefined,
+  summary: string,
+): { findings: ReviewedFinding[]; upstream: ReviewedFinding[]; upstreamOmitted: number; summary: string } {
+  const placed = byOwner(findings, template);
+  const own = placed.own.map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  const { upstream, omitted } = upstreamFindings([...upstreamRaw, ...placed.upstream]);
+  const total = upstream.length + omitted;
+  return {
+    findings: own,
+    upstream,
+    upstreamOmitted: omitted,
+    summary: !own.length && total ? `No findings in this repository's own files; ${total} in the template's belong upstream, in ${template!.repository}.` : summary,
+  };
 }
 
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -444,13 +470,9 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     summary = 'No findings.';
   }
   // Synthesis may still place a finding in a template's file.
-  const placed = byOwner(findings, gathered.template);
-  upstreamRaw.push(...placed.upstream);
-  findings = placed.own.map((f, i) => ({ ...f, id: `F${i + 1}` }));
-  const upstream = upstreamFindings(upstreamRaw);
-  if (!findings.length && upstream.length) summary = `No findings in this repository's own files; ${upstream.length} in the template's belong upstream, in ${gathered.template!.repository}.`;
+  const settled = settleUpstream(findings, upstreamRaw, gathered.template, summary);
 
   const skipped = roster.filter((name) => !selected.has(name));
-  verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, upstream, calls, skipped };
+  verdict ??= settled.findings.some((f) => f.severity === 'blocker') ? 'request-changes' : settled.findings.length ? 'comment' : 'approve';
+  return { reviewers: outcomes, summary: settled.summary, verdict, findings: settled.findings, upstream: settled.upstream, upstreamOmitted: settled.upstreamOmitted, calls, skipped };
 }

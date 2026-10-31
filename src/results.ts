@@ -24,6 +24,8 @@ export interface Results {
   findings: ReviewedFinding[];
   // Findings on the template's files, listed for the template's repository instead of posted as threads.
   upstream?: ReviewedFinding[];
+  // Places on the template's files past the upstream list's limit, counted but not listed.
+  upstreamOmitted?: number;
   // The template's repository, such as NCodeGroup/project-template.
   template?: string;
   reviewers: ReviewerResult[];
@@ -129,14 +131,19 @@ function upstreamList(results: Results): string[] {
   const upstream = results.upstream ?? [];
   if (!upstream.length) return [];
   const lines = [
-    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstream.length})</summary>`,
+    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstream.length + (results.upstreamOmitted ?? 0)})</summary>`,
     '',
     'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
     '',
   ];
   for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+  if (results.upstreamOmitted) lines.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
   lines.push('', '</details>', '');
   return lines;
+}
+
+function upstreamOmittedText(omitted: number): string {
+  return `And ${omitted} more on other lines of the template's files, not listed.`;
 }
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
@@ -161,8 +168,10 @@ export function checkSummary(results: Results): string {
     '',
     `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,
   ];
-  if (results.upstream?.length) {
-    lines.push('', `${results.upstream.length} finding${results.upstream.length === 1 ? '' : 's'} in the template's files belong${results.upstream.length === 1 ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${results.upstream.length === 1 ? "isn't" : "aren't"} posted as threads.`);
+  const upstreamTotal = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+  if (upstreamTotal) {
+    const one = upstreamTotal === 1;
+    lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
   }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
@@ -192,6 +201,7 @@ export function checkText(results: Results): string {
     for (const f of upstream) {
       out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`);
     }
+    if (results.upstreamOmitted) out.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
     out.push('');
   }
   out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');

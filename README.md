@@ -106,19 +106,24 @@ Each review, all from `ncode-review[bot]`:
 
 A repository made from [NCodeGroup/project-template](https://github.com/NCodeGroup/project-template) records it in
 `.copier-answers.yml`. A template update replaces the template's files and discards any edit, so a defect in one can
-only be fixed in the template. The engine reads the answers file from the default branch, or, for the pull request
-that adopts the template, from its head when its author has write access. When `_src_path` names project-template,
-these files are template-owned, except any that `project_owned_files` lists: `.template/`, `.githooks/`,
-`.claude/commands/`, `.claude/agents/`, `.github/prompts/`, `.github/skills/`, `.github/agents/`, `CLAUDE.md`,
-`.template-version`, `.github/instructions/project-template.instructions.md`, `.github/instructions/csharp.instructions.md`,
-`.claude/rules/csharp.md` and `build/ProjectTemplate.props`. Everything else is the project's, including the files the
-template writes once (`AGENTS.md`, `README.md`, `code-review.yml`), the files it merges with the project's (`.gitignore`,
-`.gitattributes`, the settings, `ci.yml`, `dependabot.yml`) and the answers file.
+only be fixed in the template. The engine leaves those files to the template only in a pull request that adopts or
+updates the template, which changes the answers file, and only when its author has write access; anywhere else a change
+to one is an edit by hand, reviewed as the project's. It reads the answers file from the default branch, or, for the
+pull request that adopts the template, from its head. When `_src_path` names NCodeGroup/project-template, these files
+are template-owned, except any that `project_owned_files` lists: everything under `.template/`, the template's hooks
+(`.githooks/commit-msg` and `pre-push`), its generated commands, prompt files, skills and agents in `.claude/commands/`,
+`.claude/agents/`, `.github/prompts/`, `.github/skills/` and `.github/agents/`, `CLAUDE.md`, `.template-version`,
+`.github/instructions/project-template.instructions.md`, `.github/instructions/csharp.instructions.md`,
+`.claude/rules/csharp.md` and `build/ProjectTemplate.props`. Everything else is the project's, including a command,
+prompt, skill, agent or hook it adds under a name the template doesn't use, the files the template writes once
+(`AGENTS.md`, `README.md`, `code-review.yml`), the files it merges with the project's (`.gitignore`, `.gitattributes`, the
+settings, `ci.yml`, `dependabot.yml`) and the answers file.
 
 The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
 finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs
-upstream, in NCodeGroup/project-template", and the check run has the details. An adoption or template update is still
-reviewed for what the project chose: its answers, its merged files and its own files.
+upstream, in NCodeGroup/project-template", up to 20 places with a count of the rest, and the check run has the details.
+A blocker stays a thread, since it makes the change unsafe to merge. An adoption or template update is still reviewed
+for what the project chose: its answers, its merged files and its own files.
 
 ## Opting a repository in
 

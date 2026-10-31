@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Reviews know which files a repository's project template owns. When `.copier-answers.yml` names NCodeGroup/project-template, its replaced-on-update files (`.template/`, `.githooks/`, the generated commands, prompts, skills and agents, `CLAUDE.md` and a few more, minus `project_owned_files`) are marked template-owned for the reviewers and no longer choose reviewers or rules. Findings on them aren't posted as threads: the summary lists them once, with file and line, under "Belongs upstream, in NCodeGroup/project-template". An adoption or template update is still reviewed for the project's answers, merged files and own files. A new eval case replays the adoption in #23 ([#31](https://github.com/NCodeGroup/code-review/issues/31)).
+- Reviews know which files a repository's project template owns. In a pull request that adopts or updates NCodeGroup/project-template, from an author with write access, its replaced-on-update files (`.template/`, its hooks, its generated commands, prompts, skills and agents, `CLAUDE.md` and a few more, minus `project_owned_files`) are marked template-owned for the reviewers and no longer choose reviewers or rules. Findings on them, except blockers, aren't posted as threads: the summary lists them once, with file and line, under "Belongs upstream, in NCodeGroup/project-template". An adoption or template update is still reviewed for the project's answers, merged files and own files. A new eval case replays the adoption in [#23](https://github.com/NCodeGroup/code-review/pull/23) ([#31](https://github.com/NCodeGroup/code-review/issues/31)).
 
 ### Changed
 
