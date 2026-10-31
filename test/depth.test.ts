@@ -48,6 +48,26 @@ test('reviewDepth is standard for a template update that changes a script or git
   assert.equal(reviewDepth([file('docs/tools/setup.sh')], []), 'standard');
 });
 
+test('reviewDepth is standard for a template-owned file that isn\'t Markdown, whatever its type', () => {
+  for (const path of ['.github/skills/x/scripts/run.py', '.github/skills/x/run', '.github/prompts/x.json', '.claude/commands/x.yml', '.claude/commands/x.php']) {
+    assert.equal(reviewDepth([file('.template-version'), file('.github/skills/x/SKILL.md'), file(path)], []), 'standard', path);
+  }
+});
+
+test('reviewDepth is standard for a file in docs/ that isn\'t documentation, an image or a PDF', () => {
+  for (const path of ['docs/conf.json', 'docs/mkdocs.yml', 'docs/Makefile', 'docs/Dockerfile', 'docs/app.jsx', 'docs/index.php', 'doc/x.c', 'docs/build', 'docs/x.sql', 'docs/requirements.txt']) {
+    assert.equal(reviewDepth([file('docs/guide.md'), file(path)], []), 'standard', path);
+  }
+  assert.equal(reviewDepth([file('docs/img/a.svg'), file('docs/a.jpeg'), file('doc/manual.pdf'), file('docs/guide.md')], []), 'light');
+  assert.equal(reviewDepth([file('assets/logo.png')], []), 'standard', 'an image outside docs/');
+});
+
+test('reviewDepth is standard for a text file that lists a build or dependencies', () => {
+  for (const path of ['CMakeLists.txt', 'src/CMakeLists.txt', 'requirements.txt', 'requirements-dev.txt', 'constraints.txt']) {
+    assert.equal(reviewDepth([file('README.md'), file(path)], []), 'standard', path);
+  }
+});
+
 test('reviewDepth is standard for template-owned code without a template update, or a template update with other files', () => {
   assert.equal(reviewDepth([file('.template/Update-Project.ps1')], []), 'standard');
   assert.equal(reviewDepth([file('.template-version'), file('.template/Update-Project.ps1'), file('.github/workflows/ci.yml')], []), 'standard');
@@ -144,21 +164,21 @@ interface Call {
 
 const depthEnv = ['CODE_REVIEW_TIERS', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_MAX_RUN_USD'];
 
-async function run(input: Gathered, options: { env?: Record<string, string>; findings?: (role: string) => Finding[]; error?: (role: string) => string | undefined } = {}) {
+async function run(input: Gathered, options: { env?: Record<string, string>; findings?: (role: string, part: number) => Finding[]; error?: (role: string, part: number) => string | undefined } = {}) {
   const calls: Call[] = [];
   const agent = async <T>(agentRun: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
     const text = Array.isArray(request.prompt) ? request.prompt.join('\n') : String(request.prompt);
     const part = Number(/this is part (\d+)/.exec(text)?.[1] ?? 1);
     calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd });
     const record = { role: request.role, provider: agentRun.provider, model: request.tier, costUsd: 0.01, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
-    const failure = options.error?.(request.role);
+    const failure = options.error?.(request.role, part);
     if (failure) return { output: undefined, records: [record], error: failure };
     const output =
       request.role === 'context' ? { rules: [], decisions: [] }
       : request.role === 'selection' ? { add: [] }
       : request.role === 'synthesis' ? { summary: 'Merged.', verdict: 'comment', findings: [] }
       : request.role === 'verification' ? { verifications: [] }
-      : { findings: options.findings?.(request.role) ?? [] };
+      : { findings: options.findings?.(request.role, part) ?? [] };
     return { output: output as T, records: [record] };
   };
   const saved = depthEnv.map((name) => [name, process.env[name]] as const);
@@ -277,6 +297,18 @@ test('a light review whose hygiene call fails says nothing was reviewed, and doe
   assert.equal(result.summary, 'Light review (documentation only): hygiene failed (overloaded), so nothing was reviewed.');
 });
 
+test('a light review whose hygiene call fails on one part of the diff says so, and does not approve', async () => {
+  const input = gathered(['README.md', 'docs/guide.md'], { chunks: [section('README.md'), section('docs/guide.md')] });
+  const error = (_role: string, part: number) => (part === 2 ? 'overloaded' : undefined);
+  const clean = await run(input, { error });
+  assert.equal(clean.result.verdict, 'comment');
+  assert.equal(clean.result.summary, 'Light review (documentation only): No findings. hygiene failed on 1 of 2 parts of the diff (overloaded), so those parts weren\'t reviewed.');
+  const blocked = await run(input, { error, findings: (_role, part) => (part === 1 ? [finding('README.md', 'blocker')] : []) });
+  assert.equal(blocked.result.verdict, 'request-changes');
+  assert.deepEqual(blocked.result.findings.map((f) => [f.id, f.file, f.severity]), [['F1', 'README.md', 'blocker']]);
+  assert.equal(blocked.result.summary, 'Light review (documentation only): 1 finding from hygiene, not merged by synthesis. hygiene failed on 1 of 2 parts of the diff (overloaded), so those parts weren\'t reviewed.');
+});
+
 test('CODE_REVIEW_TIERS overrides a light review\'s hygiene', async () => {
   const { calls } = await run(gathered(['README.md']), { env: { CODE_REVIEW_TIERS: 'hygiene=sonnet' } });
   assert.deepEqual(calls.map((c) => [c.role, c.tier]), [['reviewer:hygiene', 'sonnet']]);
@@ -288,6 +320,11 @@ test('the check run says when a review was deep or light, and shows each reviewe
   assert.match(deep, /\*\*Deep review \(sensitive paths\)\*\*: `src\/Payments\/Ledger\.cs` matches `sensitive:` in `\.github\/code-review\/config\.yml`/);
   assert.match(checkSummary({ ...base, depth: 'light' }), /\*\*Light review \(documentation only\)\*\*: every changed file is documentation/);
   assert.doesNotMatch(checkSummary({ ...base, depth: 'standard' }), /Deep review|Light review/);
+  const two = checkSummary({ ...base, depth: 'deep', sensitiveFiles: ['src/A.cs', 'src/B.cs'] });
+  assert.match(two, /: `src\/A\.cs`, `src\/B\.cs` match `sensitive:`/);
+  const many = checkSummary({ ...base, depth: 'deep', sensitiveFiles: Array.from({ length: 22 }, (_, i) => `src/F${i + 1}.cs`) });
+  assert.match(many, /`src\/F20\.cs` and 2 more match `sensitive:`/);
+  assert.doesNotMatch(many, /F21/);
 
   const calls = [
     { role: 'reviewer:correctness', model: 'global.anthropic.claude-opus-5-5' },

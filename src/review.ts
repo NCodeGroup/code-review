@@ -11,7 +11,7 @@ import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
-import { closedIssues, globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { closedIssues, globToRegExp, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -328,30 +328,30 @@ export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] 
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
 }
 
-// Code or a script that runs, wherever it is: a git hook, or a file with a code or script extension, even in docs/ or a
-// template update. A light review never takes it.
-const executablePath = /\.(cs|fs|ts|tsx|js|mjs|cjs|py|go|rs|java|ps1|psm1|psd1|sh|bash|zsh|cmd|bat|rb|pl|tf|tofu|hcl)$|(^|\/)\.githooks\//i;
+// What a light review takes, as an allowlist: a Markdown, reStructuredText or text file anywhere, and an image or a PDF
+// in a doc/ or docs/ folder. Any other file, one with no extension included, is the standard review's, wherever it is:
+// a script, a config file or a git hook in docs/ or in a template's folders is code. A text file that is a build or
+// dependency list, such as CMakeLists.txt or a pip requirements file, isn't documentation, and neither is a public API
+// listing: it is the API.
+const documentationFile = /\.(md|rst|txt)$/i;
+const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|svg|webp|pdf)$/i;
+const listingFile = /(^|\/)(CMakeLists\.txt|(requirements|constraints)[^/]*\.txt)$/i;
 
-// A template update changes one of these, and with them only files the project template owns and replaces on every
-// update, as its instructions list them. Its scripts and git hooks are executable, so they get the standard review.
+// A template update changes one of these, which hold only the template's version and the answers it was made with.
 const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
-const templateOwned = [
-  templateVersion,
-  /^CLAUDE\.md$/,
-  /^\.claude\/(agents\/plan-executor\.md$|commands\/)/,
-  /^\.github\/(agents|prompts|skills)\//,
-  /^\.github\/instructions\/project-template\.instructions\.md$/,
-];
 
-// A pull request that changes only documentation: every changed file is documentation (gather's pattern, which takes
-// in CHANGELOG.md), or, in a template update, a file the template owns, and none is executable. A public API listing is
-// a .txt file, but it is the API, so it isn't documentation.
+function isLightReviewFile(file: string): boolean {
+  if (templateVersion.test(file)) return true;
+  if (publicApiPath.test(file) || listingFile.test(file)) return false;
+  return documentationFile.test(file) || documentationAsset.test(file);
+}
+
+// A pull request that changes only documentation: every changed file is one isLightReviewFile allows, the changelog
+// among them. In a template update, the files the template owns count only when they are documentation too, as its
+// commands, prompts, skills and agents are; its scripts and hooks get the standard review.
 export function documentationOnly(files: ChangedFile[]): boolean {
   if (!files.length) return false;
-  const templateUpdate = files.some((f) => templateVersion.test(f.path));
-  return files.every((f) =>
-    !publicApiPath.test(f.path) && !executablePath.test(f.path)
-    && (isDocumentation(f.path) || (templateUpdate && templateOwned.some((p) => p.test(f.path)))));
+  return files.every((f) => isLightReviewFile(f.path));
 }
 
 // Deep when any changed file is sensitive, even documentation in a sensitive folder; light when the change is only
@@ -862,9 +862,16 @@ export async function review(
     dropped = [...settled.dropped, ...dropped];
     findings = settled.kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
     const failed = live.find((o) => o.status === 'failed');
-    summary = failed ? `${failed.name} failed (${failed.error}), so nothing was reviewed.` : findings.length ? `${findings.length} finding${findings.length === 1 ? '' : 's'} from hygiene, not merged by synthesis.` : 'No findings.';
-    // A review whose one reviewer failed hasn't looked at the change, so it can't approve it.
-    if (failed && !findings.length) verdict = 'comment';
+    const failedCalls = liveJobs.filter((o) => o.status === 'failed').length;
+    const found = findings.length ? `${findings.length} finding${findings.length === 1 ? '' : 's'} from hygiene, not merged by synthesis.` : 'No findings.';
+    const partly = live.find((o) => o.status === 'ran' && o.error);
+    summary = failed
+      ? `${failed.name} failed (${failed.error}), so nothing was reviewed.`
+      : failedCalls && partly
+        ? `${found} ${partly.name} failed on ${failedCalls} of ${liveJobs.length} parts of the diff (${partly.error}), so those parts weren't reviewed.`
+        : found;
+    // A review whose reviewer failed on any part hasn't looked at all of the change, so it can't approve it.
+    if (failedCalls && !findings.length) verdict = 'comment';
   } else if (raw.length) {
     const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const openIssues = gathered.openIssues ?? [];
