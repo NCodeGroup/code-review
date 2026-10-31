@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, isPackableProject, markContracts, readReviewRules, splitDiff, touchesPublicMember, touchesSerializedContract, type ChangedFile, type Gathered } from '../src/gather.ts';
+import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, isPackableProject, markContracts, readBlobs, readReviewRules, splitDiff, touchesPublicMember, touchesSerializedContract, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
@@ -674,6 +675,12 @@ test('isPackableProject reads PublicAPI.Shipped.txt or IsPackable from the neare
   assert.ok(!isPackableProject(base, 'src/App/A.cs'));
   assert.ok(!isPackableProject(base, 'src/NewProject/A.cs'));
   assert.ok(!isPackableProject(base, 'src/App/../Shipped/A.cs'));
+  // Every folder a walk passes is cached, the ones without a project too.
+  const cache = new Map<string, boolean>();
+  assert.ok(!isPackableProject(base, 'src/NewProject/Deep/A.cs', cache));
+  assert.deepEqual([...cache], [['src/NewProject/Deep', false], ['src/NewProject', false], ['src', false], ['', false]]);
+  assert.ok(isPackableProject(base, 'src/Shipped/Sub/A.cs', cache));
+  assert.deepEqual([...cache].slice(4), [['src/Shipped/Sub', true], ['src/Shipped', true]]);
 });
 
 // A file at the pull request's head, one line per entry; line numbers below are 1-based.
@@ -734,6 +741,20 @@ test('touchesPublicMember ignores private members, internal types and comments',
   assert.ok(!touchesPublicMember(csSection('@@ -9,0 +9,1 @@\n+        // Shorter tokens are refused.'), csHead));
 });
 
+test('touchesPublicMember places each change of a many-hunk diff in a large file', () => {
+  // Hundreds of private helpers in a public class, then one public method: every helper's change is private, the last isn't.
+  const helpers = Array.from({ length: 500 }, (_, i) => [`    private void Helper${i}()`, '    {', `        count += ${i};`, '    }', '']).flat();
+  const lines = ['namespace NCode.Lib;', '', 'public sealed class Big', '{', ...helpers, '    public void Run()', '    {', '        Go();', '    }', '}'];
+  const body = (n: number) => `@@ -${n},1 +${n},1 @@\n-        Old();\n+${lines[n - 1]}`;
+  const privateHunks = Array.from({ length: 500 }, (_, i) => body(7 + i * 5));
+  assert.ok(!touchesPublicMember(csSection(privateHunks.join('\n')), lines.join('\n')));
+  assert.ok(touchesPublicMember(csSection([...privateHunks, body(lines.length - 2)].join('\n')), lines.join('\n')));
+  // A run of added attributes belongs to the member below it.
+  const withAttributes = (at: number) => [csSection(`@@ -${at},0 +${at + 1},200 @@\n${Array.from({ length: 200 }, () => '+    [Obsolete]').join('\n')}`), [...lines.slice(0, at), ...Array.from({ length: 200 }, () => '    [Obsolete]'), ...lines.slice(at)].join('\n')] as const;
+  assert.ok(!touchesPublicMember(...withAttributes(4)), 'attributes on a private helper');
+  assert.ok(touchesPublicMember(...withAttributes(lines.length - 5)), 'attributes on the public method');
+});
+
 test('touchesSerializedContract looks for contract markers in the hunks, not the file name', () => {
   assert.ok(touchesSerializedContract(csSection('@@ -1,2 +1,2 @@\n     [JsonPropertyName("id")]\n-    public string Id { get; set; }\n+    public string Key { get; set; }')));
   assert.ok(touchesSerializedContract(csSection('@@ -40,1 +40,1 @@ public class AppDbContext : DbContext\n-        Old();\n+        New();')));
@@ -751,17 +772,64 @@ test('markContracts takes packability from the base and reads the head only for 
   writeFileSync(path.join(base, 'src', 'Lib', 'PublicAPI.Shipped.txt'), '');
   const files = ['src/Lib/A.cs', 'src/New/A.cs', 'tests/Lib.Tests/ATests.cs'].map((p) => file(p));
   const sections = new Map(files.map((f) => [f.path, edit(9).replaceAll('src/Lib/A.cs', f.path)]));
-  const read: string[] = [];
-  markContracts(files, sections, base, (p) => {
-    read.push(p);
-    return csHead;
+  const read: string[][] = [];
+  markContracts(files, sections, base, (paths) => {
+    read.push(paths);
+    return new Map(paths.map((p) => [p, csHead]));
   });
-  assert.deepEqual(read, ['src/Lib/A.cs']);
+  assert.deepEqual(read, [['src/Lib/A.cs']], 'one read, for the packable file');
   assert.equal(files[0]!.packable, true);
   assert.equal(files[0]!.publicMember, true);
   assert.equal(files[1]!.packable, undefined, 'a project only the head has is not packed');
   assert.equal(files[2]!.publicMember, undefined);
   assert.ok(selectionFloor(files, false).includes('api-compat'));
+});
+
+test('markContracts fails closed when a head cannot be read', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'contracts-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>');
+  const files = [file('src/Lib/A.cs'), file('src/Lib/B.cs')];
+  const sections = new Map(files.map((f) => [f.path, edit(14).replaceAll('src/Lib/A.cs', f.path)]));
+  markContracts(files, sections, base, () => new Map([['src/Lib/B.cs', csHead]]));
+  assert.equal(files[0]!.publicMember, true, 'an unread head counts as a public change');
+  assert.equal(files[1]!.publicMember, undefined, 'a private change in a read head does not');
+  assert.ok(selectionFloor(files, false).includes('api-compat'));
+});
+
+test('markContracts leaves which files are tests to the selection floor', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'contracts-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />');
+  writeFileSync(path.join(base, 'src', 'Lib', 'PublicAPI.Shipped.txt'), '');
+  const marked = (p: string) => {
+    const files = [file(p)];
+    markContracts(files, new Map([[p, edit(9).replaceAll('src/Lib/A.cs', p)]]), base, (paths) => new Map(paths.map((h) => [h, csHead])));
+    return files;
+  };
+  // The floor counts a file under spec/ as product code, so its marks count too.
+  assert.ok(selectionFloor(marked('src/Lib/spec/A.cs'), false).includes('api-compat'));
+  assert.ok(!selectionFloor(marked('src/Lib/ATests.cs'), false).includes('api-compat'));
+});
+
+test('readBlobs reads every file at a commit with one git process and leaves out what it cannot read', () => {
+  const repository = mkdtempSync(path.join(tmpdir(), 'blobs-'));
+  const run = (...args: string[]) => execFileSync('git', ['-C', repository, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' });
+  run('init', '-q');
+  mkdirSync(path.join(repository, 'src', 'My Lib'), { recursive: true });
+  writeFileSync(path.join(repository, 'src', 'A.cs'), 'public class A { } // żółw\n');
+  writeFileSync(path.join(repository, 'src', 'My Lib', 'B.cs'), 'public class B { }');
+  writeFileSync(path.join(repository, 'src', 'Empty.cs'), '');
+  run('add', '.');
+  run('commit', '-q', '-m', 'files');
+  const commit = run('rev-parse', 'HEAD').trim();
+  const blobs = readBlobs(repository, commit, ['src/A.cs', 'src/Missing.cs', 'src', 'src/My Lib/B.cs', 'src/Empty.cs', 'src/Bad\nName.cs']);
+  assert.deepEqual([...blobs], [
+    ['src/A.cs', 'public class A { } // żółw\n'],
+    ['src/My Lib/B.cs', 'public class B { }'],
+    ['src/Empty.cs', ''],
+  ]);
+  assert.deepEqual([...readBlobs(repository, '0'.repeat(40), ['src/A.cs'])], []);
 });
 
 test('decision records the pull request adds or changes are read from its head and always reach the reviewers', async () => {

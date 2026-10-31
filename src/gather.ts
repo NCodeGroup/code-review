@@ -83,12 +83,41 @@ export function reviewOrder(file: string): number {
   return 0;
 }
 
+const gitOptions = () => ({
+  maxBuffer: 256 * 1024 * 1024,
+  env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_EXTERNAL_DIFF: '', GIT_PAGER: 'cat' },
+});
+
 function git(repository: string, args: string[]): string {
-  return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_EXTERNAL_DIFF: '', GIT_PAGER: 'cat' },
-  });
+  return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], { ...gitOptions(), encoding: 'utf8' });
+}
+
+// Reads files at a commit as text, with one git process for all of them. A file git can't read is left out.
+export function readBlobs(repository: string, commit: string, files: string[]): Map<string, string> {
+  const blobs = new Map<string, string>();
+  // One request per line: a path with a line break can't be asked for.
+  const asked = files.filter((f) => !/[\r\n]/.test(f));
+  if (!asked.length) return blobs;
+  const input = asked.map((f) => `${commit}:${f}\n`).join('');
+  let out: Buffer;
+  try {
+    out = execFileSync('git', ['-C', repository, 'cat-file', '--batch'], { ...gitOptions(), input });
+  } catch {
+    return blobs;
+  }
+  let at = 0;
+  for (const file of asked) {
+    const end = out.indexOf(0x0a, at);
+    if (end < 0) break;
+    // "<oid> <type> <size>" and the content, or "<name> missing" with none.
+    const header = /^[0-9a-f]+ (\w+) (\d+)$/.exec(out.toString('utf8', at, end));
+    at = end + 1;
+    if (!header) continue;
+    const size = Number(header[2]);
+    if (header[1] === 'blob') blobs.set(file, out.toString('utf8', at, at + size));
+    at += size + 1;
+  }
+  return blobs;
 }
 
 // Splits a unified diff into per-file sections keyed by the new path (the old one for a deletion).
@@ -140,10 +169,17 @@ export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, c
 export function isPackableProject(basePath: string, file: string, cache = new Map<string, boolean>()): boolean {
   const parts = file.split('/');
   if (parts.some((p) => p === '' || p === '.' || p === '..')) return false;
+  // Every folder the walk passes has no project of its own, so it gets the answer of the one it stops at.
+  const visited: string[] = [];
+  const answer = (packable: boolean) => {
+    for (const folder of visited) cache.set(folder, packable);
+    return packable;
+  };
   for (let depth = parts.length - 1; depth >= 0; depth--) {
     const folder = parts.slice(0, depth).join('/');
     const known = cache.get(folder);
-    if (known !== undefined) return known;
+    if (known !== undefined) return answer(known);
+    visited.push(folder);
     let names: string[];
     try {
       names = readdirSync(path.join(basePath, folder));
@@ -152,17 +188,15 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
     }
     const projects = names.filter((n) => n.endsWith('.csproj'));
     if (!projects.length) continue;
-    const packable = names.includes('PublicAPI.Shipped.txt') || projects.some((p) => {
+    return answer(names.includes('PublicAPI.Shipped.txt') || projects.some((p) => {
       try {
         return /<IsPackable>\s*true\s*<\/IsPackable>/i.test(readFileSync(path.join(basePath, folder, p), 'utf8'));
       } catch {
         return false;
       }
-    });
-    cache.set(folder, packable);
-    return packable;
+    }));
   }
-  return false;
+  return answer(false);
 }
 
 type Declaration =
@@ -189,29 +223,76 @@ function declaration(line: string): Declaration | undefined {
 const indentOf = (line: string) => /^\s*/.exec(line)![0].length;
 const notCode = /^\s*([{}()[\]#]|\/\/|\/\*|\*)/;
 
+interface Enclosing {
+  indent: number;
+  declaration: Declaration;
+}
+
+interface HeadScan {
+  // The declarations above line `index` that could enclose it, outermost first: each less indented than the next.
+  enclosing(index: number): Enclosing[];
+  // The first line at or below `index` that is code, not a blank, a brace, an attribute or a comment.
+  codeFrom(index: number): string | undefined;
+}
+
+// Reads a file at the head for the changed lines of its diff. Asked about lines in order, as a diff's hunks come, it
+// reads each line once, so a large file costs its length and not its length times its changes.
+function scanHead(lines: string[]): HeadScan {
+  const isCode = (line: string) => line.trim() !== '' && !notCode.test(line);
+  const stack: Enclosing[] = [];
+  let position = 0;
+  // Lines from codeStart up to codeEnd aren't code; codeEnd is, or is the end of the file.
+  let codeStart = 0;
+  let codeEnd = -1;
+  return {
+    enclosing(index) {
+      if (index < position) {
+        stack.length = 0;
+        position = 0;
+      }
+      for (; position < Math.min(index, lines.length); position++) {
+        const line = lines[position]!;
+        const found = isCode(line) ? declaration(line) : undefined;
+        if (!found) continue;
+        const indent = indentOf(line);
+        while (stack.length && stack[stack.length - 1]!.indent >= indent) stack.pop();
+        stack.push({ indent, declaration: found });
+      }
+      return stack;
+    },
+    codeFrom(index) {
+      if (index < codeStart || index > codeEnd) {
+        codeStart = index;
+        codeEnd = index;
+        while (codeEnd < lines.length && !isCode(lines[codeEnd]!)) codeEnd++;
+      }
+      return lines[codeEnd];
+    },
+  };
+}
+
 // Whether a changed line declares, or sits inside, a public or protected member of a public type. `above` is the number
 // of the head's lines before it; the nearest declaration above with less indentation encloses it.
-function inVisibleMember(lines: string[], above: number, code: string): boolean {
+function inVisibleMember(head: HeadScan, above: number, code: string): boolean {
   let own = declaration(code);
   // An attribute belongs to the declaration below it.
   if (!own && /^\s*\[/.test(code)) {
-    const next = lines.slice(above).find((l) => l.trim() && !notCode.test(l));
+    const next = head.codeFrom(above);
     own = next === undefined ? undefined : declaration(next);
   }
   if (own?.kind === 'namespace') return false;
   let found = own?.visible;
   if (found === false) return false;
   let indent = indentOf(code);
-  for (let i = above - 1; i >= 0; i--) {
-    const line = lines[i]!;
-    if (!line.trim() || notCode.test(line) || indentOf(line) >= indent) continue;
-    const enclosing = declaration(line);
-    if (!enclosing) continue;
-    if (enclosing.kind === 'namespace') break;
-    indent = indentOf(line);
+  const enclosing = head.enclosing(above);
+  for (let i = enclosing.length - 1; i >= 0; i--) {
+    const { indent: depth, declaration: outer } = enclosing[i]!;
+    if (depth >= indent) continue;
+    if (outer.kind === 'namespace') break;
+    indent = depth;
     // Straight inside a class or struct, outside any member with an access modifier: a private field or a blank.
-    if (found === undefined && enclosing.kind === 'type' && !enclosing.membersPublic) return false;
-    if (!enclosing.visible) return false;
+    if (found === undefined && outer.kind === 'type' && !outer.membersPublic) return false;
+    if (!outer.visible) return false;
     found = true;
   }
   return found === true;
@@ -220,7 +301,7 @@ function inVisibleMember(lines: string[], above: number, code: string): boolean 
 // Whether a .cs file's diff adds or removes a line that declares, or sits inside, a public or protected member: a
 // change to the surface, or to the behavior behind it. head is the file at the pull request's head, '' when deleted.
 export function touchesPublicMember(section: string, head: string): boolean {
-  const lines = head.split(/\r?\n/);
+  const scan = scanHead(head.split(/\r?\n/));
   let next = 0;
   let inHunk = false;
   for (const text of section.split('\n')) {
@@ -238,7 +319,7 @@ export function touchesPublicMember(section: string, head: string): boolean {
     const above = next - 1;
     if (text.startsWith('+')) next++;
     if (!code.trim() || /^\s*(\/\/|\/\*|\*)/.test(code)) continue;
-    if (inVisibleMember(lines, above, code)) return true;
+    if (inVisibleMember(scan, above, code)) return true;
   }
   return false;
 }
@@ -251,18 +332,26 @@ export function touchesSerializedContract(section: string): boolean {
   return hunks >= 0 && contractMarker.test(section.slice(hunks));
 }
 
-// Marks what the selection floor needs to know about each changed .cs file outside the tests. Whether its project is
-// packed comes from the default branch; the head's copy, read through readHead as data, only places changed lines.
-export function markContracts(files: ChangedFile[], sections: Map<string, string>, basePath: string, readHead: (file: string) => string): void {
+// Marks what the selection floor needs to know about each changed .cs file; which of them are tests is the floor's to
+// say. Whether its project is packed comes from the default branch; the head's copies, read through readHeads as data,
+// only place changed lines. A packed file whose head can't be read counts as a public change, so the floor fails closed.
+export function markContracts(files: ChangedFile[], sections: Map<string, string>, basePath: string, readHeads: (files: string[]) => Map<string, string>): void {
   const projects = new Map<string, boolean>();
+  const unread: { file: ChangedFile; section: string }[] = [];
   for (const file of files) {
     const section = sections.get(file.path);
-    if (file.generated || !section || !/\.cs$/i.test(file.path) || testPattern.test(file.path)) continue;
+    if (file.generated || !section || !/\.cs$/i.test(file.path)) continue;
     if (touchesSerializedContract(section)) file.serializedContract = true;
     if (!isPackableProject(basePath, file.path, projects)) continue;
     file.packable = true;
-    const deleted = /^\+\+\+ \/dev\/null$/m.test(section);
-    if (touchesPublicMember(section, deleted ? '' : readHead(file.path))) file.publicMember = true;
+    if (!/^\+\+\+ \/dev\/null$/m.test(section)) unread.push({ file, section });
+    else if (touchesPublicMember(section, '')) file.publicMember = true;
+  }
+  if (!unread.length) return;
+  const heads = readHeads(unread.map(({ file }) => file.path));
+  for (const { file, section } of unread) {
+    const head = heads.get(file.path);
+    if (head === undefined || touchesPublicMember(section, head)) file.publicMember = true;
   }
 }
 
@@ -419,12 +508,12 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
   const sections = splitDiff(fullDiff);
-  markContracts(files, sections, basePath, (file) => {
-    try {
-      return git(prPath, ['cat-file', 'blob', `${pullRequest.headSha}:${file}`]);
-    } catch {
-      return '';
-    }
+  markContracts(files, sections, basePath, (paths) => {
+    const heads = readBlobs(prPath, pullRequest.headSha, paths);
+    const unread = paths.filter((p) => !heads.has(p));
+    // JSON quoting keeps a path with a line break from starting a workflow command of its own.
+    if (unread.length) console.log(`::warning::Couldn't read ${unread.length} changed C# file(s) at the head (${unread.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}), so they count as public API changes.`);
+    return heads;
   });
   const chunks = chunkDiff(files, sections, maxChunkChars, maxChunks);
   const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
