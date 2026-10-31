@@ -8,13 +8,13 @@
 // `postAcknowledgement` holds the app's token, minted for it alone: it adds 👀 to the /review comment, creates the
 // "Code review" check run in progress, gives the check run's id to the publish and finish steps as a step output, and
 // revokes the token before it returns, whether or not it succeeded, so no app token is alive while the review step and
-// its agents run.
+// its agents run. `revokeAcknowledgementToken` revokes it again in a step that runs whatever happened to `post`.
 
 import { acknowledge, decisionOutputs, isSha } from './checks.ts';
 import { decideReview, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments } from './comments.ts';
 import { required } from './env.ts';
-import { fetchPullRequest, runUrl, type Api, type PullRequestRef } from './github.ts';
+import { fetchPullRequest, GitHubError, runUrl, type Api, type PullRequestRef } from './github.ts';
 import { newestReviewedHead } from './results.ts';
 
 // The step outputs for a run that will review, or undefined when there's nothing to acknowledge.
@@ -64,10 +64,20 @@ export async function postAcknowledgement(
     );
     io.output(`check-run-id=${id}\nhead-sha=${headSha}\n`);
   } finally {
-    try {
-      await api('DELETE', '/installation/token');
-    } catch (error) {
-      log(`::warning::Couldn't revoke the acknowledgement's token (${errorText(error)}); it expires within the hour.`);
+    await revokeAcknowledgementToken(api, log);
+  }
+}
+
+// Revokes the app token `api` holds. A 401 means it's revoked already, as after postAcknowledgement; any other failure
+// only warns, since the token expires within the hour.
+export async function revokeAcknowledgementToken(api: Api, log: (line: string) => void = console.log): Promise<void> {
+  try {
+    await api('DELETE', '/installation/token');
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 401) {
+      log("The acknowledgement's token was revoked already.");
+      return;
     }
+    log(`::warning::Couldn't revoke the acknowledgement's token (${errorText(error)}); it expires within the hour.`);
   }
 }

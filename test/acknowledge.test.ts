@@ -19,7 +19,7 @@ import {
   stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
-import { decideAcknowledgement, postAcknowledgement } from '../src/acknowledgement.ts';
+import { decideAcknowledgement, postAcknowledgement, revokeAcknowledgementToken } from '../src/acknowledgement.ts';
 import { decideReview, decideRun } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
@@ -456,6 +456,21 @@ test('postAcknowledgement only warns when the token cannot be revoked', async ()
   await postAcknowledgement(api, { ...postEnv, CODE_REVIEW_COMMENT_ID: '' }, { output: (text) => outputs.push(text), log: (line) => lines.push(line) });
   assert.deepEqual(outputs, [`check-run-id=42\nhead-sha=${sha}\n`]);
   assert.match(lines.at(-1) ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
+});
+
+test('revokeAcknowledgementToken counts a 401 as revoked already, and only warns on another failure', async () => {
+  const revoked = fakeFetch({ 'api.github.com': { status: 204 } });
+  const lines: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', revoked.fn), (line) => lines.push(line));
+  assert.deepEqual(lines, []);
+  assert.deepEqual(revoked.requests.map((r) => `${r.init?.method} ${r.url}`), ['DELETE https://api.github.com/installation/token']);
+  const already: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', fakeFetch({ 'api.github.com': { status: 401 } }).fn), (line) => already.push(line));
+  assert.deepEqual(already, ["The acknowledgement's token was revoked already."]);
+  const failed: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', fakeFetch({ 'api.github.com': { status: 502 } }).fn), (line) => failed.push(line));
+  assert.equal(failed.length, 1);
+  assert.match(failed[0] ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
 });
 
 test('required throws for a missing variable, and take removes the variable it reads', () => {
