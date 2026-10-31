@@ -7,8 +7,11 @@ import type { ListedComment } from '../src/comments.ts';
 import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import { writerCheck } from '../src/writers.ts';
+import { useGitHubDotCom } from './github-env.ts';
 import { pullRequestCheckout, reviewStep, runStep } from './steps.ts';
 import { byAssociation } from './writer-stub.ts';
+
+useGitHubDotCom();
 
 const made: string[] = [];
 after(() => {

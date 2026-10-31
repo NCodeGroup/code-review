@@ -25,6 +25,9 @@ import {
   unattributed,
   type PullRecord,
 } from '../tools/report.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 const sha = (c: string) => c.repeat(40);
 

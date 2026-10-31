@@ -34,6 +34,9 @@ import { headMarker, recordedHead, summaryComment } from '../src/results.ts';
 import type { Charters, Finding, Review } from '../src/review.ts';
 import { sameProblem, threadBody } from '../src/threads.ts';
 import type { Verification, VerificationAgent } from '../src/verify.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 const made: string[] = [];
 after(() => {
