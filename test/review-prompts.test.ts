@@ -66,7 +66,7 @@ function answers(request: AgentRequest): unknown {
 
 const run: AgentRun = { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: '/nowhere' };
 
-// Each test sets the settings it depends on, so the runner's environment can't change the result.
+// Every test runs on the default settings: clear any the runner's environment sets, so it can't change the result.
 beforeEach(() => {
   for (const name of ['CODE_REVIEW_TIERS', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_MAX_RUN_USD']) delete process.env[name];
 });
@@ -91,7 +91,7 @@ test("review() gives each part's reviewers that part's diff, and marks the other
   assert.match(String(reviewerCalls(requests, 2)[0]!.prompt[0]), /\nsrc\/A\.cs \(\+1 -0\) \[diff in another part\]\nsrc\/B\.cs \(\+1 -0\)\n/);
 });
 
-test("review() gives each reviewer call its part's rules and its own charter, and the rule check the rule-check prompt", async () => {
+test("review() gives each reviewer call its part's rules and its own charter", async () => {
   const { agent, requests } = stubAgent(answers);
   await review(run, twoParts(), charters, () => {}, agent);
 
@@ -106,46 +106,56 @@ test("review() gives each reviewer call its part's rules and its own charter, an
     assert.match(charter('reviewer:rule-check'), /Your charter:\nRULE-CHECK CHARTER$/);
     assert.match(charter('reviewer:hygiene'), /^\n\nYour charter:\nHYGIENE CHARTER$/);
     assert.match(charter('reviewer:tests'), /^\n\nYour charter:\nTESTS CHARTER$/);
-    assert.ok(calls.every((r) => r.systemPrompt === 'SPECIALIST PROMPT'));
   }
 });
 
-// Two project reviewers: oauth's paths match the changed file, billing's match none.
+test('review() gives every reviewer call in each part the specialist system prompt', async () => {
+  const { agent, requests } = stubAgent(answers);
+  await review(run, twoParts(), charters, () => {}, agent);
+
+  for (const part of [1, 2]) {
+    const calls = reviewerCalls(requests, part);
+    assert.equal(calls.length, 4, `part ${part}`);
+    assert.ok(calls.every((r) => r.systemPrompt === 'SPECIALIST PROMPT'), `part ${part}`);
+  }
+});
+
+// Two project reviewers: ledger's paths match the changed file, billing's match none.
 const projectReviewers = [
-  { name: 'oauth', text: '# oauth\n\nDoes the change follow RFC 6749?\n', paths: ['src/**/OAuth/**'], shadow: false },
+  { name: 'ledger', text: '# ledger\n\nDoes every entry balance?\n', paths: ['src/**/Ledger/**'], shadow: false },
   { name: 'billing', text: '# billing\n\nAre amounts in cents?\n', paths: ['src/Billing/**'], shadow: false },
 ];
-const oauthChange = (): Gathered => {
-  const diff = diffA.replaceAll('src/A.cs', 'src/Server/OAuth/Token.cs');
+const ledgerChange = (): Gathered => {
+  const diff = diffA.replaceAll('src/A.cs', 'src/Server/Ledger/Entry.cs');
   return twoParts({
-    files: [{ path: 'src/Server/OAuth/Token.cs', additions: 1, deletions: 0, generated: false, shown: true }],
+    files: [{ path: 'src/Server/Ledger/Entry.cs', additions: 1, deletions: 0, generated: false, shown: true }],
     diff,
     chunks: [diff],
     guidance: [],
     projectReviewers,
-    tiers: { 'project:oauth': 'opus' },
+    tiers: { 'project:ledger': 'opus' },
   });
 };
 
 test("review() runs a project reviewer whose paths match a changed file, on the tier the repository's config gives it", async () => {
   const { agent, requests } = stubAgent(answers);
-  const outcome = await review(run, oauthChange(), charters, () => {}, agent);
+  const outcome = await review(run, ledgerChange(), charters, () => {}, agent);
 
   const selection = String(requests.find((r) => r.role === 'selection')!.prompt);
-  assert.match(selection, /^Roster: correctness, hygiene, security, tests, project:oauth, project:billing\nThis repository's own reviewers:\n- project:oauth: Does the change follow RFC 6749\?\n- project:billing: Are amounts in cents\?\nAlready chosen: [^\n]*\bproject:oauth\b/);
+  assert.match(selection, /^Roster: correctness, hygiene, security, tests, project:ledger, project:billing\nThis repository's own reviewers:\n- project:ledger: Does every entry balance\?\n- project:billing: Are amounts in cents\?\nAlready chosen: [^\n]*\bproject:ledger\b/);
   assert.doesNotMatch(selection, /Already chosen: [^\n]*project:billing/);
-  const oauth = requests.find((r) => r.role === 'reviewer:project:oauth')!;
-  assert.equal(oauth.tier, 'opus');
-  assert.match(String(oauth.prompt[1]), /Your charter:\n# oauth\n\nDoes the change follow RFC 6749\?\n$/);
+  const ledger = requests.find((r) => r.role === 'reviewer:project:ledger')!;
+  assert.equal(ledger.tier, 'opus');
+  assert.match(String(ledger.prompt[1]), /Your charter:\n# ledger\n\nDoes every entry balance\?\n$/);
   assert.ok(!requests.some((r) => r.role === 'reviewer:project:billing'));
-  assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:oauth')?.status, 'ran');
+  assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:ledger')?.status, 'ran');
   assert.ok(outcome.skipped.includes('project:billing'));
 });
 
 test('selection can add a project reviewer whose paths match no changed file, and it runs on Haiku by default', async () => {
   const { agent, requests } = stubAgent((request) =>
     request.role === 'selection' ? { add: [{ reviewer: 'project:billing', reason: 'it charges a fee' }] } : answers(request));
-  const outcome = await review(run, oauthChange(), charters, () => {}, agent);
+  const outcome = await review(run, ledgerChange(), charters, () => {}, agent);
 
   assert.equal(requests.find((r) => r.role === 'reviewer:project:billing')?.tier, 'haiku');
   assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:billing')?.status, 'ran');
