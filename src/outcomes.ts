@@ -6,6 +6,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isFromFork, writerAssociations } from './command.ts';
+
+export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
 import { assertNoSecrets } from './outputs.ts';
@@ -440,11 +442,6 @@ export function outcomesSection(report: Pick<OutcomesReport, 'state' | 'head' | 
 export function withOutcomes(body: string, section: string): string {
   const start = body.indexOf(outcomesMarkerStart);
   return `${(start >= 0 ? body.slice(0, start) : body).trimEnd()}\n\n${section}`;
-}
-
-// A pull request closed, merged or not: the run records outcomes and never reviews. A comment's event is never one.
-export function isClosedEvent(event: { action?: string; comment?: unknown; pull_request?: unknown }): boolean {
-  return !event.comment && !!event.pull_request && event.action === 'closed';
 }
 
 // The review step on a closed pull request: collects the outcomes and leaves them for the publish step. It never makes

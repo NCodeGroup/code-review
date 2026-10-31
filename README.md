@@ -12,8 +12,28 @@ calls there; its check run and summary say so and split the cost by provider.
 The agents run on the Claude Agent SDK with no settings, hooks, MCP servers or CLAUDE.md from anywhere, only Read, Grep
 and Glob, and a hook that refuses any path outside the pull request's checkout after resolving symlinks. Their
 environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
-reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
-repository under review. Results and the trace are scanned for secrets before they're written.
+reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses and
+revokes before the review step starts, and one after the agents exit. Each token can write check runs and pull request
+comments on the one repository under review, and neither is ever in the review step's environment. Results and the
+trace are scanned for secrets before they're written.
+
+Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
+review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
+takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
+`/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
+reviewed, and a closed pull request get nothing. The acknowledgement runs with the runner's own `node` and no npm
+package, and the review goes on without it if it fails. The publish step completes that same check run with the review,
+so there's never a second. When there's no review to publish, a last step completes it with why, so it never stays in
+progress:
+
+- **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
+  Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
+  and the job doesn't fail, so automation waiting on the check can carry on without it.
+- **Review failed**, with the error, when the review failed, and a link to the run's log.
+- **Review cancelled** when the run was, usually because a newer run for the pull request started.
+
+A failed review posts this check run even when the acknowledgement didn't happen, once the run has decided which commit
+to review.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
@@ -74,6 +94,11 @@ configuration, hooks or a credential helper, and gives up on a fetch that takes 
 that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
 `/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
+The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
+receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
+later) on the runner before setup-node, as `ubuntu-latest` has; on a runner without one, the review runs without the
+acknowledgement.
+
 ## Versions
 
 Pin the action to a release's full commit SHA, with the release's tag in a comment:
@@ -129,13 +154,14 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 
 Each review, all from `ncode-review[bot]`:
 
+- reacts 👀 to a `/review` comment and shows the "Code review" check run in progress within seconds;
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
   with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
   request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
   that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
-- posts a neutral "Code review" check run with all the findings and annotations.
+- completes that "Code review" check run, neutral, with all the findings and annotations.
 
 ### Outcomes
 
@@ -159,8 +185,8 @@ for each finding, its reviewers, severity and outcome, the commit it was reviewe
 model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
 40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
 comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
-thread, gets no outcome. The caller needs `closed` in its
-`pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
+thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
+its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
 treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
 that bump.
 

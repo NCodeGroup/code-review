@@ -45,17 +45,60 @@ inputs:
 runs:
   using: composite
   steps:
+    # The acknowledgement: a sign on the pull request within seconds, before setup-node and npm ci, which are most of the
+    # wait. It runs with the runner's own node and no npm package, and continues on error: without it, the review runs
+    # as before. This step holds only the read-only token and makes the review step's own decision, so a comment that
+    # isn't a /review command from a writer, a fork, an automatic run on a commit already reviewed, or a closed pull
+    # request gets nothing.
+    - name: Decide whether to acknowledge
+      id: ack-decide
+      continue-on-error: true
+      shell: bash
+      env:
+        CODE_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" decide
+
+    # A token for the acknowledgement alone, which revokes it before it exits, so no app token is alive while the review
+    # step and its agents run.
+    - name: Get the app's token to acknowledge
+      id: ack-token
+      if: steps.ack-decide.outputs.acknowledge == 'true'
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        repositories: ${{ github.event.repository.name }}
+        permission-checks: write
+        permission-pull-requests: write
+        skip-token-revoke: true
+
+    # 👀 on a /review comment, and the "Code review" check run in progress. Its id goes to the publish and finish steps
+    # as a step output, never into the review step's environment.
+    - name: Acknowledge
+      id: ack
+      if: steps.ack-token.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        CODE_REVIEW_APP_TOKEN: ${{ steps.ack-token.outputs.token }}
+        CODE_REVIEW_HEAD_SHA: ${{ steps.ack-decide.outputs.head-sha }}
+        CODE_REVIEW_COMMENT_ID: ${{ steps.ack-decide.outputs.comment-id }}
+      run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" post
+
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      id: setup-node
       with:
         node-version: 24
 
     - name: Install the engine
+      id: install
       shell: bash
       working-directory: ${{ github.action_path }}
       run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
-    # The app's private key is not in this step's environment.
+    # Neither the app's private key nor a token minted from it is in this step's environment.
     # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
     # For a closed pull request it records each finding's outcome by rules, with no model call, so it gets no model key.
     - name: Review
@@ -74,10 +117,13 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
-    # comments.
+    # comments: to publish the review or a closed pull request's outcomes, or to complete the check run with why there's
+    # no review.
     - name: Get the app's token
       id: app-token
-      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true'
+      if: >-
+        always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -87,12 +133,33 @@ runs:
         permission-pull-requests: write
 
     - name: Publish
+      id: publish
       if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        CODE_REVIEW_CHECK_RUN_ID: ${{ steps.ack.outputs.check-run-id }}
+        CODE_REVIEW_CHECK_RUN_SHA: ${{ steps.ack.outputs.head-sha }}
       run: node "$GITHUB_ACTION_PATH/src/publish.ts"
+
+    # Completes the check run when the publish step didn't, so it never stays in progress: neutral "Review budget used
+    # up" when no provider was available, failure with the reason when the review failed, cancelled when the run was.
+    - name: Finish the check run
+      if: >-
+        always() && steps.app-token.outcome == 'success' && steps.publish.outputs.check-completed != 'true' &&
+          (steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
+      shell: bash
+      env:
+        CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
+        CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        CODE_REVIEW_CHECK_RUN_ID: ${{ steps.ack.outputs.check-run-id }}
+        CODE_REVIEW_CHECK_RUN_SHA: ${{ steps.ack.outputs.head-sha }}
+        CODE_REVIEW_SETUP_OUTCOME: ${{ steps.setup-node.outcome }}
+        CODE_REVIEW_INSTALL_OUTCOME: ${{ steps.install.outcome }}
+        CODE_REVIEW_REVIEW_OUTCOME: ${{ steps.review.outcome }}
+        CODE_REVIEW_PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+      run: node "$GITHUB_ACTION_PATH/src/finish.ts"
 
     - name: Upload the trace
       if: always()
