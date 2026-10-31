@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
-import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, summaryComments, supersededComment, type Results } from './results.ts';
+import { annotations, botLogin, checkSummary, checkText, checkTitle, postSummary, summaryComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
@@ -23,21 +23,6 @@ async function github(token: string, method: string, url: string, body?: unknown
   });
   if (!response.ok) throw new Error(`GitHub refused ${method} ${url}: HTTP ${response.status} ${await response.text()}`);
   return response.status === 204 ? undefined : response.json();
-}
-
-// The bot's summary comments on this pull request, oldest first.
-async function listSummaries(token: string, results: Results): Promise<{ id: number }[]> {
-  const all: { id: number; body?: string; user?: { login?: string } }[] = [];
-  for (let page = 1; page <= 10; page++) {
-    const comments = (await github(token, 'GET', `/repos/${results.repository}/issues/${results.pullRequest}/comments?per_page=100&page=${page}`)) as {
-      id: number;
-      body?: string;
-      user?: { login?: string };
-    }[];
-    all.push(...comments);
-    if (comments.length < 100) break;
-  }
-  return summaryComments(all);
 }
 
 // Posts the findings as one review of inline threads, leaving out ones the bot already posted on this pull request.
@@ -92,19 +77,7 @@ async function main(): Promise<void> {
 
   const body = summaryComment(results, created.html_url, interactUrl);
   assertNoSecrets(body, [token], 'The summary comment');
-  // The earlier summaries are listed before posting, so the new one is never collapsed, and collapsed after posting, so a failed post leaves the old one intact.
-  const older = await listSummaries(token, results);
-  const comment = (await github(token, 'POST', `/repos/${results.repository}/issues/${results.pullRequest}/comments`, { body })) as { html_url: string };
-  console.log(`Posted ${comment.html_url}`);
-  const superseded = supersededComment(results.headSha, comment.html_url);
-  for (const { id } of older) {
-    try {
-      await github(token, 'PATCH', `/repos/${results.repository}/issues/comments/${id}`, { body: superseded });
-      console.log(`Collapsed the earlier summary comment ${id}`);
-    } catch (error) {
-      console.log(`::warning::Couldn't collapse the earlier summary comment ${id} (${(error as Error).message.slice(0, 200)}).`);
-    }
-  }
+  await postSummary((method, url, body) => github(token, method, url, body), results, body);
 }
 
 main().catch((error) => {
