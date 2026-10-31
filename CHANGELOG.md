@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The light review no longer takes an SVG, which can carry script, or a `.txt` file outside the repository root and `doc/` and `docs/` folders, such as a fixture, a data input or a license list: they get the standard review and are no longer ordered last in an oversized diff, and an SVG's diff reaches the reviewers instead of a generated-file stub ([#91](https://github.com/NCodeGroup/code-review/issues/91)).
 - A pull request counts as a template adoption or update, whose findings on the template's files go upstream, only when it adds `.copier-answers.yml` or changes its `_commit`; any other edit to the answers file is reviewed as the project's. The light review reads the template's version files from the same list as the rest of the engine ([#90](https://github.com/NCodeGroup/code-review/issues/90)).
 - The `api-compat` floor also reads `IsPackable` from `Directory.Build.props` and `Directory.Build.targets`, in MSBuild's order: the props from the root down, then the `.csproj`, then the targets, the last that sets it winning ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
+- The tests check that the evals' review cost leaves out the concern judge's and precision judge's calls, which the case cost counts, so `eval:compare` never reports the judges' spend as review cost ([#107](https://github.com/NCodeGroup/code-review/issues/107)).
+- The tests check what a `/review explain` run leaves for the publish step: only `answer.json` for an unknown finding, without a model call, `trace.json` too when the call ran, the `answered` output, and never `results.json` ([#108](https://github.com/NCodeGroup/code-review/issues/108)).
 
 ### Fixed
 
