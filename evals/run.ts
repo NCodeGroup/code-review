@@ -27,10 +27,12 @@ import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agen
 import { writerAssociations } from '../src/command.ts';
 import { errorText } from '../src/comments.ts';
 import { maxIssueChars, verificationOn } from '../src/config.ts';
-import { closedIssues, gather, readPullRequest, splitDiff, type PullRequest } from '../src/gather.ts';
+import { githubReader } from '../src/explain.ts';
+import { closedIssues, gather, readPullRequest, splitDiff, templateCandidate, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
 import { changedLines, loadCharters, review, severityRank, type Finding } from '../src/review.ts';
+import { confirmTemplateFiles } from '../src/template-check.ts';
 import { subsets, type Concern, type EvalCase } from './cases.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
@@ -283,8 +285,11 @@ async function main(): Promise<void> {
         (number) => JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' })),
         (line) => console.log(`  ${line}`),
       );
-      const gathered = gather(pullRequest, head, base, guidance);
       const log = (line: string) => console.log(`  ${line}`);
+      // As the review step does: a template file counts as the template's only when it is the template's own copy.
+      const candidate = templateCandidate(pullRequest, head, base);
+      const confirmed = candidate ? await confirmTemplateFiles(candidate, head, githubReader(process.env['GITHUB_TOKEN']), log) : undefined;
+      const gathered = gather(pullRequest, head, base, guidance, confirmed);
       let reReviewed: ReReview | undefined;
       let offChanged: string[] = [];
       if (c.reviewed) {
