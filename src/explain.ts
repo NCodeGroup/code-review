@@ -7,7 +7,7 @@ import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
-import { assertNoSecrets } from './outputs.ts';
+import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
 import { markerFields } from './threads.ts';
 
@@ -209,6 +209,24 @@ export async function answerFor(
   const result = await ask(found);
   const body = result.output ? answerBody(found, result.output) : failedBody(found, result.error ?? 'no answer');
   return { body, explained: { found, result } };
+}
+
+// What a `/review explain` run leaves for the publish step: answer.json, plus trace.json when the agent was asked. An
+// unknown ref writes only the answer, without asking. It never writes results.json, so the publish step posts no review.
+export async function writeAnswer(
+  outDir: string,
+  where: { repository: string; number: number; question: string; secrets: string[] },
+  ref: FindingRef,
+  resolution: Resolution,
+  ask: (found: FoundFinding) => Promise<AgentResult<Explanation>>,
+): Promise<void> {
+  const { body, explained } = await answerFor(ref, resolution, ask);
+  const files: Record<string, unknown> = { [answerFile]: { repository: where.repository, pullRequest: where.number, body } satisfies Answer };
+  if (explained) {
+    const { found, result } = explained;
+    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: where.question, output: result.output, calls: result.records } };
+  }
+  writeForPublish(outDir, files, where.secrets, 'answered');
 }
 
 export type GitHubApi = (method: string, url: string, body?: unknown) => Promise<any>;

@@ -242,6 +242,29 @@ export function casePullRequest(c: EvalCase, headSha: string, readIssue: (number
   return pullRequest;
 }
 
+// The tallies the run's summary is built from, one entry per case.
+export interface CaseTally {
+  precisions: CasePrecision[];
+  findingsPerCase: number[];
+  reviewCosts: number[];
+}
+
+// Adds one case to the run's tallies and returns its costs. The review cost is only the review's own calls
+// (outcome.calls), while the case cost counts every call in `calls`, the concern judge's and precision judge's included,
+// so eval:compare never reports the judges' Opus spend as review cost.
+export function tallyCase(
+  tally: CaseTally,
+  outcome: { findings: readonly unknown[]; calls: readonly CallRecord[] },
+  calls: CallRecord[],
+  precision: CasePrecision | undefined,
+): { reviewCost: number; caseCost: number } {
+  if (precision) tally.precisions.push(precision);
+  tally.findingsPerCase.push(outcome.findings.length);
+  const reviewCost = outcome.calls.reduce((sum, call) => sum + call.costUsd, 0);
+  tally.reviewCosts.push(reviewCost);
+  return { reviewCost, caseCost: totalCost(calls) };
+}
+
 // How the output names a finding that raised a concern.
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
@@ -268,9 +291,7 @@ async function main(): Promise<void> {
   const shadowNames = new Set<string>();
   const verdictFile = path.join(root, 'evals', 'verdicts.json');
   const verdictCache = loadVerdicts(verdictFile);
-  const precisions: CasePrecision[] = [];
-  const findingsPerCase: number[] = [];
-  const reviewCosts: number[] = [];
+  const tally: CaseTally = { precisions: [], findingsPerCase: [], reviewCosts: [] };
 
   let capped: Awaited<ReturnType<typeof runCapped>>;
   try {
@@ -359,15 +380,8 @@ async function main(): Promise<void> {
         cache: verdictCache,
         judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
       });
-      if (precision) {
-        saveVerdicts(verdictFile, verdictCache);
-        precisions.push(precision);
-      }
-      findingsPerCase.push(outcome.findings.length);
-      const reviewCost = outcome.calls.reduce((sum, call) => sum + call.costUsd, 0);
-      reviewCosts.push(reviewCost);
-
-      const caseCost = totalCost(calls);
+      if (precision) saveVerdicts(verdictFile, verdictCache);
+      const { reviewCost, caseCost } = tallyCase(tally, outcome, calls, precision);
       expected += verdicts.length;
       caught += verdicts.filter((v) => v.caught).length;
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
@@ -399,13 +413,13 @@ async function main(): Promise<void> {
     await proxy.close();
   }
 
-  const precision = precisionOn ? totalPrecision(precisions) : undefined;
+  const precision = precisionOn ? totalPrecision(tally.precisions) : undefined;
   const cap = capOutcome(maxCost, capped, cases.length, label);
   const summary = {
     label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations,
     findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount,
-    precision, findingsPerCase: spread(findingsPerCase), reviewCostUsd: reviewCosts.reduce((a, b) => a + b, 0),
-    reviewCostPerCase: spread(reviewCosts), costUsd: cost,
+    precision, findingsPerCase: spread(tally.findingsPerCase), reviewCostUsd: tally.reviewCosts.reduce((a, b) => a + b, 0),
+    reviewCostPerCase: spread(tally.reviewCosts), costUsd: cost,
     shadow: { reviewers: [...shadowNames], caught: caughtShadow, violations: shadowViolations, findings: shadowFindingCount },
     ...cap.record,
   };
