@@ -462,6 +462,16 @@ export function matchesAnyFile(globs: string[], files: string[]): boolean {
   return files.some((file) => patterns.some((p) => p.test(file)));
 }
 
+// A skip: glob that matches every one of these paths, such as ** or **/*, leaves nearly nothing to review. It still
+// skips what it matches, since the repository's owners set it on the default branch, but the check run warns about it.
+const broadProbes = ['README.md', 'src/Program.cs', 'src/App/Service.cs', 'lib/index.ts'];
+
+export function broadSkipWarnings(globs: string[]): string[] {
+  return globs
+    .filter((glob) => broadProbes.every((file) => globToRegExp(glob).test(file)))
+    .map((glob) => `"skip" in ${settingsFolder}/config.yml has ${JSON.stringify(glob)}, which matches nearly every file; the review leaves out every changed file it matches.`);
+}
+
 // The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
 // YAML the settings parser would refuse. The split and the glob lists are shared with the project reviewers' paths:.
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
@@ -658,7 +668,7 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
     policies: settings.policies.map((p) => p.path),
     tiers: settings.config.tiers,
     projectReviewers: settings.reviewers,
-    warnings: settings.warnings,
+    warnings: [...settings.warnings, ...broadSkipWarnings(settings.config.skip)],
     ...(template ? { template } : {}),
   };
 }

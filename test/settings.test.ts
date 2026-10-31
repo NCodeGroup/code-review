@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
-import { gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
+import { broadSkipWarnings, gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
 import { fileList, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
 import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
@@ -479,4 +479,28 @@ test('a pull request whose every changed file is skipped by config runs no model
   assert.deepEqual(outcome.skipped, ['security', 'project:oauth', 'project:security']);
   // The fixture's tiers: names api-compat, which this roster lacks.
   assert.deepEqual(outcome.warnings, ['"tiers" in .github/code-review/config.yml names no reviewer: api-compat; the reviewers are security, project:oauth, project:security.']);
+});
+
+test('a skip: glob that matches nearly every path is a warning', () => {
+  const warning = '"skip" in .github/code-review/config.yml has "**", which matches nearly every file; the review leaves out every changed file it matches.';
+  assert.deepEqual(broadSkipWarnings(['vendor/**', 'src/**', '*.md', '**/*.Designer.cs']), []);
+  const broad = broadSkipWarnings(['**', '**/*', '**/*.*']);
+  assert.equal(broad.length, 3);
+  assert.equal(broad[0], warning);
+
+  const base = temp('settings-broad-');
+  write(base, '.github/code-review/config.yml', 'skip: ["**"]\n');
+  const head = temp('settings-broad-head-');
+  git(head, 'init', '-q', '-b', 'main');
+  write(head, 'src/a.ts', 'export const a = 1;\n');
+  git(head, 'add', '.');
+  git(head, 'commit', '-q', '-m', 'base');
+  const baseSha = git(head, 'rev-parse', 'HEAD');
+  write(head, 'src/a.ts', 'export const a = 2;\n');
+  git(head, 'commit', '-q', '-am', 'change');
+
+  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha: '' };
+  const gathered = gather(pullRequest, head, base);
+  assert.deepEqual(gathered.skippedByConfig, ['src/a.ts']);
+  assert.deepEqual(gathered.warnings, [warning]);
 });
