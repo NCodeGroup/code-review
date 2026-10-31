@@ -57,6 +57,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     summary: outcome.summary,
     verdict: outcome.verdict,
     findings: outcome.findings,
+    ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),
     skipped: outcome.skipped,
     synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',

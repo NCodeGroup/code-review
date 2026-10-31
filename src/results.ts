@@ -3,6 +3,7 @@
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
 import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
   name: string;
@@ -30,6 +31,9 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
+  // is off or there was no blocker or should-fix to check.
+  refuted?: RefutedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -172,11 +176,18 @@ export function checkText(results: Results): string {
       '',
     );
   }
+  if (results.refuted?.length) {
+    out.push('### Refuted by verification', '');
+    for (const { finding: f, path, reason } of results.refuted) {
+      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`);
+    }
+    out.push('');
+  }
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
   out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
-  for (const role of ['selection', 'synthesis']) {
+  for (const role of ['selection', 'synthesis', 'verification']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
   return [...out, ...shadowSection(results, costs, maxCheckText - out.join('\n').length - 1)].join('\n');

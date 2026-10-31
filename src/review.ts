@@ -1,4 +1,4 @@
-// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
+// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { parseCharter, type Charter } from './charter.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, shadowOverride, shadowPromptRate, type ModelTier } from './config.ts';
+import { mapWithConcurrency } from './concurrency.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 // Most severe first.
@@ -63,6 +65,9 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings verification refuted and dropped, with its reasons, and every verification call.
+  refuted: RefutedFinding[];
+  verification: VerificationCall[];
   calls: CallRecord[];
   // Live roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -130,6 +135,7 @@ export interface Charters {
   reviewers: Map<string, Charter>;
   // prompts/<name>.shadow.md, for each prompt that has one: run alongside the live prompt on a sample of reviews.
   shadowPrompts: Partial<Record<PromptName, string>>;
+  verificationPrompt: string;
 }
 
 // The rules the context stage picked for any reviewer, once each and in catalog order so a topic's rules share a batch,
@@ -161,6 +167,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    verificationPrompt: prompt('verification'),
     reviewers,
     shadowPrompts,
   };
@@ -294,19 +301,6 @@ export function mergeSynthesis(
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
-}
-
-export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -514,6 +508,23 @@ export async function review(
     summary = 'No findings.';
   }
 
+  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  // Only the live reviewers' findings reach it: a shadow reviewer's findings never went to synthesis, so they are never
+  // verified, and its charter isn't given to the verifier.
+  const liveCharters = [...charters.reviewers].filter(([name]) => !shadow.has(name)).map(([name, charter]) => [name, charter.text] as const);
+  const verified = await verifyReview({ summary, verdict, findings }, {
+    run: reviewRun,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: new Map([...liveCharters, ...(shadow.has(ruleCheckName) ? [] : [[ruleCheckName, charters.ruleCheckPrompt] as const])]),
+    log,
+    enabled: verificationOn(),
+    agent,
+  });
+  calls.push(...verified.calls);
+  ({ summary, verdict, findings } = verified);
+
   const notSelected = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
   return {
@@ -524,6 +535,8 @@ export async function review(
     summary,
     verdict,
     findings,
+    refuted: verified.refuted,
+    verification: verified.trace,
     calls,
     skipped: notSelected.filter((name) => !shadow.has(name)),
   };

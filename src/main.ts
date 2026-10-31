@@ -135,6 +135,7 @@ async function main(): Promise<void> {
     const trace = {
       results,
       rawFindings: outcome.reviewers,
+      verification: outcome.verification,
       shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
       files: gathered.files,
       conventionsChars: gathered.conventions.length,

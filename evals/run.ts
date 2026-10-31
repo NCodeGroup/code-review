@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { verificationOn } from '../src/config.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, severityRank, type Finding, type Severity } from '../src/review.ts';
@@ -125,7 +126,7 @@ async function main(): Promise<void> {
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
-  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, cost = 0;
+  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
   let caughtShadow = 0, shadowViolations = 0, shadowFindingCount = 0;
   const shadowNames = new Set<string>();
 
@@ -177,6 +178,8 @@ async function main(): Promise<void> {
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
       violations += forbidden.filter((f) => f.raisedBy.length).length;
       findingCount += outcome.findings.length;
+      seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
+      refutedCount += outcome.refuted.length;
       caughtShadow += verdicts.filter((v) => v.caughtShadow).length;
       shadowViolations += forbidden.filter((f) => f.raisedByShadow?.length).length;
       shadowFindingCount += shadow.length;
@@ -189,17 +192,18 @@ async function main(): Promise<void> {
         ? `; shadow (${outcome.shadow.map((o) => o.name).join(', ')}): ${verdicts.filter((v) => v.caughtShadow).length} caught, ${forbidden.filter((f) => f.raisedByShadow?.length).length} must-not, ${shadow.length} findings`
         : '';
       console.log(`${c.id}: ${status}; ${outcome.findings.length} findings${shadowStatus}, $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, raw, shadow, shadowPrompts: outcome.shadowPrompts, calls, costUsd: caseCost });
+      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, refuted: outcome.refuted, raw, shadow, shadowPrompts: outcome.shadowPrompts, calls, costUsd: caseCost });
     }
   } finally {
     await proxy.close();
   }
 
   const summary = {
-    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', expected, caught, caughtRaw, violations, findings: findingCount, costUsd: cost,
+    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations, findings: findingCount,
+    blockersAndShouldFixes: seriousCount, refuted: refutedCount, costUsd: cost,
     shadow: { reviewers: [...shadowNames], caught: caughtShadow, violations: shadowViolations, findings: shadowFindingCount },
   };
-  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all; $${cost.toFixed(2)}`);
+  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
   if (shadowNames.size) console.log(`Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
