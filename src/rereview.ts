@@ -480,6 +480,8 @@ export function reReviewSummary(s: {
   changed: ChangedSince;
   // False when the changed lines are all in files the reviewers don't see.
   reviewed: boolean;
+  // The reviewers that ran; correctness alone when absent.
+  reviewers?: string[];
   error?: string;
   // True when the earlier review threads couldn't be read.
   earlierUnread?: boolean;
@@ -491,6 +493,8 @@ export function reReviewSummary(s: {
   verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped'>;
 }): string {
   const since = s.lastHead.slice(0, 7);
+  const ran = s.reviewers ?? [reReviewer];
+  const names = ran.length === 1 ? `${ran[0]} only` : ran.join(' and ');
   const parts: string[] = [];
   const takenBack = Object.keys(s.changed.removed).length;
   const what = [
@@ -500,7 +504,7 @@ export function reReviewSummary(s: {
   if (!what) parts.push(`Nothing in this pull request's own changes differs from the last review at ${since}, so nothing was reviewed again.`);
   else if (s.error) parts.push(`The re-review of what changed since ${since} failed (${s.error}), so this review says nothing about those changes.`);
   else if (!s.reviewed) parts.push(`What changed since the last review at ${since} is only in generated files or files over the size budget, so nothing was reviewed again.`);
-  else parts.push(`Re-review of what changed since the last review at ${since}: ${what}, by ${reReviewer} only.`);
+  else parts.push(`Re-review of what changed since the last review at ${since}: ${what}, by ${names}.`);
   const checked = s.earlier.filter((e) => !e.finding.resolved && e.status !== 'unchecked');
   if (checked.length) parts.push(`Earlier findings: ${checked.map((e) => `[${e.finding.id}](${e.finding.url}) ${stateLabel[e.status]}`).join(', ')}.`);
   if (s.nits || s.outside) {
@@ -608,6 +612,7 @@ export async function reReview(
       lastHead: plan.lastHead,
       changed: plan.changed,
       reviewed: outcomes.length > 0,
+      reviewers: outcomes.map((o) => o.name),
       ...(error ? { error } : {}),
       earlierUnread: plan.earlierUnread,
       posted: findings,

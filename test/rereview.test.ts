@@ -291,6 +291,11 @@ test('reReviewSummary says there are no further findings above nits when nothing
   );
 });
 
+test('reReviewSummary names both reviewers when security ran too', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, reviewers: ['correctness', 'security'], posted: [], nits: 0, outside: 0, earlier: [] });
+  assert.equal(summary, 'Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness and security. No further findings above nits.');
+});
+
 test('reReviewSummary leaves out the done line while a should-fix is new or still open, or the review failed', () => {
   const open: EarlierStatus = { finding: earlierFinding(), status: 'open', note: '' };
   const base = { lastHead: reviewed, changed: since, reviewed: true, nits: 0, outside: 0 };
