@@ -204,25 +204,25 @@ export async function runCapped<T>(
 }
 
 // The issues a case's description closes, as the review step reads them: pull requests are left out, and an issue that
-// can't be read is left out with a warning that says why. Their authors aren't checked, since the smoke eval's token
-// can't read another repository's permissions.
+// can't be read is left out with a warning that says why. Each issue's author counts as a writer by the case's
+// issueAssociations (a member by default), never by the API or a permission lookup, since the smoke eval's token can't
+// read other repositories' permissions.
 export function caseIssues(
-  repository: string,
+  c: Pick<EvalCase, 'repository' | 'issueAssociations'>,
   body: string | undefined,
   readIssue: (number: number) => unknown,
   log: (line: string) => void,
 ): Promise<ClosedIssue[]> {
   return readWritersIssues(
     closedIssues(body),
-    async (number) => readIssue(number),
-    async () => true,
-    (number, reason) => log(`::warning::Couldn't read issue #${number} of ${repository} (${reason}); the case runs without it.`),
+    async (number) => ({ ...(readIssue(number) as object), author_association: c.issueAssociations?.[String(number)] ?? 'MEMBER' }),
+    async (_login, association) => writerAssociations.has(association ?? ''),
+    (number, reason) => log(`::warning::Couldn't read issue #${number} of ${c.repository} (${reason}); the case runs without it.`),
   );
 }
 
 // The pull request a case reviews, built as the review step builds it: the description, and so the issues it closes,
-// only from an author with write access, which the case's association decides. The issues' authors aren't checked, as
-// caseIssues says.
+// only from an author with write access, which the case's association decides.
 export async function casePullRequest(c: EvalCase, headSha: string, readIssue: (number: number) => unknown, log: (line: string) => void): Promise<PullRequest> {
   const association = c.authorAssociation ?? 'MEMBER';
   const event = {
@@ -232,7 +232,7 @@ export async function casePullRequest(c: EvalCase, headSha: string, readIssue: (
     },
   };
   const pullRequest = readPullRequest(event, c.repository, writerAssociations.has(association));
-  pullRequest.issues = await caseIssues(c.repository, pullRequest.body, readIssue, log);
+  pullRequest.issues = await caseIssues(c, pullRequest.body, readIssue, log);
   return pullRequest;
 }
 

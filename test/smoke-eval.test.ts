@@ -344,10 +344,22 @@ test('casePullRequest withholds a non-writer\'s description and reads none of it
 
 test('caseIssues warns with the reason when an issue cannot be read, and goes on', async () => {
   const lines: string[] = [];
-  const issues = await caseIssues('o/r', 'Closes #3, closes #4', (number) => {
+  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3, closes #4', (number) => {
     if (number === 3) throw new Error('HTTP 404: Not Found');
     return { title: 'Ok', body: 'b' };
   }, (line) => lines.push(line));
   assert.deepEqual(issues, [{ number: 4, title: 'Ok', body: 'b' }]);
   assert.deepEqual(lines, ["::warning::Couldn't read issue #3 of o/r (HTTP 404: Not Found); the case runs without it."]);
+});
+
+test("caseIssues leaves out an issue the case records as a non-writer's", async () => {
+  const lines: string[] = [];
+  const issues = await caseIssues({ repository: 'o/r', issueAssociations: { '4': 'CONTRIBUTOR' } }, 'Closes #3 and fixes #4', () => ({ title: 'T', body: 'b' }), (line) => lines.push(line));
+  assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
+  assert.deepEqual(lines, []);
+});
+
+test("caseIssues counts an issue the case doesn't record as a member's, whatever the API says", async () => {
+  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3', () => ({ title: 'T', body: 'b', author_association: 'NONE' }), () => {});
+  assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
 });
