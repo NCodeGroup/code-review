@@ -438,7 +438,7 @@ test('readEarlierFindings reads every page of threads, and gives undefined witho
   const cursors: (string | null)[] = [];
   const pages = (fail: boolean) => (async (url: string, init: RequestInit) => {
     assert.equal(url, 'https://api.github.com/graphql');
-    assert.equal(new Headers(init.headers).get('authorization'), 'bearer token');
+    assert.equal(new Headers(init.headers).get('authorization'), 'Bearer token');
     const { variables } = JSON.parse(String(init.body)) as { variables: { cursor: string | null } };
     cursors.push(variables.cursor);
     if (fail && variables.cursor) return new Response('', { status: 502 });

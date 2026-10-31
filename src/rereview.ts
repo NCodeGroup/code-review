@@ -15,7 +15,9 @@ import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
+import { githubApi } from './github.ts';
 import { botLogin, recordedHead } from './results.ts';
+import { readThreadPages } from './review-threads.ts';
 import {
   byOwner,
   completeList,
@@ -274,21 +276,11 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
 const threadComment = 'author { login } authorAssociation body url';
 // 👎 reactions read on a finding, to tell whether someone with write access dismissed it.
 const maxThumbsDown = 20;
-const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id isResolved isOutdated resolvedBy { login } path line originalLine
-          first: comments(first: 1) { nodes { ${threadComment} reactions(content: THUMBS_DOWN, first: ${maxThumbsDown}) { nodes { user { login } } } } }
-          comments(last: ${maxRepliesPerThread}) { totalCount nodes { ${threadComment} } }
-        }
-      }
-    }
-  }
-}`;
-// Pages of 100 review threads a run reads at most, to bound calls.
+const threadFields = `id isResolved isOutdated resolvedBy { login } path line originalLine
+  first: comments(first: 1) { nodes { ${threadComment} reactions(content: THUMBS_DOWN, first: ${maxThumbsDown}) { nodes { user { login } } } } }
+  comments(last: ${maxRepliesPerThread}) { totalCount nodes { ${threadComment} } }`;
+// Review threads on a page, and pages a run reads at most, to bound calls.
+const threadPageSize = 100;
 const maxThreadPages = 10;
 
 // The earlier findings on a pull request, or undefined when its review threads can't be read: GraphQL needs a token, and
@@ -298,36 +290,17 @@ export async function readEarlierFindings(repository: string, number: number, to
   return threads && earlierFindings(threads);
 }
 
-type ThreadsAnswer = { data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] } } } } };
-
-// A pull request's review threads, or undefined when they can't all be read: a refused request, a fetch that rejects,
-// or a body that isn't JSON. The review step reads them with its read-only token, and the publish step with the app's
-// token, to resolve and answer the bot's own threads.
+// A pull request's review threads, or undefined when they can't all be read: a refused request, a GraphQL error, a
+// fetch that rejects, or a body that isn't JSON. The review step reads them with its read-only token, and the publish
+// step with the app's token, to resolve and answer the bot's own threads.
 export async function readReviewThreads(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ThreadNode[] | undefined> {
   if (!token) return undefined;
-  const [owner, name] = repository.split('/');
-  const threads: ThreadNode[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < maxThreadPages; page++) {
-    let json: ThreadsAnswer;
-    try {
-      const response = await fetchPage('https://api.github.com/graphql', {
-        method: 'POST',
-        headers: { accept: 'application/vnd.github+json', authorization: `bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ query: threadsQuery, variables: { owner, name, number, cursor } }),
-      });
-      if (!response.ok) return undefined;
-      json = (await response.json()) as ThreadsAnswer;
-    } catch {
-      return undefined;
-    }
-    const listed = json.data?.repository?.pullRequest?.reviewThreads;
-    if (!listed) return undefined;
-    threads.push(...listed.nodes);
-    if (!listed.pageInfo.hasNextPage) return threads;
-    cursor = listed.pageInfo.endCursor;
+  try {
+    const read = await readThreadPages<ThreadNode>(githubApi(token, fetchPage), repository, number, { fields: threadFields, pageSize: threadPageSize, maxPages: maxThreadPages });
+    return read.complete ? read.threads : undefined;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 // --- Deciding on a re-review ---
