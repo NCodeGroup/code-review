@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { reviewerTiers } from '../src/config.ts';
+import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
 import { gather, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
-import { projectFloor, withProjectCharters, type Charters } from '../src/review.ts';
-import { parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
+import { fileList, projectFloor, projectRoster, review, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
+import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
 
 const made: string[] = [];
 after(() => {
@@ -63,6 +63,9 @@ test('parseYaml reads block and flow lists, mappings, comments and quoted string
 
 test('parseYaml refuses what the subset does not support', () => {
   for (const text of [
+    '__proto__: [a]',
+    'tiers:\n  __proto__: haiku',
+    'tiers: {"__proto__": haiku}',
     'skip:\n\t- a',
     'skip:\n  - *alias',
     'skip:\n  - **/vendor/**',
@@ -231,9 +234,97 @@ test('invalid project charters are left out with a warning', () => {
   assert.deepEqual(settings.reviewers[0]!.paths, []);
   assert.equal(settings.warnings.length, 5);
   assert.match(settings.warnings.join('\n'), /Bad Name\.md was not loaded/);
-  assert.match(settings.warnings.join('\n'), /broken\.md has frontmatter that is not valid/);
+  assert.match(settings.warnings.join('\n'), /broken\.md has frontmatter that is not valid \(line 1: .*\); its paths were ignored\./);
   assert.match(settings.warnings.join('\n'), /empty\.md is empty/);
   assert.match(settings.warnings.join('\n'), /r09\.md was not loaded: at most 10/);
+});
+
+test('charterPaths reads paths: as a list or one comma-separated string, and reports anything else', () => {
+  assert.deepEqual(charterPaths('paths: ["src/**", test/**]'), { paths: ['src/**', 'test/**'], problems: [] });
+  assert.deepEqual(charterPaths('paths: src/**, test/**'), { paths: ['src/**', 'test/**'], problems: [] });
+  assert.deepEqual(charterPaths('paths:'), { paths: [], problems: [] });
+  assert.deepEqual(charterPaths('paths:\n  a: b').problems, ['"paths" must be a list of globs']);
+  assert.deepEqual(charterPaths('paths: [a, ""]'), { paths: [], problems: ['"paths" has an empty item'] });
+  assert.deepEqual(charterPaths(`paths: [a, ${'x'.repeat(300)}]`).problems, ['"paths" has an item that is too long or has control characters']);
+  assert.deepEqual(charterPaths('paths: [a]\npath: [b]'), { paths: [], problems: ['unknown key "path"'] });
+});
+
+test('a project charter with invalid paths: loads without them and with a warning', () => {
+  const base = temp('settings-charter-paths-');
+  write(base, '.github/code-review/reviewers/typo.md', '---\npath: ["src/**"]\n---\n# typo\n\nStill loads.\n');
+  const settings = readProjectSettings(base);
+  assert.deepEqual(settings.reviewers.map((r) => [r.name, r.paths]), [['typo', []]]);
+  assert.deepEqual(settings.warnings, ['.github/code-review/reviewers/typo.md has frontmatter that is not valid (unknown key "path"); its paths were ignored.']);
+});
+
+test('settings files over the size limit are left out with a warning, and guidance.md is truncated', () => {
+  const base = temp('settings-size-');
+  // Just over the limit, and far over it, where the size alone rules the file out before it is read.
+  write(base, '.github/code-review/config.yml', `# ${'x'.repeat(maxSettingsFileChars)}\n`);
+  write(base, '.github/code-review/reviewers/long.md', `# long\n\n${'x'.repeat(maxSettingsFileChars)}`);
+  write(base, '.github/code-review/reviewers/huge.md', `# huge\n\n${'x'.repeat(maxSettingsFileChars * 4 + 2048)}`);
+  write(base, '.github/code-review/guidance.md', `- 👁 **Rule.** ${'x'.repeat(maxSettingsFileChars)}`);
+  const settings = readProjectSettings(base);
+  assert.deepEqual(settings.config, { sensitive: [], skip: [], policies: [], tiers: {} });
+  assert.deepEqual(settings.reviewers, []);
+  assert.equal(settings.guidance!.length, maxSettingsFileChars);
+  assert.deepEqual(settings.warnings, [
+    `.github/code-review/config.yml is larger than ${maxSettingsFileChars} characters; using the defaults.`,
+    `.github/code-review/guidance.md was truncated to ${maxSettingsFileChars} characters.`,
+    `.github/code-review/reviewers/huge.md is larger than ${maxSettingsFileChars} characters; it was not loaded.`,
+    `.github/code-review/reviewers/long.md is larger than ${maxSettingsFileChars} characters; it was not loaded.`,
+  ]);
+  write(base, '.github/code-review/config.yml', `# ${'x'.repeat(maxSettingsFileChars * 4 + 2048)}\n`);
+  assert.equal(readProjectSettings(base).warnings[0], `.github/code-review/config.yml is larger than ${maxSettingsFileChars} characters; using the defaults.`);
+});
+
+test('a reviewers path that is not a folder, or a settings file that is a folder, is a warning', () => {
+  const base = temp('settings-shape-');
+  write(base, '.github/code-review/reviewers', '# not a folder\n');
+  mkdirSync(path.join(base, '.github/code-review/guidance.md'));
+  const settings = readProjectSettings(base);
+  assert.deepEqual(settings.reviewers, []);
+  assert.deepEqual(settings.warnings, [
+    '.github/code-review/guidance.md is not a file; it was not loaded.',
+    '.github/code-review/reviewers is not a folder; no project reviewers were loaded.',
+  ]);
+});
+
+// Permissions can't take read access away on Windows, or from root.
+test('settings the runner cannot read are warnings, not a failed review', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+  const base = temp('settings-unreadable-');
+  write(base, '.github/code-review/config.yml', 'skip: [vendor/**]\n');
+  write(base, '.github/code-review/reviewers/a.md', '# a\n\ntext');
+  chmodSync(path.join(base, '.github/code-review/config.yml'), 0o000);
+  chmodSync(path.join(base, '.github/code-review/reviewers'), 0o000);
+  try {
+    const settings = readProjectSettings(base);
+    assert.deepEqual(settings.config.skip, []);
+    assert.deepEqual(settings.reviewers, []);
+    assert.deepEqual(settings.warnings, [
+      ".github/code-review/config.yml can't be read (EACCES); using the defaults.",
+      ".github/code-review/reviewers can't be read (EACCES); no project reviewers were loaded.",
+    ]);
+  } finally {
+    chmodSync(path.join(base, '.github/code-review/reviewers'), 0o755);
+    chmodSync(path.join(base, '.github/code-review/config.yml'), 0o644);
+  }
+});
+
+test('the selection prompt describes each project reviewer by its first line of text', () => {
+  assert.equal(projectRoster([]), '');
+  assert.equal(
+    projectRoster([{ name: 'oauth', text: '# oauth\n\nDoes the change follow RFC 6749?\n\nMore.', paths: [] }, { name: 'long', text: 'y'.repeat(250), paths: [] }]),
+    `\nThis repository's own reviewers:\n- project:oauth: Does the change follow RFC 6749?\n- project:long: ${'y'.repeat(199)}…`,
+  );
+});
+
+test('tiers: names that match no reviewer on the roster are a warning', () => {
+  assert.equal(unknownTiers({ correctness: 'opus', 'project:oauth': 'opus' }, ['correctness', 'project:oauth']), undefined);
+  assert.equal(
+    unknownTiers({ corectness: 'haiku', 'project:oauth': 'opus' }, ['correctness', 'security']),
+    '"tiers" in .github/code-review/config.yml names no reviewer: corectness, project:oauth; the reviewers are correctness, security.',
+  );
 });
 
 test('tiers: overrides the engine defaults, and CODE_REVIEW_TIERS overrides both', () => {
@@ -309,4 +400,35 @@ test('gather reviews a pull request that edits .github/code-review with the defa
   assert.deepEqual(gathered.sensitive, ['src/**/Jose/**', 'src/Auth/**']);
   assert.deepEqual(gathered.tiers, { 'api-compat': 'sonnet', 'project:oauth': 'opus' });
   assert.deepEqual(gathered.warnings, []);
+});
+
+test('a pull request whose every changed file is skipped by config runs no model and says nothing was reviewed', async () => {
+  const base = baseWithSettings();
+  const head = temp('settings-skipped-');
+  git(head, 'init', '-q', '-b', 'main');
+  write(head, 'vendor/lib.js', 'var a = 1;\n');
+  git(head, 'add', '.');
+  git(head, 'commit', '-q', '-m', 'base');
+  const baseSha = git(head, 'rev-parse', 'HEAD');
+  git(head, 'checkout', '-q', '-b', 'topic');
+  write(head, 'vendor/lib.js', 'var a = 2;\n');
+  git(head, 'commit', '-q', '-am', 'update the vendored code');
+
+  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha, headSha: '' };
+  const gathered = gather(pullRequest, head, base);
+  assert.deepEqual(gathered.files, []);
+  assert.deepEqual(gathered.skippedByConfig, ['vendor/lib.js']);
+  assert.equal(fileList(gathered), "vendor/lib.js [not reviewed: skipped by the repository's config]");
+
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  // The proxy address goes nowhere: a model call would fail and be recorded.
+  const outcome = await review({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, engine, () => {});
+  assert.deepEqual(outcome.calls, []);
+  assert.deepEqual(outcome.reviewers, []);
+  assert.deepEqual(outcome.findings, []);
+  assert.equal(outcome.verdict, 'comment');
+  assert.equal(outcome.summary, 'Nothing was reviewed: every changed file is skipped by `skip:` in `.github/code-review/config.yml`.');
+  assert.deepEqual(outcome.skipped, ['security', 'project:oauth', 'project:security']);
+  // The fixture's tiers: names api-compat, which this roster lacks.
+  assert.deepEqual(outcome.warnings, ['"tiers" in .github/code-review/config.yml names no reviewer: api-compat; the reviewers are security, project:oauth, project:security.']);
 });

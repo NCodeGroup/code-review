@@ -2,7 +2,7 @@
 // request can't soften its own review: config.yml, guidance.md and reviewers/*.md. Everything in them is data from the
 // repository. A setting that can't be used is left out with a warning for the check run; it never fails the review.
 
-import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, type ModelTier } from './config.ts';
 
@@ -50,17 +50,23 @@ export function parseYaml(text: string): Record<string, YamlValue> {
       open.kind = 'map';
       open.indent = indent.length;
       const map = (out[open.key] ??= {}) as Record<string, YamlScalar>;
-      if (Object.hasOwn(map, entry.key)) throw at(`"${entry.key}" appears twice`);
+      checkKey(map, entry.key, at);
       map[entry.key] = parseScalar(entry.rest, at);
       continue;
     }
     const entry = splitKey(content);
     if (!entry) throw at('expected "key: value"');
-    if (Object.hasOwn(out, entry.key)) throw at(`"${entry.key}" appears twice`);
+    checkKey(out, entry.key, at);
     out[entry.key] = entry.rest ? parseInline(entry.rest, at) : null;
     open = entry.rest ? undefined : { key: entry.key };
   }
   return out;
+}
+
+// "__proto__" would set the parsed object's prototype instead of adding a key, so it is refused like a duplicate.
+function checkKey(map: object, key: string, at: (message: string) => YamlError): void {
+  if (key === '__proto__') throw at(`"${key}" is not allowed as a key`);
+  if (Object.hasOwn(map, key)) throw at(`"${key}" appears twice`);
 }
 
 function stripComment(line: string): string {
@@ -102,7 +108,7 @@ function parseInline(text: string, at: (message: string) => YamlError): YamlValu
     for (const pair of splitFlow(text.slice(1, -1), at)) {
       const entry = splitKey(pair);
       if (!entry?.rest) throw at(`expected "key: value" in braces, not "${pair}"`);
-      if (Object.hasOwn(map, entry.key)) throw at(`"${entry.key}" appears twice`);
+      checkKey(map, entry.key, at);
       map[entry.key] = parseScalar(entry.rest, at);
     }
     return map;
@@ -155,7 +161,7 @@ function parseScalar(text: string, at: (message: string) => YamlError): YamlScal
 }
 
 export interface RepoConfig {
-  // Path globs whose changes get a deeper review (#42).
+  // Path globs whose changes get a deeper review (issue #42).
   sensitive: string[];
   // Path globs never reviewed, such as vendored code. They're listed in the check run.
   skip: string[];
@@ -214,45 +220,55 @@ export function unsafePath(relative: string): string | undefined {
   return undefined;
 }
 
+// Why a file system call failed, in a few words for a warning: the error code, without the runner's paths.
+function failure(error: unknown): string {
+  return (error as NodeJS.ErrnoException).code ?? 'an unknown error';
+}
+
 // The file's real path when it is inside the checkout with every symlink resolved: a symlink to /proc/self/environ
-// or another checkout must not be read.
-function resolveInside(root: string, relative: string): { real?: string; problem?: string } {
+// or another checkout must not be read. missing is set when there is nothing at the path.
+function resolveInside(root: string, relative: string): { real?: string; problem?: string; missing?: boolean } {
   let realRoot: string;
   let real: string;
   try {
     realRoot = realpathSync(root);
   } catch {
-    return { problem: 'has no checkout to read from' };
+    return { problem: 'has no checkout to read from', missing: true };
   }
   try {
     real = realpathSync(path.resolve(realRoot, relative));
-  } catch {
-    return { problem: 'does not exist' };
+  } catch (error) {
+    const code = failure(error);
+    return code === 'ENOENT' || code === 'ENOTDIR' ? { problem: 'does not exist', missing: true } : { problem: `can't be read (${code})` };
   }
   const rel = path.relative(realRoot, real);
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return { problem: 'resolves outside the repository' };
   return { real };
 }
 
-function readInside(root: string, relative: string, maxChars: number): { text?: string; problem?: string; truncated?: boolean } {
+function readInside(root: string, relative: string, maxChars: number): { text?: string; problem?: string; truncated?: boolean; missing?: boolean } {
   const unsafe = unsafePath(relative);
   if (unsafe) return { problem: unsafe };
-  const { real, problem } = resolveInside(root, relative);
-  if (!real) return { problem: problem! };
-  const stat = statSync(real);
-  if (!stat.isFile()) return { problem: 'is not a file' };
-  // Characters are at most four bytes, so a file this large can't fit the budget anyway.
-  if (stat.size > maxChars * 4 + 1024) return { problem: `is larger than ${maxChars} characters` };
-  const text = readFileSync(real, 'utf8');
-  return text.length > maxChars ? { text: text.slice(0, maxChars), truncated: true } : { text };
-}
-
-function exists(root: string, relative: string): boolean {
+  const { real, problem, missing } = resolveInside(root, relative);
+  if (!real) return { problem: problem!, ...(missing ? { missing } : {}) };
+  // One open file for the checks and the read, so the file can't change between them; any error is a warning.
+  let fd: number;
   try {
-    statSync(path.join(root, relative));
-    return true;
-  } catch {
-    return false;
+    fd = openSync(real, 'r');
+  } catch (error) {
+    return { problem: failure(error) === 'EISDIR' ? 'is not a file' : `can't be read (${failure(error)})` };
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return { problem: 'is not a file' };
+    // Characters are at most four bytes, so a file this large can't fit the budget anyway.
+    if (stat.size > maxChars * 4 + 1024) return { problem: `is larger than ${maxChars} characters` };
+    const text = readFileSync(fd, 'utf8');
+    return text.length > maxChars ? { text: text.slice(0, maxChars), truncated: true } : { text };
+  } catch (error) {
+    return { problem: `can't be read (${failure(error)})` };
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -278,8 +294,8 @@ function oneLine(text: string): string {
 }
 
 function readConfig(basePath: string, warnings: string[]): RepoConfig {
-  if (!exists(basePath, configPath)) return defaultConfig();
   const file = readInside(basePath, configPath, maxSettingsFileChars);
+  if (file.missing) return defaultConfig();
   if (file.text === undefined || file.truncated) {
     warnings.push(`${configPath} ${file.problem ?? `is larger than ${maxSettingsFileChars} characters`}; using the defaults.`);
     return defaultConfig();
@@ -321,18 +337,65 @@ function readPolicies(basePath: string, policies: string[], warnings: string[]):
   return out;
 }
 
-const frontmatterPattern = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+// The frontmatter between "---" lines at the top of a Markdown file, and the text after it. The instruction files,
+// guidance.md and the project reviewers are all split here.
+export function splitFrontmatter(text: string): { frontmatter?: string; body: string } {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  return match ? { frontmatter: match[1]!, body: text.slice(match[0].length) } : { body: text };
+}
+
+// A comma-separated list of globs, as applyTo: and a one-line paths: write them.
+export function globList(value: string): string[] {
+  return value.split(',').map((g) => g.trim()).filter(Boolean);
+}
+
+// A project reviewer's frontmatter: only paths:, a list of globs or one comma-separated string. Anything else is a
+// problem, and the reviewer then loads without paths.
+export function charterPaths(frontmatter: string): { paths: string[]; problems: string[] } {
+  let value: Record<string, YamlValue>;
+  try {
+    value = parseYaml(frontmatter);
+  } catch (error) {
+    return { paths: [], problems: [oneLine((error as Error).message)] };
+  }
+  const problems: string[] = [];
+  const paths: string[] = [];
+  for (const [key, raw] of Object.entries(value)) {
+    if (key !== 'paths') {
+      problems.push(`unknown key "${key}"`);
+    } else if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+      problems.push('"paths" must be a list of globs');
+    } else {
+      for (const item of typeof raw === 'string' ? globList(raw) : (raw ?? [])) {
+        if (typeof item !== 'string' || !item.trim()) problems.push('"paths" has an empty item');
+        else if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) problems.push('"paths" has an item that is too long or has control characters');
+        else paths.push(item.trim());
+      }
+    }
+  }
+  return problems.length ? { paths: [], problems } : { paths, problems };
+}
+
 const charterName = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
-  if (!exists(basePath, reviewersPath)) return [];
   const folder = resolveInside(basePath, reviewersPath);
-  if (!folder.real || !statSync(folder.real).isDirectory()) {
-    warnings.push(`${reviewersPath} ${folder.problem ?? 'is not a folder'}; no project reviewers were loaded.`);
+  if (folder.missing) return [];
+  let names: string[] = [];
+  let problem = folder.problem;
+  if (folder.real) {
+    try {
+      names = readdirSync(folder.real);
+    } catch (error) {
+      problem = failure(error) === 'ENOTDIR' ? 'is not a folder' : `can't be read (${failure(error)})`;
+    }
+  }
+  if (problem) {
+    warnings.push(`${reviewersPath} ${problem}; no project reviewers were loaded.`);
     return [];
   }
   const charters: ProjectCharter[] = [];
-  for (const file of readdirSync(folder.real).filter((n) => n.endsWith('.md')).sort()) {
+  for (const file of names.filter((n) => n.endsWith('.md')).sort()) {
     const where = `${reviewersPath}/${file}`;
     const name = file.slice(0, -3);
     if (!charterName.test(name)) {
@@ -348,18 +411,14 @@ function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
       warnings.push(`${where} ${read.problem ?? `is larger than ${maxSettingsFileChars} characters`}; it was not loaded.`);
       continue;
     }
-    const match = frontmatterPattern.exec(read.text);
+    const { frontmatter, body } = splitFrontmatter(read.text);
     let paths: string[] = [];
-    if (match) {
-      try {
-        const raw = parseYaml(match[1]!)['paths'];
-        const list = typeof raw === 'string' ? raw.split(',') : Array.isArray(raw) ? raw : [];
-        paths = list.flatMap((p) => (typeof p === 'string' && p.trim() && p.length <= maxPathChars ? [p.trim()] : []));
-      } catch (error) {
-        warnings.push(`${where} has frontmatter that is not valid (${oneLine((error as Error).message)}); its paths: were ignored.`);
-      }
+    if (frontmatter !== undefined) {
+      const parsed = charterPaths(frontmatter);
+      paths = parsed.paths;
+      if (parsed.problems.length) warnings.push(`${where} has frontmatter that is not valid (${parsed.problems.slice(0, 5).map(oneLine).join('; ')}); its paths were ignored.`);
     }
-    const text = (match ? read.text.slice(match[0].length) : read.text).trim();
+    const text = body.trim();
     if (!text) {
       warnings.push(`${where} is empty; it was not loaded.`);
       continue;
@@ -376,13 +435,12 @@ export function readProjectSettings(basePath: string): ProjectSettings {
   const config = readConfig(basePath, warnings);
   const policies = readPolicies(basePath, config.policies, warnings);
   let guidance: string | undefined;
-  if (exists(basePath, guidancePath)) {
-    const read = readInside(basePath, guidancePath, maxSettingsFileChars);
-    if (read.text === undefined) warnings.push(`${guidancePath} ${read.problem}; it was not loaded.`);
-    else {
-      if (read.truncated) warnings.push(`${guidancePath} was truncated to ${maxSettingsFileChars} characters.`);
-      guidance = read.text;
-    }
+  const read = readInside(basePath, guidancePath, maxSettingsFileChars);
+  if (read.text !== undefined) {
+    if (read.truncated) warnings.push(`${guidancePath} was truncated to ${maxSettingsFileChars} characters.`);
+    guidance = read.text;
+  } else if (!read.missing) {
+    warnings.push(`${guidancePath} ${read.problem}; it was not loaded.`);
   }
   const reviewers = readReviewers(basePath, warnings);
   return { config, policies, ...(guidance !== undefined ? { guidance } : {}), reviewers, warnings };

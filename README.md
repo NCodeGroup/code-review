@@ -113,17 +113,20 @@ with the copy already on the default branch, and the edit itself is reviewed lik
   - `sensitive:` path globs for a deeper review. The engine reads and validates them, but doesn't review them
     differently yet ([#42](https://github.com/NCodeGroup/code-review/issues/42)).
   - `skip:` path globs that are never reviewed, such as vendored code. The check run lists each changed file they
-    skip as "skipped by config", so nothing is dropped silently.
+    skip as "skipped by config", so nothing is dropped silently. When they skip every changed file, no model runs and
+    the summary says nothing was reviewed.
   - `policies:` files, by their path from the repository root, that every reviewer gets as conventions, after the
     conventions from `AGENTS.md`, with their path and within a budget of 40,000 characters of their own. A path that
     is absolute, contains `..` or a backslash, or resolves outside the checkout through a symlink is left out.
-  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults.
+  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A name that matches no
+    reviewer on the roster, engine or project, is a warning in the check run.
 - `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
   the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
 - `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase
   letters, digits and hyphens. Each joins the roster as `project:<name>`, beside the engine's reviewers, never
-  replacing one; selection may add it, and a `paths:` frontmatter adds it to every pull request that changes a
-  matching file. At most 10 are loaded.
+  replacing one; selection may add it, and a `paths:` frontmatter, a list of globs or one comma-separated string,
+  adds it to every pull request that changes a matching file. Frontmatter with any other key or a bad glob is a
+  warning, and the reviewer loads without its paths. At most 10 are loaded.
 
 `config.yml` is a small subset of YAML: top-level keys whose values are lists or, for `tiers:`, a mapping, in block or
 `[a, b]` style, with comments and quoted strings. Quote a glob that starts with `*`, since YAML reads an unquoted one as

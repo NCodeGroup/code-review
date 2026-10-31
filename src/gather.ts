@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
-import { readProjectSettings, settingsFolder, type ProjectCharter } from './settings.ts';
+import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -50,7 +50,7 @@ export interface Gathered {
   // Commit subjects, present only when the author has write access.
   commits: string[];
   // From the repository's .github/code-review/ on the default branch, never the pull request's copy:
-  // path globs config.yml marks sensitive, for deeper review (#42);
+  // path globs config.yml marks sensitive, for deeper review (issue #42);
   sensitive: string[];
   // changed files config.yml's skip: leaves out of the review, listed in the check run;
   skippedByConfig: string[];
@@ -197,15 +197,16 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`);
 }
 
+// The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
+// YAML the settings parser would refuse. The split and the glob lists are shared with the project reviewers' paths:.
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
   const fields = new Map<string, string>();
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
-  if (!match) return { fields, body: text };
-  for (const line of match[1]!.split(/\r?\n/)) {
+  const { frontmatter: yaml, body } = splitFrontmatter(text);
+  for (const line of yaml?.split(/\r?\n/) ?? []) {
     const field = /^([A-Za-z]+):\s*(.*)$/.exec(line);
     if (field) fields.set(field[1]!, field[2]!.trim().replace(/^["']|["']$/g, ''));
   }
-  return { fields, body: text.slice(match[0].length) };
+  return { fields, body };
 }
 
 // Drops rules marked ✅ (tool-enforced: the build already fails on them) with their continuation lines. Rules marked
@@ -261,7 +262,7 @@ function readRuleFolder(folder: string, suffix: string, changed: string[], label
 // A rule file when its applyTo (or, without one, defaultGlobs) matches a changed file.
 function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = []): RuleFile | undefined {
   const { fields, body } = frontmatter(text);
-  const applyTo = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
+  const applyTo = globList(fields.get('applyTo') ?? '');
   const globs = applyTo.length ? applyTo : defaultGlobs;
   const patterns = globs.map(globToRegExp);
   if (!changed.some((file) => patterns.some((p) => p.test(file)))) return undefined;

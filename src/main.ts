@@ -127,6 +127,7 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const outcome = await review({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, gathered, loadCharters(root), log);
+    for (const warning of outcome.warnings) log(`::warning::${warning}`);
     results = {
       repository,
       pullRequest: pullRequest.number,
@@ -154,7 +155,7 @@ async function main(): Promise<void> {
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       skippedByConfig: gathered.skippedByConfig,
-      warnings: gathered.warnings,
+      warnings: [...gathered.warnings, ...outcome.warnings],
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
     };
     const settings = {

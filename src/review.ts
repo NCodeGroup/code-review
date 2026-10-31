@@ -7,7 +7,7 @@ import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { globToRegExp, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
-import type { ProjectCharter } from './settings.ts';
+import { settingsFolder, type ProjectCharter } from './settings.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -45,6 +45,8 @@ export interface Review {
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
+  // What in the repository's settings the review couldn't use, beside gather's warnings, for the check run.
+  warnings: string[];
 }
 
 const findingProperties = {
@@ -156,13 +158,21 @@ export function projectFloor(project: ProjectCharter[], files: ChangedFile[]): s
 }
 
 // What each project reviewer looks at, for selection: the roster's engine names say it, a project's may not.
-function projectRoster(project: ProjectCharter[]): string {
+export function projectRoster(project: ProjectCharter[]): string {
   if (!project.length) return '';
   const describe = (text: string) => {
     const line = text.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#')) ?? '';
     return line.length > 200 ? `${line.slice(0, 199)}…` : line;
   };
   return `\nThis repository's own reviewers:\n${project.map((c) => `- ${projectPrefix}${c.name}: ${describe(c.text)}`).join('\n')}`;
+}
+
+// A warning for the tiers: names that match no reviewer on the roster, such as a misspelled one, which would
+// otherwise change no model without a word.
+export function unknownTiers(tiers: Record<string, ModelTier>, roster: string[]): string | undefined {
+  const unknown = Object.keys(tiers).filter((name) => !roster.includes(name));
+  if (!unknown.length) return undefined;
+  return `"tiers" in ${settingsFolder}/config.yml names no reviewer: ${unknown.join(', ')}; the reviewers are ${roster.join(', ')}.`;
 }
 
 const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf|iam|role|policy|kms|trust|firewall)/i;
@@ -204,10 +214,10 @@ function pullRequestBlock(gathered: Gathered): string {
   return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
-function fileList(gathered: Gathered): string {
+export function fileList(gathered: Gathered): string {
   return [
     ...gathered.files.map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`),
-    ...(gathered.skippedByConfig ?? []).map((f) => `${f} [not reviewed: skipped by the repository's config]`),
+    ...gathered.skippedByConfig.map((f) => `${f} [not reviewed: skipped by the repository's config]`),
   ].join('\n');
 }
 
@@ -310,9 +320,25 @@ export function changedLines(diff: string): Map<string, Set<number>> {
 
 export async function review(run: AgentRun, gathered: Gathered, engineCharters: Charters, log: (line: string) => void): Promise<Review> {
   const calls: CallRecord[] = [];
-  const project = gathered.projectReviewers ?? [];
+  const project = gathered.projectReviewers;
   const charters = withProjectCharters(engineCharters, project);
   const roster = [...charters.reviewers.keys()];
+  const unknown = unknownTiers(gathered.tiers, roster);
+  const warnings = unknown ? [unknown] : [];
+
+  // A pull request whose every changed file the repository's skip: leaves out has nothing to review: no model runs.
+  if (!gathered.files.length && gathered.skippedByConfig.length) {
+    log('Every changed file is skipped by config; nothing to review');
+    return {
+      reviewers: [],
+      summary: `Nothing was reviewed: every changed file is skipped by \`skip:\` in \`${settingsFolder}/config.yml\`.`,
+      verdict: 'comment',
+      findings: [],
+      calls,
+      skipped: roster,
+      warnings,
+    };
+  }
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
@@ -352,7 +378,7 @@ export async function review(run: AgentRun, gathered: Gathered, engineCharters: 
   // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
   // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
   // rest read the cache instead of each writing it again.
-  const tiers = reviewerTiers(undefined, gathered.tiers ?? {});
+  const tiers = reviewerTiers(undefined, gathered.tiers);
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
@@ -447,5 +473,5 @@ export async function review(run: AgentRun, gathered: Gathered, engineCharters: 
 
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, calls, skipped, warnings };
 }
