@@ -25,7 +25,7 @@ export interface PostedThread {
   line: number;
   severity: Severity;
   fingerprint: string;
-  // Empty for a comment posted before the marker named its reviewers.
+  // Empty when the marker has no reviewer field.
   reviewers: string[];
 }
 

@@ -78,7 +78,7 @@ const findingProperties = {
 };
 const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
-const specialistSchema = {
+export const specialistSchema = {
   type: 'object',
   properties: {
     findings: {
@@ -90,7 +90,7 @@ const specialistSchema = {
   additionalProperties: false,
 };
 
-const synthesisSchema = {
+export const synthesisSchema = {
   type: 'object',
   properties: {
     summary: { type: 'string' },
