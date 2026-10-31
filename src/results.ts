@@ -40,6 +40,9 @@ export interface Results {
   notShown: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
+  // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
+  // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
+  recordedHead?: string;
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -138,6 +141,12 @@ export function reviewRecords(body: string): ReviewRecord[] {
   return records;
 }
 
+// The head a summary records as reviewed. A run whose reviewers all failed reviewed nothing, so it records the last head
+// that was reviewed, or none (''), and the next re-review still covers what this run missed.
+export function recordedHead(reviewers: Pick<ReviewerResult, 'status'>[], headSha: string, lastHead: string | undefined): string {
+  return reviewers.length && reviewers.every((r) => r.status === 'failed') ? (lastHead ?? '') : headSha;
+}
+
 export const supersededMarker = '<!-- ncode-review:superseded -->';
 
 // The bot's summary comments in the order GitHub lists them, oldest first; the last one is the newest review's.
@@ -171,9 +180,10 @@ export function keptMarkerLines(body: string): string[] {
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;
+  const recorded = results.recordedHead ?? results.headSha;
   const lines = [
     summaryMarker,
-    headMarker(results.headSha),
+    ...(recorded ? [headMarker(recorded)] : []),
     reviewMarker(results),
     '### 🤖 Review complete',
     '',
