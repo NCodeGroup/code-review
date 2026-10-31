@@ -5,7 +5,7 @@
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { parseCharter } from './charter.ts';
-import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, type ModelTier } from './config.ts';
+import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecurityTier, tierRank, type ModelTier } from './config.ts';
 
 export const settingsFolder = '.github/code-review';
 const configPath = `${settingsFolder}/config.yml`;
@@ -178,7 +178,9 @@ const maxPathChars = 256;
 const reviewerName = /^[A-Za-z0-9][A-Za-z0-9:_-]*$/;
 
 // The schema: every key optional; the three path lists are lists of strings; tiers maps a reviewer to a model tier.
-export function validateConfig(value: Record<string, YamlValue>): { config: RepoConfig; errors: string[] } {
+// Any error drops the whole file for the defaults. A security tier below minimumSecurityTier isn't an error, which would
+// drop every other setting too: it is raised to the minimum, with a warning.
+export function validateConfig(value: Record<string, YamlValue>): { config: RepoConfig; errors: string[]; warnings: string[] } {
   const config = defaultConfig();
   const errors: string[] = [];
   for (const [key, raw] of Object.entries(value)) {
@@ -208,7 +210,14 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
       errors.push(`unknown setting "${key}"`);
     }
   }
-  return errors.length ? { config: defaultConfig(), errors } : { config, errors };
+  if (errors.length) return { config: defaultConfig(), errors, warnings: [] };
+  const warnings: string[] = [];
+  const security = config.tiers['security'];
+  if (security && tierRank[security] < tierRank[minimumSecurityTier]) {
+    warnings.push(`"tiers.security" in ${configPath} is ${security}, below the security reviewer's minimum; it runs on ${minimumSecurityTier}.`);
+    config.tiers['security'] = minimumSecurityTier;
+  }
+  return { config, errors, warnings };
 }
 
 // Why a path from the settings can't name a file in the repository, or undefined when it can. Absolute paths, ".."
@@ -311,8 +320,9 @@ function readConfig(basePath: string, warnings: string[]): RepoConfig {
     warnings.push(`${configPath} is not valid: ${oneLine((error as Error).message)}; using the defaults.`);
     return defaultConfig();
   }
-  const { config, errors } = validateConfig(value);
+  const { config, errors, warnings: notes } = validateConfig(value);
   if (errors.length) warnings.push(`${configPath} is not valid: ${errors.slice(0, 5).map(oneLine).join('; ')}${errors.length > 5 ? `; and ${errors.length - 5} more` : ''}; using the defaults.`);
+  else warnings.push(...notes);
   return config;
 }
 

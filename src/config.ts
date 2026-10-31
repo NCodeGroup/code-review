@@ -26,6 +26,10 @@ export const defaultReviewerTiers: Record<string, ModelTier> = {
   completeness: 'sonnet',
 };
 
+export const tierRank: Record<ModelTier, number> = { haiku: 0, sonnet: 1, opus: 2 };
+// The repository's tiers: setting can raise the security reviewer, but not put it below this.
+export const minimumSecurityTier: ModelTier = 'sonnet';
+
 // A deep review's reviewers, for the parts of the diff with a file config.yml's sensitive: names. In the evals Opus
 // caught four times what the all-Haiku baseline did, at about twice Sonnet's cost, so it's kept to sensitive code.
 export const deepReviewerTiers: Record<string, ModelTier> = { correctness: 'opus', security: 'opus' };

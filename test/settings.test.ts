@@ -359,6 +359,18 @@ test('tiers: overrides the engine defaults, and CODE_REVIEW_TIERS overrides both
   assert.equal(reviewerTiers('correctness=opus', { correctness: 'haiku' })['correctness'], 'opus');
 });
 
+test("tiers: can't put the security reviewer below Sonnet", () => {
+  const warning = '"tiers.security" in .github/code-review/config.yml is haiku, below the security reviewer\'s minimum; it runs on sonnet.';
+  const lowered = validateConfig(parseYaml('tiers:\n  security: haiku\n  tests: haiku\n'));
+  assert.deepEqual([lowered.errors, lowered.config.tiers, lowered.warnings], [[], { security: 'sonnet', tests: 'haiku' }, [warning]]);
+  const raised = validateConfig(parseYaml('tiers:\n  security: opus\n'));
+  assert.deepEqual([raised.config.tiers, raised.warnings], [{ security: 'opus' }, []]);
+  const base = temp('settings-tier-');
+  write(base, '.github/code-review/config.yml', 'tiers:\n  security: haiku\n');
+  const settings = readProjectSettings(base);
+  assert.deepEqual([settings.config.tiers, settings.warnings], [{ security: 'sonnet' }, [warning]]);
+});
+
 test('guidance.md applies to every file unless applyTo: narrows it', () => {
   const text = '- 👁 **One.** a';
   assert.deepEqual(projectGuidanceRules(text, ['README.md']).map((r) => r.globs), [['**']]);
