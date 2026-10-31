@@ -43,10 +43,23 @@ export const budgets = {
   synthesis: 0.75,
   // One Sonnet call that answers `/review explain` about one finding.
   explain: 0.5,
+  // Per verification call, on Sonnet.
+  verification: 0.5,
   run: 4,
 };
 
-export const maxTurns = { specialist: 30, explain: 20 };
+export const maxTurns = { specialist: 30, explain: 20, verification: 20 };
+
+// Verification: after synthesis, Sonnet calls with the checkout try to prove or refute each blocker and should-fix, a
+// file's findings at a time, up to findingsPerVerification per call. It stays off until an eval shows it gains more than
+// it costs; CODE_REVIEW_VERIFICATION=on turns it on.
+export const findingsPerVerification = 8;
+// Verification calls in flight at once, after the first call has cached the block they share.
+export const verificationConcurrency = 6;
+
+export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? ''): boolean {
+  return value === 'on';
+}
 
 // Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
 // check each one against every part of the diff, so a rule a reviewer skims past still gets checked.
