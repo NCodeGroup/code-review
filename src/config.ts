@@ -105,3 +105,5 @@ export const maxFindingsCap = 100;
 export const minConfidence = 0.3;
 // Findings on the template's files listed in the summary for its repository, one per file and line.
 export const maxUpstreamFindings = 20;
+// The most lines a suggestion may replace, or write: a longer fix is described in prose only.
+export const maxSuggestionLines = 5;
