@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeErrorLog } from './log.ts';
 
 // How long a fetch may take before the run reports it instead of waiting for the job's own limit.
 export const fetchTimeoutMs = 180_000;
@@ -158,7 +159,7 @@ export function fetchPullRequestHead(options: FetchHead): void {
         (options.remove ?? removeFolder)(options.path);
       } catch (cleanupError) {
         // The fetch's error below stays the one thrown; this says why the next attempt will find the folder.
-        console.error(`Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        writeErrorLog(`Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
       }
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`Couldn't fetch commit ${options.sha.slice(0, 7)} of pull request #${options.number}; if it was pushed over since, comment /review to review the latest one. (${detail})`);

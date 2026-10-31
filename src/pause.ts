@@ -6,6 +6,7 @@
 import type { RunStatus } from './checks.ts';
 import { writerAssociations } from './command.ts';
 import { readComments, type ListedComment } from './comments.ts';
+import { writeLog } from './log.ts';
 import { botLogin, summaryMarker, supersededMarker } from './results.ts';
 
 export const maxUnansweredReviews = 3;
@@ -94,7 +95,7 @@ export interface Paused {
 }
 
 // Posts the paused notice with the app's token.
-export async function postPausedNotice(api: (method: string, url: string, body?: unknown) => Promise<any>, paused: Paused, log: (line: string) => void = console.log): Promise<void> {
+export async function postPausedNotice(api: (method: string, url: string, body?: unknown) => Promise<any>, paused: Paused, log: (line: string) => void = writeLog): Promise<void> {
   const comment = (await api('POST', `/repos/${paused.repository}/issues/${paused.pullRequest}/comments`, { body: pausedNotice() })) as { html_url?: string };
   log(`Posted the paused notice ${comment?.html_url ?? ''}`.trimEnd());
 }

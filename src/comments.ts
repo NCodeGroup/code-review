@@ -1,6 +1,7 @@
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
+import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin, keptMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, reviewComment, type PostedThread } from './threads.ts';
@@ -59,7 +60,7 @@ export async function postThreads(
   api: (method: string, url: string, body?: unknown) => Promise<any>,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked'>,
   secrets: Iterable<string>,
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
   dismissed: PostedThread[] = [],
 ): Promise<void> {
   const posted = await readPostedThreads(api, results.repository, results.pullRequest);
@@ -101,7 +102,7 @@ export async function postSummary(
   api: (method: string, url: string, body?: unknown) => Promise<any>,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   body: string,
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<string> {
   const comments = issueComments(results.repository, results.pullRequest);
   let listError = `more than ${commentPageSize * maxCommentPages} comments`;
