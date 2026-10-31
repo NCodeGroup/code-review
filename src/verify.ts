@@ -1,10 +1,11 @@
-// Verification, after synthesis: Sonnet calls with the checkout try to prove or refute each blocker and should-fix with a
-// concrete code path. A finding is dropped only when a call refutes it with a reason, and the drop is recorded; one it can
-// neither prove nor refute stays, as a question one severity lower. Nits aren't verified.
+// Verification, after synthesis: Sonnet calls with the checkout, Opus ones for a deep review's sensitive files, try to
+// prove or refute each blocker and should-fix with a concrete code path. A finding is dropped only when a call refutes it
+// with a reason, and the drop is recorded; one it can neither prove nor refute stays, as a question one severity lower.
+// Nits aren't verified.
 
 import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency } from './config.ts';
+import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency, type ModelTier } from './config.ts';
 import { splitDiff } from './gather.ts';
 import { severityRank, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
 
@@ -60,6 +61,8 @@ export interface VerificationInput {
   charters: Map<string, string>;
   log: (line: string) => void;
   enabled: boolean;
+  // A deep review's sensitive files: their findings are verified on Opus instead of Sonnet.
+  deep?: (file: string) => boolean;
   agent?: VerificationAgent;
 }
 
@@ -172,11 +175,11 @@ function chartersBlock(names: string[], charters: Map<string, string>): string {
 }
 
 // The record of a call whose agent threw instead of returning an error: it cost nothing that was measured.
-function thrownRecord(run: AgentRun, started: number): CallRecord {
+function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallRecord {
   return {
     role: 'verification',
     provider: run.provider,
-    model: modelIds[run.provider].sonnet,
+    model: modelIds[run.provider][tier],
     costUsd: 0,
     inputTokens: 0,
     outputTokens: 0,
@@ -201,20 +204,22 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const verifyOne = async (batch: ReviewedFinding[]): Promise<{ record: CallRecord; call: VerificationCall }> => {
     const ids = new Set(batch.map((f) => f.id));
     const started = Date.now();
+    const deep = input.deep?.(batch[0]!.file) ?? false;
+    const tier: ModelTier = deep ? 'opus' : 'sonnet';
     let result: AgentResult<{ verifications: Verification[] }>;
     try {
       result = await agent(input.run, {
         role: 'verification',
-        tier: 'sonnet',
+        tier,
         systemPrompt: input.systemPrompt,
         prompt: [shared, `Findings to verify, all in ${batch[0]!.file}:\n<findings>\n${batch.map((f) => findingBlock(f, sections)).join('\n\n')}\n</findings>`],
         schema: verificationSchema,
         maxTurns: maxTurns.verification,
-        budgetUsd: budgets.verification,
+        budgetUsd: deep ? budgets.deepVerification : budgets.verification,
       });
     } catch (e) {
       // A call that throws fails like one that returns an error: its findings stay as they were.
-      result = { output: undefined, record: thrownRecord(input.run, started), error: e instanceof Error ? e.message : String(e) };
+      result = { output: undefined, record: thrownRecord(input.run, tier, started), error: e instanceof Error ? e.message : String(e) };
     }
     const verifications = (result.output?.verifications ?? []).filter((v) => ids.has(v.id));
     return {

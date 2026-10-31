@@ -143,8 +143,8 @@ test('the check run marks a reviewer the cost ceiling skipped as skipped: run bu
     calls: result.calls,
     reviewers: result.reviewers.map((r) => ({ name: r.name, status: r.status, model: '', findingCount: r.findings.length, ...(r.error ? { error: r.error } : {}) })),
   } as unknown as Results);
-  assert.match(text, /\| security \| skipped: run budget \| 0 \| \$0\.000 \|/);
-  assert.match(text, /\| hygiene \| ran \| 1 \| \$7\.000 \|/);
+  assert.match(text, /\| security \| — \| skipped: run budget \| 0 \| \$0\.000 \|/);
+  assert.match(text, /\| hygiene \| — \| ran \| 1 \| \$7\.000 \|/);
 });
 
 test('review warns in its summary when the cost ceiling skipped calls, and does not approve', async () => {
