@@ -87,6 +87,9 @@ export interface Review {
   upstreamOmitted: number;
   // Findings left out because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
+  // Findings an open issue already tracks: not verified, posted as threads or counted in the verdict. A re-review has
+  // none.
+  tracked?: ReviewedFinding[];
   // Findings verification refuted and dropped, with its reasons, and every verification call.
   refuted: RefutedFinding[];
   verification: VerificationCall[];
@@ -576,13 +579,13 @@ function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
   return findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
 }
 
-// Synthesis gave its verdict with the dropped findings in view, so a verdict they carried gives way to the one the kept
-// findings call for. Its request-changes on should-fixes that together make the change unsafe stands while one is kept
-// and no blocker was dropped. Without synthesis's verdict there is none to settle: review() derives one from the
-// findings it posts, after verification.
-function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], dropped: DroppedFinding[]): Verdict | undefined {
-  if (!verdict || !dropped.length) return verdict;
-  if (verdict === 'request-changes' && findings.length && !dropped.some((d) => d.finding.severity === 'blocker')) return verdict;
+// Synthesis gave its verdict with every finding in view, so when some are removed after it, a verdict they carried gives
+// way to the one the kept findings call for. Its request-changes on should-fixes that together make the change unsafe
+// stands while one is kept and no blocker was removed. Without synthesis's verdict there is none to settle: review()
+// derives one from the findings it posts, after verification.
+function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], removed: Pick<Finding, 'severity'>[]): Verdict | undefined {
+  if (!verdict || !removed.length) return verdict;
+  if (verdict === 'request-changes' && findings.length && !removed.some((f) => f.severity === 'blocker')) return verdict;
   const fromFindings = verdictFor(findings);
   return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
 }
@@ -602,7 +605,7 @@ export function settleFindings(
   const findings = kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
   return {
     summary: synthesis.output?.summary ?? `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`,
-    verdict: settleVerdict(synthesis.output?.verdict, findings, dropped),
+    verdict: settleVerdict(synthesis.output?.verdict, findings, dropped.map((d) => d.finding)),
     findings,
     dropped,
   };
@@ -615,6 +618,22 @@ export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: 
   const called = verdictFor(findings);
   if (!synthesized) return called;
   return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
+}
+
+// Findings an open issue already tracks leave the review's findings, its verdict and its totals: they are listed apart,
+// numbered T1, T2 and so on, and the rest are renumbered. A verdict they carried gives way as settleVerdict says.
+export function settleTracked(
+  findings: ReviewedFinding[],
+  verdict: Verdict | undefined,
+): { findings: ReviewedFinding[]; tracked: ReviewedFinding[]; verdict: Verdict | undefined } {
+  const tracked = findings.filter((f) => f.tracked);
+  if (!tracked.length) return { findings, tracked: [], verdict };
+  const own = findings.filter((f) => !f.tracked).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  return {
+    findings: own,
+    tracked: tracked.map((f, i) => ({ ...f, id: `T${i + 1}` })),
+    verdict: settleVerdict(verdict, own, tracked),
+  };
 }
 
 type Selection = { add: { reviewer: string; reason: string }[] };
@@ -663,6 +682,7 @@ export async function review(
       upstreamOmitted: 0,
       refuted: [],
       dropped: [],
+      tracked: [],
       verification: [],
       calls,
       skipped: roster.filter((name) => !shadow.has(name)),
@@ -885,6 +905,9 @@ export async function review(
   const settled = settleUpstream(findings, guardedUpstream.kept, gathered.template, summary);
   if (verdict) verdict = settledVerdict(verdict, settled.findings.length < findings.length, settled.findings);
   ({ summary, findings } = settled);
+  // Findings an open issue already tracks leave the findings and the verdict, so they aren't verified either.
+  const apart = settleTracked(findings, verdict);
+  ({ findings, verdict } = apart);
 
   // Verification of the merged blockers and should-fixes, with the checkout, on Opus for a deep review's sensitive files.
   // Off unless CODE_REVIEW_VERIFICATION=on, and never on a light review. Only the live reviewers' findings reach it: a
@@ -925,6 +948,7 @@ export async function review(
     upstream: settled.upstream,
     upstreamOmitted: settled.upstreamOmitted,
     dropped,
+    tracked: apart.tracked,
     refuted: verified.refuted,
     verification: verified.trace,
     calls,
