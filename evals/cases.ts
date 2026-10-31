@@ -16,6 +16,8 @@ export interface EvalCase {
   // A re-review case: the head the last review read, and the findings earlier reviews posted, with their replies.
   reviewed?: string;
   earlier?: EarlierFinding[];
+  // config.yml's sensitive: globs for the case, in place of the base branch's, for a repository that sets none.
+  sensitive?: string[];
   // A commit of the base branch merged into the head before the review, as /ship-plan merges the default branch in.
   mergeIntoHead?: string;
   // The pull request's author and their association, when they differ from the default, polewskm as a MEMBER. The
