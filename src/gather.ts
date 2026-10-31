@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
+import { bulletGlobs } from './guidance.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -88,7 +89,7 @@ const gitOptions = () => ({
   env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_EXTERNAL_DIFF: '', GIT_PAGER: 'cat' },
 });
 
-function git(repository: string, args: string[]): string {
+export function git(repository: string, args: string[]): string {
   return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], { ...gitOptions(), encoding: 'utf8' });
 }
 
@@ -412,6 +413,11 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`);
 }
 
+export function matchesAnyFile(globs: string[], files: string[]): boolean {
+  const patterns = globs.map(globToRegExp);
+  return files.some((file) => patterns.some((p) => p.test(file)));
+}
+
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
   const fields = new Map<string, string>();
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
@@ -421,6 +427,23 @@ function frontmatter(text: string): { fields: Map<string, string>; body: string 
     if (field) fields.set(field[1]!, field[2]!.trim().replace(/^["']|["']$/g, ''));
   }
   return { fields, body: text.slice(match[0].length) };
+}
+
+// The globs an instruction file's frontmatter applyTo lists.
+export function applyToGlobs(text: string): string[] {
+  return (frontmatter(text).fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
+}
+
+// Drops the bullets tagged for files this pull request doesn't change. Untagged bullets and other lines stay.
+export function keepBulletsFor(text: string, changed: string[]): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      if (!line.startsWith('- **')) return true;
+      const globs = bulletGlobs(line);
+      return !globs.length || matchesAnyFile(globs, changed);
+    })
+    .join('\n');
 }
 
 // Drops rules marked ✅ (tool-enforced: the build already fails on them) with their continuation lines. Rules marked
@@ -457,20 +480,23 @@ export function readReviewRules(basePath: string, changed: string[]): RuleFile[]
   return readRuleFolder(path.join(basePath, '.github', 'instructions'), '.instructions.md', changed, '.github/instructions');
 }
 
-// NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes.
+// NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes:
+// a topic file whose applyTo matches a changed file, without the bullets tagged for files the pull request doesn't
+// change, so a rule learned from C# conventions never reaches a review of TypeScript.
 export function readGuidance(guidanceDir: string, changed: string[]): RuleFile[] {
-  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance');
+  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance', (body) => keepBulletsFor(body, changed))
+    .filter((file) => file.text.split('\n').some((line) => line.startsWith('- **')));
 }
 
-function readRuleFolder(folder: string, suffix: string, changed: string[], label: string): RuleFile[] {
+function readRuleFolder(folder: string, suffix: string, changed: string[], label: string, filter = (body: string) => body): RuleFile[] {
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
   for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
-    const { fields, body } = frontmatter(readFileSync(path.join(folder, name), 'utf8'));
-    const globs = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
-    const patterns = globs.map(globToRegExp);
-    if (!changed.some((file) => patterns.some((p) => p.test(file)))) continue;
-    files.push({ name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` });
+    const text = readFileSync(path.join(folder, name), 'utf8');
+    const { body } = frontmatter(text);
+    const globs = applyToGlobs(text);
+    if (!matchesAnyFile(globs, changed)) continue;
+    files.push({ name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}` });
   }
   const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
   return files.sort((a, b) => general(a) - general(b));

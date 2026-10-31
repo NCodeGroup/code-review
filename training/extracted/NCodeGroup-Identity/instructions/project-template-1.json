@@ -2,6 +2,9 @@
   "hash": "79629ad9cfbe64d6",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity project-template.instructions.md",
+  "applyTo": [
+    "**"
+  ],
   "rules": [
     {
       "statement": "Never commit `PLAN.md`. It is a local, gitignored handoff file between the planner and the executor.",
