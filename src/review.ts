@@ -289,6 +289,15 @@ export function unknownTiers(tiers: Record<string, ModelTier>, roster: string[])
   return `"tiers" in ${settingsFolder}/config.yml names no reviewer: ${unknown.join(', ')}; the reviewers are ${roster.join(', ')}.`;
 }
 
+// A warning for CODE_REVIEW_SHADOW names that match no reviewer on the roster, nor rule-check, such as a misspelled one,
+// which would otherwise put nothing in shadow without a word.
+export function unknownShadow(names: Iterable<string>, roster: string[]): string | undefined {
+  const known = [...roster, ruleCheckName];
+  const unknown = [...names].filter((name) => !known.includes(name));
+  if (!unknown.length) return undefined;
+  return `CODE_REVIEW_SHADOW names no reviewer: ${unknown.join(', ')}; the reviewers are ${known.join(', ')}.`;
+}
+
 // The reviewers whose findings go only to the trace and the check run's shadow section: the charters marked shadow,
 // and the names CODE_REVIEW_SHADOW adds.
 export function shadowReviewers(charters: Charters, override = shadowOverride()): Set<string> {
@@ -649,7 +658,7 @@ export async function review(
   const charters = withProjectCharters(engineCharters, project);
   const roster = [...charters.reviewers.keys()];
   const unknown = unknownTiers(gathered.tiers, roster);
-  const warnings = unknown ? [unknown] : [];
+  const warnings = [unknown, unknownShadow(shadowOverride(), roster)].filter((w): w is string => w !== undefined);
   const sensitive = sensitiveFiles(gathered.files, gathered.sensitive);
   const depth = reviewDepth(gathered.files, gathered.sensitive);
   const light = depth === 'light';

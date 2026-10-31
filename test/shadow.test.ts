@@ -9,7 +9,7 @@ import { shadowOverride, shadowPromptRate } from '../src/config.ts';
 import type { Gathered } from '../src/gather.ts';
 import { annotations, checkText, checkTitle, maxCheckText, summaryComment } from '../src/results.ts';
 import { buildResults } from '../src/review-results.ts';
-import { loadCharters, review, shadowSampled, type Charters, type Finding, type PromptName } from '../src/review.ts';
+import { loadCharters, review, shadowSampled, unknownShadow, type Charters, type Finding, type PromptName } from '../src/review.ts';
 import { placeFindings } from '../src/threads.ts';
 
 // An agent that makes no model call: it records each request and answers from the test's table.
@@ -241,6 +241,14 @@ test('CODE_REVIEW_SHADOW puts the reviewers it names in shadow', async () => {
   assert.equal(outcome.verdict, 'comment');
   assert.deepEqual(outcome.shadow.map((o) => o.name), ['performance']);
   assert.match(checkText(buildResults(outcome, context)), /Shadow findings \(not posted\)[\s\S]*Shadow blocker/);
+});
+
+test('CODE_REVIEW_SHADOW names that match no reviewer are a warning', async () => {
+  assert.equal(unknownShadow(new Set(['performance', 'rule-check']), ['correctness', 'performance']), undefined);
+  assert.equal(unknownShadow(new Set(['perfromance', 'tests']), ['correctness', 'performance']), 'CODE_REVIEW_SHADOW names no reviewer: perfromance, tests; the reviewers are correctness, performance, rule-check.');
+  const { agent } = stubAgent(reviewAnswers);
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW: 'perfromance' }, () => review(run, gathered(), charters('# performance\n'), () => {}, agent));
+  assert.deepEqual(outcome.warnings, ['CODE_REVIEW_SHADOW names no reviewer: perfromance; the reviewers are correctness, hygiene, tests, performance, rule-check.']);
 });
 
 test('a shadow reviewer selection does not choose is recorded for the trace, not as skipped', async () => {
