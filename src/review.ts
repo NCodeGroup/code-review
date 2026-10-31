@@ -14,7 +14,7 @@ import { depthLabel, type ReviewDepth } from './depth.ts';
 import { closedIssues, globToRegExp, isDocumentation, publicApiPath, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { printable } from './outputs.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
-import { isTemplateOwned, type Template } from './template.ts';
+import { isTemplateOwned, templateVersionFiles, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
@@ -290,6 +290,15 @@ export function unknownTiers(tiers: Record<string, ModelTier>, roster: string[])
   return `"tiers" in ${settingsFolder}/config.yml names no reviewer: ${unknown.join(', ')}; the reviewers are ${roster.join(', ')}.`;
 }
 
+// A warning for CODE_REVIEW_SHADOW names that match no reviewer on the roster, nor rule-check, such as a misspelled one,
+// which would otherwise put nothing in shadow without a word.
+export function unknownShadow(names: Iterable<string>, roster: string[]): string | undefined {
+  const known = [...roster, ruleCheckName];
+  const unknown = [...names].filter((name) => !known.includes(name));
+  if (!unknown.length) return undefined;
+  return `CODE_REVIEW_SHADOW names no reviewer: ${unknown.join(', ')}; the reviewers are ${known.join(', ')}.`;
+}
+
 // The reviewers whose findings go only to the trace and the check run's shadow section: the charters marked shadow,
 // and the names CODE_REVIEW_SHADOW adds.
 export function shadowReviewers(charters: Charters, override = shadowOverride()): Set<string> {
@@ -333,13 +342,10 @@ export function deepReviewLine(sensitive: string[]): string {
   return `Deep review: sensitive files ${sensitive.map(printable).join(', ')}`;
 }
 
-// A template update changes one of these, which hold only the template's version and the answers it was made with.
-const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
-
-// What a light review takes: documentation, by gather's allowlist (isDocumentation), and a template's version files.
-// Any other file is the standard review's, wherever it is.
+// What a light review takes: documentation, by gather's allowlist (isDocumentation), and the template's version files,
+// from src/template.ts. Any other file is the standard review's, wherever it is.
 function isLightReviewFile(file: string): boolean {
-  return templateVersion.test(file) || isDocumentation(file);
+  return templateVersionFiles.includes(file) || isDocumentation(file);
 }
 
 // A pull request that changes only documentation: every changed file is one isLightReviewFile allows, the changelog
@@ -658,7 +664,7 @@ export async function review(
   const charters = withProjectCharters(engineCharters, project);
   const roster = [...charters.reviewers.keys()];
   const unknown = unknownTiers(gathered.tiers, roster);
-  const warnings = unknown ? [unknown] : [];
+  const warnings = [unknown, unknownShadow(shadowOverride(), roster)].filter((w): w is string => w !== undefined);
   const sensitive = sensitiveFiles(gathered.files, gathered.sensitive);
   const depth = reviewDepth(gathered.files, gathered.sensitive);
   const light = depth === 'light';

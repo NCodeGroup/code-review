@@ -35,7 +35,8 @@ export interface ChangedFile {
   deletions: number;
   generated: boolean;
   shown: boolean;
-  // A .cs file in a project the default branch packs: PublicAPI.Shipped.txt beside its .csproj, or IsPackable true in it.
+  // A .cs file in a project the default branch packs: PublicAPI.Shipped.txt beside its .csproj, or IsPackable true in
+  // it or in a Directory.Build.props or .targets above it.
   packable?: boolean;
   // A .cs file whose diff declares, removes or changes a public or protected member, judged from the file at the head.
   publicMember?: boolean;
@@ -87,7 +88,7 @@ const generatedPatterns = [
   /ModelSnapshot\.cs$/,
   /\.g\.(cs|ts|js)$/,
   /\.min\.(js|css)$/,
-  /\.(snap|svg|png|jpg|jpeg|gif|ico|pdf|zip|dll|exe|nupkg)$/i,
+  /\.(snap|png|jpg|jpeg|gif|ico|pdf|zip|dll|exe|nupkg)$/i,
   /(^|\/)(dist|node_modules|bin|obj)\//,
 ];
 
@@ -97,18 +98,21 @@ export function isGenerated(file: string): boolean {
 
 export const publicApiPath = /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/;
 
-// Documentation, as an allowlist: a Markdown, reStructuredText or text file anywhere, and an image or a PDF in a doc/ or
-// docs/ folder. Any other file, one with no extension included, isn't, wherever it is: a script, a config file or a git
-// hook in docs/ or in a template's folders is code. A text file that is a build or dependency list, such as
-// CMakeLists.txt or a pip requirements file, isn't documentation, and neither is a public API listing: it is the API.
-// The light review and the review order both use this one definition.
-const documentationFile = /\.(md|rst|txt)$/i;
-const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|svg|webp|pdf)$/i;
+// Documentation, as an allowlist: a Markdown or reStructuredText file anywhere; a text file only at the repository root
+// or in a doc/ or docs/ folder, since elsewhere one is as often a fixture, a data input or a license list; and an image
+// other than an SVG, or a PDF, in a doc/ or docs/ folder. An SVG can carry script, so it is code wherever it is. Any
+// other file, one with no extension included, isn't documentation, wherever it is: a script, a config file or a git hook
+// in docs/ or in a template's folders is code. A text file that is a build or dependency list, such as CMakeLists.txt or
+// a pip requirements file, isn't documentation, and neither is a public API listing: it is the API. The light review
+// and the review order both use this one definition.
+const documentationFile = /\.(md|rst)$/i;
+const documentationText = /^[^/]+\.txt$|(^|\/)docs?\/.+\.txt$/i;
+const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|webp|pdf)$/i;
 const listingFile = /(^|\/)(CMakeLists\.txt|(requirements|constraints)[^/]*\.txt)$/i;
 
 export function isDocumentation(file: string): boolean {
   if (publicApiPath.test(file) || listingFile.test(file)) return false;
-  return documentationFile.test(file) || documentationAsset.test(file);
+  return documentationFile.test(file) || documentationText.test(file) || documentationAsset.test(file);
 }
 
 const testPattern = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec|tests)\.[a-z]+$|Tests?\.cs$/i;
@@ -206,8 +210,46 @@ export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, c
   return chunks.map((chunk) => chunk.join(''));
 }
 
-// Whether the .csproj nearest above a file packs it, read from the default branch's checkout only, so a pull request
-// can't make its own project count as packed.
+const isPackableElement = /<IsPackable(?:\s[^>]*)?>\s*(true|false)\s*<\/IsPackable>/gi;
+
+// What one MSBuild file sets IsPackable to: true when any IsPackable element in it says true, a conditional one
+// included, so the floor fails closed; false when each says false; undefined when it has none or doesn't exist; and
+// 'unreadable' when it exists but can't be read.
+function packableIn(file: string): boolean | undefined | 'unreadable' {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? undefined : 'unreadable';
+  }
+  const values = [...text.matchAll(isPackableElement)].map((m) => m[1]!.toLowerCase() === 'true');
+  return values.length ? values.includes(true) : undefined;
+}
+
+// Whether a project packs, as MSBuild reads IsPackable: each Directory.Build.props from the repository root down to the
+// project's folder, then the .csproj, then each Directory.Build.targets from the root down; the last file that sets it
+// wins. Reading every props file, outer first, stands in for the usual pattern of each one importing its parent's. A
+// file that exists but can't be read makes the project packed, so the floor fails closed.
+function projectPacks(basePath: string, folder: string, project: string): boolean {
+  const parts = folder ? folder.split('/') : [];
+  const folders = ['', ...parts.map((_, i) => parts.slice(0, i + 1).join('/'))];
+  const files = [
+    ...folders.map((f) => path.join(basePath, f, 'Directory.Build.props')),
+    path.join(basePath, folder, project),
+    ...folders.map((f) => path.join(basePath, f, 'Directory.Build.targets')),
+  ];
+  let packs = false;
+  for (const file of files) {
+    const value = packableIn(file);
+    if (value === 'unreadable') return true;
+    if (value !== undefined) packs = value;
+  }
+  return packs;
+}
+
+// Whether the .csproj nearest above a file packs it, by PublicAPI.Shipped.txt beside it or IsPackable in it or in the
+// Directory.Build.props and .targets above it, read from the default branch's checkout only, so a pull request can't
+// make its own project count as packed.
 export function isPackableProject(basePath: string, file: string, cache = new Map<string, boolean>()): boolean {
   const parts = file.split('/');
   if (parts.some((p) => p === '' || p === '.' || p === '..')) return false;
@@ -230,14 +272,7 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
     }
     const projects = names.filter((n) => n.endsWith('.csproj'));
     if (!projects.length) continue;
-    return answer(names.includes('PublicAPI.Shipped.txt') || projects.some((p) => {
-      try {
-        return /<IsPackable>\s*true\s*<\/IsPackable>/i.test(readFileSync(path.join(basePath, folder, p), 'utf8'));
-      } catch {
-        // A project that can't be read counts as packed, so the floor fails closed.
-        return true;
-      }
-    }));
+    return answer(names.includes('PublicAPI.Shipped.txt') || projects.some((p) => projectPacks(basePath, folder, p)));
   }
   return answer(false);
 }
@@ -459,6 +494,16 @@ export function matchesAnyFile(globs: string[], files: string[]): boolean {
   return files.some((file) => patterns.some((p) => p.test(file)));
 }
 
+// A skip: glob that matches every one of these paths, such as ** or **/*, leaves nearly nothing to review. It still
+// skips what it matches, since the repository's owners set it on the default branch, but the check run warns about it.
+const broadProbes = ['README.md', 'src/Program.cs', 'src/App/Service.cs', 'lib/index.ts'];
+
+export function broadSkipWarnings(globs: string[]): string[] {
+  return globs
+    .filter((glob) => broadProbes.every((file) => globToRegExp(glob).test(file)))
+    .map((glob) => `"skip" in ${settingsFolder}/config.yml has ${JSON.stringify(glob)}, which matches nearly every file; the review leaves out every changed file it matches.`);
+}
+
 // The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
 // YAML the settings parser would refuse. The split and the glob lists are shared with the project reviewers' paths:.
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
@@ -591,12 +636,18 @@ export function readPullRequest(event: any, repository: string, canWrite: boolea
 }
 
 // The template whose files the review leaves to the template's repository, only for a pull request that adopts or
-// updates the template, which changes the answers file, from an author with write access. Anywhere else a change to
-// one of the template's files is an edit by hand, which the review treats as the project's. The default branch's answers
-// count; an adoption adds the answers file, so the default branch has none, and then the head's count.
+// updates the template, from an author with write access. An adoption adds the answers file, so the default branch has
+// none, and the head's answers count. An update changes _commit, and the default branch's answers count. Any other edit
+// to the answers file, such as one to project_owned_files, leaves the template's files to the project's review, so
+// editing the answers file can't hide findings; anywhere else a change to one of the template's files is an edit by hand.
 export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
   if (!pullRequest.authorCanWrite || !files.some((f) => f.path === answersFile)) return undefined;
-  return existsSync(path.join(basePath, answersFile)) ? readTemplate(basePath) : readTemplate(prPath);
+  const head = readTemplate(prPath);
+  // Deleting the answers file leaves the template, so the pull request's changes are the project's own.
+  if (!head) return undefined;
+  if (!existsSync(path.join(basePath, answersFile))) return head;
+  const base = readTemplate(basePath);
+  return base && base.commit !== head.commit ? base : undefined;
 }
 
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
@@ -650,7 +701,7 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
     policies: settings.policies.map((p) => p.path),
     tiers: settings.config.tiers,
     projectReviewers: settings.reviewers,
-    warnings: settings.warnings,
+    warnings: [...settings.warnings, ...broadSkipWarnings(settings.config.skip)],
     ...(template ? { template } : {}),
   };
 }

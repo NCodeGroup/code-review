@@ -21,6 +21,8 @@ export interface Template {
 }
 
 export const answersFile = '.copier-answers.yml';
+// The files a template update changes that hold only the template's version and the answers it was made with.
+export const templateVersionFiles: readonly string[] = [answersFile, '.template-version'];
 const templateRepositoryName = 'NCodeGroup/project-template';
 
 // The template's workflow commands, each generated as a Claude Code command, a Copilot prompt file and a skill.

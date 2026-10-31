@@ -6,11 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Settings checks: `tiers:` can't put `security` below Sonnet (a lower tier is raised to Sonnet, with a warning), and a `skip:` glob that matches nearly every path, such as `**`, and a `CODE_REVIEW_SHADOW` name that matches no reviewer are warnings in the check run ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
+
 ### Changed
 
 - The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
 - This repository's own workflow pins v0.4.0 and triggers on `closed`, so its pull requests are reviewed by the current engine and record each finding's outcome when they close.
 - When the Anthropic credits are used up and Bedrock is throttling the key or its quota is used up (HTTP 429, `ThrottlingException` or `ServiceQuotaExceededException`), the check run says the review budget is used up, neutral, instead of starting a review Bedrock would refuse partway ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
+- The light review no longer takes an SVG, which can carry script, or a `.txt` file outside the repository root and `doc/` and `docs/` folders, such as a fixture, a data input or a license list: they get the standard review and are no longer ordered last in an oversized diff, and an SVG's diff reaches the reviewers instead of a generated-file stub ([#91](https://github.com/NCodeGroup/code-review/issues/91)).
+- A pull request counts as a template adoption or update, whose findings on the template's files go upstream, only when it adds `.copier-answers.yml` or changes its `_commit`; any other edit to the answers file is reviewed as the project's. The light review reads the template's version files from the same list as the rest of the engine ([#90](https://github.com/NCodeGroup/code-review/issues/90)).
+- The `api-compat` floor also reads `IsPackable` from `Directory.Build.props` and `Directory.Build.targets`, in MSBuild's order: the props from the root down, then the `.csproj`, then the targets, the last that sets it winning ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
 - A re-review also runs `security` when what changed since the last review touches a file `sensitive:` names or code the selection floor gives to `security`, such as a path with `auth`, `token` or `crypt` in it, and a change to a `sensitive:` file makes it a deep review: `correctness` and `security` run on Opus, unless `CODE_REVIEW_TIERS` names them, verification checks the findings in sensitive files on Opus, and the summary and the check run say so. Each of its reviewers checks the earlier findings, and the most cautious status counts; when one of them fails, the re-review posts no findings and the next one covers those changes again ([#86](https://github.com/NCodeGroup/code-review/issues/86)).
 
 ### Fixed
