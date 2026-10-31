@@ -264,8 +264,7 @@ model, for the monthly report. The table shows 100 findings at most, and the mar
 comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
 thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
 its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
-treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
-that bump.
+treat a closed pull request like an opened one and would pay to review it.
 
 ### Monthly report
 
