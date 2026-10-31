@@ -62,12 +62,12 @@ jobs:
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
 its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head out: the
 engine fetches the exact commit itself, after it has decided to review, with git started without configuration, hooks or
-a credential helper (a workflow written for v0.2 that still checks the head out into `pr` keeps working). Pushes start nothing; comment `/review`
+a credential helper (a workflow that checks the head out into `pr` itself is also accepted, if it is at that commit). Pushes start nothing; comment `/review`
 to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
 ## Versions
 
-Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.1.0`. Never a branch, and never a floating
+Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.3.0`. Never a branch, and never a floating
 major tag like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a
 release someone reviewed in a pull request in its own repository. The "Protect release tags" ruleset forbids moving or
 deleting any `v*` tag, so an exact tag is as fixed as a commit. Dependabot's `github-actions` ecosystem opens a pull

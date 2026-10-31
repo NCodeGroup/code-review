@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { commandFromEvent } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
-import { fetchPullRequestHead } from './fetch-head.ts';
+import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
@@ -122,14 +122,8 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
-  // A workflow that checks the head out itself keeps working; otherwise the engine fetches the exact commit, now that it has decided to review.
-  fetchPullRequestHead({
-    path: prPath,
-    remoteUrl: `${process.env['GITHUB_SERVER_URL'] ?? 'https://github.com'}/${repository}.git`,
-    number: pullRequest.number,
-    sha: String(event.pull_request?.head?.sha ?? ''),
-    ...(githubToken ? { token: githubToken } : {}),
-  });
+  // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
+  fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken }));
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
