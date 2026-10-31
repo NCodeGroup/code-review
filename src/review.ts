@@ -147,7 +147,7 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   if (code.some((f) => securityPath.test(f.path))) floor.add('security');
   if (reviewed.some((f) => /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/.test(f.path))) floor.add('api-compat');
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
-  if (/(^|\/)Migrations\/|\.sql$/i.test(reviewed.map((f) => f.path).join('\n'))) floor.add('data-model');
+  if (reviewed.some((f) => /(^|\/)Migrations\//i.test(f.path) || /\.sql$/i.test(f.path))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
   if (reviewed.some((f) => infrastructurePath.test(f.path))) floor.add('infrastructure');
   if (hasReviewRules) floor.add('conventions');
