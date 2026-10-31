@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Evals measure precision: each posted blocker and should-fix that matches no expected concern is judged `real`, `not-real` or `unsure` by Opus reading the checkout, with verdicts cached in `evals/verdicts.json`. Each output also reports findings per case (mean, max) and the review's cost per case. `npm run eval:compare` compares two runs, marking differences of 2 or less as noise, and `npm run eval:confirm` adds confirmed verdicts to `cases.json` as expected or must-not-flag concerns ([#51](https://github.com/NCodeGroup/code-review/issues/51)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.

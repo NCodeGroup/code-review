@@ -3,16 +3,19 @@
 //
 //   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name] [--guidance full]
 //
-// Writes evals/out/<label>.json with every finding, the judge's verdicts and the cost.
+// Writes evals/out/<label>.json with every finding, the judge's verdicts, precision, findings per case and the cost.
+// Unmatched blockers and should-fixes are judged for precision (evals/precision.ts); verdicts are cached in
+// evals/verdicts.json. npm run eval:compare compares two outputs; npm run eval:confirm adds verdicts to the cases.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
-import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
+import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, type Finding } from '../src/review.ts';
+import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
 interface Concern { file?: string; line?: number; concern: string }
 interface Case {
@@ -98,6 +101,9 @@ async function raised(run: AgentRun, concern: Concern, findings: (Finding & { re
   return by;
 }
 
+// The label raised() gives a finding, to tell which posted findings a concern matched.
+const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
+
 async function main(): Promise<void> {
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
@@ -115,6 +121,11 @@ async function main(): Promise<void> {
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
   let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, cost = 0;
+  const verdictFile = path.join(root, 'evals', 'verdicts.json');
+  const verdictCache = loadVerdicts(verdictFile);
+  const precisions: CasePrecision[] = [];
+  const findingsPerCase: number[] = [];
+  const reviewCosts: number[] = [];
 
   try {
     for (const c of cases) {
@@ -146,6 +157,23 @@ async function main(): Promise<void> {
       const forbidden = [];
       for (const concern of c.mustNotFlag) forbidden.push({ concern: concern.concern, raisedBy: await raised(run, concern, outcome.findings, calls) });
 
+      const caughtBy = new Set(verdicts.filter((v) => v.caught).flatMap((v) => v.by));
+      const forbiddenBy = new Set(forbidden.flatMap((f) => f.raisedBy));
+      const diffs = splitDiff(gathered.diff);
+      const precision = await judgePosted({
+        caseId: c.id,
+        findings: outcome.findings,
+        matched: new Set(outcome.findings.filter((f) => caughtBy.has(raisedLabel(f)))),
+        mustNot: new Set(outcome.findings.filter((f) => forbiddenBy.has(raisedLabel(f)))),
+        cache: verdictCache,
+        judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
+      });
+      saveVerdicts(verdictFile, verdictCache);
+      precisions.push(precision);
+      findingsPerCase.push(outcome.findings.length);
+      const reviewCost = outcome.calls.reduce((sum, call) => sum + call.costUsd, 0);
+      reviewCosts.push(reviewCost);
+
       const caseCost = calls.reduce((sum, call) => sum + call.costUsd, 0);
       expected += verdicts.length;
       caught += verdicts.filter((v) => v.caught).length;
@@ -157,15 +185,22 @@ async function main(): Promise<void> {
         ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
       ].join(', ');
-      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, raw, calls, costUsd: caseCost });
+      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, precision ${percent(precision.precision)} (${precision.unsure} unsure), $${caseCost.toFixed(2)}`);
+      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost });
     }
   } finally {
     await proxy.close();
   }
 
-  const summary = { label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', expected, caught, caughtRaw, violations, findings: findingCount, costUsd: cost };
+  const precision = totalPrecision(precisions);
+  const summary = {
+    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', expected, caught, caughtRaw, violations, findings: findingCount,
+    precision, findingsPerCase: spread(findingsPerCase), reviewCostUsd: reviewCosts.reduce((a, b) => a + b, 0),
+    reviewCostPerCase: spread(reviewCosts), costUsd: cost,
+  };
   console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all; $${cost.toFixed(2)}`);
+  console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
+  console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
 }
