@@ -57,6 +57,7 @@ runs:
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # The app's private key is not in this step's environment.
     # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
+    # For a closed pull request it records each finding's outcome by rules, with no model call, so it gets no model key.
     - name: Review
       id: review
       shell: bash
@@ -65,7 +66,7 @@ runs:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_PR_PATH: ${{ inputs.pr-path }}
         CODE_REVIEW_BASE_PATH: ${{ inputs.base-path }}
-        CODE_REVIEW_BEDROCK_KEY: ${{ inputs.bedrock-api-key }}
+        CODE_REVIEW_BEDROCK_KEY: ${{ github.event.action != 'closed' && inputs.bedrock-api-key || '' }}
         CODE_REVIEW_FEDERATION_RULE_ID: ${{ inputs.federation-rule-id }}
         CODE_REVIEW_ORGANIZATION_ID: ${{ inputs.organization-id }}
         CODE_REVIEW_SERVICE_ACCOUNT_ID: ${{ inputs.service-account-id }}
@@ -76,7 +77,7 @@ runs:
     # comments.
     - name: Get the app's token
       id: app-token
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true'
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -86,7 +87,7 @@ runs:
         permission-pull-requests: write
 
     - name: Publish
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review

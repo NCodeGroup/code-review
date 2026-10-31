@@ -64,6 +64,49 @@ export function reviewedHead(body: string): string | undefined {
   return /<!-- ncode-review:head=([0-9a-f]{40}) -->/.exec(body)?.[1];
 }
 
+// JSON for a hidden marker: `<` and `>` are escaped, so no value can end the HTML comment early.
+export function markerJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+}
+
+// What a review cost and which models ran it, kept in its summary comment, and in the line a superseded summary
+// collapses to, for the outcomes recorded when the pull request closes.
+export interface ReviewRecord {
+  head: string;
+  provider: Provider;
+  costUsd: number;
+  synthesisModel: string;
+  // Each reviewer's model, by reviewer name.
+  models: Record<string, string>;
+}
+
+const reviewMarkerPattern = /<!-- ncode-review:review (.+?) -->/g;
+
+export function reviewMarker(results: Pick<Results, 'headSha' | 'provider' | 'costUsd' | 'synthesisModel' | 'reviewers'>): string {
+  const record: ReviewRecord = {
+    head: results.headSha,
+    provider: results.provider,
+    costUsd: Math.round(results.costUsd * 10_000) / 10_000,
+    synthesisModel: results.synthesisModel,
+    models: Object.fromEntries(results.reviewers.filter((r) => r.model).map((r) => [r.name, r.model])),
+  };
+  return `<!-- ncode-review:review ${markerJson(record)} -->`;
+}
+
+// The review markers in a comment's body, in order; a marker that isn't valid JSON is skipped.
+export function reviewRecords(body: string): ReviewRecord[] {
+  const records: ReviewRecord[] = [];
+  for (const match of body.matchAll(reviewMarkerPattern)) {
+    try {
+      const record = JSON.parse(match[1]!) as ReviewRecord;
+      if (typeof record?.head === 'string') records.push(record);
+    } catch {
+      // Not ours, or damaged: the outcomes go without this review's cost.
+    }
+  }
+  return records;
+}
+
 export const supersededMarker = '<!-- ncode-review:superseded -->';
 
 // The bot's summary comments in the order GitHub lists them, oldest first; the last one is the newest review's.
@@ -79,9 +122,15 @@ export function newestReviewedHead(comments: { body?: string; user?: { login?: s
 }
 
 // The body a superseded summary comment is edited to: its marker and one line linking to the summary that replaces it,
-// so only the newest summary stays expanded and counts as a summary comment.
-export function supersededComment(headSha: string, commentUrl: string): string {
-  return [supersededMarker, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
+// so only the newest summary stays expanded and counts as a summary comment. The earlier summary's review markers, given
+// as `kept`, stay so the outcomes can still name that review's cost and models.
+export function supersededComment(headSha: string, commentUrl: string, kept: string[] = []): string {
+  return [supersededMarker, ...kept, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
+}
+
+// The review marker lines of a summary comment, to keep when it's superseded.
+export function reviewMarkerLines(body: string): string[] {
+  return [...body.matchAll(reviewMarkerPattern)].map((match) => match[0]);
 }
 
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
@@ -90,6 +139,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   const lines = [
     summaryMarker,
     headMarker(results.headSha),
+    reviewMarker(results),
     '### 🤖 Review complete',
     '',
     `**Verdict: ${verdictLabel[results.verdict]}** — ${results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' ')}`,

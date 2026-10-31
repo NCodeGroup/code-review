@@ -26,28 +26,29 @@ Each model call has its own cost cap, and a whole review has a **cost ceiling** 
 name: Code review
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, closed]
   issue_comment:
     types: [created]
 permissions: {}
 jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review` comment on one from someone with write
-    # access. The engine checks the comment again and skips anything else.
+    # access. The engine checks the comment again and skips anything else. A closed pull request, whoever closed it,
+    # only records its findings' outcomes, with no model call.
     if: >-
-      github.event.sender.type != 'Bot' && (
-        (github.event_name == 'pull_request_target' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
-        (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-          startsWith(github.event.comment.body, '/review') &&
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)))
+      (github.event_name == 'pull_request_target' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.action == 'closed' ||
+          (github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')))) ||
+      (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/review') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     environment: code-review
     timeout-minutes: 30
     concurrency:
       group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event.action != 'closed' }}
     permissions:
       id-token: write
       contents: read
@@ -131,6 +132,29 @@ Each review, all from `ncode-review[bot]`:
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
+
+### Outcomes
+
+When a pull request closes, merged or not, the bot records what became of each finding it posted as a thread, by rules
+alone: no model call, so the run needs no model key and costs nothing. It reads each thread, its replies and the
+reactions on the finding, and compares the commit the finding was posted on with the closing head. The first rule that
+holds decides:
+
+| Outcome | When |
+|---|---|
+| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. |
+| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". |
+| acknowledged | A 👍 or a reply from a writer, without a change. |
+| ignored | None of these. |
+
+Writers are people with write access: for a reply, its author's association (owner, member or collaborator); for a
+reaction, the reactor's permission on the repository. A reply starting `Autopilot: fixed in` counts only when the
+finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
+severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
+for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
+model, for the monthly report. When there's no summary comment, a final one is posted. A finding with no changed line to
+sit on, posted in the review's body rather than as a thread, gets no outcome. The caller needs `closed` in its
+`pull_request_target` types for this.
 
 ## Opting a repository in
 
