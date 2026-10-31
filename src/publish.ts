@@ -26,11 +26,6 @@ import { writerCheck } from './writers.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
 
-// A GraphQL request with the app's token; GitHub answers a refused one with 200 and `errors`, so that throws too.
-async function graphql(api: Api, query: string, variables: Record<string, unknown>): Promise<unknown> {
-  return githubGraphql(api, query, variables);
-}
-
 // Whether a login has write access to the repository: admin, maintain or write.
 async function isWriter(api: Api, repository: string, login: string): Promise<boolean> {
   const access = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string };
@@ -108,7 +103,7 @@ async function main(): Promise<void> {
   await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted));
   if (threads) {
     const actions = await planFollowUps(threads, results, writerCheck(results.repository, token, fetch, writeLog), new Set(dismissed.map((d) => d.thread.id)));
-    await followUpThreads((query, variables) => graphql(api, query, variables), actions, [token]);
+    await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
   }
 
   const body = summaryComment(results, posted.html_url, interactUrl);
