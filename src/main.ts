@@ -19,7 +19,7 @@ import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
-import { assertNoSecrets } from './outputs.ts';
+import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
@@ -70,16 +70,6 @@ function takeCredentials(): Credentials {
     );
   }
   return credentials;
-}
-
-// Writes what the publish step posts, scanned for secrets, and tells the action's later steps there's something to post.
-function writeForPublish(outDir: string, files: Record<string, unknown>, secrets: string[], flag: 'reviewed' | 'answered' | 'taught', outputs: Record<string, string> = {}): void {
-  const texts = Object.entries(files).map(([name, value]) => [name, JSON.stringify(value, null, 2)] as const);
-  for (const [name, text] of texts) assertNoSecrets(text, secrets, `The ${name.replace(/\.json$/, '')}`);
-  mkdirSync(outDir, { recursive: true });
-  for (const [name, text] of texts) writeFileSync(path.join(outDir, name), text);
-  const output = process.env['GITHUB_OUTPUT'];
-  if (output) appendFileSync(output, [`${flag}=true`, ...Object.entries(outputs).map(([key, value]) => `${key}=${value}`)].map((line) => `${line}\n`).join(''));
 }
 
 // `/review teach`: words the guidance issue, reading a finding it names with the read-only token, with no model call,
