@@ -1365,6 +1365,7 @@ test("touchesPublicMember counts a change as public when the head's braces don't
   const lines = ['public class A', '{', '    private void Helper()', '    {', '        Go();', '    }', '}', '}'];
   assert.ok(touchesPublicMember(editIn(lines, 5), lines.join('\n')));
 });
+
 test('touchesSerializedContract looks for contract markers in the hunks, not the file name', () => {
   assert.ok(touchesSerializedContract(csSection('@@ -1,2 +1,2 @@\n     [JsonPropertyName("id")]\n-    public string Id { get; set; }\n+    public string Key { get; set; }')));
   assert.ok(touchesSerializedContract(csSection('@@ -40,1 +40,1 @@ public class AppDbContext : DbContext\n-        Old();\n+        New();')));
