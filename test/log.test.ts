@@ -36,6 +36,6 @@ test("writeErrorLog writes the cleaned line to the console's errors", (t) => {
 test('no file in src/ but log.ts writes to the console', () => {
   const src = path.join(root, 'src');
   for (const file of readdirSync(src).filter((name) => name.endsWith('.ts') && name !== 'log.ts')) {
-    assert.doesNotMatch(readFileSync(path.join(src, file), 'utf8'), /\bconsole\.|process\.std(out|err)\.write/, `src/${file} writes to the console; use writeLog or writeErrorLog from src/log.ts`);
+    assert.doesNotMatch(readFileSync(path.join(src, file), 'utf8'), /\bconsole\b|\bprocess\s*(\?\.|\.|\[\s*['"`])\s*std(out|err)\b|\{[^}]*\bstd(out|err)\b[^}]*\}\s*=\s*process\b/, `src/${file} writes to the console; use writeLog or writeErrorLog from src/log.ts`);
   }
 });

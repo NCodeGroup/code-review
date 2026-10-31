@@ -359,11 +359,18 @@ test('casePullRequest gives a member\'s description and the issues it closes, le
 
 test('casePullRequest withholds a non-writer\'s description and reads none of its issues', async () => {
   const stranger = { ...evalCase, author: 'stranger', authorAssociation: 'CONTRIBUTOR' };
-  const pullRequest = await casePullRequest(stranger, 'c'.repeat(40), () => assert.fail('read an issue'), () => {});
+  const read: number[] = [];
+  const lines: string[] = [];
+  const pullRequest = await casePullRequest(stranger, 'c'.repeat(40), (number) => {
+    read.push(number);
+    return {};
+  }, (line) => lines.push(line));
   assert.equal(pullRequest.body, undefined);
   assert.equal(pullRequest.bodyWithheld, true);
   assert.equal(pullRequest.authorCanWrite, false);
   assert.deepEqual(pullRequest.issues, []);
+  assert.deepEqual(read, []);
+  assert.deepEqual(lines, []);
 });
 
 test('caseIssues warns with the reason when an issue cannot be read, and goes on', async () => {
