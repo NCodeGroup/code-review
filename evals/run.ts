@@ -4,6 +4,9 @@
 //   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name] [--guidance full]
 //
 // Writes evals/out/<label>.json with every finding, the judge's verdicts and the cost.
+//
+// A concern with a minSeverity counts as raised only by a finding at that severity or above: an expected should-fix
+// raised as a nit is missed, and a must-not concern at should-fix may still be raised as a nit.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
-import { loadCharters, review, type Finding } from '../src/review.ts';
+import { loadCharters, review, type Finding, type Severity } from '../src/review.ts';
 
-interface Concern { file?: string; line?: number; concern: string }
+export interface Concern { file?: string; line?: number; minSeverity?: Severity; concern: string }
 interface Case {
   id: string;
   repository: string;
@@ -66,6 +69,12 @@ function worktree(repo: string, name: string, sha: string): string {
 }
 
 const sameFile = (a: string, b: string) => a.replace(/\\/g, '/').endsWith(b.replace(/\\/g, '/')) || b.replace(/\\/g, '/').endsWith(a.replace(/\\/g, '/'));
+const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+
+// Whether the judge should compare a finding with a concern: it is in the concern's file and at its severity or above.
+export function candidate(concern: Concern, finding: Pick<Finding, 'file' | 'severity'>): boolean {
+  return (!concern.file || sameFile(finding.file, concern.file)) && (!concern.minSeverity || severityRank[finding.severity] <= severityRank[concern.minSeverity]);
+}
 
 const judgeSchema = {
   type: 'object',
@@ -92,7 +101,7 @@ async function judge(run: AgentRun, concern: Concern, finding: Finding, calls: C
 
 async function raised(run: AgentRun, concern: Concern, findings: (Finding & { reviewers?: string[] })[], calls: CallRecord[]): Promise<string[]> {
   const by: string[] = [];
-  for (const finding of findings.filter((f) => !concern.file || sameFile(f.file, concern.file))) {
+  for (const finding of findings.filter((f) => candidate(concern, f))) {
     if (await judge(run, concern, finding, calls)) by.push(`${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`);
   }
   return by;
@@ -170,7 +179,9 @@ async function main(): Promise<void> {
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
