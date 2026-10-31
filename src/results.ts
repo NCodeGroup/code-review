@@ -1,6 +1,7 @@
 // What the review step hands the publish step, and how it reads in the check run and the summary comment.
 
 import type { CallRecord } from './agent.ts';
+import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
 import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
 import type { RefutedFinding } from './verify.ts';
@@ -25,6 +26,8 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings left out before posting because they say a file the pull request changes isn't changed.
+  dropped: DroppedFinding[];
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
   // is off or there was no blocker or should-fix to check.
   refuted?: RefutedFinding[];
@@ -37,6 +40,9 @@ export interface Results {
   notShown: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
+  // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
+  // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
+  recordedHead?: string;
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -92,6 +98,12 @@ export function reviewedHead(body: string): string | undefined {
   return /<!-- ncode-review:head=([0-9a-f]{40}) -->/.exec(body)?.[1];
 }
 
+// The head a summary records as reviewed. A run whose reviewers all failed reviewed nothing, so it records the last head
+// that was reviewed, or none (''), and the next re-review still covers what this run missed.
+export function recordedHead(reviewers: Pick<ReviewerResult, 'status'>[], headSha: string, lastHead: string | undefined): string {
+  return reviewers.length && reviewers.every((r) => r.status === 'failed') ? (lastHead ?? '') : headSha;
+}
+
 export const supersededMarker = '<!-- ncode-review:superseded -->';
 
 // The bot's summary comments in the order GitHub lists them, oldest first; the last one is the newest review's.
@@ -115,15 +127,17 @@ export function supersededComment(headSha: string, commentUrl: string): string {
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;
+  const recorded = results.recordedHead ?? results.headSha;
   const lines = [
     summaryMarker,
-    headMarker(results.headSha),
+    ...(recorded ? [headMarker(recorded)] : []),
     '### 🤖 Review complete',
     '',
     `**Verdict: ${verdictLabel[results.verdict]}** — ${results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' ')}`,
     '',
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
     '',
+    ...droppedNote(results.dropped, checkUrl),
     '| Reviewer | Model | Findings | Top |',
     '|---|---|---|---|',
   ];
@@ -149,6 +163,16 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   return lines.join('\n');
 }
 
+// Says in the summary comment that findings were left out, and how severe, so a dropped blocker is never silent.
+function droppedNote(dropped: DroppedFinding[], checkUrl: string): string[] {
+  if (!dropped.length) return [];
+  const counts = new Map<Severity, number>();
+  for (const { finding } of dropped) counts.set(finding.severity, (counts.get(finding.severity) ?? 0) + 1);
+  const severities = (['blocker', 'should-fix', 'nit'] as const).filter((s) => counts.has(s)).map((s) => `${counts.get(s)} ${s}`);
+  const one = dropped.length === 1;
+  return [`*Left out ${dropped.length} finding${one ? '' : 's'} (${severities.join(', ')}) that said a file this pull request changes isn't changed; [run details](${checkUrl}) list${one ? 's it' : 's them'}.*`, ''];
+}
+
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
 function cell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;');
@@ -172,6 +196,10 @@ export function checkSummary(results: Results): string {
   ];
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
+  }
+  const dropped = results.dropped.length;
+  if (dropped) {
+    lines.push('', `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`);
   }
   return lines.join('\n');
 }
@@ -208,6 +236,12 @@ export function checkText(results: Results): string {
   }
   for (const role of ['selection', 'synthesis', 'verification']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+  }
+  if (results.dropped.length) {
+    out.push('', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', '');
+    for (const { finding: f, file, claim } of results.dropped) {
+      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`);
+    }
   }
   if (results.switchedToBedrock) {
     out.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');

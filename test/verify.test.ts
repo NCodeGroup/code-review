@@ -198,10 +198,10 @@ test('verification calls are recorded as the verification role and costed in the
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { reason: 'The <caller> checks it | always.' })]]), 0.125);
   const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')], agent));
   assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd]), [['verification', 0.125], ['verification', 0.125]]);
-  const text = checkText({ findings: out.findings, refuted: out.refuted, reviewers: [], calls: out.calls } as unknown as Results);
+  const text = checkText({ findings: out.findings, refuted: out.refuted, dropped: [], reviewers: [], calls: out.calls } as unknown as Results);
   assert.match(text, /### Refuted by verification\n\n- Blocker `src\/a\.ts:3` \*\*title F1\*\* \(correctness\): The &lt;caller> checks it \\\| always\. — `src\/a\.ts:3 → src\/c\.ts:9`/);
   assert.match(text, /\| verification \| ran \| \| \$0\.250 \|/);
-  const off = checkText({ findings: [], reviewers: [], calls: [] } as unknown as Results);
+  const off = checkText({ findings: [], dropped: [], reviewers: [], calls: [] } as unknown as Results);
   assert.doesNotMatch(off, /Refuted by verification|\| verification/);
 });
 

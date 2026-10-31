@@ -516,6 +516,511 @@
     "source": "Fixed by identity-platform#3 and #4 (v0.2.0 of the components): the roles trust the immutable subject. The reviewed change doesn't touch the module, so this is a gap-between-files case; it may be too hard to expect."
   },
   {
+    "id": "re-review-declined-trigger",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 29,
+    "title": "Make the type checker fail on what a linter would warn about, and check commit attribution in CI",
+    "body": "Part of making every pull request pipeline fail on warnings.\n\n## Type checking as the linter\n\n`npm run typecheck`, which CI runs and `main` requires as the `test` check, now also fails on what a linter would warn about. `tsconfig.json` adds:\n- `noUnusedLocals` and `noUnusedParameters`\n- `noImplicitReturns` and `noFallthroughCasesInSwitch`\n- `noImplicitOverride`\n- `exactOptionalPropertyTypes`\n- `noPropertyAccessFromIndexSignature`\n- `allowUnreachableCode: false` and `allowUnusedLabels: false`\n\nI used the compiler's own flags, not ESLint, because the repository is on TypeScript 7 (the native compiler) and typescript-eslint's support for it is uncertain. A rule ESLint has and `tsc` doesn't can follow once it does.\n\n`exactOptionalPropertyTypes` found one case, in `src/main.ts`: a reviewer's top severity could be written as `undefined` into the optional `topSeverity` field. It is now computed once and written only when there is one. The other flags found nothing.\n\n## Commit attribution\n\nCI gains the template's `Commit attribution` job, which the adoption (#23) left as a follow-up, so `main` can require it as the other repositories do. It passes on this branch.\n\n## Checked\n\n`npm run typecheck` passes, and `npm test` passes (53 tests).",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "421f2d1ed4b692af77e8e27f2119eb054caa7b41",
+    "reviewed": "ca1e943052235b68e705ddf3b5ac2dab277bf7fa",
+    "earlier": [
+      {
+        "id": "F1",
+        "file": ".github/workflows/ci.yml",
+        "line": 40,
+        "severity": "should-fix",
+        "title": "Attribution job reads merge_group fields, but the workflow never triggers on merge_group (or release/**)",
+        "text": "The job's `BASE`/`HEAD` expressions fall back to `github.event.merge_group.base_sha`/`head_sha`, but the workflow's `on:` block lists only `push` to main and `pull_request`, with no `merge_group` trigger and no `release/**` branches.\n\n**Consequence:** Merge-queue entries and release-line changes never get an attribution check, and the merge_group expressions are dead code. This contradicts the documented rule that CI runs the script on every PR, merge queue entry and default-branch push. If the check is required, merge-queue entries will sit pending and block. Worth checking whether the merge queue is enabled and whether this check is marked required.\n\n**Fix:** Add `merge_group:` to the workflow triggers, and add `release/**` to the `push` and `pull_request` branch filters. Don't add path filters or job conditions that would skip those events.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/29#discussion_r4429901757",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Fixed in 421f2d1: `merge_group: { types: [checks_requested] }` is a trigger now, as in every adopted repository's `ci.yml`, so the `test` and `Commit attribution` jobs report in a merge queue (this repository has none today, but a required check that never reports there would block it). I didn't add `release/**`: this repository has no release branches, and releases are cut from `main`."
+          }
+        ]
+      }
+    ],
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "concern": "The push trigger should also run on release/** branches. The author declined this in the earlier finding's thread: the repository has no release branches, and releases are cut from main."
+      }
+    ],
+    "source": "Re-review of #29 (issue #24): the review at 421f2d1 raised again, on the same line, the release/** trigger declined with a reason in the thread of the review at ca1e943. The earlier finding is as posted, with its reply; it is left unresolved, as a re-review checks it."
+  },
+  {
+    "id": "re-review-merge-of-main",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, which reads up to 100 pages. When every page up to that cap is full, it counts the listing as unreadable rather than complete. Both steps take the newest bot summary through the shared, tested `summaryComments()` and `newestReviewedHead()`.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f3e5df0eeaaffa3a5e71462956d48764aa7a572f",
+    "head": "41ba415612f0563e96a6d28c0511bd40b6484787",
+    "mergeIntoHead": "f3e5df0eeaaffa3a5e71462956d48764aa7a572f",
+    "reviewed": "650b28424c9e4ab920699e70433b04f3612e9050",
+    "earlier": [
+      {
+        "id": "F1",
+        "file": "src/publish.ts",
+        "line": 105,
+        "severity": "should-fix",
+        "title": "Post-then-collapse ordering and collapse-failure path are untested",
+        "text": "The new try/catch that turns a failed PATCH into a warning, the post-then-collapse order, and paging across several pages in `listSummaries`/`lastReviewedHead` have no tests. Only the pure helpers `summaryComments` and `supersededComment` are covered, and those tests don't appear in this diff either.\n\n**Consequence:** Some regressions would go unnoticed: the new comment getting collapsed, a single collapse failure aborting the run, or `lastReviewedHead` picking an older summary when comments span more than one page.\n\n**Fix:** Move the list/post/collapse sequence into a function that takes an injectable fetch, or stub `fetch`. Then test three cases: a PATCH failure only warns, a POST failure collapses nothing, and summaries spread over more than one page resolve to the newest.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930392",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 0adab20 and 5e18d95. The list/post/collapse sequence moved into `postSummary()` in `src/results.ts`, which takes an injectable `api` and `log`, and `src/publish.ts` now calls it. New tests in `test/engine.test.ts` cover posting the new summary before collapsing only the earlier bot summaries, a failed PATCH that only warns while the other collapses still run, and a failed POST that collapses nothing. Paging across pages is covered by the `readCommentPages()` test.\n"
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "file": "src/publish.ts",
+        "line": 28,
+        "severity": "nit",
+        "title": "Comment-paging loop is duplicated between publish.ts and main.ts",
+        "text": "`listSummaries` in src/publish.ts and `lastReviewedHead` in src/main.ts (around line 40) hold the same loop: up to 10 pages of 100 issue comments, collected and then passed to `summaryComments`. This PR edited both copies in parallel, and they differ only in the HTTP helper, auth and error handling.\n\n**Consequence:** The 10-page cap and the oldest-first assumption now live in two places. If one copy changes, the skip-on-same-head check and the collapse step can disagree about which summary is newest.\n\n**Fix:** Extract one `listIssueComments(repository, number, fetcher)` helper, for example next to `summaryComments` in results.ts, and call it from both places. If the different tokens or fetch wrappers are why the copies are kept apart on purpose, add a comment saying so.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930401",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 0adab20 and 5e18d95. The paging loop now lives in one place, `readCommentPages()` in `src/results.ts`, which takes a per-page fetcher (up to ten pages of 100, stopping after a short page, and `undefined` when a page can't be read). `postSummary()`, which `src/publish.ts` uses, and `lastReviewedHead()` in `src/main.ts` both call it, so the 10-page cap and the oldest-first assumption can't drift apart. The two call sites differ only in their fetcher: the app token that throws on failure, versus the optional token that gives up quietly.\n"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "CHANGELOG.md",
+        "line": 12,
+        "severity": "nit",
+        "title": "Is #21 the right issue to link?",
+        "text": "The new changelog entry links issue #21, but nothing in the diff or the PR (#30) mentions that issue.\n\n**Consequence:** If #21 is a different issue, the changelog sends readers to the wrong history.\n\n**Fix:** Confirm this change addresses #21. If it doesn't, correct or remove the link.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930402",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: No change needed. #21 is the right issue: \"A later review's summary isn't visible: the first summary comment is edited in place\". This pull request implements its option 1, and the description ends with `Closes #21`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F4",
+        "file": "CHANGELOG.md",
+        "line": 12,
+        "severity": "nit",
+        "title": "PR description lacks `Closes #21`",
+        "text": "The changelog says this work completes #21, but the PR has no description and so no `Closes #21`.\n\n**Consequence:** Issue #21 stays open after the merge, and nothing links it to this PR.\n\n**Fix:** Add `Closes #21` to the PR description, if #21 is the right issue.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930407",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: No change needed. The description has ended with `Closes #21` since the pull request was opened, and it still does after today's update for 0adab20 and 5e18d95.\n"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "file": "src/main.ts",
+        "line": 40,
+        "severity": "nit",
+        "title": "Comment pagination is duplicated in two places and both were edited",
+        "text": "lastReviewedHead in main.ts and listSummaries in publish.ts now each hold the same loop: fetch up to 10 pages of 100 issue comments, accumulate them, then call summaryComments. The only differences are the auth header and the error handling. The PR adds the shared summaryComments helper but leaves the pagination copied. I'm unsure whether the two are kept apart on purpose, for example because publish.ts uses the app token and main.ts may run unauthenticated.\n\n**Consequence:** The 10-page cap and the 'oldest first' ordering assumption now live in two places. Summaries are now posted at the bottom, so a cap change or a switch to a different sort in one loop would silently make the other read or collapse the wrong comment.\n\n**Fix:** Extract one listIssueComments(repository, number, fetcher) helper, for example in results.ts or a small github module. Have both call sites use it and pass summaryComments the result.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930410",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 0adab20 and 5e18d95. The paging loop now lives in one place, `readCommentPages()` in `src/results.ts`, which takes a per-page fetcher (up to ten pages of 100, stopping after a short page, and `undefined` when a page can't be read). `postSummary()`, which `src/publish.ts` uses, and `lastReviewedHead()` in `src/main.ts` both call it, so the 10-page cap and the oldest-first assumption can't drift apart. The two call sites differ only in their fetcher: the app token that throws on failure, versus the optional token that gives up quietly.\n"
+          }
+        ]
+      },
+      {
+        "id": "F6",
+        "file": "src/main.ts",
+        "line": 40,
+        "severity": "nit",
+        "title": "Comment-listing pagination loop is duplicated and both copies were edited in parallel",
+        "text": "lastReviewedHead in main.ts and listSummaries in publish.ts both page through issue comments (10 pages of 100), accumulate them and call summaryComments. The change edits both copies the same way instead of sharing one helper. Unsure how much main.ts and publish.ts can share, since they use different fetch wrappers and tokens.\n\n**Consequence:** The two loops can drift apart. For example, only one gets a page-cap or error-handling fix, and then the skip-on-same-head check and the collapse step disagree about which comment is newest.\n\n**Fix:** Put the paginated listing in one shared helper that takes a fetcher, for example next to summaryComments in results.ts, and call it from both places.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429930412",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 0adab20 and 5e18d95. The paging loop now lives in one place, `readCommentPages()` in `src/results.ts`, which takes a per-page fetcher (up to ten pages of 100, stopping after a short page, and `undefined` when a page can't be read). `postSummary()`, which `src/publish.ts` uses, and `lastReviewedHead()` in `src/main.ts` both call it, so the 10-page cap and the oldest-first assumption can't drift apart. The two call sites differ only in their fetcher: the app token that throws on failure, versus the optional token that gives up quietly.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "src/main.ts",
+        "line": 46,
+        "severity": "nit",
+        "title": "Newest-summary lookup is capped at 1000 comments",
+        "text": "`readCommentPages` stops after 10 pages, but the code now treats the last summary it finds as the newest, so on a pull request with more than 1000 comments the real newest summary is never read.\n\n**Consequence:** `lastReviewedHead` can return an older SHA, or none, so an automatic run may repeat a review or wrongly skip one. `postSummary` also leaves summaries past page 10 uncollapsed. Under the old first-match lookup the cap mattered less.\n\n**Fix:** Remove the cap and page until a short page, or fetch the last page first using the `Link` header.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952905",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Kept the cap on purpose, and recorded the decision in the plan. It bounds the API calls a run makes, and the lookup before this change had the same 10-page cap. The cap only matters on a pull request with more than 1000 comments, where the worst case is an automatic run that reviews a commit again, because a missed newest summary leaves an older head that doesn't match. It never skips a review wrongly. In c6954cd the cap became the named constant `maxCommentPages` in `src/comments.ts`, so raising it, or reading the last page through the `Link` header, is a one-place change if it's ever needed.\n"
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "file": "src/results.ts",
+        "line": 93,
+        "severity": "nit",
+        "title": "Unreadable comment listing silently skips collapsing",
+        "text": "When `readCommentPages` returns undefined, `postSummary` uses `listed ?? []`, so it collapses nothing and logs nothing. A failed collapse, by contrast, logs a warning.\n\n**Consequence:** If the listing is ever unreadable, the old summaries stay expanded and the log doesn't say why. In publish, `github()` throws on a bad response, so this path may only be reachable through other `api` callers.\n\n**Fix:** Log a `::warning::` when `listed` is undefined, saying the earlier summaries weren't collapsed.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952908",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in c6954cd. `postSummary()` now catches a failed listing and logs `::warning::Couldn't list the earlier summary comments (<reason>), so they stay expanded.`, then still posts the new summary. That covers the publish step's `github()` helper, which throws, as well as an `api` that returns nothing. 946df17 adds a test for it.\n"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "test/engine.test.ts",
+        "line": 340,
+        "severity": "nit",
+        "title": "Warning test asserts weakly; list-failure path untested",
+        "text": "The collapse-failure test only checks that the warning contains the character '1'. No test covers `postSummary` when the comment listing fails.\n\n**Consequence:** A regression in the warning text, or in how a failed listing is handled, would still pass the tests.\n\n**Fix:** Match the exact text `earlier summary comment 1 `. Add a test where the GET rejects or returns undefined, and assert that the POST still happens and no PATCH follows.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952909",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 946df17. The collapse-failure test now checks the exact line `::warning::Couldn't collapse the earlier summary comment 1 (HTTP 403).`. A new test, `postSummary still posts, and warns, when the earlier summaries cannot be listed`, makes the GET fail and asserts that the POST still happens, no PATCH follows, and the listing warning is logged.\n"
+          }
+        ]
+      },
+      {
+        "id": "F4",
+        "file": "src/results.ts",
+        "line": 77,
+        "severity": "nit",
+        "title": "GitHub API orchestration added to the results-formatting module",
+        "text": "Before this change, `results.ts` only formatted and parsed results. `postSummary` and `readCommentPages` add HTTP orchestration and logging there, and `main.ts` and `publish.ts` each still have their own fetch helpers.\n\n**Consequence:** Comment listing and editing is now spread over three files, so later changes to auth, rate limits or the page cap have to be made in each one, and the copies can drift apart.\n\n**Fix:** Move the summary-comment API code (list, post, collapse, `readCommentPages`) to a module such as `src/comments.ts`, and keep `results.ts` to markers and body builders.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952915",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in c6954cd. `readCommentPages()` and `postSummary()` moved to a new `src/comments.ts`, and `src/results.ts` is back to markers and body builders: `summaryComments()`, `supersededComment()` and the formatters. `src/main.ts` and `src/publish.ts` still keep their own fetch wrappers, because they differ on purpose: the review step's optional token gives up quietly, while the publish step's app token throws. Both pass their wrapper into the shared pager.\n"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "file": "src/results.ts",
+        "line": 80,
+        "severity": "nit",
+        "title": "Page size and page cap are repeated literals",
+        "text": "`readCommentPages` hardcodes `10` pages and a short-page check against `100`, and `per_page=100` is written separately in `postSummary` and in `main.ts`.\n\n**Consequence:** If one copy changes, the short-page check stops matching the requested page size, and paging can end early and miss summary comments.\n\n**Fix:** Define `commentPageSize` and `maxCommentPages` constants and use them everywhere, or have `readCommentPages` build the URL itself.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952916",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in c6954cd. `src/comments.ts` now exports `commentPageSize` (100) and `maxCommentPages` (10). The short-page check in `readCommentPages()`, the `per_page=` in `postSummary()` and the `per_page=` in `lastReviewedHead()` in `src/main.ts` all use them.\n"
+          }
+        ]
+      },
+      {
+        "id": "F7",
+        "file": "src/results.ts",
+        "line": 71,
+        "severity": "nit",
+        "title": "Comment wording is relative to time, not timeless present",
+        "text": "Is the 'new'/'earlier'/'once a newer review posts' wording in this comment and in the `publish.ts` header acceptable under the timeless-present rule? It reads as relative to other comments rather than to history, so it may be fine.\n\n**Consequence:** Readability only.\n\n**Fix:** Optionally reword, e.g. 'the body a superseded summary comment is edited to'.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952921",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Reworded in b3e13e1. The comment above `supersededComment()` now reads \"The body a superseded summary comment is edited to: its marker and one line linking to the summary that replaces it, so only the newest summary stays expanded and counts as a summary comment.\" I left \"new\" and \"earlier\" in the `publish.ts` header as they are: they compare comments to each other, not to the code's history.\n"
+          }
+        ]
+      },
+      {
+        "id": "F8",
+        "file": "src/publish.ts",
+        "line": 3,
+        "severity": "nit",
+        "title": "Header comment wraps unevenly",
+        "text": "The last line of the rewritten file header runs well past the ~120-column width of the lines above it.\n\n**Consequence:** Cosmetic only.\n\n**Fix:** Rewrap lines 1–3 to the file's usual width.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952926",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in b3e13e1. The `src/publish.ts` header is rewrapped to four lines within 120 columns, and so are the long comment lines in `src/comments.ts`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F9",
+        "file": "test/engine.test.ts",
+        "line": 366,
+        "severity": "nit",
+        "title": "Missing space after comma",
+        "text": "`postSummary(api,summaryResults, ...)` has no space after the first comma, unlike the other calls in the file.\n\n**Consequence:** Cosmetic only.\n\n**Fix:** Write `postSummary(api, summaryResults, ...)`.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429952928",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 946df17: `postSummary(api, summaryResults, ...)`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "src/comments.ts",
+        "line": 20,
+        "severity": "should-fix",
+        "title": "10-page cap hides the newest summaries on PRs with over 1000 comments",
+        "text": "`readCommentPages` reads oldest first and stops after `maxCommentPages` (10 pages, 1000 comments), but `lastReviewedHead` and `postSummary` now need the newest summaries, which sit at the end of the thread.\n\n**Consequence:** On a PR with more than 1000 comments, `lastReviewedHead` sees only old summaries (already collapsed) or none, so it returns undefined or a stale head and the same-commit skip breaks. `postSummary` also can't collapse summaries beyond the cap, so several expanded summaries pile up. The old edit-in-place design kept the summary near the top, so the cap rarely mattered before. How often PRs this long happen is unconfirmed.\n\n**Fix:** Read the newest pages first, e.g. follow the `Link` header to the last page and walk backwards. Alternatively, store the summary comment id somewhere (check run or results) instead of scanning the whole thread. At minimum, warn when the cap is hit and treat the result as unknown.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429984602",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 5516455.\n- `maxCommentPages` is now 100 (10,000 comments), which still bounds a run's API calls.\n- When every page up to the cap is full, `readCommentPages()` returns `undefined`: the listing counts as unreadable, never as complete. `lastReviewedHead()` then returns no head, so an automatic run reviews again instead of trusting a stale one. `postSummary()` still posts the new summary and logs `::warning::Couldn't list the earlier summary comments (more than 10000 comments), so they stay expanded.`\n\n1c8c1bd adds tests for both behaviors. Walking backwards from the `Link` header's last page would need response headers from both fetch wrappers. The higher cap makes that unnecessary for any realistic pull request.\n"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "src/comments.ts",
+        "line": 38,
+        "severity": "nit",
+        "title": "Error-truncation length 200 is a repeated bare literal",
+        "text": "`.slice(0, 200)` appears at both warning sites in `postSummary`, and results.ts uses a bare `7` for the short SHA.\n\n**Consequence:** The limits can drift apart, and their meaning isn't stated.\n\n**Fix:** Add a named constant such as `maxErrorChars = 200` and a small truncation helper used at both sites; name the short-SHA length too.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429984605",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 5516455: `src/comments.ts` now has `maxErrorChars = 200` and an `errorText()` helper, which both warning sites in `postSummary()` use. I left the short SHA as it is: `slice(0, 7)` is a project-wide idiom used in seven places across five files (`command.ts`, `fetch-head.ts`, `main.ts`, `threads.ts`, `results.ts`), most of them outside this pull request. Naming it belongs in a change of its own.\n"
+          }
+        ]
+      },
+      {
+        "id": "F4",
+        "file": "test/engine.test.ts",
+        "line": 489,
+        "severity": "nit",
+        "title": "readCommentPages test covers two behaviors and skips the page cap",
+        "text": "One test checks both stopping at a short page and returning undefined for an unreadable page; nothing tests stopping after `maxCommentPages` full pages.\n\n**Consequence:** A failure doesn't say which behavior broke, and the cap that bounds API calls has no coverage.\n\n**Fix:** Split it into a pagination test and an unreadable-page test, and add a test that reading stops after `maxCommentPages` full pages.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429984610",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 1c8c1bd. The test is split into `readCommentPages reads every page until a short one` and `readCommentPages gives undefined when a page cannot be read`. A third test, `readCommentPages gives undefined when every page up to the cap is full`, checks that it stops after exactly `maxCommentPages` reads. A `postSummary` test covers the same cap from the publish side.\n"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "file": "test/engine.test.ts",
+        "line": 331,
+        "severity": "nit",
+        "title": "fakeApi parameter shadows the imported summaryMarker",
+        "text": "`fakeApi` takes a parameter named `summaryMarker`, and callers pass in the imported constant of the same name.\n\n**Consequence:** Readability only: it isn't obvious whether the helper uses the parameter or the module export.\n\n**Fix:** Rename the parameter (e.g. `marker`) or have `fakeApi` import the constant itself.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4429984612",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 1c8c1bd: the `fakeApi()` parameter is now `marker`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "src/main.ts",
+        "line": 47,
+        "severity": "should-fix",
+        "title": "lastReviewedHead's newest-summary selection has no test",
+        "text": "`lastReviewedHead` now reads every page, picks the newest bot summary with `.at(-1)`, and returns undefined if any later page fails. No test covers any of this: the function is private, and engine.test.ts:277-278 repeats the `.at(-1)` expression inline instead of calling it.\n\n**Consequence:** If the selection regressed to the oldest summary, or a failed later page refused a valid skip, the suite would still pass. The result would be a /review that re-runs on an already-reviewed commit, or a skip that is wrongly refused.\n\n**Fix:** Move the selection into an exported pure function that takes the comment list and returns the newest reviewed head. Test it with several bot summaries carrying different heads (expect the last one's head), a non-bot summary (expect it ignored), and an unreadable later page (expect undefined). Then point the engine test at that function.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430009747",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 45e1b7f. The selection is now `newestReviewedHead()` in `src/results.ts`, an exported pure function, and `lastReviewedHead()` in `src/main.ts` ends with `return newestReviewedHead(all);`. The engine test now calls it and expects the last bot summary's head over an earlier one. A new test, `newestReviewedHead ignores summaries from others, and gives undefined without a bot summary or a listing`, covers a summary from someone else, a collapsed summary, an empty list and an unreadable listing (`undefined`, which `readCommentPages()` returns when a later page fails).\n"
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "file": "src/comments.ts",
+        "line": 50,
+        "severity": "nit",
+        "title": "Can overlapping runs leave two summaries expanded?",
+        "text": "`postSummary` lists, then posts, then collapses only the comments it listed. If two runs overlap (say a push and a /review), each lists before the other posts, so neither collapses the other's new summary.\n\n**Consequence:** Two summaries stay expanded until the next run, which breaks the rule that only the newest one is expanded.\n\n**Fix:** Is a workflow concurrency group already serializing runs per pull request? If not, add one, or after posting re-list and collapse every bot summary except the one just posted.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430009749",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: No change needed. Runs are already serialized per pull request. `.github/workflows/code-review.yml` and the workflow the README tells consumers to copy both set `concurrency: group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}` with `cancel-in-progress: true`, so a push and a `/review` on the same pull request never publish at the same time. If a cancelled run had already posted its summary, that comment is an earlier summary to the next run, which collapses it.\n"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "src/comments.ts",
+        "line": 41,
+        "severity": "nit",
+        "title": "postSummary takes four parameters and does three jobs",
+        "text": "`postSummary` takes `api`, `results`, `body` and `log`, and it lists, posts and collapses. The cited rule asks for small single-purpose functions with at most 2–3 data parameters.\n\n**Consequence:** This affects maintainability only: the steps are harder to read and test separately.\n\n**Fix:** The rule comes from csharp-production.instructions.md, so does it apply to this TypeScript repo? If it does, split out listing and collapsing helpers.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430009750",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: No change needed. The cited rule is from the C# instructions file, which applies to C# files, not to this TypeScript engine. `api` and `log` are injection points for tests, and `postSummary()` exists to keep the list, post and collapse sequence in one place: the review on 5a9dfae asked for exactly that, so the order and its failure paths could be tested together. Each part is already testable on its own: `readCommentPages()`, `summaryComments()` and `supersededComment()` are separate functions with their own tests.\n"
+          }
+        ]
+      },
+      {
+        "id": "F4",
+        "file": "src/publish.ts",
+        "line": 82,
+        "severity": "nit",
+        "title": "Callback parameter `body` shadows the outer `body` const",
+        "text": "`(method, url, body) => github(token, method, url, body)` reuses the name of `const body = summaryComment(...)` declared just above it.\n\n**Consequence:** This affects readability only. Behavior is correct, but a reader has to check which `body` is meant.\n\n**Fix:** Rename the callback parameter, e.g. `(method, url, payload) => github(token, method, url, payload)`.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430009752",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 3e75998: `(method, url, payload) => github(token, method, url, payload)`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "test/engine.test.ts",
+        "line": 370,
+        "severity": "should-fix",
+        "title": "No test for postSummary on a first review with no earlier bot summary",
+        "text": "Every postSummary test uses `fakeApi`, whose GET always returns two bot summaries (ids 1 and 3), so the most common path, a first review with no prior summary, is never exercised.\n\n**Consequence:** A regression that PATCHes the new comment itself or fails when the list of older summaries is empty would still pass the suite.\n\n**Fix:** Add a test where the GET returns `[]` or only other users' comments. Assert that the calls are exactly the GET and the POST, with no PATCH, and that the posted URL is returned.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430030422",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 9f052ed. The new test `postSummary posts without collapsing anything on a first review` lists only another user's comment. It asserts the posted URL, and that the calls are exactly the page-1 GET and then the POST, with no PATCH.\n"
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "file": "test/engine.test.ts",
+        "line": 321,
+        "severity": "nit",
+        "title": "Failure on a later listing page isn't covered",
+        "text": "The listing-failure test only makes `page=1` throw. No test has page 2 or later fail after a full first page, the case where readCommentPages has partial results and must still return undefined.\n\n**Consequence:** If readCommentPages started returning partial results on a later-page failure, no test would catch it, and older summaries could be collapsed inconsistently.\n\n**Fix:** Add a fake that returns a full first page and throws on `page=2`. Assert the warning line and that no PATCH is issued.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430030426",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 9f052ed. The new test `postSummary still posts, and warns, when a later page of comments cannot be read` returns a full first page and throws `HTTP 502` on page 2. It asserts that the calls are page 1, page 2, then the POST, with no PATCH, and that the `Couldn't list the earlier summary comments (HTTP 502)` warning is logged. The pager on its own was already covered by `readCommentPages gives undefined when a page cannot be read`, which fails page 2 after a full page 1.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "test/engine.test.ts",
+        "line": 349,
+        "severity": "should-fix",
+        "title": "No test checks that the new summary body is what gets POSTed",
+        "text": "`fakeApi` returns from the POST branch before `bodies.push(body)`, so it records only PATCH bodies, and no test asserts that the POST to `/issues/1/comments` sends `{ body: 'new body' }`.\n\n**Consequence:** Every test would still pass if a regression posted the wrong content, an empty body or the superseded text instead of the new summary, and the PR would then publish a wrong or empty summary comment.\n\n**Fix:** Have `fakeApi` record the body for POST calls too, and in the first `postSummary` test assert that the POST body equals `{ body: 'new body' }`.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430063360",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 650b284. `fakeApi()` now records the body of every call that isn't a GET, so the POST body is included. The first `postSummary` test asserts `[{ body: 'new body' }, expected, expected]`: the new summary goes out first, then the superseded body to each earlier summary.\n"
+          }
+        ]
+      },
+      {
+        "id": "F2",
+        "file": "test/engine.test.ts",
+        "line": 343,
+        "severity": "nit",
+        "title": "No postSummary test collapses a summary found only on a later page",
+        "text": "The fake GET ignores `page` and always returns the same short list, so `postSummary` only ever collapses summaries from page 1. `readCommentPages` is tested only on its own.\n\n**Consequence:** If `postSummary` stopped using the multi-page result, old summaries past the first 100 comments would stay expanded and no test would fail.\n\n**Fix:** Add a `postSummary` test where page 1 is full of non-bot comments and page 2 holds a bot summary, then assert a PATCH to that comment's id.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430063364",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 650b284. The new test `postSummary collapses an earlier summary found on a later page` fills page 1 with other users' comments and puts a bot summary (id 200) on page 2. It asserts the exact calls: both GETs, the POST, then `PATCH /repos/o/r/issues/comments/200`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "test/engine.test.ts",
+        "line": 263,
+        "severity": "nit",
+        "title": "One test asserts two behaviors",
+        "text": "The test 'summaryComments lists … and the last holds the newest head' checks both `summaryComments` filtering and `newestReviewedHead`.\n\n**Consequence:** If one assertion fails, the other never runs, and the test name doesn't say which behavior broke.\n\n**Fix:** Split it into one test for `summaryComments` and one for `newestReviewedHead`. Both can share the fixture.",
+        "resolved": true,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430063366",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 650b284. The test is split into `summaryComments lists the bot summary comments oldest first` and `newestReviewedHead takes the head of the newest bot summary`, which share one `summaryFixture()`.\n"
+          }
+        ]
+      },
+      {
+        "id": "F1",
+        "file": "src/main.ts",
+        "line": 39,
+        "severity": "should-fix",
+        "title": "No test covers lastReviewedHead's newest-summary choice or its non-ok branch",
+        "text": "lastReviewedHead now reads every comment page through readCommentPages and takes the head from newestReviewedHead. No test exercises the wrapper itself: neither a non-ok response mapping to undefined nor the choice of the newest summary over an older one.\n\n**Consequence:** If the wrapper regressed, for example by picking the first summary again or by treating a failed page as an empty list, a re-run on a commit already reviewed could be skipped wrongly or run again, and no test would fail.\n\n**Fix:** Move the selection into a pure function that takes the page reader, or test the wrapper with a stubbed fetch. Cover a non-ok page, and two bot summaries with different heads where the newer head is expected.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430087730",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Autopilot: Fixed in 41ba415. `lastReviewedHead()` moved from `src/main.ts`, which can't be imported in tests, to `src/comments.ts`. It is exported there with an injectable `fetchPage` that defaults to `fetch`. Two new tests call the wrapper itself:\n- `lastReviewedHead takes the head of the newest bot summary across pages` has an older bot summary on a full page 1 and a newer one on page 2. It expects the newer head and asserts both request URLs.\n- `lastReviewedHead gives undefined when a page cannot be read` answers page 2 with HTTP 500 and expects `undefined`, not a head from page 1 alone.\n"
+          }
+        ]
+      }
+    ],
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "src/comments.ts",
+        "concern": "Overlapping review runs can race: two runs can leave two summaries expanded, or collapse the newer one. The author answered this in an earlier thread: runs are serialized per pull request by the workflow's concurrency group."
+      }
+    ],
+    "source": "Re-review of #30 (issue #24), round 8: the review at 41ba415 raised again the overlapping-runs race answered in round 4 (https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430119630). The head merges main at f3e5df0 (#29: ci.yml, tsconfig.json, CHANGELOG.md and src/main.ts), as /ship-plan does, so nothing from main may be reviewed. The earlier findings are rounds 1 to 7 as posted, with the replies before round 8; resolved as today, except round 7's, which a re-review checks."
+  },
+  {
     "id": "test-gap-newest-summary-selection",
     "repository": "NCodeGroup/code-review",
     "pullRequest": 30,

@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain or /review teach comment names, and to fetch the pull request's head.
+    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain or /review teach comment names, to fetch the pull request's head and the head the last review read, and to read the earlier review threads for a re-review.
     required: false
     default: ${{ github.token }}
   app-client-id:
