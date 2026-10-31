@@ -105,3 +105,5 @@ export const maxFindings = 40;
 export const findingsPerExtraChunk = 20;
 export const maxFindingsCap = 100;
 export const minConfidence = 0.3;
+// The most lines a suggestion may replace, or write: a longer fix is described in prose only.
+export const maxSuggestionLines = 5;

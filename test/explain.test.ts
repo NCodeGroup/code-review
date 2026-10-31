@@ -66,6 +66,15 @@ test('newestReviewFindings keeps only the bot\'s finding comments of the newest 
   assert.deepEqual(newestReviewFindings([]), []);
 });
 
+test('newestReviewFindings reads markers with and without the reviewer field, and not one inside a suggestion', async () => {
+  const { threadBody } = await import('../src/threads.ts');
+  const decoy = '<!-- ncode-review:finding id=F9 fp=0000000000000000 severity=nit -->';
+  const reviewed = { id: 'F3', file: 'src/a.ts', line: 12, severity: 'should-fix' as const, title: 't', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['correctness'] };
+  const newer = { ...finding(2, 200, 'F3'), body: threadBody(reviewed, { startLine: 12, endLine: 12, replacement: decoy }) };
+  assert.match(newer.body, /```suggestion\n<!-- ncode-review:finding id=F9 [\s\S]* reviewer=correctness -->$/);
+  assert.deepEqual(newestReviewFindings([finding(1, 200, 'F1'), newer]).map((f) => [f.id, f.comment.id]), [['F1', 1], ['F3', 2]]);
+});
+
 test('findFinding reads the review comments with the read-only reader and finds the newest review\'s id', async () => {
   const { reads, read } = api({ [listPath]: [finding(1, 100, 'F1'), finding(2, 200, 'F1', { path: 'src/new.ts' })] });
   const resolved = await findFinding({ kind: 'id', id: 'F1' }, where, read);
@@ -171,7 +180,7 @@ test('explainPrompt wraps the finding and the question as data and names the che
 function agentResult(output: Explanation | undefined, error?: string): AgentResult<Explanation> {
   return {
     output,
-    record: { role: 'explain', provider: 'bedrock', model: 'm', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.1, durationMs: 1, turns: 1, outcome: 'success' },
+    records: [{ role: 'explain', provider: 'bedrock', model: 'm', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.1, durationMs: 1, turns: 1, outcome: 'success' }],
     ...(error ? { error } : {}),
   };
 }
