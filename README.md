@@ -118,8 +118,9 @@ with the copy already on the default branch, and the edit itself is reviewed lik
   - `policies:` files, by their path from the repository root, that every reviewer gets as conventions, after the
     conventions from `AGENTS.md`, with their path and within a budget of 40,000 characters of their own. A path that
     is absolute, contains `..` or a backslash, or resolves outside the checkout through a symlink is left out.
-  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A name that matches no
-    reviewer on the roster, engine or project, is a warning in the check run.
+  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A project reviewer runs
+    on `haiku`, like the engine's `hygiene` and `tests`, unless `tiers:` names it. A name that matches no reviewer on
+    the roster, engine or project, is a warning in the check run.
 - `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
   the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
 - `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase

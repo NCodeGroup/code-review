@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
-import { gather, type ChangedFile, type PullRequest } from '../src/gather.ts';
+import { gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
 import { fileList, projectFloor, projectRoster, review, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
 import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
@@ -92,6 +92,11 @@ test('validateConfig accepts the documented settings and falls back to the defau
     const { config: result, errors } = validateConfig(parseYaml(text));
     assert.ok(errors.length, text);
     assert.deepEqual(result, { sensitive: [], skip: [], policies: [], tiers: {} }, text);
+  }
+  for (const value of [{ skip: ['a'.repeat(257)] }, { policies: ['docs/\u0001a.md'] }]) {
+    const { config: result, errors } = validateConfig(value);
+    assert.deepEqual(errors, [`"${Object.keys(value)[0]}" has an item that is too long or has control characters`]);
+    assert.deepEqual(result, { sensitive: [], skip: [], policies: [], tiers: {} });
   }
 });
 
@@ -334,6 +339,17 @@ test('tiers: overrides the engine defaults, and CODE_REVIEW_TIERS overrides both
   assert.equal(tiers['project:oauth'], 'opus');
   assert.equal(tiers['security'], 'sonnet');
   assert.equal(reviewerTiers('correctness=opus', { correctness: 'haiku' })['correctness'], 'opus');
+});
+
+test('guidance.md applies to every file unless applyTo: narrows it', () => {
+  const text = '- 👁 **One.** a';
+  assert.deepEqual(projectGuidanceRules(text, ['README.md']).map((r) => r.globs), [['**']]);
+  const narrowed = `---\napplyTo: "src/**/*.cs, test/**/*.cs"\n---\n${text}`;
+  const [rule] = projectGuidanceRules(narrowed, ['README.md', 'src/Auth/Token.cs']);
+  assert.deepEqual(rule?.globs, ['src/**/*.cs', 'test/**/*.cs']);
+  assert.match(rule?.text ?? '', /^From \.github\/code-review\/guidance\.md \(applies to src\/\*\*\/\*\.cs, test\/\*\*\/\*\.cs\):\n- 👁 \*\*One\.\*\* a$/);
+  assert.deepEqual(projectGuidanceRules(narrowed, ['README.md', 'src/Auth/Token.ts']), []);
+  assert.deepEqual(projectGuidanceRules(undefined, ['src/Auth/Token.cs']), []);
 });
 
 test('guidance.md rules get their own ids in the catalog', () => {
