@@ -713,8 +713,8 @@ test('reReview with verification on never approves after refuting what it would 
   assert.ok(plan);
   const run = { provider: 'bedrock' as const, proxyUrl: 'http://127.0.0.1:1', checkout: repo };
   const verifications: AgentRequest[] = [];
-  const agent = verifier({ Wrong: { verdict: 'refuted', path: '', reason: 'Not reachable.', question: '' } }, verifications);
-  const refuted = await reReview(run, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('blocker', 'a.ts', 62, 'Wrong')], earlier: [] }, []), { enabled: true, agent });
+  const agent = verifier({ Wrong: { verdict: 'refuted', path: 'a.ts:1', reason: 'Not reachable.', question: '' } }, verifications);
+  const refuted = await reReview(run, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('should-fix', 'a.ts', 62, 'Wrong')], earlier: [] }, []), { enabled: true, agent });
   assert.deepEqual(refuted.findings, []);
   assert.equal(refuted.refuted.length, 1);
   assert.equal(refuted.verdict, 'comment');

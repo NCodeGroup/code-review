@@ -1,12 +1,13 @@
 // Verification, after synthesis: Sonnet calls with the checkout, Opus ones for a deep review's sensitive files, try to
 // prove or refute each blocker and should-fix with a concrete code path. A finding is dropped only when a call refutes it
-// with a reason, and the drop is recorded; one it can neither prove nor refute stays, as a question one severity lower.
-// Nits aren't verified.
+// with a reason and a path that cites code outside the lines the pull request adds, and it is neither a blocker nor a
+// security finding; the drop is recorded. Any other refuted finding, and one a call can neither prove nor refute, stays
+// as a question one severity lower. Nits aren't verified.
 
 import { runAgent, totalCost, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency, type ModelTier } from './config.ts';
-import { splitDiff } from './gather.ts';
+import { changedLines, splitDiff } from './gather.ts';
 import type { ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 
@@ -42,8 +43,11 @@ export interface VerificationCall {
 export interface VerificationOutcome {
   findings: ReviewedFinding[];
   refuted: RefutedFinding[];
-  // How many findings verification couldn't settle and made questions one severity lower.
+  // How many findings verification made questions one severity lower, because it couldn't settle them or wouldn't drop
+  // them on its refutation.
   questioned: number;
+  // Of those, the refuted blockers and security findings, which a refutation never drops.
+  demoted: number;
   calls: CallRecord[];
   trace: VerificationCall[];
 }
@@ -127,25 +131,57 @@ export function verificationBatches(findings: ReviewedFinding[], size = findings
   return batches;
 }
 
-// Applies the verdicts: confirmed keeps the finding with its code path in the evidence, refuted drops it into the
-// refuted list, uncertain makes it a question one severity lower. A finding without a verdict, or refuted without a
+// Whether a refutation's path cites code the pull request doesn't add: a file:line in a file the diff doesn't change,
+// or on a line of a changed file the diff doesn't add. A refutation that rests only on the change's own lines may have
+// been misled by them. A path ending in a changed file's path, such as the checkout's absolute path, is that file.
+export function citesUnchangedCode(path: string, added: ReadonlyMap<string, ReadonlySet<number>>): boolean {
+  for (const match of path.matchAll(/([\w./@-]*\w):(\d+)/g)) {
+    const file = match[1]!;
+    const changed = [...added.keys()].find((f) => file === f || file.endsWith(`/${f}`));
+    if (!changed || !added.get(changed)!.has(Number(match[2]))) return true;
+  }
+  return false;
+}
+
+// Applies the verdicts: confirmed keeps the finding with its code path in the evidence, and refuted drops it into the
+// refuted list when its path cites code outside the lines the pull request adds (`added`, per file) and the finding is
+// neither a blocker nor a security finding. Uncertain makes it a question one severity lower, and so does any other
+// refutation, with the refutation in the evidence: a verifier misled by the change's own code can refute a real
+// finding, and a blocker or security finding is too costly to lose. A finding without a verdict, or refuted without a
 // reason, isn't dropped: a nit, a failed call or a verdict without evidence leaves it as it is, or makes it a question.
 // The kept findings are ranked again and renumbered; postedAs maps each kept finding's old id to its new one.
 export function applyVerifications(
   findings: ReviewedFinding[],
   verifications: Map<string, Verification>,
-): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; postedAs: Map<string, string> } {
+  added: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
+): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; demoted: number; postedAs: Map<string, string> } {
   const kept: ReviewedFinding[] = [];
   const refuted: RefutedFinding[] = [];
   let questioned = 0;
+  let demoted = 0;
   for (const f of findings) {
     const v = f.severity === 'nit' ? undefined : verifications.get(f.id);
     if (!v) {
       kept.push(f);
     } else if (v.verdict === 'confirmed') {
       kept.push({ ...f, evidence: appendEvidence(f.evidence, `Verified: ${v.path.trim() || v.reason.trim()}`) });
-    } else if (v.verdict === 'refuted' && v.reason.trim()) {
+    } else if (v.verdict === 'refuted' && v.reason.trim() && citesUnchangedCode(v.path, added) && f.severity !== 'blocker' && !f.reviewers.includes('security')) {
       refuted.push({ finding: f, path: v.path.trim(), reason: v.reason.trim() });
+    } else if (v.verdict === 'refuted' && v.reason.trim()) {
+      questioned++;
+      const outside = citesUnchangedCode(v.path, added);
+      if (outside) demoted++;
+      kept.push({
+        ...f,
+        severity: lowered[f.severity],
+        problem: v.question.trim() || `Is this intended? ${f.problem}`,
+        evidence: appendEvidence(
+          f.evidence,
+          outside
+            ? `Verification refuted it, but a refuted ${f.severity === 'blocker' ? 'blocker' : 'security finding'} stays as a question: ${v.reason.trim()} (${v.path.trim()})`
+            : `Verification refuted it citing only lines this pull request adds, so it stays as a question: ${v.reason.trim()}`,
+        ),
+      });
     } else {
       questioned++;
       kept.push({
@@ -158,7 +194,7 @@ export function applyVerifications(
   }
   const ranked = kept.map((f, i) => ({ f, i })).sort((a, b) => severityRank[a.f.severity] - severityRank[b.f.severity] || a.i - b.i);
   const postedAs = new Map(ranked.map(({ f }, i) => [f.id, `F${i + 1}`]));
-  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, postedAs };
+  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, demoted, postedAs };
 }
 
 function appendEvidence(evidence: string, line: string): string {
@@ -196,7 +232,7 @@ function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallReco
 
 export async function verifyFindings(input: VerificationInput): Promise<VerificationOutcome> {
   const batches = input.enabled ? verificationBatches(input.findings) : [];
-  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, calls: [], trace: [] };
+  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, calls: [], trace: [] };
 
   const agent: VerificationAgent = input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
   const sections = splitDiff(input.diff);
@@ -246,7 +282,7 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   for (const { call } of done) {
     for (const v of call.verifications) if (!verdicts.has(v.id)) verdicts.set(v.id, v);
   }
-  const { postedAs, ...applied } = applyVerifications(input.findings, verdicts);
+  const { postedAs, ...applied } = applyVerifications(input.findings, verdicts, changedLines(input.diff));
   const count = (verdict: VerificationVerdict) => [...verdicts.values()].filter((v) => v.verdict === verdict).length;
   const checked = batches.flat().length;
   const failed = done.filter((d) => d.call.error).length;
@@ -268,15 +304,22 @@ export function verdictAfterVerification(verdict: Verdict, findings: ReviewedFin
 }
 
 // The sentence added to synthesis's summary, which was written before verification: what verification changed, and the
-// titles of the findings it refuted, since only the check run lists their reasons.
-export function verificationNote(refuted: RefutedFinding[], questioned: number): string {
+// titles of the findings it refuted, since only the check run lists their reasons. `questioned` counts every finding it
+// made a question; `demoted`, the refuted blockers and security findings among them.
+export function verificationNote(refuted: RefutedFinding[], questioned: number, demoted = 0): string {
   const findings = (n: number) => (n === 1 ? 'one finding' : `${n} findings`);
   const changes: string[] = [];
   if (refuted.length) {
     const titles = refuted.map((r) => `"${r.finding.title}"`).join('; ');
     changes.push(`refuted ${findings(refuted.length)}, which the check run lists with ${refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}`);
   }
-  if (questioned) changes.push(`couldn't settle ${findings(questioned)}, now ${questioned === 1 ? 'a question' : 'questions'} one severity lower`);
+  const unsettled = questioned - demoted;
+  if (unsettled) changes.push(`couldn't settle ${findings(unsettled)}, now ${unsettled === 1 ? 'a question' : 'questions'} one severity lower`);
+  if (demoted) {
+    changes.push(demoted === 1
+      ? 'kept one refuted blocker or security finding as a question one severity lower'
+      : `kept ${demoted} refuted blockers or security findings as questions one severity lower`);
+  }
   return changes.length ? ` After this summary was written, verification ${changes.join(', and ')}.` : '';
 }
 
@@ -292,15 +335,15 @@ export interface SynthesizedReview {
 export async function verifyReview(
   review: SynthesizedReview,
   input: Omit<VerificationInput, 'findings'>,
-): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned'>> {
-  const { findings, refuted, questioned, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
+): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted'>> {
+  const { findings, refuted, questioned, demoted, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
   let verdict = review.verdict;
   if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
   // Without synthesis's verdict, review() derives one from the findings, and approve when none is left; verification
   // refuted those, so it's a comment instead.
   else if (trace.length && !findings.length) verdict = 'comment';
   return {
-    summary: review.summary + verificationNote(refuted, questioned),
+    summary: review.summary + verificationNote(refuted, questioned, demoted),
     verdict,
     findings,
     refuted,
