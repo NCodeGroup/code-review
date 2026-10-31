@@ -1,14 +1,18 @@
-// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
+// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, type ModelTier } from './config.ts';
+import { mapWithConcurrency } from './concurrency.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
+// Most severe first.
+export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 export interface Finding {
   severity: Severity;
@@ -42,6 +46,9 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings verification refuted and dropped, with its reasons, and every verification call.
+  refuted: RefutedFinding[];
+  verification: VerificationCall[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -106,6 +113,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  verificationPrompt: string;
   reviewers: Map<string, string>;
 }
 
@@ -130,6 +138,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    verificationPrompt: prompt('verification'),
     reviewers,
   };
 }
@@ -222,8 +231,6 @@ function synthesisDiff(gathered: Gathered, files: string[], budget: number): str
   return out || gathered.diff.slice(0, budget);
 }
 
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
-
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
 // naming it doesn't count.
@@ -243,19 +250,6 @@ export function mergeSynthesis(
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
-}
-
-export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -440,6 +434,20 @@ export async function review(
     summary = 'No findings.';
   }
 
+  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  const verified = await verifyReview({ summary, verdict, findings }, {
+    run: reviewRun,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
+    log,
+    enabled: verificationOn(),
+    agent,
+  });
+  calls.push(...verified.calls);
+  ({ summary, verdict, findings } = verified);
+
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
   if (ceilingWarning) {
@@ -447,5 +455,5 @@ export async function review(
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped };
 }
