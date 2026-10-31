@@ -665,6 +665,12 @@ test('lastReviewedHead gives undefined when the fetch rejects', async () => {
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
+test('lastReviewedHead gives undefined when a page body is not JSON', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const fetchPage = (async () => new Response('not json', { status: 200 })) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
 test('lastReviewedHead sends no authorization header without a token', async () => {
   const { lastReviewedHead } = await import('../src/comments.ts');
   const sent: Headers[] = [];
