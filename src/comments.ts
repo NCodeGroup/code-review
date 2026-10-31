@@ -7,10 +7,10 @@ import { newestReviewedHead, summaryComments, supersededComment, type Results } 
 export const commentPageSize = 100;
 export const maxCommentPages = 100;
 
-// Error text short enough for a warning line.
+// Error text for a warning line: on one line, so a newline followed by "::" can't start a workflow command, and short.
 const maxErrorChars = 200;
-function errorText(error: unknown): string {
-  return (error as Error).message.slice(0, maxErrorChars);
+export function errorText(error: unknown): string {
+  return (error as Error).message.replace(/\s+/g, ' ').slice(0, maxErrorChars);
 }
 
 // Reads a pull request's comments, oldest first, until a short page; undefined when a page can't be read, or when
@@ -61,7 +61,7 @@ export async function postSummary(
   return comment.html_url;
 }
 
-// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it can't be read.
+// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable.
 export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
   const all = await readCommentPages(async (page) => {
     const response = await fetchPage(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`, {

@@ -532,6 +532,18 @@ test('lastReviewedHead gives undefined when a page cannot be read', async () => 
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
+test('lastReviewedHead gives undefined when the first page cannot be read', async () => {
+  const { lastReviewedHead } = await import('../src/comments.ts');
+  const fetchPage = (async () => new Response('', { status: 500 })) as typeof fetch;
+  assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
+});
+
+test('errorText keeps an error message on one line', async () => {
+  const { errorText } = await import('../src/comments.ts');
+  assert.equal(errorText(new Error('HTTP 422 {"message":"x"}\n::error::injected\r\n  more')), 'HTTP 422 {"message":"x"} ::error::injected more');
+  assert.equal(errorText(new Error('y'.repeat(300))).length, 200);
+});
+
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
   const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
   const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };

@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
-import { postSummary } from './comments.ts';
+import { errorText, postSummary } from './comments.ts';
 import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
 
@@ -53,7 +53,7 @@ async function postThreads(token: string, results: Results): Promise<void> {
     await github(token, 'POST', `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`, review);
     console.log(`Posted a review with ${placement.inline.length} threads and ${placement.inBody.length} findings in its body.`);
   } catch (error) {
-    console.log(`::warning::GitHub refused the inline threads (${(error as Error).message.slice(0, 200)}); posting them in the review's body.`);
+    console.log(`::warning::GitHub refused the inline threads (${errorText(error)}); posting them in the review's body.`);
     const fallback = { inline: [], inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody], alreadyPosted: placement.alreadyPosted };
     await github(token, 'POST', `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`, {
       commit_id: results.headSha,
