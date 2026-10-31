@@ -6,14 +6,14 @@ import path from 'node:path';
 import { runAgent, totalCost, withoutTools, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { isTemplateOwned, type Template } from './template.ts';
+import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
-export type Severity = 'blocker' | 'should-fix' | 'nit';
-// Most severe first.
-export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export { severityRank, type Severity };
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {
@@ -55,6 +55,10 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings on the template's files: they belong in the template's repository, not in threads on this pull request.
+  upstream: ReviewedFinding[];
+  // Places on the template's files past the upstream list's limit.
+  upstreamOmitted: number;
   // Findings left out because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification refuted and dropped, with its reasons, and every verification call.
@@ -209,9 +213,10 @@ const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
 
-// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
+// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove. The
+// template's files don't count: they aren't this repository's code to test or redesign.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
-  const reviewed = files.filter((f) => !f.generated);
+  const reviewed = files.filter((f) => !f.generated && !f.templateOwned);
   const code = reviewed.filter((f) => productCode.test(f.path) && !testPath.test(f.path));
   const floor = new Set<string>(['hygiene']);
   if (code.length) floor.add('correctness');
@@ -248,7 +253,7 @@ export function fileList(gathered: Pick<Gathered, 'files'>, inDiff?: Set<string>
   return gathered.files
     .map((f) => {
       const notShown = !f.shown ? ' [diff not shown: over the size budget]' : inDiff && !inDiff.has(f.path) ? ` [${elsewhere}]` : '';
-      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${notShown}`;
+      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.templateOwned ? ' [template-owned]' : ''}${notShown}`;
     })
     .join('\n');
 }
@@ -278,9 +283,17 @@ function decisionsBlock(decisions: Decision[]): string {
   return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts, including what its consequences accept; do report code that breaks one, citing it. A decision this pull request adds or changes is part of the change: what it accepts isn't a defect in the code, but you may question the decision itself.\n<decisions>\n${text}\n</decisions>`;
 }
 
+// Tells the reviewers which changed files are the template's, and that a template adoption or update is still reviewed
+// for what the project chose.
+export function templateBlock(gathered: Gathered): string {
+  const template = gathered.template;
+  if (!template || !gathered.files.some((f) => f.templateOwned)) return '';
+  return `\n\nThis repository is made from the project template ${template.repository}${template.commit ? ` (${template.commit})` : ''}. The changed files marked [template-owned] are the template's: a template update replaces them and discards any edit, so this repository can't fix them. Don't review them as this repository's code: don't ask for tests of them here, and don't report their style, comments or wording. Report a defect in one only when it's a real bug in the template; it goes on a list for ${template.repository}, not on this pull request. A blocker stays on this pull request: report one when a change in these files makes the change unsafe to merge, such as a hook, script or agent prompt that leaks secrets, weakens a check or runs code from outside the repository. Every other file is the project's, so review it as usual, including what the project chose when it adopted or updated the template: its answers in .copier-answers.yml, the files it merges with the template's (such as .gitignore, .gitattributes, editor and tool settings and the workflows), AGENTS.md, and its own files.`;
+}
+
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
 function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
-  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, diff, part, parts)}`;
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}${templateBlock(gathered)}\n\n${changeContext(gathered, diff, part, parts)}`;
 }
 
 // The limit on posted findings: higher for a pull request reviewed in parts.
@@ -325,6 +338,52 @@ export function mergeSynthesis(
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
 }
 
+// Splits findings into the repository's own, which become threads, and the template's, which belong upstream. A blocker
+// stays on the pull request even in the template's file: it makes the change unsafe to merge, whoever has to fix it.
+export function byOwner<T extends Pick<Finding, 'file' | 'severity'>>(findings: T[], template: Template | undefined): { own: T[]; upstream: T[] } {
+  const upstream = (f: T) => f.severity !== 'blocker' && isTemplateOwned(f.file, template);
+  return { own: findings.filter((f) => !upstream(f)), upstream: findings.filter(upstream) };
+}
+
+// The findings on the template's files, for the summary's list for the template's repository: one per file and line,
+// keeping the most severe and naming every reviewer that raised it. The list stops at maxUpstreamFindings; omitted
+// counts the places past it.
+export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]): { upstream: ReviewedFinding[]; omitted: number } {
+  const byPlace = new Map<string, Finding & { reviewers: string[] }>();
+  const ranked = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  for (const f of ranked) {
+    const key = `${f.file}:${f.line}`;
+    const kept = byPlace.get(key);
+    if (kept) kept.reviewers = [...new Set([...kept.reviewers, ...f.reviewers])];
+    else byPlace.set(key, { ...f, reviewers: [...f.reviewers] });
+  }
+  const places = [...byPlace.values()];
+  return {
+    upstream: places.slice(0, maxUpstreamFindings).map((f, i) => ({ ...f, id: `U${i + 1}` })),
+    omitted: Math.max(0, places.length - maxUpstreamFindings),
+  };
+}
+
+// After synthesis, which may still place a finding in one of the template's files: moves those to the upstream list,
+// renumbers the rest, and, when only the template's findings remain, says so in the summary.
+export function settleUpstream(
+  findings: ReviewedFinding[],
+  upstreamRaw: (Finding & { reviewers: string[] })[],
+  template: Template | undefined,
+  summary: string,
+): { findings: ReviewedFinding[]; upstream: ReviewedFinding[]; upstreamOmitted: number; summary: string } {
+  const placed = byOwner(findings, template);
+  const own = placed.own.map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  const { upstream, omitted } = upstreamFindings([...upstreamRaw, ...placed.upstream]);
+  const total = upstream.length + omitted;
+  return {
+    findings: own,
+    upstream,
+    upstreamOmitted: omitted,
+    summary: !own.length && total ? `No findings in this repository's own files; ${total} in the template's belong upstream, in ${template!.repository}.` : summary,
+  };
+}
+
 type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] };
 
 const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
@@ -362,6 +421,15 @@ export function settleFindings(
     findings,
     dropped,
   };
+}
+
+// The review's verdict after settling upstream: synthesis's when it gave one, else what the findings call for. When
+// settling moved some of synthesis's findings upstream, its verdict may rest on them, so it's capped at what the findings
+// left here call for.
+export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: boolean, findings: Pick<Finding, 'severity'>[]): Verdict {
+  const called = verdictFor(findings);
+  if (!synthesized) return called;
+  return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -500,11 +568,17 @@ export async function review(
 
   // Synthesis.
   const limit = findingLimit(parts.length);
-  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  // Findings on the template's files skip synthesis: they're listed for the template's repository instead.
+  const split = byOwner(outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))), gathered.template);
+  const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
-  let dropped: DroppedFinding[] = [];
+  const changedFiles = gathered.files.map((f) => f.path);
+  // The claims guard reads the template's findings too: they're listed in the summary comment.
+  const guardedUpstream = dropContradicted(upstreamRaw, changedFiles);
+  let dropped: DroppedFinding[] = guardedUpstream.dropped;
   if (raw.length) {
     const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const synthesis = await agent<SynthesisOutput>(
@@ -521,12 +595,18 @@ export async function review(
       },
     );
     calls.push(...synthesis.records);
-    const changedFiles = gathered.files.map((f) => f.path);
-    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, changedFiles, limit));
-    if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+    const settledFindings = settleFindings(synthesis, raw, changedFiles, limit);
+    ({ summary, verdict, findings } = settledFindings);
+    dropped = [...settledFindings.dropped, ...dropped];
   } else {
     summary = 'No findings.';
   }
+  if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  // Synthesis may still place a finding in a template's file. Its verdict is capped when that moved some of its findings
+  // upstream; without one, the verdict comes from the findings verification leaves.
+  const settled = settleUpstream(findings, guardedUpstream.kept, gathered.template, summary);
+  if (verdict) verdict = settledVerdict(verdict, settled.findings.length < findings.length, settled.findings);
+  ({ summary, findings } = settled);
 
   // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
   const verified = await verifyReview({ summary, verdict, findings }, {
@@ -549,5 +629,17 @@ export async function review(
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, dropped, refuted: verified.refuted, verification: verified.trace, calls, skipped };
+  return {
+    reviewers: outcomes,
+    summary,
+    verdict,
+    findings,
+    upstream: settled.upstream,
+    upstreamOmitted: settled.upstreamOmitted,
+    dropped,
+    refuted: verified.refuted,
+    verification: verified.trace,
+    calls,
+    skipped,
+  };
 }

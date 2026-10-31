@@ -332,7 +332,7 @@ async function main(): Promise<void> {
       const reReviewReport = reReviewed
         ? { reReview: { summary: reReviewed.summary, offChanged, earlier: reReviewed.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, status, note })) } }
         : {};
-      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, refuted: outcome.refuted, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost, ...reReviewReport });
+      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, upstream: outcome.upstream, refuted: outcome.refuted, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost, ...reReviewReport });
       return caseCost;
     }, maxCost);
   } finally {
