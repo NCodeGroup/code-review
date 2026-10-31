@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, withoutTools, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { parseCharter, type Charter } from './charter.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
@@ -16,6 +16,13 @@ export type Severity = 'blocker' | 'should-fix' | 'nit';
 // Most severe first.
 export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
+// The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
+export interface Suggestion {
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
+
 export interface Finding {
   severity: Severity;
   file: string;
@@ -26,6 +33,7 @@ export interface Finding {
   fix: string;
   evidence: string;
   confidence: number;
+  suggestion?: Suggestion;
 }
 
 export interface ReviewedFinding extends Finding {
@@ -84,10 +92,21 @@ const findingProperties = {
   fix: { type: 'string' },
   evidence: { type: 'string' },
   confidence: { type: 'number', minimum: 0, maximum: 1 },
+  // Optional: only for a fix of a few lines that needs no other change.
+  suggestion: {
+    type: 'object',
+    properties: {
+      startLine: { type: 'integer', minimum: 1 },
+      endLine: { type: 'integer', minimum: 1 },
+      replacement: { type: 'string' },
+    },
+    required: ['startLine', 'endLine', 'replacement'],
+    additionalProperties: false,
+  },
 };
-const findingRequired = Object.keys(findingProperties);
+const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
-const specialistSchema = {
+export const specialistSchema = {
   type: 'object',
   properties: {
     findings: {
@@ -99,7 +118,7 @@ const specialistSchema = {
   additionalProperties: false,
 };
 
-const synthesisSchema = {
+export const synthesisSchema = {
   type: 'object',
   properties: {
     summary: { type: 'string' },
@@ -337,7 +356,7 @@ export async function review(
   agent: typeof runAgent = runAgent,
 ): Promise<Review> {
   const calls: CallRecord[] = [];
-  const spent = () => calls.reduce((sum, c) => sum + c.costUsd, 0);
+  const spent = () => totalCost(calls);
   const roster = [...charters.reviewers.keys()];
   const shadow = shadowReviewers(charters);
   const variants = shadowSampled(gathered.pullRequest.number, gathered.pullRequest.headSha, shadowPromptRate()) ? charters.shadowPrompts : {};
@@ -354,7 +373,7 @@ export async function review(
     (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
     agent,
   );
-  if (contextResult) calls.push(contextResult.record);
+  if (contextResult) calls.push(...contextResult.records);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
   log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
 
@@ -362,7 +381,7 @@ export async function review(
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
-  const oneShot: AgentRun = { provider: run.provider, proxyUrl: run.proxyUrl };
+  const oneShot = withoutTools(run);
   const selectionRequest = (role: string, systemPrompt: string): AgentRequest => ({
     role,
     tier: 'sonnet',
@@ -377,9 +396,9 @@ export async function review(
     agent<Selection>(oneShot, selectionRequest('selection', charters.selectionPrompt)),
     variants.selection === undefined ? undefined : agent<Selection>(oneShot, selectionRequest('shadow-prompt:selection', variants.selection)),
   ]);
-  calls.push(selection.record);
+  calls.push(...selection.records);
   if (shadowSelection) {
-    calls.push(shadowSelection.record);
+    calls.push(...shadowSelection.records);
     shadowPrompts.push(shadowPromptRun(['selection'], 'selection', selection, shadowSelection));
   }
   for (const addition of selection.output?.add ?? []) {
@@ -450,10 +469,11 @@ export async function review(
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
     });
-    calls.push(result.record);
+    calls.push(...result.records);
+    const cost = totalCost(result.records);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
     outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
   };
   const concurrency = 6;
@@ -516,9 +536,9 @@ export async function review(
       agent<Synthesis>(oneShot, synthesisRequest('synthesis', charters.synthesisPrompt)),
       variants.synthesis === undefined ? undefined : agent<Synthesis>(oneShot, synthesisRequest('shadow-prompt:synthesis', variants.synthesis)),
     ]);
-    calls.push(synthesis.record);
+    calls.push(...synthesis.records);
     if (shadowSynthesis) {
-      calls.push(shadowSynthesis.record);
+      calls.push(...shadowSynthesis.records);
       shadowPrompts.push(shadowPromptRun(['synthesis'], 'synthesis', synthesis, shadowSynthesis));
     }
     if (synthesis.output) {

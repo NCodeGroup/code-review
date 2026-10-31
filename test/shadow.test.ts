@@ -22,7 +22,7 @@ function stubAgent(answer: (request: AgentRequest) => { output?: unknown; error?
       cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success',
     };
     const { output, error } = answer(request);
-    return error ? { output: undefined, record, error } : { output, record };
+    return error ? { output: undefined, records: [record], error } : { output, records: [record] };
   }) as typeof runAgent;
   return { agent, requests };
 }
@@ -58,12 +58,12 @@ const charters = (performance: string, shadowPrompts: Partial<Record<PromptName,
 const finding = (title: string, severity: Finding['severity']): Finding =>
   ({ severity, file: 'src/A.cs', line: 2, title, problem: `${title} problem`, consequence: 'c', fix: `${title} fix`, evidence: 'e', confidence: 0.9 });
 
-// Selection adds performance; correctness reports a nit and performance a blocker. Synthesis fails, so the verdict
-// comes from the findings it was given.
+// Selection adds performance; correctness reports a nit and performance a blocker with a suggested fix. Synthesis fails,
+// so the verdict comes from the findings it was given.
 function reviewAnswers(request: AgentRequest): { output?: unknown; error?: string } {
   if (request.role === 'selection') return { output: { add: [{ reviewer: 'performance', reason: 'a hot path' }] } };
   if (request.role === 'reviewer:correctness') return { output: { findings: [finding('Live nit', 'nit')] } };
-  if (request.role === 'reviewer:performance') return { output: { findings: [finding('Shadow blocker', 'blocker')] } };
+  if (request.role === 'reviewer:performance') return { output: { findings: [{ ...finding('Shadow blocker', 'blocker'), suggestion: { startLine: 2, endLine: 2, replacement: 'shadow replacement' } }] } };
   if (request.role.startsWith('reviewer:')) return { output: { findings: [] } };
   return { error: 'stub synthesis is down' };
 }
@@ -140,6 +140,8 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
   const results = buildResults(outcome, context);
   const placement = placeFindings(results.findings, results.changedLines, []);
   assert.deepEqual([...placement.inline.map((p) => p.finding.title), ...placement.inBody.map((f) => f.title)], ['Live nit']);
+  // Its suggested fix is never posted either.
+  assert.ok(placement.inline.every((p) => !p.suggestion));
   const summary = summaryComment(results, 'https://check', 'https://help');
   assert.doesNotMatch(summary, /Shadow blocker|performance/);
   assert.match(summary, /\*\*3 reviewers run\*\* — 1 finding/);
@@ -153,6 +155,7 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
   assert.match(shadowSection, /\| performance \| ran \| 1 \| \$0\.010 \|/);
   assert.match(shadowSection, /🔴 Blocker · `src\/A\.cs:2` · \*\*Shadow blocker\*\* Shadow blocker problem/);
   assert.match(shadowSection, /<\/details>$/);
+  assert.doesNotMatch(text, /```suggestion|shadow replacement/);
 });
 
 test('a reviewer not marked shadow goes to synthesis and the verdict as before', async () => {

@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bedrockFallbackFor, type AgentRun } from './agent.ts';
 import { commandFromEvent, skipReasonFor } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -118,15 +119,20 @@ async function main(): Promise<void> {
   log(`Provider: ${choice.reason}`);
 
   const proxy = await startProxy(credentials);
+  // A run that starts on the Claude API with a Bedrock key moves to Bedrock if the credits run out partway.
+  const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
-    const outcome = await review({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, gathered, loadCharters(root), log);
+    const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
+    const outcome = await review(run, gathered, loadCharters(root), log);
+    if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = buildResults(outcome, {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
+      ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       diff: gathered.diff,

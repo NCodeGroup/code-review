@@ -1,7 +1,7 @@
 // Turns a review into the results.json the publish step posts. Kept out of results.ts, which the publish step loads, so
 // that step never loads the review's code.
 
-import type { CallRecord } from './agent.ts';
+import { lastModel, totalCost, type CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
 import { topSeverity, type Results, type ReviewerResult, type ShadowResults } from './results.ts';
 import { changedLines, type Review, type ReviewerOutcome } from './review.ts';
@@ -12,6 +12,7 @@ export interface ReviewContext {
   headSha: string;
   provider: Provider;
   providerReason: string;
+  switchedToBedrock?: string;
   durationMs: number;
   notShown: string[];
   diff: string;
@@ -23,7 +24,7 @@ function reviewerResults(outcomes: ReviewerOutcome[], calls: CallRecord[]): Revi
     return {
       name,
       status,
-      model: calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+      model: lastModel(calls, `reviewer:${name}`),
       findingCount: findings.length,
       ...(top ? { topSeverity: top } : {}),
       ...(error ? { error } : {}),
@@ -54,15 +55,16 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     headSha: context.headSha,
     provider: context.provider,
     providerReason: context.providerReason,
+    ...(context.switchedToBedrock ? { switchedToBedrock: context.switchedToBedrock } : {}),
     summary: outcome.summary,
     verdict: outcome.verdict,
     findings: outcome.findings,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),
     skipped: outcome.skipped,
-    synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
+    synthesisModel: lastModel(outcome.calls, 'synthesis'),
     calls: outcome.calls,
-    costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
+    costUsd: totalCost(outcome.calls),
     durationMs: context.durationMs,
     notShown: context.notShown,
     changedLines: changedLinesFor(context.diff, outcome.findings.map((f) => f.file)),
