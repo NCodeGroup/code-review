@@ -41,7 +41,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ startsWith(github.event.comment.body, '/review explain') && format('explain-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write

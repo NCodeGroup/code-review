@@ -44,7 +44,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ startsWith(github.event.comment.body, '/review explain') && format('explain-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write
@@ -125,8 +125,8 @@ Comment on a pull request, as a top-level comment, not a reply in a review threa
 review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
 review's ids, with no model call. Otherwise one Sonnet agent with Read, Grep and Glob, locked down like the reviewers,
 reads the pull request's latest commit, within a budget of about $0.50. The `if:` above already lets the command through,
-since it checks only that the comment starts with `/review`. It shares the review's concurrency group, so asking while a
-review is running cancels that review.
+since it checks only that the comment starts with `/review`. The `concurrency` group above gives each explain comment a
+group of its own, so asking while a review is running doesn't cancel that review, and a review doesn't cancel an answer.
 
 To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
 
