@@ -309,6 +309,8 @@ async function main(): Promise<void> {
       const gathered = gather(pullRequest, head, base, guidance, confirmed);
       let reReviewed: ReReview | undefined;
       let offChanged: string[] = [];
+      // A case's sensitive: stands in for the one gather read from the base branch.
+      if (c.sensitive) gathered.sensitive = c.sensitive;
       if (c.reviewed) {
         const plan = await planReReview({
           gathered,

@@ -83,8 +83,19 @@ const severities: Severity[] = ['blocker', 'should-fix', 'nit'];
 // maintainer dismissed also repeats at any severity, so raising or lowering it doesn't post it again.
 function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: boolean): boolean {
   if (thread.fingerprint === fingerprint(finding)) return true;
-  if (thread.path === finding.file && thread.severity === finding.severity && Math.abs(thread.line - finding.line) <= repeatDistance) return true;
+  if (thread.severity === finding.severity && nearby({ file: thread.path, line: thread.line }, finding)) return true;
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
+}
+
+// Two findings in the same file within a few lines of each other.
+export function nearby(a: Pick<ReviewedFinding, 'file' | 'line'>, b: Pick<ReviewedFinding, 'file' | 'line'>): boolean {
+  return a.file === b.file && Math.abs(a.line - b.line) <= repeatDistance;
+}
+
+// Two findings of one review that repeat each other: in the same file within a few lines and with the same title words,
+// whatever their severity.
+export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>, b: Pick<ReviewedFinding, 'file' | 'line' | 'title'>): boolean {
+  return nearby(a, b) && fingerprint({ ...a, severity: 'nit' }) === fingerprint({ ...b, severity: 'nit' });
 }
 
 // `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed.
