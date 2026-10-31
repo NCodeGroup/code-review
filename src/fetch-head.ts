@@ -61,8 +61,10 @@ export function authEnvironment(remoteUrl: string, token: string | undefined): R
 
 // An empty folder stands in for the home directory, the hooks folder and the global configuration, so nothing a runner
 // or the checked-out code could hold there is read.
-function git(where: { cwd: string; empty: string }, args: string[], extra: Record<string, string> = {}, timeout?: number): string {
+// `run.env` adds to git's environment (the token's header), and `run.timeout` is a limit in milliseconds.
+function git(where: { cwd: string; empty: string }, args: string[], run: { env?: Record<string, string>; timeout?: number } = {}): string {
   const { cwd, empty } = where;
+  const { env: extra = {}, timeout } = run;
   return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...args], {
     encoding: 'utf8',
     ...(timeout === undefined ? {} : { timeout, killSignal: 'SIGKILL' as const }),
@@ -119,9 +121,9 @@ export function fetchPullRequestHead(options: FetchHead): void {
       git(where, ['remote', 'add', 'origin', options.remoteUrl]);
       // The branches give the merge base its history; the pull request's own ref carries the head, which a pull request
       // may not have on any branch yet.
-      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], auth, limit);
+      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], { env: auth, timeout: limit });
       // A push after the event leaves the event's commit off both, so ask for it by name.
-      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], auth, limit);
+      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], { env: auth, timeout: limit });
       git(where, ['checkout', '-q', '--force', '--detach', options.sha]);
     } catch (error) {
       // A half-made repository would be taken for a checkout by the next attempt, which refuses one with no commit. A

@@ -189,10 +189,8 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
     const elapsed = Date.now() - started;
     assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
     assert.ok(elapsed < 10_000, `it ended after ${elapsed} ms, far past its 1500 ms limit`);
-    // The folder the failed fetch made is gone, so the next attempt starts clean. On Windows the killed git's own child
-    // (git-remote-http) lives on and holds the folder, so it can stay; the fetch's error above still comes through, and
-    // the next attempt refuses a repository with no commit. The review runs on Linux, where the folder can always go.
-    if (process.platform !== 'win32') assert.ok(!existsSync(dir), 'the failed fetch left its folder behind');
+    // The folder's cleanup after a failed fetch is the 'leaves nothing behind' test's. Here, on Windows, the killed git's
+    // own child (git-remote-http) can keep the folder for a while; the error above still comes through.
   } finally {
     server.kill();
   }
