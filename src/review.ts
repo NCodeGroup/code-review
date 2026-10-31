@@ -209,13 +209,15 @@ export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] 
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
 }
 
+// Code or a script that runs, wherever it is: a git hook, or a file with a code or script extension, even in docs/ or a
+// template update. A light review never takes it.
+const executablePath = /\.(cs|fs|ts|tsx|js|mjs|cjs|py|go|rs|java|ps1|psm1|psd1|sh|bash|zsh|cmd|bat|rb|pl|tf|tofu|hcl)$|(^|\/)\.githooks\//i;
+
 // A template update changes one of these, and with them only files the project template owns and replaces on every
-// update, as its instructions list them.
+// update, as its instructions list them. Its scripts and git hooks are executable, so they get the standard review.
 const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
 const templateOwned = [
   templateVersion,
-  /^\.template\//,
-  /^\.githooks\/commit-msg$/,
   /^CLAUDE\.md$/,
   /^\.claude\/(agents\/plan-executor\.md$|commands\/)/,
   /^\.github\/(agents|prompts|skills)\//,
@@ -223,13 +225,14 @@ const templateOwned = [
 ];
 
 // A pull request that changes only documentation: every changed file is documentation (gather's pattern, which takes
-// in CHANGELOG.md), or, in a template update, a file the template owns. A public API listing is a .txt file, but it is
-// the API, so it isn't documentation.
+// in CHANGELOG.md), or, in a template update, a file the template owns, and none is executable. A public API listing is
+// a .txt file, but it is the API, so it isn't documentation.
 export function documentationOnly(files: ChangedFile[]): boolean {
   if (!files.length) return false;
   const templateUpdate = files.some((f) => templateVersion.test(f.path));
   return files.every((f) =>
-    !publicApiPath.test(f.path) && (isDocumentation(f.path) || (templateUpdate && templateOwned.some((p) => p.test(f.path)))));
+    !publicApiPath.test(f.path) && !executablePath.test(f.path)
+    && (isDocumentation(f.path) || (templateUpdate && templateOwned.some((p) => p.test(f.path)))));
 }
 
 // Deep when any changed file is sensitive, even documentation in a sensitive folder; light when the change is only
@@ -250,7 +253,7 @@ export function sensitiveParts(parts: string[], files: string[]): Set<number> {
 }
 
 // Each reviewer's model on one part of the diff. On a deep review's sensitive parts, correctness and security go to
-// Opus over the repository's tiers:; CODE_REVIEW_TIERS still overrides any reviewer, and anyone unnamed runs on Haiku.
+// Opus over the repository's tiers: setting. CODE_REVIEW_TIERS still overrides any reviewer, and anyone unnamed runs on Haiku.
 export function partTiers(depth: ReviewDepth, deepPart: boolean, repository: Record<string, ModelTier>, override?: string): Record<string, ModelTier> {
   const tiers = depth === 'light' ? lightReviewerTiers : depth === 'deep' && deepPart ? deepReviewerTiers : {};
   return reviewerTiers(override, repository, tiers);

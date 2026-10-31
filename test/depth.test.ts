@@ -31,8 +31,6 @@ test('reviewDepth is light for a template update that changes only template-owne
   const update = [
     file('.template-version'),
     file('.copier-answers.yml'),
-    file('.template/Update-Project.ps1'),
-    file('.githooks/commit-msg'),
     file('CLAUDE.md'),
     file('.claude/commands/plan-feature.md'),
     file('.github/skills/plan-feature/SKILL.md'),
@@ -40,6 +38,13 @@ test('reviewDepth is light for a template update that changes only template-owne
   ];
   assert.equal(reviewDepth(update, []), 'light');
   assert.ok(documentationOnly([file('.copier-answers.yml')]));
+});
+
+test('reviewDepth is standard for a template update that changes a script or git hook, or a script in docs/', () => {
+  assert.equal(reviewDepth([file('.template-version'), file('CLAUDE.md'), file('.template/Update-Project.ps1')], []), 'standard');
+  assert.equal(reviewDepth([file('.template-version'), file('.githooks/commit-msg')], []), 'standard');
+  assert.equal(reviewDepth([file('README.md'), file('docs/build.ps1')], []), 'standard');
+  assert.equal(reviewDepth([file('docs/tools/setup.sh')], []), 'standard');
 });
 
 test('reviewDepth is standard for template-owned code without a template update, or a template update with other files', () => {
@@ -197,6 +202,16 @@ test('a deep review goes deep only on the parts of the diff with a sensitive fil
   assert.deepEqual(tierOf(calls, 'reviewer:correctness', 2), ['opus']);
   assert.deepEqual(tierOf(calls, 'reviewer:security', 1), []);
   assert.deepEqual(tierOf(calls, 'reviewer:security', 2), ['opus']);
+  assert.equal(result.reviewers.filter((r) => r.name === 'correctness').length, 1);
+});
+
+test('a deep review runs security once per part when the floor already chose it', async () => {
+  const input = gathered(['src/Auth/Login.cs', 'src/Auth/Token.cs'], { sensitive: ['src/Auth/**'], chunks: [section('src/Auth/Login.cs'), section('src/Auth/Token.cs')] });
+  const { result, calls } = await run(input);
+  assert.deepEqual(tierOf(calls, 'reviewer:security', 1), ['opus']);
+  assert.deepEqual(tierOf(calls, 'reviewer:security', 2), ['opus']);
+  assert.deepEqual(tierOf(calls, 'reviewer:correctness', 1), ['opus']);
+  assert.equal(result.reviewers.filter((r) => r.name === 'security').length, 1);
   assert.equal(result.reviewers.filter((r) => r.name === 'correctness').length, 1);
 });
 
