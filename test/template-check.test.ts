@@ -161,3 +161,26 @@ test('confirmTemplateFiles confirms nothing when the reachability check fails', 
   assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read, (l) => lines.push(l)))], []);
   assert.match(lines.join('\n'), /^::warning::Couldn't read NCodeGroup\/project-template at "v0\.42\.0" \(HTTP 502\)/);
 });
+
+test('confirmTemplateFiles trusts a commit a lightweight tag points at', async () => {
+  const requests: string[] = [];
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const api = templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }, requests, 'none');
+  const read: ReadApi = async (apiPath) => {
+    if (apiPath === `/repos/${repository}/git/matching-refs/tags`) return [{ ref: 'refs/tags/v0.40.0', object: { sha: commitSha, type: 'commit' } }];
+    return api(apiPath);
+  };
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read))], ['.template/Get-PlanState.ps1']);
+  assert.ok(!requests.some((r) => r.startsWith(`/repos/${repository}/compare/v0.40.0`)));
+});
+
+test("confirmTemplateFiles confirms nothing when the template's default branch can't be read", async () => {
+  const requests: string[] = [];
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const api = templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }, requests);
+  const read: ReadApi = async (apiPath) => (apiPath === `/repos/${repository}` ? {} : api(apiPath));
+  const lines: string[] = [];
+  assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read, (l) => lines.push(l)))], []);
+  assert.ok(!requests.some((r) => r.includes('/git/trees/')));
+  assert.match(lines.join('\n'), /^::warning::Couldn't confirm that "v0\.42\.0" is NCodeGroup\/project-template's own commit \(its default branch can't be read\)/);
+});
