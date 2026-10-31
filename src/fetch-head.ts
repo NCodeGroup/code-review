@@ -131,8 +131,9 @@ export function fetchPullRequestHead(options: FetchHead): void {
       // cleanup hide the fetch's own error.
       try {
         rmSync(options.path, { recursive: true, force: true, maxRetries: cleanupRetries, retryDelay: cleanupRetryDelayMs });
-      } catch {
-        // The error below says what went wrong; the folder is refused as it is by the next attempt.
+      } catch (cleanupError) {
+        // The fetch's error below stays the one thrown; this says why the next attempt will find the folder.
+        console.error(`Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
       }
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`Couldn't fetch commit ${options.sha.slice(0, 7)} of pull request #${options.number}; if it was pushed over since, comment /review to review the latest one. (${detail})`);

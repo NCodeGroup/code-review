@@ -24,20 +24,29 @@ test('isFromFork treats a head in another repository, or in none, as a fork', ()
   assert.equal(isFromFork(undefined, 'NCodeGroup/code-review'), true);
 });
 
-test('skipReason skips an automatic review of a pull request from a fork or a deleted fork', () => {
-  const own = { number: 7, head: { sha: 'a'.repeat(40), repo: { full_name: 'NCodeGroup/code-review' } } };
-  assert.match(skipReason({ ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review') ?? '', /#7 comes from a fork/);
-  assert.match(skipReason({ ...own, head: { sha: own.head.sha, repo: null } }, 'NCodeGroup/code-review') ?? '', /comes from a fork/);
+const own = { number: 7, head: { sha: 'a'.repeat(40), repo: { full_name: 'NCodeGroup/code-review' } } };
+
+// A lookup that records whether it was called, and answers with the given head.
+function lookup(head: string | undefined): { calls: number; fn: () => Promise<string | undefined> } {
+  const result = { calls: 0, fn: async () => { result.calls++; return head; } };
+  return result;
+}
+
+test('skipReason skips a pull request from a fork or a deleted fork, without looking up the reviewed head', async () => {
+  const looked = lookup('a'.repeat(40));
+  assert.match((await skipReason({ ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review', looked.fn)) ?? '', /#7 comes from a fork/);
+  assert.match((await skipReason({ ...own, head: { sha: own.head.sha, repo: null } }, 'NCodeGroup/code-review', looked.fn)) ?? '', /comes from a fork/);
+  assert.equal(looked.calls, 0);
 });
 
-test('skipReason skips an automatic review of a head already reviewed', () => {
-  const own = { number: 7, head: { sha: 'a'.repeat(40), repo: { full_name: 'NCodeGroup/code-review' } } };
-  assert.match(skipReason(own, 'NCodeGroup/code-review', 'a'.repeat(40)) ?? '', /aaaaaaa was already reviewed; comment \/review/);
+test('skipReason skips an automatic review of a head already reviewed', async () => {
+  assert.match((await skipReason(own, 'NCodeGroup/code-review', lookup('a'.repeat(40)).fn)) ?? '', /aaaaaaa was already reviewed; comment \/review/);
 });
 
-test('skipReason reviews a head not yet reviewed, or a pull request with no head commit', () => {
-  const own = { number: 7, head: { sha: 'a'.repeat(40), repo: { full_name: 'NCodeGroup/code-review' } } };
-  assert.equal(skipReason(own, 'NCodeGroup/code-review'), undefined);
-  assert.equal(skipReason(own, 'NCodeGroup/code-review', 'b'.repeat(40)), undefined);
-  assert.equal(skipReason({ number: 7, head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review', 'a'.repeat(40)), undefined);
+test('skipReason reviews a head not yet reviewed, a /review that passes no lookup, and a pull request with no head commit', async () => {
+  assert.equal(await skipReason(own, 'NCodeGroup/code-review', lookup('b'.repeat(40)).fn), undefined);
+  assert.equal(await skipReason(own, 'NCodeGroup/code-review'), undefined);
+  const looked = lookup('a'.repeat(40));
+  assert.equal(await skipReason({ number: 7, head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review', looked.fn), undefined);
+  assert.equal(looked.calls, 0);
 });
