@@ -594,12 +594,17 @@ export function readPullRequest(event: any, repository: string, canWrite: boolea
 }
 
 // The template whose files the review leaves to the template's repository, only for a pull request that adopts or
-// updates the template, which changes the answers file, from an author with write access. Anywhere else a change to
-// one of the template's files is an edit by hand, which the review treats as the project's. The default branch's answers
-// count; an adoption adds the answers file, so the default branch has none, and then the head's count.
+// updates the template, from an author with write access. An adoption adds the answers file, so the default branch has
+// none, and the head's answers count. An update changes _commit, and the default branch's answers count. Any other edit
+// to the answers file, such as one to project_owned_files, leaves the template's files to the project's review, so
+// editing the answers file can't hide findings; anywhere else a change to one of the template's files is an edit by hand.
 export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
   if (!pullRequest.authorCanWrite || !files.some((f) => f.path === answersFile)) return undefined;
-  return existsSync(path.join(basePath, answersFile)) ? readTemplate(basePath) : readTemplate(prPath);
+  const head = readTemplate(prPath);
+  if (!head) return undefined;
+  if (!existsSync(path.join(basePath, answersFile))) return head;
+  const base = readTemplate(basePath);
+  return base && base.commit !== head.commit ? base : undefined;
 }
 
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
