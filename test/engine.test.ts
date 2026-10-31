@@ -342,10 +342,10 @@ test('postSummary only warns when an earlier summary cannot be collapsed', async
   const { summaryMarker } = await import('../src/results.ts');
   const { api, calls } = fakeApi(summaryMarker, { call: '/comments/1', error: new Error('HTTP 403') });
   const lines: string[] = [];
-  const url = await postSummary(api,summaryResults, 'new body', (line) => lines.push(line));
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
   assert.equal(url, postedUrl);
   assert.ok(calls.includes('PATCH /repos/o/r/issues/comments/3'));
-  assert.ok(lines.some((line) => line.startsWith('::warning::') && line.includes('1')));
+  assert.ok(lines.includes("::warning::Couldn't collapse the earlier summary comment 1 (HTTP 403)."));
 });
 
 test('postSummary collapses nothing when the new summary cannot be posted', async () => {
@@ -357,16 +357,28 @@ test('postSummary collapses nothing when the new summary cannot be posted', asyn
   assert.ok(!calls.some((call) => call.startsWith('PATCH')));
 });
 
+test('postSummary still posts, and warns, when the earlier summaries cannot be listed', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: 'page=1', error: new Error('HTTP 502') });
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.ok(calls.includes('POST /repos/o/r/issues/1/comments'));
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+  assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
+});
+
 test('readCommentPages reads every page until a short one, and gives undefined when a page cannot be read', async () => {
-  const { readCommentPages } = await import('../src/comments.ts');
+  const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
   const pages: number[] = [];
   const all = await readCommentPages(async (page) => {
     pages.push(page);
-    return page === 1 ? Array.from({ length: 100 }, (_, i) => i) : [100, 101, 102];
+    return page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : [100, 101, 102];
   });
-  assert.equal(all?.length, 103);
+  assert.equal(all?.length, commentPageSize + 3);
   assert.deepEqual(pages, [1, 2]);
-  const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: 100 }, (_, i) => i) : undefined));
+  const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: commentPageSize }, (_, i) => i) : undefined));
   assert.equal(broken, undefined);
 });
 
