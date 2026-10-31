@@ -39,6 +39,29 @@ test('githubFetch sends no authorization header without a token, and Bearer with
   assert.equal(headers[1]!['authorization'], 'Bearer t0ken');
 });
 
+test('githubFetch sends an absolute url on the configured origin, with the token', async () => {
+  const { requests, fn } = recording();
+  const client = { fetch: fn, token: 't0ken', urls: { api: 'https://ghe.example/api/v3', graphql: 'https://ghe.example/api/graphql' } };
+  await githubFetch(client, 'GET', 'https://ghe.example/api/v3/repos/o/r/issues/1/comments?page=2');
+  assert.equal(requests[0]?.url, 'https://ghe.example/api/v3/repos/o/r/issues/1/comments?page=2');
+  assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
+});
+
+test('githubFetch refuses an absolute url on another origin and sends nothing', async () => {
+  const { requests, fn } = recording();
+  const client = { fetch: fn, token: 't0ken', urls: { api: 'https://api.github.com', graphql: 'https://api.github.com/graphql' } };
+  await assert.rejects(githubFetch(client, 'GET', 'https://attacker.example/repos/o/r'), /Refusing to send a GitHub request to https:\/\/attacker\.example/);
+  await assert.rejects(githubFetch(client, 'GET', 'http://api.github.com/repos/o/r'), /Refusing/);
+  assert.equal(requests.length, 0);
+});
+
+test('githubFetch still sends a path under the REST address, with the token', async () => {
+  const { requests, fn } = recording();
+  await githubFetch({ fetch: fn, token: 't0ken', urls: { api: 'https://api.github.com', graphql: 'https://api.github.com/graphql' } }, 'GET', '/repos/o/r');
+  assert.equal(requests[0]?.url, 'https://api.github.com/repos/o/r');
+  assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
+});
+
 test("githubFetch gives up when GitHub doesn't answer in time", async () => {
   const silent = ((_url: string | URL | Request, init?: RequestInit) =>
     new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))) as typeof fetch;
