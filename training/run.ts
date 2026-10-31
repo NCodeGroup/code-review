@@ -214,12 +214,12 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
       budgetUsd: 3,
       cache: false,
     });
-    calls.push(result.record);
+    calls.push(...result.records);
     if (!result.output) { failed++; console.log(`  ${source.label}: failed (${result.error})`); return; }
     mkdirSync(path.dirname(file), { recursive: true });
     const saved: Extracted = { hash, promptHash, label: source.label, rules: result.output.rules };
     writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`);
-    console.log(`  ${source.label}: ${result.output.rules.length} rules, $${result.record.costUsd.toFixed(3)}`);
+    console.log(`  ${source.label}: ${result.output.rules.length} rules, $${result.records.reduce((sum, r) => sum + r.costUsd, 0).toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
 }
@@ -272,7 +272,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       budgetUsd: 15,
       cache: false,
     });
-    calls.push(result.record);
+    calls.push(...result.records);
     if (!result.output) { console.log(`  ${folder}/${topic}: failed (${result.error})`); return; }
     const { description, applies_to, rules: final } = result.output;
     const lines = [
@@ -289,7 +289,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       '',
     ];
     writeFileSync(path.join(out, `${topic}.md`), lines.join('\n'));
-    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${result.record.costUsd.toFixed(2)}`);
+    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${result.records.reduce((sum, r) => sum + r.costUsd, 0).toFixed(2)}`);
   });
 }
 

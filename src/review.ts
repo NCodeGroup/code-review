@@ -3,7 +3,7 @@
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, withoutTools, type AgentRun, type CallRecord } from './agent.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
@@ -284,7 +284,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const { context, result: contextResult } = await selectContext(run, gathered, catalog, gathered.decisions, (g) =>
     `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
   );
-  if (contextResult) calls.push(contextResult.record);
+  if (contextResult) calls.push(...contextResult.records);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
   log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
 
@@ -293,7 +293,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
   const selection = await runAgent<{ add: { reviewer: string; reason: string }[] }>(
-    { provider: run.provider, proxyUrl: run.proxyUrl },
+    withoutTools(run),
     {
       role: 'selection',
       tier: 'sonnet',
@@ -305,7 +305,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       cache: false,
     },
   );
-  calls.push(selection.record);
+  calls.push(...selection.records);
   for (const addition of selection.output?.add ?? []) {
     if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
   }
@@ -348,11 +348,12 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
     });
-    calls.push(result.record);
+    calls.push(...result.records);
+    const cost = result.records.reduce((sum, r) => sum + r.costUsd, 0);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
     const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
-    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   };
   const concurrency = 6;
@@ -381,7 +382,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
-      { provider: run.provider, proxyUrl: run.proxyUrl },
+      withoutTools(run),
       {
         role: 'synthesis',
         tier: 'opus',
@@ -393,7 +394,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
         cache: false,
       },
     );
-    calls.push(synthesis.record);
+    calls.push(...synthesis.records);
     if (synthesis.output) {
       summary = synthesis.output.summary;
       verdict = synthesis.output.verdict;

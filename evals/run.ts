@@ -86,7 +86,7 @@ async function judge(run: AgentRun, concern: Concern, finding: Finding, calls: C
     budgetUsd: 0.1,
     cache: false,
   });
-  calls.push(result.record);
+  calls.push(...result.records);
   return result.output?.same ?? false;
 }
 

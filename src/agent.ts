@@ -2,12 +2,21 @@
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { HookCallback, Options, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, Options, SDKMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { bedrockRegion, modelIds, type ModelTier, type Provider } from './config.ts';
+import { creditsRanOut } from './provider.ts';
 import { placeholderKey } from './proxy.ts';
+
+// Set on a run that starts on the Claude API and has a Bedrock key. Every call of the run shares the one object: the
+// first call that finds the API credits used up sets `switched`, and every call after it goes straight to Bedrock.
+export interface BedrockFallback {
+  switched: boolean;
+}
+
+export type QueryFunction = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage>;
 
 export interface AgentRun {
   provider: Provider;
@@ -17,6 +26,19 @@ export interface AgentRun {
   // The working folder, outside the checkout. Reviewers of one review share it: Claude Code names its working folder in
   // the system prompt, so a folder of their own would give each reviewer a different prompt prefix and no shared cache.
   workdir?: string;
+  fallback?: BedrockFallback;
+  // The Agent SDK's query; tests pass a fake.
+  query?: QueryFunction;
+}
+
+// The same run for a call that gets no tools and its own working folder.
+export function withoutTools(run: AgentRun): AgentRun {
+  return {
+    provider: run.provider,
+    proxyUrl: run.proxyUrl,
+    ...(run.fallback ? { fallback: run.fallback } : {}),
+    ...(run.query ? { query: run.query } : {}),
+  };
 }
 
 export interface CallRecord {
@@ -35,7 +57,8 @@ export interface CallRecord {
 
 export interface AgentResult<T> {
   output: T | undefined;
-  record: CallRecord;
+  // One record per model call, in order: two when the API credits ran out and the request was rerun on Bedrock.
+  records: CallRecord[];
   error?: string;
 }
 
@@ -147,7 +170,21 @@ function promptInput(prompt: string | string[]): string | AsyncIterable<SDKUserM
   })();
 }
 
+// Runs the request on the run's provider. When the Claude API refuses it because the credits ran out and the run has a
+// Bedrock key, it switches the whole run to Bedrock and reruns the request there, on the same tier.
 export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> {
+  const provider = run.fallback?.switched ? 'bedrock' : run.provider;
+  const first = await callOnce<T>({ ...run, provider }, request);
+  if (provider !== 'anthropic' || !run.fallback || first.error === undefined || !creditsRanOut(first.error)) {
+    return { output: first.output, records: [first.record], ...(first.error === undefined ? {} : { error: first.error }) };
+  }
+  run.fallback.switched = true;
+  first.record.outcome = 'credits ran out';
+  const retry = await callOnce<T>({ ...run, provider: 'bedrock' }, request);
+  return { output: retry.output, records: [first.record, retry.record], ...(retry.error === undefined ? {} : { error: retry.error }) };
+}
+
+async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<{ output: T | undefined; record: CallRecord; error?: string }> {
   const model = modelIds[run.provider][request.tier];
   const home = mkdtempSync(path.join(tmpdir(), 'code-review-agent-'));
   const tools = run.checkout ? ['Read', 'Grep', 'Glob'] : [];
@@ -174,13 +211,15 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
   let result: SDKResultMessage | undefined;
   let error: string | undefined;
   try {
-    for await (const message of query({ prompt: promptInput(request.prompt), options })) {
+    for await (const message of (run.query ?? query)({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
     }
   } catch (e) {
     error = (e as Error).message;
   }
 
+  // A turn that ended on an API error, such as the API credits running out, is a success whose text is the error.
+  const apiError = result?.subtype === 'success' && result.is_error ? result.result || 'API error' : undefined;
   const record: CallRecord = {
     role: request.role,
     provider: run.provider,
@@ -192,10 +231,10 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
     cacheWriteTokens: result?.usage.cache_creation_input_tokens ?? 0,
     turns: result?.num_turns ?? 0,
     durationMs: Date.now() - started,
-    outcome: error ? 'error' : (result?.subtype ?? 'no result'),
+    outcome: error || apiError ? 'error' : (result?.subtype ?? 'no result'),
   };
-  if (result?.subtype !== 'success') {
-    const reason = error ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
+  if (result?.subtype !== 'success' || apiError) {
+    const reason = error ?? apiError ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
     return { output: undefined, record, error: reason };
   }
   return { output: result.structured_output as T, record };

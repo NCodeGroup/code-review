@@ -8,6 +8,12 @@ export interface ProviderChoice {
   reason: string;
 }
 
+// Anthropic's refusal when the organization's API credits are used up: "Your credit balance is too low to access the
+// Anthropic API", which Claude Code reports as "Credit balance is too low".
+export function creditsRanOut(message: string): boolean {
+  return /credit balance/i.test(message);
+}
+
 // A one-token call to Anthropic tells whether the credits are there. A refusal for any reason falls back to Bedrock
 // when the run has its key.
 export async function chooseProvider(credentials: Credentials): Promise<ProviderChoice> {
@@ -25,7 +31,7 @@ export async function chooseProvider(credentials: Credentials): Promise<Provider
       });
       if (response.ok) return { provider: 'anthropic', reason: 'the plan\'s API credits' };
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      reason = /credit balance/i.test(body.error?.message ?? '')
+      reason = creditsRanOut(body.error?.message ?? '')
         ? 'the Anthropic organization has no API credits (not linked yet, or used up)'
         : `Anthropic returned HTTP ${response.status}`;
     } catch (error) {
