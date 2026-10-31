@@ -10,6 +10,7 @@ import {
   isDeclining,
   lineChanged,
   maxComparedFiles,
+  maxMarkerLength,
   maxOutcomeRows,
   maxThreadPages,
   outcomesMarker,
@@ -199,6 +200,24 @@ test('the outcomes section shows at most maxOutcomeRows rows, and the marker hol
   assert.equal(section.match(/^\| F\d+ \|/gm)?.length, maxOutcomeRows);
   assert.match(section, /\*And 1 more\.\*$/);
   assert.equal(parseOutcomesMarker(section)?.findings.length, maxOutcomeRows + 1);
+  assert.equal(parseOutcomesMarker(section)?.omitted, undefined);
+});
+
+test('the outcomes marker holds the first findings that fit and counts the rest, so the section fits in a comment', () => {
+  const many: FindingOutcome[] = Array.from({ length: 1000 }, (_, i) => ({
+    ...findings[0]!,
+    id: `F${i + 1}`,
+    reviewers: ['architecture', 'completeness', 'conventions', 'correctness', 'data-model', 'hygiene', 'rule-check'],
+    model: 'us.anthropic.claude-sonnet-model-id',
+  }));
+  const marker = outcomesMarker({ state: 'merged', head: 'b'.repeat(40), findings: many });
+  assert.ok(marker.length <= maxMarkerLength + 40, `${marker.length}`);
+  const parsed = parseOutcomesMarker(marker)!;
+  assert.ok(parsed.findings.length > 0 && parsed.findings.length < many.length);
+  assert.deepEqual(parsed.findings, many.slice(0, parsed.findings.length));
+  assert.equal(parsed.omitted, many.length - parsed.findings.length);
+  const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: many });
+  assert.ok(section.length < 65_536 - 1_000, `${section.length}`);
 });
 
 test('withOutcomes appends the section and replaces an earlier one', () => {
@@ -390,14 +409,16 @@ test('collectOutcomes still records the threads when there is no summary comment
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome, f.costUsd]), [['F1', 'fixed', undefined], ['F2', 'dismissed', undefined], ['F3', 'ignored', undefined]]);
 });
 
-test("collectOutcomes counts a reactor whose permission can't be read as a non-writer", async () => {
+test("collectOutcomes counts a reactor whose permission can't be read as a non-writer, and warns", async () => {
   const { api: base } = fakeGitHub();
   const api = async (method: string, url: string, body?: unknown) => {
     if (url.endsWith('/collaborators/maintainer/permission')) throw new Error('HTTP 404');
     return base(method, url, body);
   };
-  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  const lines: string[] = [];
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
   assert.equal(report?.findings.find((f) => f.id === 'F2')?.outcome, 'ignored');
+  assert.ok(lines.some((line) => /^::warning::Couldn't read maintainer's permission \(.*HTTP 404/.test(line)), lines.join('\n'));
 });
 
 test("collectOutcomes leaves out the bot's own reactions and replies", async () => {
@@ -496,6 +517,16 @@ test('publishOutcomes refuses to post a secret', async () => {
   const api = async () => undefined;
   const leaky = { ...report, summaryBody: `${report.summaryBody} ghs_0123456789abcdefghijABCDEFGHIJ` };
   await assert.rejects(publishOutcomes(api, leaky, [], () => {}));
+});
+
+test('publishOutcomes warns when the marker leaves findings out', async () => {
+  const many = Array.from({ length: 1000 }, (_, i) => ({ ...findings[0]!, id: `F${i + 1}` }));
+  const lines: string[] = [];
+  await publishOutcomes(async () => undefined, { ...report, findings: many }, [], (line) => lines.push(line));
+  assert.ok(lines.some((line) => /^::warning::The outcomes marker holds the first \d+ of 1000 findings/.test(line)), lines.join('\n'));
+  lines.length = 0;
+  await publishOutcomes(async () => undefined, report, [], (line) => lines.push(line));
+  assert.ok(!lines.some((line) => line.startsWith('::warning::')), lines.join('\n'));
 });
 
 test('only a closed pull request records outcomes, never a comment or another action', () => {

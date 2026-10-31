@@ -9,11 +9,10 @@ import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
-export type Severity = 'blocker' | 'should-fix' | 'nit';
-// Most severe first.
-export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export { severityRank, type Severity };
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {
@@ -65,7 +64,7 @@ export interface Review {
   skipped: string[];
 }
 
-const findingProperties = {
+export const findingProperties = {
   severity: { type: 'string', enum: ['blocker', 'should-fix', 'nit'] },
   file: { type: 'string' },
   line: { type: 'integer', minimum: 1 },
@@ -87,7 +86,7 @@ const findingProperties = {
     additionalProperties: false,
   },
 };
-const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
+export const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
 export const specialistSchema = {
   type: 'object',
@@ -135,6 +134,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  reReviewPrompt: string;
   verificationPrompt: string;
   reviewers: Map<string, string>;
 }
@@ -197,6 +197,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    reReviewPrompt: prompt('re-review'),
     verificationPrompt: prompt('verification'),
     reviewers,
   };
@@ -233,7 +234,7 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
-function pullRequestBlock(gathered: Gathered): string {
+export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
@@ -251,7 +252,7 @@ export function fileList(gathered: Pick<Gathered, 'files'>, inDiff?: Set<string>
     .join('\n');
 }
 
-const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
+export const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
 
 function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
   const scope = parts > 1

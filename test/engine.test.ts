@@ -1047,7 +1047,7 @@ test('a marker from before the reviewer field still parses and dedupes', async (
   const finding = suggested({ startLine: 11, endLine: 11, replacement: 'x' }, 40);
   const old = `🟠 **Should fix: Off by one** <sub>F1 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F1 fp=${fingerprint(finding)} severity=should-fix -->`;
   const posted = parsePosted([{ path: 'src/Elsewhere.ts', line: 1, body: old }]);
-  assert.deepEqual(posted, [{ path: 'src/Elsewhere.ts', line: 1, severity: 'should-fix', fingerprint: fingerprint(finding), reviewers: [] }]);
+  assert.deepEqual(posted, [{ id: 'F1', path: 'src/Elsewhere.ts', line: 1, severity: 'should-fix', fingerprint: fingerprint(finding), reviewers: [] }]);
   assert.deepEqual(placeFindings([finding], { 'src/A.ts': [40] }, posted).alreadyPosted.map((f) => f.id), ['F1']);
 });
 

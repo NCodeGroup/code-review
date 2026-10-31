@@ -12,8 +12,28 @@ calls there; its check run and summary say so and split the cost by provider.
 The agents run on the Claude Agent SDK with no settings, hooks, MCP servers or CLAUDE.md from anywhere, only Read, Grep
 and Glob, and a hook that refuses any path outside the pull request's checkout after resolving symlinks. Their
 environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
-reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
-repository under review. Results and the trace are scanned for secrets before they're written.
+reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses and
+revokes before the review step starts, and one after the agents exit. Each token can write check runs and pull request
+comments on the one repository under review, and neither is ever in the review step's environment. Results and the
+trace are scanned for secrets before they're written.
+
+Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
+review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
+takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
+`/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
+reviewed, and a closed pull request get nothing. The acknowledgement runs with the runner's own `node` and no npm
+package, and the review goes on without it if it fails. The publish step completes that same check run with the review,
+so there's never a second. When there's no review to publish, a last step completes it with why, so it never stays in
+progress:
+
+- **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
+  Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
+  and the job doesn't fail, so automation waiting on the check can carry on without it.
+- **Review failed**, with the error, when the review failed, and a link to the run's log.
+- **Review cancelled** when the run was, usually because a newer run for the pull request started.
+
+A failed review posts this check run even when the acknowledgement didn't happen, once the run has decided which commit
+to review.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
@@ -21,7 +41,7 @@ A rule in the learned guidance (`guidance/`) that came only from instruction fil
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
-**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
 
 ## Using it
 
@@ -73,6 +93,11 @@ out: the engine fetches the exact commit itself, after it has decided to review,
 configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
 that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
 `/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
+
+The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
+receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
+later) on the runner before setup-node, as `ubuntu-latest` has; on a runner without one, the review runs without the
+acknowledgement.
 
 ## Versions
 
@@ -129,13 +154,14 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 
 Each review, all from `ncode-review[bot]`:
 
+- reacts 👀 to a `/review` comment and shows the "Code review" check run in progress within seconds;
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
   with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
   request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
   that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
-- posts a neutral "Code review" check run with all the findings and annotations.
+- completes that "Code review" check run, neutral, with all the findings and annotations.
 
 ### Outcomes
 
@@ -156,9 +182,11 @@ reaction, the reactor's permission on the repository. A reply starting `Autopilo
 finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
 severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
-model, for the monthly report. When there's no summary comment, a final one is posted. A finding with no changed line to
-sit on, posted in the review's body rather than as a thread, gets no outcome. The caller needs `closed` in its
-`pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
+model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
+40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
+comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
+thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
+its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
 treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
 that bump.
 
@@ -191,6 +219,32 @@ gh workflow run monthly-report.yml -R NCodeGroup/code-review -f month=2026-10
 
 To see a month's report without publishing it, run `node tools/report.ts` with `GITHUB_TOKEN`,
 `GITHUB_REPOSITORY=NCodeGroup/code-review`, `REPORT_MONTH` and `REPORT_DRY_RUN=1`; it prints the issue's body.
+
+### Re-reviews
+
+A review of a pull request the bot has reviewed before, such as a `/review` after changes, is a re-review, so rounds
+of review converge:
+
+- it reviews only what changed since the last review: the hunks of the pull request's diff against its merge base
+  that differ from that diff at the last reviewed head, which the summary comment records, and what the author took
+  out since. Merging the default branch in or rebasing onto it changes nothing by itself, and nothing from the
+  default branch is reviewed;
+- only `correctness` reviews them, on Sonnet, with the earlier findings and the replies in their threads (from people
+  with write access). It checks each unresolved finding against the code now (fixed, still open, or answered), and it
+  doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+- it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
+- with [verification](#how-a-review-runs) on, those findings go through it as a first review's do: a refuted one is
+  dropped and listed in the check run, and one it can't settle is a question one severity lower, so a should-fix it
+  can't settle becomes a nit and isn't posted. A re-review whose findings verification refuted or made nits never
+  approves or says it's done, since the maintainer should look at what it dropped;
+- its summary lists the earlier findings it checked, and says "No further findings above nits" when nothing at or
+  above should-fix is left, new or unresolved, so the author knows they can merge. When the earlier review threads
+  can't be read, or what changed is only in generated files or files over the size budget, so no reviewer saw it, it
+  says so instead, and its verdict is never Approve.
+
+A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
+gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records
+the head reviewed before it, so the next re-review still covers what it missed.
 
 ## Opting a repository in
 
@@ -227,6 +281,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+
+A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
 
 **Precision.** Every posted blocker and should-fix that matches no expected concern goes to an Opus judge, which reads the case's checkout, locked down like the reviewers, with the finding passed as data, and answers `real`, `not-real` or `unsure`: is it a real defect the maintainer would act on? A finding that raises a must-not-flag concern counts as not real without a call. Precision is (matched + real) ÷ all posted blockers and should-fixes, with `unsure` counted apart. Verdicts are cached by case and finding fingerprint (file, severity and the title's words) in `evals/verdicts.json`, so a rerun judges only findings it hasn't seen; commit it with `cases.json` so every run is judged the same way. Each `evals/out/<label>.json` has the precision counts per case and in `summary.precision`, findings per case (`summary.findingsPerCase`: mean, max) and the review's own cost, without the eval's judges (`reviewCostUsd`, and `summary.reviewCostPerCase`).
 
