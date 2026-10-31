@@ -1176,6 +1176,28 @@ test('isPackableProject reads PublicAPI.Shipped.txt or IsPackable from the neare
   assert.ok(isPackableProject(base, 'src/Odd/A.cs'));
 });
 
+test('isPackableProject reads IsPackable from Directory.Build.props and Directory.Build.targets', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-props-'));
+  const write = (file: string, text: string) => {
+    mkdirSync(path.dirname(path.join(base, file)), { recursive: true });
+    writeFileSync(path.join(base, file), text);
+  };
+  const setting = (value: string) => `<Project><PropertyGroup><IsPackable>${value}</IsPackable></PropertyGroup></Project>`;
+  write('Directory.Build.props', setting('true'));
+  write('src/Lib/Lib.csproj', '<Project Sdk="Microsoft.NET.Sdk" />');
+  write('src/Tests/Tests.csproj', setting('false'));
+  write('tools/Directory.Build.props', setting('false'));
+  write('tools/Cli/Cli.csproj', '<Project Sdk="Microsoft.NET.Sdk" />');
+  write('samples/Directory.Build.targets', setting('true'));
+  write('samples/App/App.csproj', setting('false'));
+  write('src/Cond/Cond.csproj', `<Project><PropertyGroup><IsPackable>false</IsPackable><IsPackable Condition="'$(Configuration)' == 'Release'">true</IsPackable></PropertyGroup></Project>`);
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs', new Map()), 'the root props packs it');
+  assert.ok(!isPackableProject(base, 'src/Tests/A.cs', new Map()), 'the .csproj overrides the props');
+  assert.ok(!isPackableProject(base, 'tools/Cli/A.cs', new Map()), 'an inner props overrides an outer one');
+  assert.ok(isPackableProject(base, 'samples/App/A.cs', new Map()), 'the targets override the .csproj');
+  assert.ok(isPackableProject(base, 'src/Cond/A.cs', new Map()), 'a conditional true counts');
+});
+
 // A file at the pull request's head, one line per entry; line numbers below are 1-based.
 const csLines = [
   'namespace NCode.Lib;', // 1
