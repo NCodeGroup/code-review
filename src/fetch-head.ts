@@ -100,6 +100,23 @@ function has(where: { cwd: string; empty: string }, sha: string): boolean {
   }
 }
 
+// Fetches one more commit into the checkout fetchPullRequestHead made or accepted: the head the last review read, which
+// a force-push may have left on no branch. False when it can't be had, so the caller can do without it.
+export function fetchCommit(options: Pick<FetchHead, 'path' | 'remoteUrl' | 'sha' | 'token' | 'timeoutMs'>): boolean {
+  if (!/^[0-9a-f]{40}$/i.test(options.sha)) return false;
+  const empty = mkdtempSync(path.join(os.tmpdir(), 'code-review-git-'));
+  const where = { cwd: options.path, empty };
+  try {
+    if (has(where, options.sha)) return true;
+    git(where, ['fetch', '-q', '--no-tags', options.remoteUrl, options.sha], { env: authEnvironment(options.remoteUrl, options.token), timeout: options.timeoutMs ?? fetchTimeoutMs });
+    return has(where, options.sha);
+  } catch {
+    return false;
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+}
+
 export function fetchPullRequestHead(options: FetchHead): void {
   if (!/^[0-9a-f]{40}$/i.test(options.sha)) throw new Error(`"${options.sha}" isn't a full commit SHA.`);
   if (!Number.isInteger(options.number) || options.number < 1) throw new Error(`"${options.number}" isn't a pull request number.`);

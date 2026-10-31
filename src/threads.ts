@@ -13,7 +13,7 @@ const severityLabel: Record<Severity, string> = { blocker: 'Blocker', 'should-fi
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
 
 // Lines a finding may move by when it lands next to, not on, a changed line.
-const snapDistance = 3;
+export const snapDistance = 3;
 // An earlier comment this close, in the same file and with the same severity, counts as the same finding.
 const repeatDistance = 3;
 
@@ -24,6 +24,8 @@ export function fingerprint(finding: Pick<ReviewedFinding, 'file' | 'severity' |
 }
 
 export interface PostedThread {
+  // The finding's id in the review that posted it, such as F1.
+  id: string;
   path: string;
   line: number;
   severity: Severity;
@@ -41,6 +43,7 @@ export function parsePosted(comments: { body?: string; path?: string; line?: num
     if (!marker || !comment.path) continue;
     const fields = new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string]));
     posted.push({
+      id: fields.get('id') ?? '',
       path: comment.path,
       line: comment.line ?? comment.original_line ?? 0,
       severity: (fields.get('severity') ?? 'nit') as Severity,

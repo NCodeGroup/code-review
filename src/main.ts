@@ -11,12 +11,13 @@ import { decideReview } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
-import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
+import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
+import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
 
@@ -69,6 +70,9 @@ async function main(): Promise<void> {
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
+  // The head the bot last reviewed, looked up once: the skip rule and the re-review both need it.
+  let lastHead: Promise<string | undefined> | undefined;
+  const reviewedHead = (number: number) => (lastHead ??= lastReviewedHead(repository, number, githubToken));
 
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
   // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
@@ -77,7 +81,7 @@ async function main(): Promise<void> {
     event,
     repository,
     (number) => fetchPullRequest(repository, number, githubToken),
-    (number) => lastReviewedHead(repository, number, githubToken),
+    reviewedHead,
   );
   if (!decision.review) {
     console.log(decision.reason);
@@ -117,6 +121,16 @@ async function main(): Promise<void> {
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
+  // A pull request the bot reviewed before gets a re-review of what changed since then.
+  const last = await reviewedHead(pullRequest.number);
+  const plan = await planReReview({
+    gathered,
+    checkout: prPath,
+    lastHead: last,
+    fetchCommit: (sha) => fetchCommit({ ...headFetch, sha }),
+    readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken),
+    log,
+  });
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -127,7 +141,13 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const agentRun: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
-    const outcome = await review(agentRun, gathered, loadCharters(root), log);
+    const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
+      plan,
+      headSha: pullRequest.headSha,
+      lastHead: last,
+      full: () => review(agentRun, gathered, loadCharters(root), log),
+      again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
+    });
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = {
       repository,
@@ -139,6 +159,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      dropped: outcome.dropped,
       ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
@@ -158,8 +179,9 @@ async function main(): Promise<void> {
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
+      recordedHead,
     };
-    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length };
+    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
 
     const secrets = secretValues(credentials);
     const resultsJson = JSON.stringify(results, null, 2);

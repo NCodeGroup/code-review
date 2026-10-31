@@ -2,6 +2,9 @@
   "hash": "82693c3239dfe867",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity csharp-production.instructions.md",
+  "applyTo": [
+    "src/**/*.cs"
+  ],
   "rules": [
     {
       "statement": "Keep a host's Program.cs composition-only: a flat list of single `AddX`/`UseX`/`MapX` calls with no inline `if`, loops, policy builders, `new`-ed options, configuration-section parsing, consts or dev/test helpers; move such logic into the owning package as an extension.",
