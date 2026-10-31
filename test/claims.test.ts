@@ -108,6 +108,8 @@ test('dropContradicted recognizes the ways a finding says a changed file is not 
     'There is no hunk for src/command.ts.',
     'The PR makes no edits to the file src/command.ts.',
     'src/command.ts wasn’t changed.',
+    'src/command.ts is not modified in this pull request.',
+    'src/command.ts was not updated, so the old message stays.',
   ];
   for (const claim of claims) {
     const out = dropContradicted([finding({ problem: claim })], pr22Files);
@@ -127,6 +129,9 @@ test('dropContradicted keeps findings that only mention a changed file, or say a
     'src/other.ts is unchanged, so its copy of the check drifts.',
     'lib/command.ts is not in the diff.',
     'The import from `./command.ts` now has a skipReason it never tests.',
+    'src/command.ts is not updated to handle forks, so they still get the old message.',
+    '`command.ts` was not changed for the new flag.',
+    'src/command.ts is not modified by the handler when the list changes.',
   ];
   for (const problem of kept) {
     const out = dropContradicted([finding({ problem })], pr22Files);

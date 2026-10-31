@@ -36,6 +36,8 @@ function mention(file: string, nameIsUnique: boolean): string {
 
 const changes = String.raw`(?:changes?|hunks?|diffs?|edits?|modifications?)`;
 const where = String.raw`(?:the|this)\s+(?:diff|pull\s+request|PR|change)`;
+// "not updated" only where it ends its clause or names the diff, so "config.ts is not updated to read the flag" is kept.
+const notChanged = String.raw`not\s+(?:changed|modified|touched|edited|updated)(?=\s*(?:$|[.,;:!?)\x60'"]|(?:in|by)\s+${where}\b|(?:at\s+all|here|either|so|and|but|because|since)\b))`;
 // The diff as the subject of a sentence, so "the handler never touches config.ts" is about the code, not the diff.
 const theDiff = String.raw`\b(?:diff|pull\s+request|PR|(?:the|this)\s+(?:change|commit|branch))`;
 
@@ -55,7 +57,7 @@ function claimPatterns(file: string): RegExp[] {
     // "the diff doesn't include command.ts"
     String.raw`${theDiff}\s+(?:does\s+not|did\s+not|never)\s+(?:include|contain|show|cover)s?\s+(?:any\s+)?(?:changes?\s+(?:to|in)\s+)?(?:the\s+)?(?:file\s+)?${file}`,
     // "command.ts is unchanged", "command.ts isn't in the diff"
-    String.raw`${subject(file)}(?:\s+file)?\s+(?:is|was|are|were|stays|remains|appears(?:\s+to\s+be)?|seems(?:\s+to\s+be)?)\s+(?:unchanged|untouched|unmodified|not\s+(?:changed|modified|touched|edited|updated|(?:in|part\s+of|included\s+in|shown\s+in|present\s+in)\s+${where}))\b`,
+    String.raw`${subject(file)}(?:\s+file)?\s+(?:is|was|are|were|stays|remains|appears(?:\s+to\s+be)?|seems(?:\s+to\s+be)?)\s+(?:unchanged|untouched|unmodified|${notChanged}|not\s+(?:in|part\s+of|included\s+in|shown\s+in|present\s+in)\s+${where})\b`,
     // "command.ts is missing from the diff"
     String.raw`${subject(file)}(?:\s+file)?\s+(?:is\s+|was\s+)?(?:missing|absent)\s+from\s+${where}\b`,
   ].map((pattern) => new RegExp(pattern, 'i'));
