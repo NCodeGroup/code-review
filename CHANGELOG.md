@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
+- This repository's own workflow pins v0.4.0 and triggers on `closed`, so its pull requests are reviewed by the current engine and record each finding's outcome when they close.
 - When the Anthropic credits are used up and Bedrock is throttling the key or its quota is used up (HTTP 429, `ThrottlingException` or `ServiceQuotaExceededException`), the check run says the review budget is used up, neutral, instead of starting a review Bedrock would refuse partway ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 
 ### Fixed
@@ -55,7 +57,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A missing test is a should-fix only when the untested path is new behavior with a plausible failure a user would see and no test below it covers it. A wrapper over tested pieces, a test that would only pin current behavior, or a second test for a covered path is a nit. Eval concerns can name a `minSeverity`, and five cases from [#30](https://github.com/NCodeGroup/code-review/pull/30) check both sides ([#37](https://github.com/NCodeGroup/code-review/issues/37)).
 - The inline threads read the pull request's earlier review comments through the same pager as the summary comment, up to 10,000 instead of 1,000. When a pull request has more, no threads are posted, with a warning, instead of findings already posted on comments past the limit being posted again; the check run still has every finding ([#38](https://github.com/NCodeGroup/code-review/issues/38)).
 - The Release workflow fails before it tags when `CHANGELOG.md` has no dated `## [<version>] - YYYY-MM-DD` section with entries, bulleted or numbered, for the version, outside any code fence, and publishes that section as the release's notes instead of generated ones. The README says why Dependabot proposed no bump of the action to consumers, every release so far being marked as a pre-release, and how to bump them meanwhile ([#33](https://github.com/NCodeGroup/code-review/issues/33)).
-- The tests cover how a review builds each reviewer's prompt on a diff in parts (its own part's diff, rules and charter, with the other parts' files marked as in another part), run the repository's own reviewers on the tier its config gives them, and rerun the selection and context calls on Bedrock when the API credits run out ([#96](https://github.com/NCodeGroup/code-review/issues/96)).
 
 ### Fixed
 
