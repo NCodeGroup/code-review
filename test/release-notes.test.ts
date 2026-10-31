@@ -108,12 +108,19 @@ after(() => {
 
 // The Release workflow relies on the script's exit code and output, so these run it as a process.
 const script = fileURLToPath(new URL('../tools/release-notes.ts', import.meta.url));
-function run(...args: string[]) {
+function scratch() {
   const dir = mkdtempSync(path.join(tmpdir(), 'release-notes-'));
   made.push(dir);
+  return dir;
+}
+function spawn(args: string[], cwd: string) {
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+}
+function run(...args: string[]) {
+  const dir = scratch();
   const file = path.join(dir, 'CHANGELOG.md');
   writeFileSync(file, changelog);
-  return spawnSync(process.execPath, [script, ...args, file], { encoding: 'utf8' });
+  return spawn([...args, file], dir);
 }
 
 test('the script prints the section and exits 0', () => {
@@ -127,4 +134,19 @@ test('the script prints an error annotation and exits 1 when the section is miss
   assert.equal(result.status, 1);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /^::error::CHANGELOG\.md has no '## \[0\.4\.0\] - YYYY-MM-DD' section/);
+});
+
+test('the script prints its usage and exits 1 without a version', () => {
+  const result = spawn([], scratch());
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /^::error::Usage: node tools\/release-notes\.ts <version> \[<changelog>\]/);
+});
+
+test('the script prints an error annotation and exits 1 when the changelog can\'t be read', () => {
+  const dir = scratch();
+  const result = spawn(['0.3.1', path.join(dir, 'missing.md')], dir);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /^::error::ENOENT/);
 });
