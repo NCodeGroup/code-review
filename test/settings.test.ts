@@ -210,7 +210,7 @@ test('the policies have a budget of their own', () => {
 });
 
 test('project charters join the roster as project:<name> and never replace an engine charter', () => {
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
   const settings = readProjectSettings(baseWithSettings());
   const charters = withProjectCharters(engine, settings.reviewers);
   assert.deepEqual([...charters.reviewers.keys()], ['security', 'project:oauth', 'project:security']);
@@ -436,12 +436,14 @@ test('a pull request whose every changed file is skipped by config runs no model
   assert.deepEqual(gathered.skippedByConfig, ['vendor/lib.js']);
   assert.equal(fileList(gathered), "vendor/lib.js [not reviewed: skipped by the repository's config]");
 
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
   // The proxy address goes nowhere: a model call would fail and be recorded.
   const outcome = await review({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, engine, () => {});
   assert.deepEqual(outcome.calls, []);
   assert.deepEqual(outcome.reviewers, []);
   assert.deepEqual(outcome.findings, []);
+  assert.deepEqual(outcome.refuted, []);
+  assert.deepEqual(outcome.verification, []);
   assert.equal(outcome.verdict, 'comment');
   assert.equal(outcome.summary, 'Nothing was reviewed: every changed file is skipped by `skip:` in `.github/code-review/config.yml`.');
   assert.deepEqual(outcome.skipped, ['security', 'project:oauth', 'project:security']);
