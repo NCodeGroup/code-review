@@ -428,6 +428,7 @@ const charters: Charters = {
   synthesisPrompt: '',
   ruleCheckPrompt: '',
   reReviewPrompt: 'RE-REVIEW',
+  verificationPrompt: 'VERIFICATION',
   reviewers: new Map([['correctness', 'CORRECTNESS CHARTER'], ['security', 'SECURITY CHARTER'], ['tests', 'TESTS CHARTER']]),
 };
 
@@ -569,7 +570,7 @@ test('reReview never approves when the earlier threads could not be read', async
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
-  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], calls: [], skipped: [] };
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], refuted: [], verification: [], calls: [], skipped: [] };
 }
 
 test('runReview does the full review without a plan, and records the head it read', async () => {

@@ -495,7 +495,7 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
     });
     // Changes since the last review that no reviewer saw, being only in generated files or files over the size budget.
     const unseen = !outcomes.length && (plan.changed.hunks > 0 || Object.keys(plan.changed.removed).length > 0);
-    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen), findings, calls, skipped: [], earlier: statuses };
+    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen), findings, refuted: [], verification: [], calls, skipped: [], earlier: statuses };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 

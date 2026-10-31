@@ -156,6 +156,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
         return {
@@ -176,7 +177,7 @@ async function main(): Promise<void> {
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
       recordedHead,
     };
-    const trace = { results, rawFindings: outcome.reviewers, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
+    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
 
     const secrets = secretValues(credentials);
     const resultsJson = JSON.stringify(results, null, 2);
