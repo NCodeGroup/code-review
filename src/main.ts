@@ -135,6 +135,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      ...(outcome.upstream.length ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: gathered.template!.repository } : {}),
       ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
@@ -171,7 +172,8 @@ async function main(): Promise<void> {
   } finally {
     await proxy.close();
   }
-  log(`${results.findings.length} findings, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`);
+  const upstream = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+  log(`${results.findings.length} findings${upstream ? ` (${upstream} more belong upstream)` : ''}, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`);
 }
 
 main().catch((error) => {
