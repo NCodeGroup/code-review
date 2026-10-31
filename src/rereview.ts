@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
-import { dropContradicted, type DroppedFinding } from './claims.ts';
+import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
@@ -661,7 +661,7 @@ export async function reReview(
   const { kept: onChanged, nits, outside } = postable(reported, plan.changed.lines);
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged.map((f) => ({ ...f, reviewers: [reReviewer] })), gathered.files.map((f) => f.path));
-  if (dropped.length) log(`  Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  if (dropped.length) log(`  ${droppedLine(dropped)}`);
   // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
   const placed = byOwner(kept, gathered.template);
   const upstream = upstreamFindings(placed.upstream);

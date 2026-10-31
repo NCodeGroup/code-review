@@ -10,7 +10,7 @@ import { isFromFork, writerAssociations } from './command.ts';
 export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
-import { assertNoSecrets } from './outputs.ts';
+import { assertNoSecrets, printable } from './outputs.ts';
 import {
   botLogin,
   headMarker,
@@ -343,7 +343,7 @@ export async function collectOutcomes(
     // When the comparison can't tell, GitHub's own judgment that the code under the thread changed stands in.
     const changed = files && first.originalLine !== null ? lineChanged(files, thread.path, first.originalLine) : false;
     if (changed === undefined) {
-      log(`::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${thread.path} changed; its thread being outdated decides.`);
+      log(`::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${printable(thread.path)} changed; its thread being outdated decides.`);
     }
     const outcome = classify({
       linesChanged: changed ?? thread.isOutdated,
