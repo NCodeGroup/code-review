@@ -47,7 +47,7 @@ export function shortModel(model: string): string {
   return model.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '');
 }
 
-// Finds the bot's one summary comment on a pull request, so a later run edits it instead of adding another.
+// Marks the bot's summary comments on a pull request; each review posts a new one and collapses the earlier ones.
 export const summaryMarker = '<!-- ncode-review:summary -->';
 export const botLogin = 'ncode-review[bot]';
 
@@ -59,6 +59,19 @@ export function headMarker(sha: string): string {
 
 export function reviewedHead(body: string): string | undefined {
   return /<!-- ncode-review:head=([0-9a-f]{40}) -->/.exec(body)?.[1];
+}
+
+export const supersededMarker = '<!-- ncode-review:superseded -->';
+
+// The bot's summary comments in the order GitHub lists them, oldest first; the last one is the newest review's.
+export function summaryComments<T extends { body?: string; user?: { login?: string } }>(comments: T[]): T[] {
+  return comments.filter((c) => c.user?.login === botLogin && c.body?.startsWith(summaryMarker));
+}
+
+// The body an earlier summary comment is edited to once a newer review posts its own, so only the newest stays
+// expanded and is still a summary comment.
+export function supersededComment(headSha: string, commentUrl: string): string {
+  return [supersededMarker, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
 }
 
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {

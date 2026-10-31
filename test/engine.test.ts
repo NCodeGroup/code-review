@@ -260,6 +260,40 @@ test('the summary comment records the reviewed commit for the next run to read',
   assert.equal(reviewedHead('<!-- ncode-review:summary -->\n### 🤖 Review complete'), undefined);
 });
 
+test('summaryComments lists the bot summary comments oldest first, and the last holds the newest head', async () => {
+  const { summaryComments, supersededComment, summaryMarker, headMarker, reviewedHead } = await import('../src/results.ts');
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const x = 'c'.repeat(40);
+  const z = 'd'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  const comments: { id: number; user: { login: string }; body?: string }[] = [
+    { id: 1, user: bot, body: `${summaryMarker}\n${headMarker(a)}\n### 🤖 Review complete` },
+    { id: 2, user: { login: 'someone' }, body: `${summaryMarker}\n${headMarker(x)}` },
+    { id: 3, user: bot, body: supersededComment(z, 'https://example.test/c/0') },
+    { id: 4, user: bot, body: `${summaryMarker}\n${headMarker(b)}\n### 🤖 Review complete` },
+    { id: 5, user: bot },
+  ];
+  assert.deepEqual(summaryComments(comments).map((c) => c.id), [1, 4]);
+  assert.equal(reviewedHead(summaryComments(comments).at(-1)!.body!), b);
+});
+
+test('supersededComment collapses an older summary so only the newest is still a summary', async () => {
+  const { summaryComments, supersededComment, supersededMarker, summaryMarker, reviewedHead } = await import('../src/results.ts');
+  const body = supersededComment('121b99b0' + '0'.repeat(32), 'https://github.com/o/r/pull/1#issuecomment-9');
+  assert.ok(body.startsWith(supersededMarker));
+  assert.ok(!body.startsWith(summaryMarker));
+  assert.equal(reviewedHead(body), undefined);
+  assert.equal(body.split('\n').length, 2);
+  assert.ok(body.includes('[the review at 121b99b](https://github.com/o/r/pull/1#issuecomment-9)'));
+  const bot = { login: 'ncode-review[bot]' };
+  const comments = [
+    { id: 1, user: bot, body },
+    { id: 2, user: bot, body: `${summaryMarker}\n### 🤖 Review complete` },
+  ];
+  assert.deepEqual(summaryComments(comments).map((c) => c.id), [2]);
+});
+
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
   const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
   const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
