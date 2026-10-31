@@ -165,6 +165,8 @@ test('stillOpenReply keeps the note to one line of text and asks the maintainer 
   assert.equal(body, [stillOpenMarker, 'This stays open: the re-review at ccccccc still finds it. Line one &lt;script>alert(1)&lt;/script>', '', '@polewskm: needs you.'].join('\n'));
   assert.match(stillOpenReply(headSha, '', 'polewskm'), /still finds it\. The re-review still finds the problem in the code now\./);
   assert.equal(stillOpenReply(headSha, 'x', 'not a login!').split('\n').at(-1), 'Maintainer: needs you.');
+  // The note can't mention anyone: only the maintainer line does.
+  assert.match(stillOpenReply(headSha, 'Ask @someone or @org/team', 'polewskm'), /Ask @\u200bsomeone or @\u200borg\/team\n/);
 });
 
 test('dismissedThreads counts the bot\'s threads resolved without a code change or with a 👎, both from a writer', async () => {
@@ -223,6 +225,64 @@ test('a finding whose thread carries a 👎 from a writer is not posted again, a
   assert.deepEqual((await posted([again], earlier, byWriter)).reviews, []);
   const byStranger = await dismissedThreads([thread({ finding: earlier, thumbsDown: ['drive-by'] })], writers);
   assert.equal((await posted([again], earlier, byStranger)).reviews.length, 1);
+});
+
+test('the publish step counts a resolution or a 👎 only from a login whose repository access is admin, maintain or write', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'follow-up-access-'));
+  made.push(dir);
+  const out = path.join(dir, 'out');
+  mkdirSync(out);
+  const access: Record<string, { role_name: string; permission: string } | undefined> = {
+    writer: { role_name: 'write', permission: 'write' },
+    maintainer: { role_name: 'maintain', permission: 'write' },
+    admin: { role_name: 'admin', permission: 'admin' },
+    // A custom repository role reports its base permission.
+    custom: { role_name: 'docs-editor', permission: 'write' },
+    triager: { role_name: 'triage', permission: 'read' },
+    reader: { role_name: 'read', permission: 'read' },
+    // No route: the lookup gets a 404.
+    gone: undefined,
+  };
+  const how: Record<string, 'resolved' | 'thumbsDown'> = { writer: 'resolved', maintainer: 'resolved', admin: 'thumbsDown', custom: 'thumbsDown', triager: 'resolved', reader: 'thumbsDown', gone: 'resolved' };
+  const logins = [...Object.keys(access), 'ncode-review'];
+  const findings = logins.map((login, i) => finding({ id: `F${i + 1}`, title: `Finding dismissed by ${login}`, line: 10 + i * 10 }));
+  const threads = logins.map((login, i) =>
+    how[login] === 'thumbsDown' ? thread({ finding: findings[i]!, thumbsDown: [login] }) : thread({ finding: findings[i]!, resolved: true, resolvedBy: login }),
+  );
+  // Each finding comes back raised to a blocker a few lines on, so only a dismissal keeps it from being posted again.
+  const raised = findings.map((f) => ({ ...f, severity: 'blocker' as const, line: f.line + 5 }));
+  const results: Results = {
+    repository: 'o/r', pullRequest: 1, headSha, provider: 'bedrock', providerReason: 'test', summary: 's', verdict: 'comment', findings: raised,
+    reviewers: [], skipped: [], synthesisModel: '', calls: [], costUsd: 0, durationMs: 0, notShown: [], dropped: [],
+    changedLines: { 'src/a.ts': raised.map((f) => f.line) },
+  };
+  writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
+  const permissions = Object.fromEntries(
+    Object.entries(access).flatMap(([login, answer]) => (answer ? [[`GET https://api.github.com/repos/o/r/collaborators/${login}/permission`, answer]] : [])),
+  );
+  const { requests, stdout } = runStep(
+    'publish.ts',
+    dir,
+    {
+      rest: {
+        ...permissions,
+        'POST https://api.github.com/repos/o/r/check-runs': { html_url: 'https://github.com/o/r/runs/1' },
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': findings.map(restComment),
+        'POST https://api.github.com/repos/o/r/pulls/1/reviews': {},
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'POST https://api.github.com/repos/o/r/issues/1/comments': { html_url: 'https://github.com/o/r/pull/1#issuecomment-1' },
+      },
+      graphql: [['reviewThreads', { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: threads } } } } }]],
+    },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
+  );
+  const review = requests.find((r) => r.method === 'POST' && r.url === 'https://api.github.com/repos/o/r/pulls/1/reviews');
+  const postedTitles = review!.body.comments.map((c: { body: string }) => /Finding dismissed by (\S+)\*\*/.exec(c.body)?.[1]);
+  assert.deepEqual(postedTitles, ['triager', 'reader', 'gone', 'ncode-review']);
+  // The bot's own resolution is never looked up.
+  const lookedUp = requests.flatMap((r) => /\/collaborators\/([^/]+)\/permission$/.exec(r.url)?.[1] ?? []);
+  assert.deepEqual(lookedUp, ['writer', 'maintainer', 'admin', 'custom', 'triager', 'reader', 'gone']);
+  assert.match(stdout, /::warning::Couldn't read gone's access \(GitHub refused GET \/repos\/o\/r\/collaborators\/gone\/permission: HTTP 404 Not Found\), so their 👎 or resolution doesn't count\./);
 });
 
 test('on the next /review, the publish step resolves the thread of a fixed finding as the app, and no one else\'s', () => {

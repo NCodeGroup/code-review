@@ -221,7 +221,6 @@ export interface ThreadComment {
 
 // GraphQL names an app by its login without the "[bot]" the REST API adds.
 export const botAuthor = botLogin.replace(/\[bot\]$/, '');
-// As for the description, only replies from people with write access (`writers`) reach the reviewer.
 const maxFindingTextChars = 1_500;
 const maxReplyChars = 1_500;
 const maxRepliesPerThread = 50;
@@ -237,7 +236,8 @@ function findingText(body: string): string {
     .slice(0, maxFindingTextChars);
 }
 
-// The bot's findings in a pull request's review threads, with the newest replies from people with write access.
+// The bot's findings in a pull request's review threads, with the newest replies from people with write access
+// (`writers`): as for the description, no one else's reply reaches the reviewer.
 export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
   const found: EarlierFinding[] = [];
   for (const thread of threads) {

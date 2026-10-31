@@ -22,7 +22,8 @@ function postedFinding(thread: ThreadNode): PostedThread | undefined {
 
 // The bot's threads the maintainer dismissed: resolved by someone with write access while still on the code they were
 // posted on, or with a 👎 from someone with write access on the finding. A pull request's author can resolve threads
-// too, so a resolution by anyone else doesn't count. A thread an app resolved, the bot included, has no resolver.
+// too, so a resolution by anyone else doesn't count. A thread an app resolved, the bot included, has no resolver, since
+// GraphQL's `resolvedBy` is a user; the bot's own login is ruled out too, so it is never looked up as a person.
 // `isWriter` looks up a login's access; one it can't look up doesn't count.
 export async function dismissedThreads(threads: ThreadNode[], isWriter: (login: string) => Promise<boolean>): Promise<{ thread: ThreadNode; posted: PostedThread }[]> {
   const dismissed: { thread: ThreadNode; posted: PostedThread }[] = [];
@@ -70,7 +71,7 @@ function alreadyAnswered(thread: ThreadNode): boolean {
 const maxNoteChars = 1_000;
 
 export function stillOpenReply(headSha: string, note: string, maintainer: string): string {
-  const reason = note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;') || 'The re-review still finds the problem in the code now.';
+  const reason = note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;').replace(/@/g, '@\u200b') || 'The re-review still finds the problem in the code now.';
   const who = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(maintainer) ? `@${maintainer}` : 'Maintainer';
   return [stillOpenMarker, `This stays open: the re-review at ${headSha.slice(0, 7)} still finds it. ${reason}`, '', `${who}: needs you.`].join('\n');
 }
