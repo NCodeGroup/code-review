@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
-import { declaration, type Declaration } from './csharp.ts';
+import { declaration, declarationSpans, type DeclarationSpan } from './csharp.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
@@ -294,46 +294,37 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
   return answer(false);
 }
 
-const indentOf = (line: string) => /^\s*/.exec(line)![0].length;
 const notCode = /^\s*([{}()[\]#]|\/\/|\/\*|\*)/;
 
-interface Enclosing {
-  indent: number;
-  declaration: Declaration;
-}
-
 interface HeadScan {
-  // The declarations above line `index` that could enclose it, outermost first: each less indented than the next.
-  enclosing(index: number): Enclosing[];
+  // The declarations around head line `index` (0-based), innermost first; with `gap`, the ones around the gap a removed
+  // line left before it. Undefined when the head's braces don't balance.
+  around(index: number, gap: boolean): DeclarationSpan[] | undefined;
   // The first line at or below `index` that is code, not a blank, a brace, an attribute or a comment.
   codeFrom(index: number): string | undefined;
 }
 
-// Reads a file at the head for the changed lines of its diff. Asked about lines in order, as a diff's hunks come, it
-// reads each line once, so a large file costs its length and not its length times its changes.
-function scanHead(lines: string[]): HeadScan {
+// Reads a file at the head for the changed lines of its diff: its braces once, then the innermost declaration on each
+// line, so a large file costs its length and not its length times its changes.
+function scanHead(head: string): HeadScan {
+  const lines = head.split(/\r?\n/);
+  const spans = declarationSpans(head);
+  const innermost: (DeclarationSpan | undefined)[] = new Array(lines.length);
+  // A span opens after the one it sits in, so the inner one is written last.
+  for (const span of spans ?? []) for (let line = span.start; line <= span.end && line < lines.length; line++) innermost[line] = span;
   const isCode = (line: string) => line.trim() !== '' && !notCode.test(line);
-  const stack: Enclosing[] = [];
-  let position = 0;
   // Lines from codeStart up to codeEnd aren't code; codeEnd is, or is the end of the file.
   let codeStart = 0;
   let codeEnd = -1;
   return {
-    enclosing(index) {
-      if (index < position) {
-        stack.length = 0;
-        position = 0;
-      }
-      for (; position < Math.min(index, lines.length); position++) {
-        const line = lines[position]!;
-        // Not isCode: a declaration can follow an attribute on its line, and declaration() skips the attribute.
-        const found = line.trim() !== '' ? declaration(line) : undefined;
-        if (!found) continue;
-        const indent = indentOf(line);
-        while (stack.length && stack[stack.length - 1]!.indent >= indent) stack.pop();
-        stack.push({ indent, declaration: found });
-      }
-      return stack;
+    around(index, gap) {
+      if (!spans) return undefined;
+      let span = gap ? (index > 0 ? innermost[index - 1] : undefined) : innermost[index];
+      // Around a gap: the declarations that hold the lines on both sides of it.
+      while (span && gap && span.end < index) span = span.parent;
+      const chain: DeclarationSpan[] = [];
+      for (; span; span = span.parent) chain.push(span);
+      return chain;
     },
     codeFrom(index) {
       if (index < codeStart || index > codeEnd) {
@@ -347,36 +338,31 @@ function scanHead(lines: string[]): HeadScan {
 }
 
 // Whether a changed line declares, or sits inside, a public or protected member of a public type. `above` is the number
-// of the head's lines before it; the nearest declaration above with less indentation encloses it.
-function inVisibleMember(head: HeadScan, above: number, code: string): boolean {
+// of the head's lines before it; for a removed line, the gap it left is there. The line's own text decides first, then
+// the declarations the head's braces put around it.
+function inVisibleMember(head: HeadScan, above: number, code: string, removed: boolean): boolean {
   let own = declaration(code);
   // An attribute belongs to the declaration below it.
   if (!own && /^\s*\[/.test(code)) {
     const next = head.codeFrom(above);
     own = next === undefined ? undefined : declaration(next);
   }
-  if (own?.kind === 'namespace') return false;
-  let found = own?.visible;
-  if (found === false) return false;
-  let indent = indentOf(code);
-  const enclosing = head.enclosing(above);
-  for (let i = enclosing.length - 1; i >= 0; i--) {
-    const { indent: depth, declaration: outer } = enclosing[i]!;
-    if (depth >= indent) continue;
-    if (outer.kind === 'namespace') break;
-    indent = depth;
-    // Straight inside a class or struct, outside any member with an access modifier: a private field or a blank.
-    if (found === undefined && outer.kind === 'type' && !outer.membersPublic) return false;
-    if (!outer.visible) return false;
-    found = true;
-  }
-  return found === true;
+  if (own?.kind === 'namespace' || own?.visible === false) return false;
+  const chain = head.around(above, removed);
+  // A head whose braces don't balance can't place the line, so it counts as public: the floor fails closed.
+  if (!chain) return true;
+  if (own) return chain.every((s) => s.declaration.visible);
+  const inner = chain[0];
+  if (!inner) return false;
+  // Straight inside a class or struct's body, outside any member with an access modifier: a private field or a blank.
+  if (inner.declaration.kind === 'type' && !inner.declaration.membersPublic && above > inner.open) return false;
+  return chain.every((s) => s.declaration.visible);
 }
 
 // Whether a .cs file's diff adds or removes a line that declares, or sits inside, a public or protected member: a
 // change to the surface, or to the behavior behind it. head is the file at the pull request's head, '' when deleted.
 export function touchesPublicMember(section: string, head: string): boolean {
-  const scan = scanHead(head.split(/\r?\n/));
+  const scan = scanHead(head);
   let next = 0;
   let inHunk = false;
   for (const text of section.split('\n')) {
@@ -392,13 +378,13 @@ export function touchesPublicMember(section: string, head: string): boolean {
     const code = text.slice(1).replace(/\r$/, '');
     // An added line is head line `next`; a removed one sits before it.
     const above = next - 1;
-    if (text.startsWith('+')) next++;
+    const removed = text.startsWith('-');
+    if (!removed) next++;
     if (!code.trim() || /^\s*(\/\/|\/\*|\*)/.test(code)) continue;
-    if (inVisibleMember(scan, above, code)) return true;
+    if (inVisibleMember(scan, above, code, removed)) return true;
   }
   return false;
 }
-
 // DbContext has no leading \w*: it matches the same names, AppDbContext too, without backtracking through long words.
 const contractMarker = /\b(?:JsonPropertyName|DataMember|JsonSerializerContext|IEntityTypeConfiguration)\b|DbContext\b/;
 
