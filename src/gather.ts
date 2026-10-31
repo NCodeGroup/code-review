@@ -174,6 +174,24 @@ export function splitDiff(diff: string): Map<string, string> {
   return sections;
 }
 
+// Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
+export function changedLines(diff: string): Map<string, Set<number>> {
+  const lines = new Map<string, Set<number>>();
+  let file: string | undefined;
+  let line = 0;
+  for (const text of diff.split('\n')) {
+    const header = /^\+\+\+ b\/(.+)$/.exec(text);
+    if (header) { file = header[1]!.trim(); lines.set(file, new Set()); continue; }
+    if (text.startsWith('--- ')) continue;
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+    if (hunk) { line = Number(hunk[1]); continue; }
+    if (!file) continue;
+    if (text.startsWith('+')) { lines.get(file)!.add(line); line++; }
+    else if (text.startsWith(' ')) line++;
+  }
+  return lines;
+}
+
 // Packs the per-file sections into parts of at most chunkChars, in review order so neighbouring files share a part, with
 // the template's files last. Generated files get a one-line stub in the first part. A file too big for any part, or past
 // the last part, is left out.

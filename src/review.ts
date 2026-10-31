@@ -18,6 +18,8 @@ import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
 export { depthLabel, severityRank, type ReviewDepth, type Severity };
+// Lines a finding can sit on, per file: kept in gather.ts, so verify.ts can use it without importing this module.
+export { changedLines } from './gather.ts';
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {
@@ -613,24 +615,6 @@ export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: 
   const called = verdictFor(findings);
   if (!synthesized) return called;
   return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
-}
-
-// Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
-export function changedLines(diff: string): Map<string, Set<number>> {
-  const lines = new Map<string, Set<number>>();
-  let file: string | undefined;
-  let line = 0;
-  for (const text of diff.split('\n')) {
-    const header = /^\+\+\+ b\/(.+)$/.exec(text);
-    if (header) { file = header[1]!.trim(); lines.set(file, new Set()); continue; }
-    if (text.startsWith('--- ')) continue;
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
-    if (hunk) { line = Number(hunk[1]); continue; }
-    if (!file) continue;
-    if (text.startsWith('+')) { lines.get(file)!.add(line); line++; }
-    else if (text.startsWith(' ')) line++;
-  }
-  return lines;
 }
 
 type Selection = { add: { reviewer: string; reason: string }[] };
