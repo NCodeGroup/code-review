@@ -166,11 +166,12 @@ export function casePrecision(precisionOn: boolean, input: Parameters<typeof jud
   return precisionOn ? judgePosted(input) : Promise.resolve(undefined);
 }
 
-// The cases --only or --subset names, in cases.json's order. A name that matches no case fails, so a typo or a renamed
-// case can't quietly shrink the run.
+// The cases --only or --subset names, in cases.json's order. A name that matches no case fails, and so does an --only
+// that names none, so a typo, a renamed case or an unset shell variable can't quietly shrink the run.
 export function selectCases(all: EvalCase[], only: string | undefined, subset: string | undefined): EvalCase[] {
   if (only !== undefined && subset !== undefined) throw new Error('Use --only or --subset, not both.');
   let ids: readonly string[] | undefined = only?.split(',').map((id) => id.trim()).filter(Boolean);
+  if (ids?.length === 0) throw new Error('--only names no case; give it case ids separated by commas.');
   if (subset !== undefined) {
     ids = Object.hasOwn(subsets, subset) ? subsets[subset] : undefined;
     if (!ids) throw new Error(`No subset named ${JSON.stringify(subset)}; evals/cases.ts has ${Object.keys(subsets).join(', ')}.`);

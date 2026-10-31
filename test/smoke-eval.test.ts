@@ -95,11 +95,13 @@ test('the smoke subset is 4 existing cases, with the must-not case', () => {
   assert.ok(smoke.some((c) => c.id === 'heap-allocation-key-export'), 'the large-diff case');
 });
 
-test('selectCases fails on a case or subset that does not exist, and on --only with --subset', () => {
+test('selectCases fails on a case or subset that does not exist, on an empty --only, and on --only with --subset', () => {
   assert.throws(() => selectCases(allCases, 'accepted-no-backfill,no-such-case', undefined), /No eval case named no-such-case/);
   assert.throws(() => selectCases(allCases, undefined, 'nightly'), /No subset named "nightly"/);
   assert.throws(() => selectCases(allCases, undefined, '__proto__'), /No subset named/);
   assert.throws(() => selectCases(allCases, 'accepted-no-backfill', 'smoke'), /--only or --subset, not both/);
+  assert.throws(() => selectCases(allCases, '', undefined), /--only names no case/);
+  assert.throws(() => selectCases(allCases, ' , ', undefined), /--only names no case/);
   assert.deepEqual(selectCases(allCases, 'secret-buffer-length, accepted-no-backfill', undefined).map((c) => c.id), ['secret-buffer-length', 'accepted-no-backfill']);
   assert.equal(selectCases(allCases, undefined, undefined).length, allCases.length);
 });
