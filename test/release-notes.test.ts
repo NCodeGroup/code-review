@@ -95,6 +95,30 @@ test('releaseNotes keeps a heading inside a fenced block as part of the section'
   assert.equal(releaseNotes(fenced, '0.3.1'), '### Changed\n\n- Releases are immutable from this one on.\n\n```markdown\n## [0.3.1] - 2026-10-31\n[x]: y\n```\n');
 });
 
+test('releaseNotes closes a fence only with its own marker, at least as long', () => {
+  const block = '```\n~~~\n## [0.3.0] - 2026-10-31\n``\n````\n';
+  const fenced = changelog.replace('- Releases are immutable from this one on.\n', `- Releases are immutable from this one on.\n\n${block}`);
+  assert.equal(releaseNotes(fenced, '0.3.1'), `### Changed\n\n- Releases are immutable from this one on.\n\n${block.trimEnd()}\n`);
+  const tilde = changelog.replace('- Releases are immutable from this one on.\n', '- Releases are immutable from this one on.\n\n~~~~\n```\n## [0.1.0] - 2026-10-30\n~~~~\n');
+  assert.match(releaseNotes(tilde, '0.3.1'), /~~~~\n```\n## \[0\.1\.0\] - 2026-10-30\n~~~~\n$/);
+  assert.equal(releaseNotes(tilde, '0.1.0'), '### Added\n\n- The first release.\n');
+});
+
+test('releaseNotes says when a fence that is never closed hides the version\'s heading', () => {
+  const unclosed = changelog.replace('- Something not released yet.\n', '- Something not released yet.\n\n```\n');
+  assert.throws(() => releaseNotes(unclosed, '0.3.1'), /no '## \[0\.3\.1\] - YYYY-MM-DD' section; .* A code fence opened on line 11 is never closed/);
+});
+
+test('releaseNotes fails on a section with a fence that is never closed', () => {
+  const unclosed = `${changelog.slice(0, changelog.indexOf('[unreleased]:'))}\`\`\`text\n`.replace('- The first release.\n', '- The first release.\n\n~~~\n');
+  assert.throws(() => releaseNotes(unclosed, '0.1.0'), /section for 0\.1\.0 has a code fence on line 33 that is never closed/);
+});
+
+test('releaseNotes takes numbered entries as changes', () => {
+  const numbered = changelog.replace('- Releases are immutable from this one on.', '1. Releases are immutable from this one on.\n2) And signed.');
+  assert.equal(releaseNotes(numbered, '0.3.1'), '### Changed\n\n1. Releases are immutable from this one on.\n2) And signed.\n');
+});
+
 test('releaseNotes refuses a version that isn\'t MAJOR.MINOR.PATCH', () => {
   for (const version of ['', 'v0.3.1', '0.3', '0.3.1-rc.1', '.*']) {
     assert.throws(() => releaseNotes(changelog, version), /isn't MAJOR\.MINOR\.PATCH/, version);
