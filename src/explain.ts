@@ -7,6 +7,7 @@ import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
+import type { ReadApi } from './github.ts';
 import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
 import { markerFields } from './threads.ts';
@@ -32,25 +33,7 @@ export interface FoundFinding {
 
 export type Resolution = { found: FoundFinding } | { validIds: string[] };
 
-// Reads an API path with the read-only token: the parsed body, or undefined when GitHub has no such thing.
-export type ReadApi = (path: string) => Promise<unknown>;
-
-// How long one read may take before it fails, so a hung connection doesn't hold the run until the job's time limit.
-const githubReadTimeoutMs = 30_000;
-
-// The ReadApi of a run, with the read-only token when there is one. A 404 reads as undefined, as a deleted comment
-// would; any other refusal throws, so a rate limit or an outage isn't taken for a comment that isn't a finding.
-export function githubReader(token: string | undefined, fetchApi: typeof fetch = fetch): ReadApi {
-  return async (apiPath) => {
-    const response = await fetchApi(`https://api.github.com${apiPath}`, {
-      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      signal: AbortSignal.timeout(githubReadTimeoutMs),
-    });
-    if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error(`GitHub refused GET ${apiPath}: HTTP ${response.status}`);
-    return response.json();
-  };
-}
+export { githubReader, type ReadApi } from './github.ts';
 
 // What the review step hands the publish step instead of results.json: one top-level comment to post.
 export interface Answer {

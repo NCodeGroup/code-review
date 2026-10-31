@@ -77,6 +77,20 @@ export async function githubGraphql(api: Api, query: string, variables: Record<s
   return json?.data;
 }
 
+// Reads an API path with the read-only token: the parsed body, or undefined when GitHub has no such thing.
+export type ReadApi = (path: string) => Promise<unknown>;
+
+// The ReadApi of a run, with the read-only token when there is one. A 404 reads as undefined, as a deleted comment
+// would; any other refusal throws, so a rate limit or an outage isn't taken for a comment that isn't a finding.
+export function githubReader(token: string | undefined, fetchFn: typeof fetch = fetch): ReadApi {
+  return async (apiPath) => {
+    const response = await githubFetch({ token, fetch: fetchFn }, 'GET', apiPath);
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(`GitHub refused GET ${apiPath}: HTTP ${response.status}`);
+    return response.json();
+  };
+}
+
 export interface PullRequestRef {
   number?: number;
   head?: { sha?: string; repo?: { full_name?: string } | null };
