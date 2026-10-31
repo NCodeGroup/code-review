@@ -12,7 +12,8 @@ import { percent, spread, type PrecisionCounts } from './precision.ts';
 
 export const noiseLimit = 2;
 
-// The parts of evals/out/<label>.json that compare reads. Outputs from before precision was measured lack those fields.
+// The parts of evals/out/<label>.json that compare reads. precision and reviewCostUsd are absent from an output written
+// without the precision judge.
 export interface EvalOutput {
   summary: { label?: string; expected: number; caught: number; caughtRaw: number; violations: number; costUsd: number; reviewCostUsd?: number; precision?: PrecisionCounts };
   cases: {
@@ -36,7 +37,7 @@ const countDiff = (n: number, digits = 0) => `${signed(n, digits)}${isNoise(n) ?
 const points = (a: number | null | undefined, b: number | null | undefined) =>
   a === null || a === undefined || b === null || b === undefined ? '—' : `${signed(Math.round((b - a) * 100))} pts`;
 
-// The review's own cost, without the eval's judges; older outputs only have the total.
+// The review's own cost, without the eval's judges; an output without reviewCostUsd has only the total.
 const reviewCost = (c: { reviewCostUsd?: number; costUsd: number }) => c.reviewCostUsd ?? c.costUsd;
 
 export function table(rows: string[][]): string {

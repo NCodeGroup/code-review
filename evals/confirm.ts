@@ -11,10 +11,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Concern, EvalCase } from './cases.ts';
 import { loadVerdicts, saveVerdicts, type CachedVerdict, type Reality, type VerdictCache } from './precision.ts';
 
-export interface Concern { file?: string; line?: number; concern: string }
-export interface EvalCase { id: string; expect: Concern[]; mustNotFlag: Concern[] }
+// The parts of a case that confirming changes.
+export type CaseConcerns = Pick<EvalCase, 'id' | 'expect' | 'mustNotFlag'>;
 export type Confirmation = 'expect' | 'must-not';
 export interface Pending extends CachedVerdict { caseId: string; fingerprint: string }
 
@@ -43,7 +44,7 @@ export function concernFrom(entry: CachedVerdict): Concern {
 }
 
 // Adds the cached finding to its case as an expected or must-not-flag concern, and marks the verdict confirmed.
-export function confirm(cases: EvalCase[], cache: VerdictCache, caseId: string, fingerprint: string, as?: Confirmation): Concern {
+export function confirm(cases: CaseConcerns[], cache: VerdictCache, caseId: string, fingerprint: string, as?: Confirmation): Concern {
   const entry = cache[caseId]?.[fingerprint];
   if (!entry) throw new Error(`No verdict for ${fingerprint} in case ${caseId}; npm run eval:confirm lists them.`);
   if (entry.confirmed) throw new Error(`${fingerprint} in case ${caseId} is already confirmed as ${entry.confirmed}.`);

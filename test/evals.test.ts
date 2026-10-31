@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import type { CallRecord } from '../src/agent.ts';
 import { compare, isNoise, outputPath, type EvalOutput } from '../evals/compare.ts';
-import { confirm, sample, unconfirmed, type EvalCase } from '../evals/confirm.ts';
-import { judgePosted, loadVerdicts, saveVerdicts, spread, totalPrecision, type RealityJudge, type RealityVerdict, type VerdictCache } from '../evals/precision.ts';
+import { confirm, sample, unconfirmed, type CaseConcerns } from '../evals/confirm.ts';
+import { judgeMaxDiffChars, judgePosted, loadVerdicts, realityJudge, saveVerdicts, spread, totalPrecision, type RealityJudge, type RealityVerdict, type VerdictCache } from '../evals/precision.ts';
 import type { Finding, Severity } from '../src/review.ts';
 import { fingerprint } from '../src/threads.ts';
 
@@ -72,6 +73,58 @@ test('judgePosted counts a finding the judge gave no verdict for as unsure, and 
   assert.equal(result.unsure, 1);
   assert.equal(result.precision, 0);
   assert.deepEqual(cache, {});
+});
+
+test('judgePosted tells matched findings apart by identity, not by file and line, and a matched finding is never must-not', async () => {
+  const matched = finding('Matched one');
+  const sameSpot = finding('Different defect on the same line');
+  const both = finding('Raises an expected and a must-not concern');
+  const { asked, judge } = fakeJudge({ 'Different defect on the same line': { verdict: 'not-real', reason: 'n' } });
+  const result = await judgePosted({
+    caseId: 'case', findings: [matched, sameSpot, both], matched: new Set([matched, both]), mustNot: new Set([both]), cache: {}, judge,
+  });
+  assert.deepEqual(asked, ['Different defect on the same line']);
+  assert.deepEqual(result.judged.map((j) => j.status), ['matched', 'not-real', 'matched']);
+});
+
+// A stand-in for runAgent that records each request and answers with `reply`.
+function fakeAgent(reply: RealityVerdict | undefined) {
+  const requests: { checkout: string | undefined; tier: string; prompt: string | string[]; cache: boolean | undefined }[] = [];
+  const agent = async <T>(run: { checkout?: string }, request: { tier: string; prompt: string | string[]; cache?: boolean }) => {
+    requests.push({ checkout: run.checkout, tier: request.tier, prompt: request.prompt, cache: request.cache });
+    const record: CallRecord = {
+      role: 'precision-judge', provider: 'bedrock', model: 'opus', costUsd: 0.25, inputTokens: 0, outputTokens: 0,
+      cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success',
+    };
+    return { output: reply as T | undefined, record };
+  };
+  return { requests, agent };
+}
+
+const judgeRun = { provider: 'bedrock' as const, proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout' };
+
+test('realityJudge asks Opus in the checkout, with the file\'s diff cut to its limit, and records each call', async () => {
+  const { requests, agent } = fakeAgent({ verdict: 'real', reason: 'r' });
+  const calls: CallRecord[] = [];
+  const diff = `${'a'.repeat(judgeMaxDiffChars)}CUT`;
+  const judge = realityJudge(judgeRun, { title: 'The title', diffFor: (file) => (file === 'src/a.cs' ? diff : undefined) }, calls, agent);
+  assert.deepEqual(await judge(finding('Real one')), { verdict: 'real', reason: 'r' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.role, 'precision-judge');
+  assert.deepEqual({ ...requests[0], prompt: undefined }, { checkout: '/checkout', tier: 'opus', prompt: undefined, cache: false });
+  const prompt = String(requests[0]?.prompt);
+  assert.match(prompt, /The title/);
+  assert.match(prompt, new RegExp(`a{${judgeMaxDiffChars}}\\n</diff>`));
+  assert.doesNotMatch(prompt, /CUT/);
+});
+
+test('realityJudge says when the file has no diff, and gives no verdict when the agent gave none', async () => {
+  const { requests, agent } = fakeAgent(undefined);
+  const calls: CallRecord[] = [];
+  const judge = realityJudge(judgeRun, { title: 't', diffFor: () => undefined }, calls, agent);
+  assert.equal(await judge(finding('No answer', 'should-fix', 'src/other.cs')), undefined);
+  assert.match(String(requests[0]?.prompt), /<diff>\n\(no diff for this file\)\n<\/diff>/);
+  assert.equal(calls.length, 1);
 });
 
 test('totalPrecision sums the cases, and precision is null when nothing was posted', () => {
@@ -176,7 +229,7 @@ const verdictCache = (): VerdictCache => ({
     u1: { verdict: 'unsure', reason: 'u', file: 'src/c.cs', line: 7, severity: 'should-fix', title: 'Maybe slow', problem: 'It may be slow.' },
   },
 });
-const cases = (): EvalCase[] => [{ id: 'case', expect: [], mustNotFlag: [] }];
+const cases = (): CaseConcerns[] => [{ id: 'case', expect: [], mustNotFlag: [] }];
 
 test('confirm adds a real verdict as an expected concern and a not-real one as must-not, and marks them confirmed', () => {
   const cache = verdictCache();

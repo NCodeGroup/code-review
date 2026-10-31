@@ -15,21 +15,9 @@ import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, type Finding } from '../src/review.ts';
+import type { Concern, EvalCase } from './cases.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
-interface Concern { file?: string; line?: number; concern: string }
-interface Case {
-  id: string;
-  repository: string;
-  pullRequest?: number;
-  title: string;
-  body: string;
-  base: string;
-  head: string;
-  expect: Concern[];
-  mustNotFlag: Concern[];
-  source: string;
-}
 interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[] }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -93,15 +81,16 @@ async function judge(run: AgentRun, concern: Concern, finding: Finding, calls: C
   return result.output?.same ?? false;
 }
 
-async function raised(run: AgentRun, concern: Concern, findings: (Finding & { reviewers?: string[] })[], calls: CallRecord[]): Promise<string[]> {
-  const by: string[] = [];
+// The findings that raise the concern, the same objects it was given, so precision can tell them apart by identity.
+async function raised<F extends Finding>(run: AgentRun, concern: Concern, findings: F[], calls: CallRecord[]): Promise<F[]> {
+  const by: F[] = [];
   for (const finding of findings.filter((f) => !concern.file || sameFile(f.file, concern.file))) {
-    if (await judge(run, concern, finding, calls)) by.push(`${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`);
+    if (await judge(run, concern, finding, calls)) by.push(finding);
   }
   return by;
 }
 
-// The label raised() gives a finding, to tell which posted findings a concern matched.
+// How the output names a finding that raised a concern.
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
 async function main(): Promise<void> {
@@ -109,7 +98,7 @@ async function main(): Promise<void> {
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
   if (arg('tiers')) process.env['CODE_REVIEW_TIERS'] = arg('tiers');
   const only = arg('only')?.split(',');
-  const cases = (JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Case[]).filter((c) => !only || only.includes(c.id));
+  const cases = (JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as EvalCase[]).filter((c) => !only || only.includes(c.id));
   const label = arg('label') ?? new Date().toISOString().replace(/[:.]/g, '-');
   const charters = loadCharters(root);
   // The held-out guidance was trained without the eval cases' own pull requests and decision records, so a catch
@@ -149,22 +138,28 @@ async function main(): Promise<void> {
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       const calls = [...outcome.calls];
       const verdicts: Verdict[] = [];
+      // The posted findings that raised an expected concern, and those that raised a must-not-flag one.
+      const matched = new Set<Finding>();
+      const mustNot = new Set<Finding>();
       for (const concern of c.expect) {
         const by = await raised(run, concern, outcome.findings, calls);
-        const byRaw = by.length ? by : await raised(run, concern, raw, calls);
-        verdicts.push({ concern: concern.concern, caught: by.length > 0, caughtRaw: byRaw.length > 0, by: by.length ? by : byRaw });
+        for (const finding of by) matched.add(finding);
+        const byRaw: (Finding & { reviewers?: string[] })[] = by.length ? by : await raised(run, concern, raw, calls);
+        verdicts.push({ concern: concern.concern, caught: by.length > 0, caughtRaw: byRaw.length > 0, by: byRaw.map(raisedLabel) });
       }
       const forbidden = [];
-      for (const concern of c.mustNotFlag) forbidden.push({ concern: concern.concern, raisedBy: await raised(run, concern, outcome.findings, calls) });
+      for (const concern of c.mustNotFlag) {
+        const by = await raised(run, concern, outcome.findings, calls);
+        for (const finding of by) mustNot.add(finding);
+        forbidden.push({ concern: concern.concern, raisedBy: by.map(raisedLabel) });
+      }
 
-      const caughtBy = new Set(verdicts.filter((v) => v.caught).flatMap((v) => v.by));
-      const forbiddenBy = new Set(forbidden.flatMap((f) => f.raisedBy));
       const diffs = splitDiff(gathered.diff);
       const precision = await judgePosted({
         caseId: c.id,
         findings: outcome.findings,
-        matched: new Set(outcome.findings.filter((f) => caughtBy.has(raisedLabel(f)))),
-        mustNot: new Set(outcome.findings.filter((f) => forbiddenBy.has(raisedLabel(f)))),
+        matched,
+        mustNot,
         cache: verdictCache,
         judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
       });
