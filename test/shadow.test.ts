@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun, CallRecord, runAgent } from '../src/agent.ts';
 import { parseCharter } from '../src/charter.ts';
 import { shadowOverride, shadowPromptRate } from '../src/config.ts';
@@ -69,6 +69,11 @@ function reviewAnswers(request: AgentRequest): { output?: unknown; error?: strin
 
 const context = { repository: 'o/r', pullRequest: 7, headSha: 'a'.repeat(40), provider: 'anthropic' as const, providerReason: 'stub', durationMs: 1000, notShown: [], diff };
 const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/nowhere' };
+
+// Each test sets the shadow and rule-check settings it depends on, so the runner's environment can't change the result.
+beforeEach(() => {
+  for (const name of ['CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_RULE_CHECKS']) delete process.env[name];
+});
 
 async function withEnv<T>(values: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const saved = Object.fromEntries(Object.keys(values).map((name) => [name, process.env[name]]));
@@ -270,8 +275,7 @@ test('an unsampled review runs no shadow prompt', async () => {
   assert.ok(!requests.some((r) => r.role.startsWith('shadow-prompt:')));
   assert.deepEqual(outcome.shadowPrompts, []);
   assert.equal(buildResults(outcome, context).shadow, undefined);
-  // The default rate is 0.
-  assert.equal(process.env['CODE_REVIEW_SHADOW_RATE'], undefined);
+  // Unset, the rate is 0.
   const unset = stubAgent(variantAnswers);
   await review(run, gathered(), charters('# performance\n', variants), () => {}, unset.agent);
   assert.ok(!unset.requests.some((r) => r.role.startsWith('shadow-prompt:')));
@@ -287,4 +291,93 @@ test('the rate samples the shadow prompts by pull request and head', async () =>
     await withEnv({ CODE_REVIEW_SHADOW_RATE: '0.3' }, () => review(run, gathered(n, head), charters('# performance\n', variants), () => {}, agent));
     assert.equal(requests.some((r) => r.role === 'shadow-prompt:synthesis'), sampled.includes(n), `pull request ${n}`);
   }
+});
+
+test('a sampled rule check runs with the shadow rule-check charter and the shadow specialist prompt', async () => {
+  const withRule: Gathered = { ...gathered(), reviewRules: [{ name: 'a.instructions.md', globs: [], text: '- **Name things well** so they read.\n' }] };
+  const { agent, requests } = stubAgent((request) => {
+    if (request.role === 'context') return { output: { rules: ['R-a-1'], decisions: [] } };
+    if (request.role === 'shadow-prompt:reviewer:rule-check') return { output: { findings: [finding('Shadow rule finding', 'nit')] } };
+    return variantAnswers(request);
+  });
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
+    review(run, withRule, charters('# performance\n', { specialist: 'SHADOW specialist', 'rule-check': 'SHADOW rule-check' }), () => {}, agent));
+
+  const live = requests.find((r) => r.role === 'reviewer:rule-check')!;
+  assert.equal(live.systemPrompt, 'LIVE specialist');
+  assert.match(String(live.prompt.at(-1)), /Name things well[\s\S]*Your charter:\nLIVE rule-check$/);
+  const twin = requests.find((r) => r.role === 'shadow-prompt:reviewer:rule-check')!;
+  assert.equal(twin.systemPrompt, 'SHADOW specialist');
+  assert.match(String(twin.prompt.at(-1)), /Name things well[\s\S]*Your charter:\nSHADOW rule-check$/);
+
+  const entry = outcome.shadowPrompts.find((p) => p.role.startsWith('reviewer:rule-check'))!;
+  assert.deepEqual([entry.role, entry.prompts], ['reviewer:rule-check rules 1-1', ['specialist', 'rule-check']]);
+  assert.deepEqual(entry.live, { findings: [] });
+  assert.deepEqual(entry.shadow, { findings: [finding('Shadow rule finding', 'nit')] });
+  // The other reviewers' twins carry only the specialist prompt.
+  assert.deepEqual(outcome.shadowPrompts.find((p) => p.role === 'reviewer:correctness')!.prompts, ['specialist']);
+  assert.deepEqual(buildResults(outcome, context).shadow?.prompts, ['specialist', 'rule-check']);
+  assert.ok(!outcome.findings.some((f) => f.title === 'Shadow rule finding'));
+});
+
+test('a shadow reviewer or shadow prompt that fails leaves the live review as it was', async () => {
+  const answers = (request: AgentRequest): { output?: unknown; error?: string } => {
+    if (request.role === 'selection') return { output: { add: [{ reviewer: 'performance', reason: 'a hot path' }] } };
+    if (request.role === 'reviewer:performance') return { error: 'shadow reviewer is down' };
+    if (request.role === 'shadow-prompt:synthesis') return { error: 'shadow synthesis is down' };
+    return variantAnswers(request);
+  };
+  const { agent } = stubAgent(answers);
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
+    review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n', { synthesis: 'SHADOW synthesis' }), () => {}, agent));
+
+  assert.equal(outcome.summary, 'live summary');
+  assert.equal(outcome.verdict, 'comment');
+  assert.deepEqual(outcome.findings.map((f) => f.title), ['Live nit']);
+  assert.ok(outcome.reviewers.every((o) => o.status === 'ran'));
+  assert.deepEqual(outcome.shadow, [{ name: 'performance', status: 'failed', findings: [], error: 'shadow reviewer is down' }]);
+  const synthesis = outcome.shadowPrompts.find((p) => p.role === 'synthesis')!;
+  assert.equal((synthesis.live as { summary: string }).summary, 'live summary');
+  assert.deepEqual(synthesis.shadow, { error: 'shadow synthesis is down' });
+
+  const results = buildResults(outcome, context);
+  const [posted, shadowSection] = checkText(results).split('<details><summary>Shadow findings (not posted)</summary>');
+  assert.doesNotMatch(posted!, /is down|performance/);
+  assert.match(shadowSection!, /\| performance \| failed: shadow reviewer is down \| 0 \| \$0\.010 \|/);
+  assert.match(shadowSection!, /`prompts\/synthesis\.shadow\.md`/);
+  assert.doesNotMatch(summaryComment(results, 'https://check', 'https://help'), /is down|performance/);
+});
+
+test('on a diff in parts, each shadow prompt twin runs on its own part and is paired with that part\'s live call', async () => {
+  const diffB = ['diff --git a/src/B.cs b/src/B.cs', '--- a/src/B.cs', '+++ b/src/B.cs', '@@ -1,1 +1,2 @@', ' line', '+added', ''].join('\n');
+  const twoParts: Gathered = {
+    ...gathered(),
+    files: [...gathered().files, { path: 'src/B.cs', additions: 1, deletions: 0, generated: false, shown: true }],
+    diff: `${diff}${diffB}`,
+    chunks: [diff, diffB],
+  };
+  // Each call reports a finding named after its part and whether it ran the shadow prompt.
+  const { agent, requests } = stubAgent((request) => {
+    if (request.role.includes('reviewer:')) {
+      const part = String(request.prompt[0]).includes('diff --git a/src/B.cs') ? 'B' : 'A';
+      return { output: { findings: [finding(`${request.role.startsWith('shadow-prompt:') ? 'shadow' : 'live'} ${part}`, 'nit')] } };
+    }
+    if (request.role === 'selection') return { output: { add: [] } };
+    return { error: 'stub synthesis is down' };
+  });
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
+    review(run, twoParts, charters('# performance\n', { specialist: 'SHADOW specialist' }), () => {}, agent));
+
+  assert.equal(requests.filter((r) => r.role === 'shadow-prompt:reviewer:correctness').length, 2);
+  const correctness = outcome.shadowPrompts.filter((p) => p.role.startsWith('reviewer:correctness'));
+  assert.deepEqual(correctness.map((p) => [p.role, p.prompts]), [
+    ['reviewer:correctness part 1', ['specialist']],
+    ['reviewer:correctness part 2', ['specialist']],
+  ]);
+  for (const [entry, part] of [[correctness[0]!, 'A'], [correctness[1]!, 'B']] as const) {
+    assert.deepEqual(entry.live, { findings: [finding(`live ${part}`, 'nit')] });
+    assert.deepEqual(entry.shadow, { findings: [finding(`shadow ${part}`, 'nit')] });
+  }
+  assert.equal(outcome.shadowPrompts.length, 2 * outcome.reviewers.length);
+  assert.ok(!outcome.findings.some((f) => f.title.startsWith('shadow')));
 });
