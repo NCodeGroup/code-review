@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A required check must also report in a merge queue.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
