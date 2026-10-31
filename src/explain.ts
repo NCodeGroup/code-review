@@ -33,8 +33,6 @@ export interface FoundFinding {
 
 export type Resolution = { found: FoundFinding } | { validIds: string[] };
 
-export { githubReader, type ReadApi } from './github.ts';
-
 // What the review step hands the publish step instead of results.json: one top-level comment to post.
 export interface Answer {
   repository: string;

@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import type { ReadApi } from '../src/explain.ts';
+import type { ReadApi } from '../src/github.ts';
 import { confirmTemplateFiles } from '../src/template-check.ts';
 import type { TemplateCandidate } from '../src/template.ts';
 
