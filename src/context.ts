@@ -167,6 +167,7 @@ export async function selectContext(
   rules: IndexedRule[],
   decisions: Decision[],
   describe: (gathered: Gathered) => string,
+  agent: typeof runAgent = runAgent,
 ): Promise<{ context: Context; result: AgentResult<{ rules: string[]; decisions: string[] }> | undefined }> {
   // The records the pull request adds or changes are part of the change, so every reviewer gets them without a pick.
   const proposed = decisions.filter((d) => d.proposed);
@@ -177,7 +178,7 @@ export async function selectContext(
     ...rules.map((r) => `${r.id}: ${r.summary}`),
     ...accepted.map((d) => `${d.id}: ${d.title}`),
   ].join('\n');
-  const result = await runAgent<{ rules: string[]; decisions: string[] }>(
+  const result = await agent<{ rules: string[]; decisions: string[] }>(
     withoutTools(run),
     {
       role: 'context',
