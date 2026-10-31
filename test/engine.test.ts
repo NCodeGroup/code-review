@@ -157,16 +157,22 @@ test('an eval concern with a minimum severity is judged only against findings at
   assert.ok(candidate({ concern: 'c' }, { file: 'src/other.ts', severity: 'nit' }));
 });
 
-test('the eval cases calibrate test gaps from code-review#30 on both sides of should-fix', async () => {
+async function evalCases() {
   const { readFileSync } = await import('node:fs');
-  const cases = JSON.parse(readFileSync(path.resolve(import.meta.dirname, '..', 'evals', 'cases.json'), 'utf8')) as {
+  return JSON.parse(readFileSync(path.resolve(import.meta.dirname, '..', 'evals', 'cases.json'), 'utf8')) as {
     id: string; expect: { minSeverity?: string }[]; mustNotFlag: { minSeverity?: string }[];
   }[];
+}
+
+test('every eval concern with a minimum severity names a known severity', async () => {
   const severities = new Set(['blocker', 'should-fix', 'nit']);
-  for (const c of cases) {
+  for (const c of await evalCases()) {
     for (const concern of [...c.expect, ...c.mustNotFlag]) assert.ok(!concern.minSeverity || severities.has(concern.minSeverity), `${c.id} has an unknown minSeverity`);
   }
-  const gaps = cases.filter((c) => c.id.startsWith('test-gap-'));
+});
+
+test('the eval cases calibrate test gaps from code-review#30 on both sides of should-fix', async () => {
+  const gaps = (await evalCases()).filter((c) => c.id.startsWith('test-gap-'));
   assert.ok(gaps.some((c) => c.expect.some((e) => e.minSeverity === 'should-fix')), 'no test gap is expected at should-fix');
   assert.ok(gaps.some((c) => c.mustNotFlag.some((e) => e.minSeverity === 'should-fix')), 'no test gap must stay below should-fix');
 });
