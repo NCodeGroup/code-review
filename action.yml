@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on, to fetch the pull request's head and the head the last review read, and to read the earlier review threads for a re-review.
+    description: A read-only token (contents and pull requests, and issues to link findings to open issues), used to read the pull request a /review comment is on, to fetch the pull request's head and the head the last review read, to read the pull request's comments and the earlier review threads, and to read the open issues.
     required: false
     default: ${{ github.token }}
   app-client-id:
@@ -57,6 +57,8 @@ runs:
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # The app's private key is not in this step's environment.
     # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
+    # After three automatic reviews with no comment from someone with write access, it stops before any model call and
+    # sets `paused`, so the later steps post only the paused notice.
     - name: Review
       id: review
       shell: bash
@@ -73,10 +75,10 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
-    # comments.
+    # comments and review threads.
     - name: Get the app's token
       id: app-token
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true'
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -86,7 +88,7 @@ runs:
         permission-pull-requests: write
 
     - name: Publish
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.paused == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review

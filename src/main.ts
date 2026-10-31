@@ -4,17 +4,19 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReasonFor } from './command.ts';
-import { lastReviewedHead } from './comments.ts';
+import { commandFromEvent, skipReasonFor, writers } from './command.ts';
+import { readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { readOpenIssues } from './issues.ts';
 import { assertNoSecrets } from './outputs.ts';
+import { checkPause, type Paused } from './pause.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { topSeverity, type Results } from './results.ts';
+import { newestReviewedHead, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -47,7 +49,7 @@ async function readClosedIssues(repository: string, numbers: number[], token: st
     });
     if (!response.ok) continue;
     const issue = (await response.json()) as { title?: string; body?: string; author_association?: string; pull_request?: unknown };
-    if (issue.pull_request || !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(issue.author_association ?? '')) continue;
+    if (issue.pull_request || !writers.has(issue.author_association ?? '')) continue;
     issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
   }
   return issues;
@@ -60,9 +62,10 @@ async function main(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
-  // The head the bot last reviewed, looked up once: the skip rule and the re-review both need it.
-  let lastHead: Promise<string | undefined> | undefined;
-  const reviewedHead = (number: number) => () => (lastHead ??= lastReviewedHead(repository, number, githubToken));
+  // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
+  let comments: Promise<ListedComment[] | undefined> | undefined;
+  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken));
+  const reviewedHead = (number: number) => async () => newestReviewedHead(await issueComments(number));
 
   // A /review comment carries the issue, not the pull request, so read the pull request from the API.
   if (event.comment) {
@@ -89,6 +92,20 @@ async function main(): Promise<void> {
     const reason = await skipReasonFor('automatic', pullRequest, repository, reviewedHead(pullRequest.number));
     if (reason) {
       console.log(reason);
+      return;
+    }
+    // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call.
+    const pause = await checkPause({ repository, number: pullRequest.number, token: githubToken, issueComments: await issueComments(pullRequest.number), log: console.log });
+    if (pause === 'paused') {
+      console.log('Paused, and the notice is posted already; comment /review to resume.');
+      return;
+    }
+    if (pause === 'pause') {
+      const paused: Paused = { repository, pullRequest: pullRequest.number };
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(path.join(outDir, 'paused.json'), JSON.stringify(paused));
+      const output = process.env['GITHUB_OUTPUT'];
+      if (output) appendFileSync(output, 'paused=true\n');
       return;
     }
   }
@@ -132,6 +149,8 @@ async function main(): Promise<void> {
     readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken),
     log,
   });
+  // Only a full review's synthesis can mark a finding as tracked in an open issue.
+  if (!plan) gathered.openIssues = await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -176,6 +195,9 @@ async function main(): Promise<void> {
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
       recordedHead,
+      ...(reReviewTrace.reReview
+        ? { reReview: { changedLines: reReviewTrace.reReview.changedLines, earlier: reReviewTrace.reReview.earlier.map(({ url, status, note }) => ({ url, status, note })) } }
+        : {}),
     };
     const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, ...reReviewTrace };
 

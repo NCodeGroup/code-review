@@ -1,5 +1,6 @@
 // Inline review threads: one comment per finding on the line it's about, posted as one GitHub review by
-// ncode-review[bot]. A finding already posted on the pull request isn't posted again.
+// ncode-review[bot]. A finding already posted on the pull request isn't posted again, and nor is one an open issue
+// tracks.
 
 import { createHash } from 'node:crypto';
 import type { ReviewedFinding, Severity } from './review.ts';
@@ -51,17 +52,30 @@ export interface Placement {
   // Findings with no changed line to sit on: they go in the review's body.
   inBody: ReviewedFinding[];
   alreadyPosted: ReviewedFinding[];
+  // Findings an open issue already tracks: they aren't posted.
+  tracked: ReviewedFinding[];
 }
 
-export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[]): Placement {
-  const placement: Placement = { inline: [], inBody: [], alreadyPosted: [] };
+const severities: Severity[] = ['blocker', 'should-fix', 'nit'];
+
+// A finding repeats an earlier thread with its fingerprint, or in the same file and severity within a few lines. One the
+// maintainer dismissed also repeats at any severity, so raising or lowering it doesn't post it again.
+function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: boolean): boolean {
+  if (thread.fingerprint === fingerprint(finding)) return true;
+  if (thread.path === finding.file && thread.severity === finding.severity && Math.abs(thread.line - finding.line) <= repeatDistance) return true;
+  return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
+}
+
+// `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed.
+export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
+  const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
   for (const finding of findings) {
-    const fp = fingerprint(finding);
-    const repeat = posted.some(
-      (p) => p.fingerprint === fp || (p.path === finding.file && p.severity === finding.severity && Math.abs(p.line - finding.line) <= repeatDistance),
-    );
-    if (repeat) {
+    if (posted.some((p) => repeats(finding, p, false)) || dismissed.some((p) => repeats(finding, p, true))) {
       placement.alreadyPosted.push(finding);
+      continue;
+    }
+    if (finding.tracked) {
+      placement.tracked.push(finding);
       continue;
     }
     const lines = changed[finding.file] ?? [];
@@ -99,6 +113,10 @@ export function threadBody(finding: ReviewedFinding): string {
 export function reviewBody(placement: Placement, headSha: string): string {
   const lines = [`🤖 **NCode Review** at ${headSha.slice(0, 7)}: ${placement.inline.length} new finding${placement.inline.length === 1 ? '' : 's'} on the changed lines.`];
   if (placement.alreadyPosted.length) lines.push(`${placement.alreadyPosted.length} more ${placement.alreadyPosted.length === 1 ? 'was' : 'were'} already posted on this pull request.`);
+  if (placement.tracked.length) {
+    const issues = [...new Set(placement.tracked.map((f) => `#${f.tracked}`))].join(', ');
+    lines.push(`${placement.tracked.length} more ${placement.tracked.length === 1 ? 'is' : 'are'} tracked in ${issues}.`);
+  }
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
