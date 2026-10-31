@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
-import { gather, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
+import { gather, templateCandidate, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
@@ -198,7 +198,9 @@ function git(cwd: string, ...args: string[]): string {
   }).trim();
 }
 
-test('gather marks the template\'s files in an adoption, orders them last and keeps them from rule matching', () => {
+// A repository whose head adopts the template with one of its scripts, beside a change of its own, and a worktree of the
+// default branch before it.
+function adoption(): { repo: string; base: string; baseSha: string } {
   const repo = temp('template-repo-');
   git(repo, 'init', '-q', '-b', 'main');
   write(repo, 'src/a.ps1', 'Write-Output 1\n');
@@ -215,8 +217,12 @@ test('gather marks the template\'s files in an adoption, orders them last and ke
   const base = temp('template-basetree-');
   rmSync(base, { recursive: true });
   git(repo, 'worktree', 'add', '-q', '--detach', base, baseSha);
+  return { repo, base, baseSha };
+}
 
-  const gathered = gather({ ...pullRequest(), baseSha }, repo, base);
+test('gather marks the template\'s files in an adoption, orders them last and keeps them from rule matching', () => {
+  const { repo, base, baseSha } = adoption();
+  const gathered = gather({ ...pullRequest(), baseSha }, repo, base, undefined, new Set(['.template/Get-PlanState.ps1']));
   assert.deepEqual(gathered.template, template);
   const owned = gathered.files.filter((f) => f.templateOwned).map((f) => f.path);
   assert.deepEqual(owned, ['.template/Get-PlanState.ps1']);
@@ -226,6 +232,21 @@ test('gather marks the template\'s files in an adoption, orders them last and ke
   const unowned = gather({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base);
   assert.equal(unowned.template, undefined);
   assert.equal(unowned.reviewRules.length, 1);
+});
+
+test('gather reviews an unconfirmed template file as the project\'s', () => {
+  const { repo, base, baseSha } = adoption();
+  const gathered = gather({ ...pullRequest(), baseSha }, repo, base);
+  assert.deepEqual(gathered.files.filter((f) => f.templateOwned), []);
+  assert.ok(gathered.template?.projectOwned.includes('.template/Get-PlanState.ps1'));
+  assert.equal(gathered.reviewRules.length, 1);
+});
+
+test('templateCandidate names the head\'s _commit and the changed files the template would own', () => {
+  const { repo, base, baseSha } = adoption();
+  assert.deepEqual(templateCandidate({ ...pullRequest(), baseSha }, repo, base), { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
+  // From the default branch's own commit, nothing changes, the answers file included.
+  assert.equal(templateCandidate({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base), undefined);
 });
 
 test('selectionFloor leaves the template\'s scripts out of the reviewers they would call', () => {

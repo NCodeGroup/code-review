@@ -8,7 +8,7 @@ import { declaration, declarationSpans, type DeclarationSpan } from './csharp.ts
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
-import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
+import { answersFile, isTemplateOwned, readTemplate, type Template, type TemplateCandidate } from './template.ts';
 
 export interface PullRequest {
   repository: string;
@@ -632,8 +632,21 @@ export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPat
   return base && base.commit !== head.commit ? base : undefined;
 }
 
+// The template a pull request adopts or updates, the _commit its head's answers name, and the changed files the template
+// would own, for confirmTemplateFiles to compare with the template's own copies before gather leaves any to it.
+export function templateCandidate(pullRequest: PullRequest, prPath: string, basePath: string): TemplateCandidate | undefined {
+  const head = git(prPath, ['rev-parse', 'HEAD']).trim();
+  const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, head]).trim();
+  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, head]));
+  const template = templateOf(pullRequest, changed, prPath, basePath);
+  const commit = readTemplate(prPath)?.commit;
+  if (!template || !commit) return undefined;
+  return { template, commit, files: changed.map((f) => f.path).filter((p) => isTemplateOwned(p, template)) };
+}
+
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
-export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string): Gathered {
+// confirmedTemplateFiles are the changed files confirmTemplateFiles found to match the template's own copies.
+export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string, confirmedTemplateFiles: ReadonlySet<string> = new Set()): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
   // the checkout, and the check run belongs on the commit that was reviewed.
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
@@ -644,7 +657,11 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const skip = settings.config.skip.map(globToRegExp);
   const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
-  const template = templateOf(pullRequest, changed, prPath, basePath);
+  const candidate = templateOf(pullRequest, changed, prPath, basePath);
+  // A changed file the template would own that doesn't match the template's copy at the head's _commit is an edit by
+  // hand, so it joins projectOwned and is the project's everywhere isTemplateOwned is asked.
+  const unconfirmed = candidate ? changed.map((f) => f.path).filter((p) => isTemplateOwned(p, candidate) && !confirmedTemplateFiles.has(p)) : [];
+  const template = candidate && unconfirmed.length ? { ...candidate, projectOwned: [...candidate.projectOwned, ...unconfirmed] } : candidate;
   const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
   const files = changed.filter((f) => !skippedByConfig.includes(f.path));
   for (const file of files) if (isTemplateOwned(file.path, template)) file.templateOwned = true;
