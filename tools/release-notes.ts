@@ -4,7 +4,17 @@
 //   node tools/release-notes.ts <version> [<changelog>]
 import { readFileSync } from 'node:fs';
 
+// The same check as release.yml's "Check the version" step, which runs before checkout; keep the two in step.
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+// Yields each line with whether it is inside a fenced code block, where a heading or a link definition is only text.
+function* linesWithFences(lines: readonly string[]): Generator<[index: number, line: string, inFence: boolean]> {
+  let inFence = false;
+  for (const [index, line] of lines.entries()) {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    yield [index, line, inFence];
+  }
+}
 
 function isCalendarDate(date: string): boolean {
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -19,9 +29,7 @@ export function releaseNotes(changelog: string, version: string): string {
   const exact = new RegExp(`^## \\[${escaped}\\] - (\\d{4}-\\d{2}-\\d{2})\\s*$`);
 
   let start = -1;
-  let inFence = false;
-  for (const [index, line] of lines.entries()) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+  for (const [index, line, inFence] of linesWithFences(lines)) {
     if (inFence || !heading.test(line)) continue;
     const date = exact.exec(line)?.[1];
     if (date === undefined || !isCalendarDate(date)) {
@@ -34,9 +42,7 @@ export function releaseNotes(changelog: string, version: string): string {
 
   // The section runs to the next second-level heading, or to the link definitions at the end of the file.
   const body: string[] = [];
-  inFence = false;
-  for (const line of lines.slice(start + 1)) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+  for (const [, line, inFence] of linesWithFences(lines.slice(start + 1))) {
     if (!inFence && (/^## /.test(line) || /^\[[^\]]+\]:\s*\S/.test(line))) break;
     body.push(line);
   }
