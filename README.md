@@ -380,7 +380,7 @@ with the copy already on the default branch, and the edit itself is reviewed lik
   - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A project reviewer runs
     on `haiku`, like the engine's `hygiene` and `tests`, unless `tiers:` names it. A name that matches no reviewer on
     the roster, engine or project, is a warning in the check run. `security` runs on `sonnet` at least: a lower tier
-    is raised to `sonnet`, with a warning.
+    is raised to `sonnet`, with a warning. `CODE_REVIEW_TIERS`, the calling workflow's override, isn't held to that.
 - `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
   the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
 - `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase

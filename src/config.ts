@@ -27,7 +27,9 @@ export const defaultReviewerTiers: Record<string, ModelTier> = {
 };
 
 export const tierRank: Record<ModelTier, number> = { haiku: 0, sonnet: 1, opus: 2 };
-// The repository's tiers: setting can raise the security reviewer, but not put it below this.
+// The repository's tiers: setting can raise the security reviewer, but not put it below this: validateConfig holds
+// config.yml to it, since a pull request can edit that file. CODE_REVIEW_TIERS, which reviewerTiers applies last, is
+// the calling workflow's maintainer override, set from the default branch, and isn't held to it.
 export const minimumSecurityTier: ModelTier = 'sonnet';
 
 // A deep review's reviewers, for the parts of the diff with a file config.yml's sensitive: names. In the evals Opus

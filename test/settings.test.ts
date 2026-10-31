@@ -8,7 +8,7 @@ import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
 import { broadSkipWarnings, gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
-import { fileList, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
+import { fileList, partTiers, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
 import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
 
 const made: string[] = [];
@@ -369,6 +369,17 @@ test("tiers: can't put the security reviewer below Sonnet", () => {
   write(base, '.github/code-review/config.yml', 'tiers:\n  security: haiku\n');
   const settings = readProjectSettings(base);
   assert.deepEqual([settings.config.tiers, settings.warnings], [{ security: 'sonnet' }, [warning]]);
+});
+
+test("a repository's tiers: security: haiku leaves the security reviewer on Sonnet in the tiers a review runs", () => {
+  const base = temp('settings-tier-run-');
+  write(base, '.github/code-review/config.yml', 'tiers:\n  security: haiku\n');
+  const { tiers } = readProjectSettings(base).config;
+  assert.deepEqual([partTiers('standard', false, tiers, '')['security'], reviewerTiers('', tiers)['security']], ['sonnet', 'sonnet']);
+});
+
+test("CODE_REVIEW_TIERS isn't held to the security minimum", () => {
+  assert.equal(partTiers('standard', false, {}, 'security=haiku')['security'], 'haiku');
 });
 
 test('guidance.md applies to every file unless applyTo: narrows it', () => {
