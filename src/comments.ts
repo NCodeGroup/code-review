@@ -26,6 +26,13 @@ export async function readCommentPages<T>(readPage: (page: number) => Promise<T[
   return undefined;
 }
 
+// A comment as GitHub lists it, and the API path of one page of a pull request's comments. The publish and review
+// steps read them through different transports: the app's token, which throws, and an optional token, which gives up.
+type ListedComment = { id: number; body?: string; user?: { login?: string } };
+function commentsPage(repository: string, number: number, page: number): string {
+  return `/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`;
+}
+
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
 // posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
 // A failed collapse only warns, and so does a failed listing, which still posts the new summary.
@@ -39,7 +46,7 @@ export async function postSummary(
   let listError = `more than ${commentPageSize * maxCommentPages} comments`;
   const listed = await readCommentPages(async (page) => {
     try {
-      return (await api('GET', `${comments}?per_page=${commentPageSize}&page=${page}`)) as { id: number; body?: string; user?: { login?: string } }[];
+      return (await api('GET', commentsPage(results.repository, results.pullRequest, page))) as ListedComment[];
     } catch (error) {
       listError = errorText(error);
       return undefined;
@@ -64,10 +71,10 @@ export async function postSummary(
 // The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable.
 export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
   const all = await readCommentPages(async (page) => {
-    const response = await fetchPage(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=${commentPageSize}&page=${page}`, {
+    const response = await fetchPage(`https://api.github.com${commentsPage(repository, number, page)}`, {
       headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     });
-    return response.ok ? ((await response.json()) as { body?: string; user?: { login?: string } }[]) : undefined;
+    return response.ok ? ((await response.json()) as ListedComment[]) : undefined;
   });
   return newestReviewedHead(all);
 }

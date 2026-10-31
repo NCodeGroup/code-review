@@ -300,6 +300,19 @@ test('newestReviewedHead ignores summaries from others, and gives undefined with
   assert.equal(newestReviewedHead(undefined), undefined);
 });
 
+// The newest summary decides: an older summary's head is never used, so an unreadable newest one reviews again.
+test('newestReviewedHead gives undefined when the newest bot summary has no head marker', async () => {
+  const { newestReviewedHead, summaryMarker, headMarker } = await import('../src/results.ts');
+  const bot = { login: 'ncode-review[bot]' };
+  assert.equal(
+    newestReviewedHead([
+      { user: bot, body: `${summaryMarker}\n${headMarker('a'.repeat(40))}` },
+      { user: bot, body: `${summaryMarker}\n### 🤖 Review complete` },
+    ]),
+    undefined,
+  );
+});
+
 test('supersededComment collapses an older summary so only the newest is still a summary', async () => {
   const { summaryComments, supersededComment, supersededMarker, summaryMarker, reviewedHead } = await import('../src/results.ts');
   const body = supersededComment('121b99b0' + '0'.repeat(32), 'https://github.com/o/r/pull/1#issuecomment-9');
