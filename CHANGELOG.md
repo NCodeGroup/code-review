@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `tools/Enable-CodeReview.ps1 -SkipBedrock` skips only prompting for and setting the Bedrock key: the opted-in repositories still get access to the existing `AWS_BEARER_TOKEN_BEDROCK` secret, instead of failing every review once the organization's API credits run out. `-Repo` takes a comma-separated list as one value, as `pwsh -File` passes it, and `-Repo a, b` there fails before any change instead of binding `b` to another parameter. The help says which changes need the `admin:org` scope. A failure to read an organization secret, other than its not existing, stops the script instead of counting as a missing secret, and a failed grant or `secret set` shows gh's exit code ([#34](https://github.com/NCodeGroup/code-review/issues/34)).
 - The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
 - `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
 
