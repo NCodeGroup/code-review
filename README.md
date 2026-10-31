@@ -4,7 +4,8 @@ AI pull request review for NCodeGroup repositories: a GitHub composite action on
 Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
 merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
 the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
-Bedrock key does.
+Bedrock key does. A review whose credits run out partway reruns the refused call on Bedrock and makes the rest of its
+calls there; its check run and summary say so and split the cost by provider.
 
 ## How a review runs
 
@@ -126,8 +127,9 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 Each review, all from `ncode-review[bot]`:
 
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
-  with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
-  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
+  with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
+  request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
+  that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.

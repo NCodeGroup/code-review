@@ -21,6 +21,8 @@ export interface Results {
   headSha: string;
   provider: Provider;
   providerReason: string;
+  // Why the run moved from the Claude API to Bedrock partway, when it did; `provider` is the one it started on.
+  switchedToBedrock?: string;
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
@@ -46,6 +48,32 @@ export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', '
 
 export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | undefined {
   return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
+}
+
+// The summary comment names a provider as a label ("$0.12 on Claude API"); the check run's sentence takes the article.
+const providerLabel: Record<Provider, string> = { anthropic: 'Claude API', bedrock: 'Amazon Bedrock' };
+const providerName: Record<Provider, string> = { anthropic: `the ${providerLabel.anthropic}`, bedrock: providerLabel.bedrock };
+
+// The calls and cost on each provider the run used, in the order it used them.
+export function costsByProvider(calls: CallRecord[]): { provider: Provider; calls: number; costUsd: number }[] {
+  const out: { provider: Provider; calls: number; costUsd: number }[] = [];
+  for (const call of calls) {
+    let entry = out.find((e) => e.provider === call.provider);
+    if (!entry) out.push((entry = { provider: call.provider, calls: 0, costUsd: 0 }));
+    entry.calls++;
+    entry.costUsd += call.costUsd;
+  }
+  return out;
+}
+
+// "$0.69 on Amazon Bedrock", or for a run that switched partway "$0.12 on the Claude API and $0.57 on Amazon Bedrock".
+function costLine(results: Results, names: Record<Provider, string>): string {
+  if (!results.switchedToBedrock) return `$${results.costUsd.toFixed(2)} on ${names[results.provider]}`;
+  return costsByProvider(results.calls).map((e) => `$${e.costUsd.toFixed(2)} on ${names[e.provider]}`).join(' and ');
+}
+
+function switchNote(results: Results): string {
+  return results.switchedToBedrock ? ` Switched to Bedrock partway: ${results.switchedToBedrock}.` : '';
 }
 
 // "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5".
@@ -119,9 +147,8 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     }
     lines.push('', '</details>', '');
   }
-  const provider = results.provider === 'anthropic' ? 'Claude API' : 'Amazon Bedrock';
   lines.push(
-    `<sub>Trial: findings are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
+    `<sub>Trial: findings are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
 }
@@ -150,13 +177,12 @@ export function checkTitle(results: Results): string {
 }
 
 export function checkSummary(results: Results): string {
-  const cost = `$${results.costUsd.toFixed(2)}`;
   const lines = [
     `**Verdict: ${verdictLabel[results.verdict]}**`,
     '',
     results.summary.replace(/</g, '&lt;'),
     '',
-    `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,
+    `Shadow mode: these findings appear only in this check run. ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
   ];
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
@@ -206,6 +232,10 @@ export function checkText(results: Results): string {
     for (const { finding: f, file, claim } of results.dropped) {
       out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`);
     }
+  }
+  if (results.switchedToBedrock) {
+    out.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');
+    for (const e of costsByProvider(results.calls)) out.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
   }
   return out.join('\n');
 }
