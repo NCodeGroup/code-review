@@ -99,12 +99,12 @@ test('chunkDiff opens a new part when one is full', () => {
 });
 
 test('reviewOrder ranks only what the light review calls documentation last, and code in docs/ with product code', () => {
-  for (const doc of ['README.md', 'docs/guide.rst', 'notes.txt', 'docs/img/a.png']) {
+  for (const doc of ['README.md', 'docs/guide.rst', 'notes.txt', 'docs/img/a.png', 'docs/licenses.txt', 'doc/api/notes.TXT']) {
     assert.ok(isDocumentation(doc), doc);
     assert.equal(reviewOrder(doc), 3, doc);
     assert.equal(documentationOnly([file(doc)]), true, doc);
   }
-  for (const code of ['docs/build.ps1', 'docs/conf.py', 'CMakeLists.txt', 'requirements-dev.txt', 'src/PublicAPI.Shipped.txt']) {
+  for (const code of ['docs/build.ps1', 'docs/conf.py', 'CMakeLists.txt', 'requirements-dev.txt', 'src/PublicAPI.Shipped.txt', 'src/fixtures/input.txt', 'licenses/THIRD-PARTY-NOTICES.txt', 'docs/img/logo.svg', 'assets/icon.svg']) {
     assert.ok(!isDocumentation(code), code);
     assert.equal(reviewOrder(code), 0, code);
     assert.equal(documentationOnly([file(code)]), false, code);
@@ -341,6 +341,7 @@ test('isGenerated recognizes lock files, designer files and binaries', () => {
   assert.ok(isGenerated('src/frontend/pnpm-lock.yaml'));
   assert.ok(isGenerated('src/Data/Migrations/AppDbContextModelSnapshot.cs'));
   assert.ok(isGenerated('assets/logo.PNG'));
+  assert.ok(!isGenerated('docs/img/logo.svg'));
   assert.ok(!isGenerated('src/NCode.Identity.Jose/JoseSerializer.cs'));
 });
 
@@ -1212,6 +1213,45 @@ test('isPackableProject reads PublicAPI.Shipped.txt or IsPackable from the neare
   // A project that can't be read (here a folder named like one) counts as packed.
   mkdirSync(path.join(base, 'src', 'Odd', 'Odd.csproj'), { recursive: true });
   assert.ok(isPackableProject(base, 'src/Odd/A.cs'));
+});
+
+test('isPackableProject reads IsPackable from Directory.Build.props and Directory.Build.targets', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-props-'));
+  const write = (file: string, text: string) => {
+    mkdirSync(path.dirname(path.join(base, file)), { recursive: true });
+    writeFileSync(path.join(base, file), text);
+  };
+  const setting = (value: string) => `<Project><PropertyGroup><IsPackable>${value}</IsPackable></PropertyGroup></Project>`;
+  write('Directory.Build.props', setting('true'));
+  write('src/Lib/Lib.csproj', '<Project Sdk="Microsoft.NET.Sdk" />');
+  write('src/Tests/Tests.csproj', setting('false'));
+  write('tools/Directory.Build.props', setting('false'));
+  write('tools/Cli/Cli.csproj', '<Project Sdk="Microsoft.NET.Sdk" />');
+  write('samples/Directory.Build.targets', setting('true'));
+  write('samples/App/App.csproj', setting('false'));
+  write('src/Cond/Cond.csproj', `<Project><PropertyGroup><IsPackable>false</IsPackable><IsPackable Condition="'$(Configuration)' == 'Release'">true</IsPackable></PropertyGroup></Project>`);
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs', new Map()), 'the root props packs it');
+  assert.ok(!isPackableProject(base, 'src/Tests/A.cs', new Map()), 'the .csproj overrides the props');
+  assert.ok(!isPackableProject(base, 'tools/Cli/A.cs', new Map()), 'an inner props overrides an outer one');
+  assert.ok(isPackableProject(base, 'samples/App/A.cs', new Map()), 'the targets override the .csproj');
+  assert.ok(isPackableProject(base, 'src/Cond/A.cs', new Map()), 'a conditional true counts');
+});
+
+// A folder named like the MSBuild file can't be read as one; the .csproj says false, so only that file can pack it.
+test("isPackableProject counts a project as packed when a Directory.Build.props above it can't be read", () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-props-unreadable-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>');
+  mkdirSync(path.join(base, 'Directory.Build.props'));
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs'));
+});
+
+test("isPackableProject counts a project as packed when a Directory.Build.targets above it can't be read", () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-targets-unreadable-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>');
+  mkdirSync(path.join(base, 'src', 'Directory.Build.targets'));
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs'));
 });
 
 // A file at the pull request's head, one line per entry; line numbers below are 1-based.

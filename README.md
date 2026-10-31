@@ -56,7 +56,7 @@ Each model call has its own cost cap, and a whole review has a **cost ceiling** 
 Most pull requests get the **standard** review above. Two kinds get another ([#42](https://github.com/NCodeGroup/code-review/issues/42)), named at the start of the summary and in the check run:
 
 - **Deep review (sensitive paths).** When a changed file that isn't generated matches a `sensitive:` glob in the repository's [settings](#repository-settings), the parts of the diff with such a file get `correctness` and `security`, added if selection didn't choose them, on Opus instead of Sonnet, and verification, when it's on, checks the findings in those files on Opus. The other parts of a large diff keep their usual models. In the evals, Opus reviewers caught four times what the all-Haiku baseline did, at about twice Sonnet's cost, so Opus is kept to the code a repository marks sensitive. The check run's Model column lists every model a reviewer ran on, so a reviewer whose parts differ shows more than one. Documentation in a sensitive folder makes the review deep too, not light.
-- **Light review (documentation only).** When every changed file is documentation, a `.md`, `.txt` or `.rst` file, `CHANGELOG.md` among them, or an image or a PDF in a `doc/` or `docs/` folder, or is `.template-version` or `.copier-answers.yml`, as in a template update that changes only its Markdown, `hygiene` alone reviews it, on Haiku, and its findings are posted as it reported them, except one that says a changed file isn't changed, which no review posts: no context, selection, rule-check, synthesis or verification call. It costs a few cents instead of $0.60 to $2.10. A small code change still gets the standard review, and so does any other file, wherever it is: a script, a config file or a file with no extension in `docs/`, a git hook, a template's script or skill file that isn't Markdown, a `PublicAPI.*.txt` listing, `CMakeLists.txt`, or a pip `requirements*.txt` or `constraints*.txt` file. Agent instructions such as `CLAUDE.md` and `.github/skills/` are Markdown, so they count as documentation; a repository that wants them reviewed closely lists them in `sensitive:`.
+- **Light review (documentation only).** When every changed file is documentation, a `.md` or `.rst` file anywhere, `CHANGELOG.md` among them, a `.txt` file at the repository root or in a `doc/` or `docs/` folder, or an image other than an SVG, or a PDF, in a `doc/` or `docs/` folder, or is `.template-version` or `.copier-answers.yml`, as in a template update that changes only its Markdown, `hygiene` alone reviews it, on Haiku, and its findings are posted as it reported them, except one that says a changed file isn't changed, which no review posts: no context, selection, rule-check, synthesis or verification call. It costs a few cents instead of $0.60 to $2.10. A small code change still gets the standard review, and so does any other file, wherever it is: a script, a config file or a file with no extension in `docs/`, a git hook, a template's script or skill file that isn't Markdown, an SVG, which can carry script, wherever it is, a `.txt` file anywhere else, such as a fixture, a data input or a license list, a `PublicAPI.*.txt` listing, `CMakeLists.txt`, or a pip `requirements*.txt` or `constraints*.txt` file. Agent instructions such as `CLAUDE.md` and `.github/skills/` are Markdown, so they count as documentation; a repository that wants them reviewed closely lists them in `sensitive:`.
 
 `CODE_REVIEW_TIERS` overrides any reviewer's model in both, as it does in a standard review: `correctness=sonnet` keeps a deep review's `correctness` on Sonnet.
 
@@ -76,7 +76,7 @@ A shadow reviewer is chosen and runs like any other, but its findings go only to
 "Shadow findings (not posted)" section of the check run. They aren't given to synthesis or verification, posted as threads, shown in
 the summary comment or the annotations, or counted in the verdict. For an experiment, set
 `CODE_REVIEW_SHADOW=performance,tests` in the review job's `env:` to put those reviewers in shadow too; `rule-check`
-works as a name.
+works as a name. A name that matches no reviewer is a warning in the check run.
 
 A shadow prompt, `prompts/<name>.shadow.md` beside `specialist`, `selection`, `synthesis` or `rule-check`, runs
 alongside the live prompt with the same input on a share of reviews set by `CODE_REVIEW_SHADOW_RATE`, from `0` (the
@@ -301,10 +301,12 @@ To see a month's report without publishing it, run `node tools/report.ts` with `
 A repository made from [NCodeGroup/project-template](https://github.com/NCodeGroup/project-template) records it in
 `.copier-answers.yml`. A template update replaces the template's files and discards any edit, so a defect in one can
 only be fixed in the template. The engine leaves those files to the template only in a pull request that adopts or
-updates the template, which changes the answers file, and only when its author has write access; anywhere else a change
-to one is an edit by hand, reviewed as the project's. It reads the answers file from the default branch, or, for the
-pull request that adopts the template, from its head. When `_src_path` names NCodeGroup/project-template, these files
-are template-owned, except any that `project_owned_files` lists: everything under `.template/`, the template's hooks
+updates the template, which adds the answers file or changes its `_commit`, and only when its author has write access;
+anywhere else a change to one is an edit by hand, reviewed as the project's. A change to the answers file that keeps
+`_commit`, such as one to `project_owned_files`, is an edit by hand too. It reads the answers file from the default
+branch, or, for the pull request that adopts the template, from its head. When `_src_path` names
+NCodeGroup/project-template, these files are template-owned, except any that `project_owned_files` lists: everything
+under `.template/`, the template's hooks
 (`.githooks/commit-msg` and `pre-push`), its generated commands, prompt files, skills and agents in `.claude/commands/`,
 `.claude/agents/`, `.github/prompts/`, `.github/skills/` and `.github/agents/`, `CLAUDE.md`, `.template-version`,
 `.github/instructions/project-template.instructions.md`, `.github/instructions/csharp.instructions.md`,
@@ -370,13 +372,15 @@ with the copy already on the default branch, and the edit itself is reviewed lik
     findings in it. None by default.
   - `skip:` path globs that are never reviewed, such as vendored code. The check run lists each changed file they
     skip as "skipped by config", so nothing is dropped silently. When they skip every changed file, no model runs and
-    the summary says nothing was reviewed.
+    the summary says nothing was reviewed. A glob that matches nearly every path, such as `**` or `**/*`, is a warning
+    in the check run; the files it matches are still skipped.
   - `policies:` files, by their path from the repository root, that every reviewer gets as conventions, after the
     conventions from `AGENTS.md`, with their path and within a budget of 40,000 characters of their own. A path that
     is absolute, contains `..` or a backslash, or resolves outside the checkout through a symlink is left out.
   - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A project reviewer runs
     on `haiku`, like the engine's `hygiene` and `tests`, unless `tiers:` names it. A name that matches no reviewer on
-    the roster, engine or project, is a warning in the check run.
+    the roster, engine or project, is a warning in the check run. `security` runs on `sonnet` at least: a lower tier
+    is raised to `sonnet`, with a warning. `CODE_REVIEW_TIERS`, the calling workflow's override, isn't held to that.
 - `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
   the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
 - `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase

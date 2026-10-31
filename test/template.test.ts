@@ -120,6 +120,7 @@ test('templateOf counts only an adoption or template update by a writer, and pre
   // A private organization member shows as CONTRIBUTOR; the repository's permissions say they can write.
   assert.deepEqual(templateOf(pullRequest('CONTRIBUTOR', true), adoption, head, base), template);
   assert.equal(templateOf(pullRequest(), [changed('.template/Get-PlanState.ps1')], head, base), undefined);
+  write(head, '.copier-answers.yml', answers.replace('v0.41.1', 'v0.42.0'));
   write(base, '.copier-answers.yml', `${answers}project_owned_files: [.githooks/pre-push]\n`);
   assert.deepEqual(templateOf(pullRequest(), adoption, head, base)?.projectOwned, ['.githooks/pre-push']);
   // Without the answers file changing, an edit to one of the template's files is the project's, and so is any change by
@@ -129,6 +130,27 @@ test('templateOf counts only an adoption or template update by a writer, and pre
   // A default branch that names another template keeps the head's answers from counting.
   write(base, '.copier-answers.yml', '_src_path: https://github.com/someone/other.git\n');
   assert.equal(templateOf(pullRequest(), adoption, head, base), undefined);
+});
+
+test('templateOf counts an answers-file change only when it adds the file or changes _commit', () => {
+  const base = temp('template-same-base-');
+  const head = temp('template-same-head-');
+  write(base, '.copier-answers.yml', answers);
+  write(head, '.copier-answers.yml', `${answers}project_owned_files: [.githooks/pre-push]\n`);
+  const edit = [changed('.copier-answers.yml'), changed('.githooks/commit-msg')];
+  assert.equal(templateOf(pullRequest(), edit, head, base), undefined);
+  write(head, '.copier-answers.yml', answers.replace('v0.41.1', 'v0.42.0'));
+  assert.deepEqual(templateOf(pullRequest(), edit, head, base), template);
+  write(head, '.copier-answers.yml', '_src_path: https://github.com/someone/other.git\n_commit: v9\n');
+  assert.equal(templateOf(pullRequest(), edit, head, base), undefined);
+});
+
+test('templateOf leaves the template when a pull request deletes the answers file', () => {
+  const base = temp('template-deleted-base-');
+  const head = temp('template-deleted-head-');
+  write(base, '.copier-answers.yml', answers);
+  const files = [changed('.copier-answers.yml'), changed('.template/Get-PlanState.ps1')];
+  assert.equal(templateOf(pullRequest(), files, head, base), undefined);
 });
 
 // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
