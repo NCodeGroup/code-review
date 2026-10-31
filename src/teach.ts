@@ -77,14 +77,18 @@ function plain(text: string): string {
   return text.replace(/[`\[\]\r\n]/g, '');
 }
 
-export interface IssueSource {
+export interface TeachContext {
   repository: string;
-  pullRequest: number;
+  number: number;
+  host: string;
   commentUrl?: string | undefined;
   author?: string | undefined;
   // A private repository's name and link stay out of an issue in another repository, which may be public.
   isPrivate: boolean;
 }
+
+// Where a rule was taught, as the issue's body names it.
+export type IssueSource = Omit<TeachContext, 'number' | 'host'> & { pullRequest: number };
 
 // The issue's body: the rule quoted as data, where it was taught, the finding it comes from, and what to do with it.
 export function issueBody(scope: Teaching['scope'], rule: string, source: IssueSource, finding?: TaughtFinding): string {
@@ -129,15 +133,6 @@ export function teachUnknownRefBody(ref: FindingRef, validIds: string[]): string
 
 export type TeachPlan = { answer: Answer } | { teaching: Teaching };
 
-export interface TeachContext {
-  repository: string;
-  number: number;
-  host: string;
-  commentUrl?: string | undefined;
-  author?: string | undefined;
-  isPrivate: boolean;
-}
-
 // What a `/review teach` comment leads to: a reply saying what's wrong with it, or the issue to open. A finding ref is
 // looked up with the read-only reader; an unknown one gets the newest review's ids.
 export async function planTeaching(command: Extract<Command, { kind: 'teach' }>, context: TeachContext, read: ReadApi): Promise<TeachPlan> {
@@ -151,7 +146,8 @@ export async function planTeaching(command: Extract<Command, { kind: 'teach' }>,
     const c = resolution.found.comment;
     finding = { id: resolution.found.id, path: c.path, line: c.line ?? c.original_line, url: c.html_url, text: findingText(c.body) };
   }
-  const source: IssueSource = { repository: context.repository, pullRequest: context.number, commentUrl: context.commentUrl, author: context.author, isPrivate: context.isPrivate };
+  const { number, host, ...where } = context;
+  const source: IssueSource = { ...where, pullRequest: number };
   return {
     teaching: {
       repository: context.repository,
@@ -167,13 +163,18 @@ export async function planTeaching(command: Extract<Command, { kind: 'teach' }>,
 
 export type IssueOutcome = { issue: { number: number; url: string } } | { refused: 'permission' | 'disabled' };
 
-// Creates the label when the target repository doesn't have it yet.
+// Creates the label when the target repository doesn't have it yet. A 422 from the create means another teach run made
+// it in between, which is as good.
 async function ensureLabel(api: GitHubApi, target: string): Promise<void> {
   try {
     await api('GET', `/repos/${target}/labels/${guidanceLabel}`);
   } catch (error) {
     if (!(error instanceof GitHubError) || error.status !== 404) throw error;
-    await api('POST', `/repos/${target}/labels`, { name: guidanceLabel, color: '0e8a16', description: 'A rule taught with /review teach, to add to the review guidance' });
+    try {
+      await api('POST', `/repos/${target}/labels`, { name: guidanceLabel, color: '0e8a16', description: 'A rule taught with /review teach, to add to the review guidance' });
+    } catch (createError) {
+      if (!(createError instanceof GitHubError) || createError.status !== 422) throw createError;
+    }
   }
 }
 

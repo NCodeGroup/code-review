@@ -3,7 +3,7 @@
 // opened, for an NCodeGroup-wide rule, and closed as completed counts; one closed as not planned is dropped.
 
 import { botLogin } from '../src/results.ts';
-import { guidanceLabel, orgGuidanceRepository } from '../src/teach.ts';
+import { guidanceLabel, guidanceMarker, orgGuidanceRepository } from '../src/teach.ts';
 
 export interface GuidanceIssue {
   number: number;
@@ -25,17 +25,19 @@ export interface TaughtRule {
 export function ruleFromIssue(issue: GuidanceIssue): string | undefined {
   if (issue.pull_request || issue.user?.login !== botLogin || issue.state_reason !== 'completed') return undefined;
   const body = (issue.body ?? '').replace(/\r\n/g, '\n');
-  if (!body.startsWith('<!-- ncode-review:guidance scope=org -->')) return undefined;
+  if (!body.startsWith(guidanceMarker('org'))) return undefined;
   const block = /^### Rule\n\n(`{3,})text\n([\s\S]*?)\n\1$/m.exec(body);
   const rule = block?.[2]?.replace(/@\u200b/g, '@').trim();
   return rule || undefined;
 }
 
-// Reads every closed issue with the label, a page of 100 at a time. Tests pass their own fetch.
+const pageSize = 100;
+
+// Reads every closed issue with the label, a page at a time. Tests pass their own fetch.
 export async function fetchGuidanceIssues(repository: string, token: string | undefined, fetchApi: typeof fetch = fetch): Promise<GuidanceIssue[]> {
   const issues: GuidanceIssue[] = [];
   for (let page = 1; ; page++) {
-    const url = `https://api.github.com/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=100&page=${page}`;
+    const url = `https://api.github.com/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=${pageSize}&page=${page}`;
     const response = await fetchApi(url, {
       headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', ...(token ? { authorization: `Bearer ${token}` } : {}) },
       signal: AbortSignal.timeout(30_000),
@@ -43,7 +45,7 @@ export async function fetchGuidanceIssues(repository: string, token: string | un
     if (!response.ok) throw new Error(`GitHub refused GET ${url}: HTTP ${response.status}`);
     const batch = (await response.json()) as GuidanceIssue[];
     issues.push(...batch);
-    if (batch.length < 100) return issues;
+    if (batch.length < pageSize) return issues;
   }
 }
 

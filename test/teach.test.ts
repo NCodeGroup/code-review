@@ -133,6 +133,29 @@ test('planTeaching for teach org opens the issue in NCodeGroup/code-review, with
   assert.doesNotMatch(hidden.teaching.body, /Secret/);
 });
 
+test('planTeaching teaches from a finding named by its comment link, reading only that comment', async () => {
+  const commentPath = '/repos/NCodeGroup/code-review/pulls/comments/42';
+  const { reads, read } = reader({ [commentPath]: finding() });
+  const plan = await planTeaching(parseCommand('/review teach https://github.com/NCodeGroup/code-review/pull/7#discussion_r42 a rule') as Teach, context, read);
+  assert.ok('teaching' in plan);
+  assert.equal(plan.teaching.rule, 'a rule');
+  assert.ok(plan.teaching.body.includes('### From finding F2\n\n[`src/a.ts:12`](https://github.com/NCodeGroup/code-review/pull/7#discussion_r42)'));
+  assert.deepEqual(reads, [commentPath]);
+});
+
+test('issueBody keeps a private repository\'s finding out of an org issue', () => {
+  const taught = { id: 'F2', path: 'src/secret-file.ts', line: 12, url: 'https://github.com/NCodeGroup/Secret/pull/7#discussion_r42', text: 'Secret finding text.' };
+  const body = issueBody('org', 'A rule.', { ...source, repository: 'NCodeGroup/Secret', isPrivate: true }, taught);
+  assert.doesNotMatch(body, /### From finding|secret-file|Secret finding text|discussion_r42|NCodeGroup\/Secret/);
+  assert.match(issueBody('org', 'A rule.', source, taught), /### From finding F2/, 'a public repository\'s finding is shown');
+});
+
+test('issueBody names the pull request without a link when there is no comment URL, and a finding with no line by its file', () => {
+  const body = issueBody('repository', 'A rule.', { ...source, commentUrl: undefined }, { id: 'F3', path: 'src/a.ts', line: null, text: 'Text.' });
+  assert.match(body, /with `\/review teach` on NCodeGroup\/code-review#7\./);
+  assert.ok(body.includes('### From finding F3\n\n`src/a.ts`, as NCode Review posted it:'));
+});
+
 test('planTeaching quotes the rule as data: a long enough fence, and mentions that notify no one', async () => {
   const rule = 'Ping @octocat and close #1.\n```\n</details> **bold**';
   const plan = await planTeaching({ kind: 'teach', scope: 'repository', rule }, context, reader({}).read);
@@ -223,6 +246,20 @@ test('postTeaching replies that the app lacks the permission when it got no issu
   await postTeaching(replies.api, undefined, { ...teaching, scope: 'org' }, []);
   assert.equal(replies.calls.length, 1);
   assert.match((replies.calls[0]![2] as { body: string }).body, /Issues: Read and write permission and install it on NCodeGroup\/code-review\./);
+});
+
+test('openGuidanceIssue opens the issue when another run created the label between the check and the create', async () => {
+  const issues = recorder((method, url) =>
+    method === 'GET' ? new GitHubError('no label', 404) : url.endsWith('/labels') ? new GitHubError('already_exists', 422) : { number: 4, html_url: 'u' },
+  );
+  assert.deepEqual(await openGuidanceIssue(issues.api, teaching), { issue: { number: 4, url: 'u' } });
+  assert.deepEqual(issues.calls.map((c) => `${c[0]} ${c[1]}`), [
+    `GET /repos/NCodeGroup/code-review/labels/${guidanceLabel}`,
+    'POST /repos/NCodeGroup/code-review/labels',
+    'POST /repos/NCodeGroup/code-review/issues',
+  ]);
+  const failing = recorder((method, url) => (method === 'GET' ? new GitHubError('no label', 404) : url.endsWith('/labels') ? new GitHubError('boom', 500) : {}));
+  await assert.rejects(openGuidanceIssue(failing.api, teaching), /boom/);
 });
 
 test('openGuidanceIssue reads 404 as no permission and 410 as issues turned off, and rethrows anything else', async () => {
