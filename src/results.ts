@@ -173,13 +173,10 @@ export function checkText(results: Results): string {
       '',
     );
   }
-  out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
-  for (const r of results.reviewers) {
-    out.push(`| ${r.name} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
-  }
+  out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
   for (const role of ['selection', 'synthesis']) {
     if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
@@ -202,11 +199,7 @@ function shadowSection(results: Results, costs: Map<string, number>, room: numbe
     '',
   ];
   if (shadow.reviewers.length) {
-    head.push('| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
-    for (const r of shadow.reviewers) {
-      head.push(`| ${cell(r.name)} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
-    }
-    head.push('');
+    head.push(...reviewerTable(shadow.reviewers, costs), '');
   }
   const tail: string[] = [];
   if (shadow.prompts.length) {
@@ -224,6 +217,16 @@ function shadowSection(results: Results, costs: Map<string, number>, room: numbe
   if (shown < 0) return [];
   return [...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail];
 }
+
+// The live and the shadow reviewers' tables share one row format.
+function reviewerTable(reviewers: ReviewerResult[], costs: Map<string, number>): string[] {
+  return [
+    '| Reviewer | Status | Findings | Cost |',
+    '|---|---|---|---|',
+    ...reviewers.map((r) => `| ${cell(r.name)} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
+  ];
+}
+
 export interface Annotation {
   path: string;
   start_line: number;
