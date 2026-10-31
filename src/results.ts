@@ -18,6 +18,14 @@ export interface ReviewerResult {
   error?: string;
 }
 
+// What the shadow reviewers and prompts did: shown only in the check run's collapsed shadow section.
+export interface ShadowResults {
+  reviewers: ReviewerResult[];
+  findings: (Finding & { reviewer: string })[];
+  // The prompts whose shadow variants ran on this review; their outputs are only in the trace.
+  prompts: string[];
+}
+
 export interface Results {
   repository: string;
   pullRequest: number;
@@ -29,6 +37,12 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings on the template's files, listed for the template's repository instead of posted as threads.
+  upstream?: ReviewedFinding[];
+  // Places on the template's files past the upstream list's limit, counted but not listed.
+  upstreamOmitted?: number;
+  // The template's repository, such as NCodeGroup/project-template.
+  template?: string;
   // Findings left out before posting because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
@@ -54,6 +68,8 @@ export interface Results {
   // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
   // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
   recordedHead?: string;
+  // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
+  shadow?: ShadowResults;
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -182,10 +198,31 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     }
     lines.push('', '</details>', '');
   }
+  lines.push(...upstreamList(results));
   lines.push(
-    `<sub>Trial: findings are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
+    `<sub>Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
+}
+
+// Findings on the template's files, once, in the summary: they can't be fixed in this repository, so they aren't threads.
+function upstreamList(results: Results): string[] {
+  const upstream = results.upstream ?? [];
+  if (!upstream.length) return [];
+  const lines = [
+    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstream.length + (results.upstreamOmitted ?? 0)})</summary>`,
+    '',
+    'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
+    '',
+  ];
+  for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+  if (results.upstreamOmitted) lines.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
+  lines.push('', '</details>', '');
+  return lines;
+}
+
+function upstreamOmittedText(omitted: number): string {
+  return `And ${omitted} more on other lines of the template's files, not listed.`;
 }
 
 // Says in the summary comment that findings were left out, and how severe, so a dropped blocker is never silent.
@@ -225,6 +262,11 @@ export function checkSummary(results: Results): string {
   } else if (results.depth === 'light') {
     lines.push('', `**${depthLabel.light}**: every changed file is documentation, a changelog or part of a template update, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
   }
+  const upstreamTotal = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+  if (upstreamTotal) {
+    const one = upstreamTotal === 1;
+    lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
+  }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
   }
@@ -257,6 +299,15 @@ export function checkText(results: Results): string {
       '',
     );
   }
+  const upstream = results.upstream ?? [];
+  if (upstream.length) {
+    out.push(`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, '');
+    for (const f of upstream) {
+      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`);
+    }
+    if (results.upstreamOmitted) out.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
+    out.push('');
+  }
   if (results.refuted?.length) {
     out.push('### Refuted by verification', '');
     for (const { finding: f, path, reason } of results.refuted) {
@@ -264,13 +315,10 @@ export function checkText(results: Results): string {
     }
     out.push('');
   }
-  out.push('### Reviewers', '', '| Reviewer | Model | Status | Findings | Cost |', '|---|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
-  for (const r of results.reviewers) {
-    out.push(`| ${r.name} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
-  }
+  out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
   for (const role of ['selection', 'synthesis', 'verification']) {
     if (costs.has(role)) out.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
@@ -284,7 +332,55 @@ export function checkText(results: Results): string {
     out.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');
     for (const e of costsByProvider(results.calls)) out.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
   }
-  return out.join('\n');
+  return [...out, ...shadowSection(results, costs, maxCheckText - out.join('\n').length - 1)].join('\n');
+}
+
+// GitHub refuses a check run whose text is longer than this.
+export const maxCheckText = 65_535;
+
+// Collapsed, so the shadow reviewers' findings stay out of the way of the ones that were posted. It takes only the room
+// the posted part leaves, so it can't make GitHub refuse the check run; findings that don't fit are counted, and when
+// not even the section's frame fits, a one-line note says the shadow findings are in the trace.
+function shadowSection(results: Results, costs: Map<string, number>, room: number): string[] {
+  const shadow = results.shadow;
+  if (!shadow) return [];
+  const head = [
+    '',
+    '<details><summary>Shadow findings (not posted)</summary>',
+    '',
+    "Shadow reviewers run as usual, but their findings appear only here and in the trace: they aren't given to synthesis, posted as threads, or counted in the summary or the verdict.",
+    '',
+  ];
+  if (shadow.reviewers.length) {
+    head.push(...reviewerTable(shadow.reviewers, costs), '');
+  }
+  const tail: string[] = [];
+  if (shadow.prompts.length) {
+    const cost = [...costs].filter(([role]) => role.startsWith('shadow-prompt:')).reduce((sum, [, c]) => sum + c, 0);
+    tail.push(`Shadow prompts ran on this review beside the live ones: ${shadow.prompts.map((p) => `\`prompts/${p}.shadow.md\``).join(', ')}, $${cost.toFixed(3)}. Their outputs are only in the trace.`, '');
+  }
+  tail.push('</details>');
+  const findings = [...shadow.findings]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
+    .map((f) => `- ${severityDot[f.severity]} ${severityLabel[f.severity]} · \`${cell(f.file)}:${f.line}\` · **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewer)} · confidence ${f.confidence.toFixed(2)}</sub>`);
+  const more = (n: number) => (n ? [`- ${n} more shadow finding${n === 1 ? '' : 's'}, in the trace.`] : []);
+  const size = (lines: string[]) => lines.join('\n').length;
+  let shown = findings.length;
+  while (shown >= 0 && size([...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail]) > room) shown--;
+  if (shown < 0) {
+    const note = ['', "*Shadow findings (not posted) didn't fit in this check run; they are in the trace.*"];
+    return size(note) <= room ? note : [];
+  }
+  return [...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail];
+}
+
+// The live and the shadow reviewers' tables share one row format.
+function reviewerTable(reviewers: ReviewerResult[], costs: Map<string, number>): string[] {
+  return [
+    '| Reviewer | Model | Status | Findings | Cost |',
+    '|---|---|---|---|---|',
+    ...reviewers.map((r) => `| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
+  ];
 }
 
 export interface Annotation {

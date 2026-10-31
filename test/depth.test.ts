@@ -106,7 +106,8 @@ const charters: Charters = {
   ruleCheckPrompt: 'r',
   reReviewPrompt: 'rr',
   verificationPrompt: 'v',
-  reviewers: new Map(['architecture', 'completeness', 'conventions', 'correctness', 'hygiene', 'intent', 'security', 'tests'].map((n) => [n, n])),
+  reviewers: new Map(['architecture', 'completeness', 'conventions', 'correctness', 'hygiene', 'intent', 'security', 'tests'].map((n) => [n, { text: n, shadow: false }])),
+  shadowPrompts: {},
 };
 
 function gathered(paths: string[], options: { sensitive?: string[]; chunks?: string[]; tiers?: Gathered['tiers']; reviewRules?: RuleFile[]; decisions?: Decision[] } = {}): Gathered {

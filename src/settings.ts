@@ -4,6 +4,7 @@
 
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
+import { parseCharter } from './charter.ts';
 import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, type ModelTier } from './config.ts';
 
 export const settingsFolder = '.github/code-review';
@@ -278,6 +279,9 @@ export interface ProjectCharter {
   text: string;
   // Globs from the charter's paths: frontmatter; a changed file matching one adds the reviewer to the floor.
   paths: string[];
+  // shadow: true in its frontmatter, read as the engine's charters read it: its findings go only to the trace and the
+  // check run's shadow section.
+  shadow: boolean;
 }
 
 export interface ProjectSettings {
@@ -349,8 +353,9 @@ export function globList(value: string): string[] {
   return value.split(',').map((g) => g.trim()).filter(Boolean);
 }
 
-// A project reviewer's frontmatter: only paths:, a list of globs or one comma-separated string. Anything else is a
-// problem, and the reviewer then loads without paths.
+// A project reviewer's frontmatter: paths:, a list of globs or one comma-separated string, and shadow:, true or false,
+// which parseCharter reads as it does for the engine's charters. Anything else is a problem, and the reviewer then loads
+// without paths.
 export function charterPaths(frontmatter: string): { paths: string[]; problems: string[] } {
   let value: Record<string, YamlValue>;
   try {
@@ -361,7 +366,9 @@ export function charterPaths(frontmatter: string): { paths: string[]; problems: 
   const problems: string[] = [];
   const paths: string[] = [];
   for (const [key, raw] of Object.entries(value)) {
-    if (key !== 'paths') {
+    if (key === 'shadow') {
+      if (typeof raw !== 'string' || !/^(true|false)$/i.test(raw)) problems.push('"shadow" must be true or false');
+    } else if (key !== 'paths') {
       problems.push(`unknown key "${key}"`);
     } else if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
       problems.push('"paths" must be a list of globs');
@@ -411,19 +418,20 @@ function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
       warnings.push(`${where} ${read.problem ?? `is larger than ${maxSettingsFileChars} characters`}; it was not loaded.`);
       continue;
     }
-    const { frontmatter, body } = splitFrontmatter(read.text);
+    const { frontmatter } = splitFrontmatter(read.text);
+    const charter = parseCharter(read.text);
     let paths: string[] = [];
     if (frontmatter !== undefined) {
       const parsed = charterPaths(frontmatter);
       paths = parsed.paths;
       if (parsed.problems.length) warnings.push(`${where} has frontmatter that is not valid (${parsed.problems.slice(0, 5).map(oneLine).join('; ')}); its paths were ignored.`);
     }
-    const text = body.trim();
+    const text = charter.text.trim();
     if (!text) {
       warnings.push(`${where} is empty; it was not loaded.`);
       continue;
     }
-    charters.push({ name, text, paths });
+    charters.push({ name, text, paths, shadow: charter.shadow });
   }
   return charters;
 }

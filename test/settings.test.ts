@@ -8,7 +8,7 @@ import { maxSettingsFileChars, reviewerTiers } from '../src/config.ts';
 import { repositoryRules } from '../src/context.ts';
 import { gather, projectGuidanceRules, type ChangedFile, type PullRequest } from '../src/gather.ts';
 import { checkSummary, type Results } from '../src/results.ts';
-import { fileList, projectFloor, projectRoster, review, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
+import { fileList, projectFloor, projectRoster, review, shadowReviewers, unknownTiers, withProjectCharters, type Charters } from '../src/review.ts';
 import { charterPaths, parseYaml, readProjectSettings, unsafePath, validateConfig } from '../src/settings.ts';
 
 const made: string[] = [];
@@ -210,12 +210,12 @@ test('the policies have a budget of their own', () => {
 });
 
 test('project charters join the roster as project:<name> and never replace an engine charter', () => {
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', { text: 'engine security', shadow: false }]]), shadowPrompts: {} };
   const settings = readProjectSettings(baseWithSettings());
   const charters = withProjectCharters(engine, settings.reviewers);
   assert.deepEqual([...charters.reviewers.keys()], ['security', 'project:oauth', 'project:security']);
-  assert.equal(charters.reviewers.get('security'), 'engine security');
-  assert.match(charters.reviewers.get('project:security')!, /project's own security checks/);
+  assert.deepEqual(charters.reviewers.get('security'), { text: 'engine security', shadow: false });
+  assert.match(charters.reviewers.get('project:security')!.text, /project's own security checks/);
   assert.equal(engine.reviewers.size, 1);
 });
 
@@ -252,6 +252,24 @@ test('charterPaths reads paths: as a list or one comma-separated string, and rep
   assert.deepEqual(charterPaths('paths: [a, ""]'), { paths: [], problems: ['"paths" has an empty item'] });
   assert.deepEqual(charterPaths(`paths: [a, ${'x'.repeat(300)}]`).problems, ['"paths" has an item that is too long or has control characters']);
   assert.deepEqual(charterPaths('paths: [a]\npath: [b]'), { paths: [], problems: ['unknown key "path"'] });
+  assert.deepEqual(charterPaths('paths: [a]\nshadow: true'), { paths: ['a'], problems: [] });
+  assert.deepEqual(charterPaths('shadow: False'), { paths: [], problems: [] });
+  assert.deepEqual(charterPaths('paths: [a]\nshadow: yes'), { paths: [], problems: ['"shadow" must be true or false'] });
+});
+
+test('a project charter with shadow: true is a shadow reviewer, read by the engine charters\' parseCharter', () => {
+  const base = temp('settings-charter-shadow-');
+  write(base, '.github/code-review/reviewers/trial.md', '---\npaths: ["src/**"]\nshadow: true\n---\n# trial\n\nA new check.\n');
+  write(base, '.github/code-review/reviewers/live.md', '# live\n\nAn old check.\n');
+  const settings = readProjectSettings(base);
+  assert.deepEqual(settings.warnings, []);
+  assert.deepEqual(settings.reviewers.map((r) => [r.name, r.paths, r.shadow, r.text]), [
+    ['live', [], false, '# live\n\nAn old check.'],
+    ['trial', ['src/**'], true, '# trial\n\nA new check.'],
+  ]);
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map(), shadowPrompts: {} };
+  const charters = withProjectCharters(engine, settings.reviewers);
+  assert.deepEqual([...shadowReviewers(charters, new Set())], ['project:trial']);
 });
 
 test('a project charter with invalid paths: loads without them and with a warning', () => {
@@ -319,7 +337,7 @@ test('settings the runner cannot read are warnings, not a failed review', { skip
 test('the selection prompt describes each project reviewer by its first line of text', () => {
   assert.equal(projectRoster([]), '');
   assert.equal(
-    projectRoster([{ name: 'oauth', text: '# oauth\n\nDoes the change follow RFC 6749?\n\nMore.', paths: [] }, { name: 'long', text: 'y'.repeat(250), paths: [] }]),
+    projectRoster([{ name: 'oauth', text: '# oauth\n\nDoes the change follow RFC 6749?\n\nMore.', paths: [], shadow: false }, { name: 'long', text: 'y'.repeat(250), paths: [], shadow: false }]),
     `\nThis repository's own reviewers:\n- project:oauth: Does the change follow RFC 6749?\n- project:long: ${'y'.repeat(199)}…`,
   );
 });
@@ -436,7 +454,7 @@ test('a pull request whose every changed file is skipped by config runs no model
   assert.deepEqual(gathered.skippedByConfig, ['vendor/lib.js']);
   assert.equal(fileList(gathered), "vendor/lib.js [not reviewed: skipped by the repository's config]");
 
-  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', 'engine security']]) };
+  const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', { text: 'engine security', shadow: false }]]), shadowPrompts: {} };
   // The proxy address goes nowhere: a model call would fail and be recorded.
   const outcome = await review({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, engine, () => {});
   assert.deepEqual(outcome.calls, []);

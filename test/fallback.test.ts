@@ -141,7 +141,7 @@ async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean 
   const previousTiers = process.env['CODE_REVIEW_TIERS'];
   delete process.env['CODE_REVIEW_TIERS'];
   const charters = loadCharters(root);
-  const testsCharter = `Your charter:\n${charters.reviewers.get('tests')!}`;
+  const testsCharter = `Your charter:\n${charters.reviewers.get('tests')!.text}`;
   const seen: SeenCall[] = [];
   const fallback: BedrockFallback = { switched: false };
   const run: AgentRun = {

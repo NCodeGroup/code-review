@@ -7,6 +7,7 @@ import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, 
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
+import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -31,6 +32,8 @@ export interface ChangedFile {
   deletions: number;
   generated: boolean;
   shown: boolean;
+  // The project template's file, which a template update replaces: findings on it belong upstream.
+  templateOwned?: boolean;
 }
 
 export interface Gathered {
@@ -63,6 +66,8 @@ export interface Gathered {
   projectReviewers: ProjectCharter[];
   // and what in those settings couldn't be used, for the check run.
   warnings: string[];
+  // The project template the repository is made from, when it's one whose files the engine knows.
+  template?: Template;
 }
 
 const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -96,6 +101,9 @@ export function reviewOrder(file: string): number {
   return 0;
 }
 
+// After every rank reviewOrder gives: the template's files go last, so they're the first left out of an oversized diff.
+const templateOrder = Number.MAX_SAFE_INTEGER;
+
 export function git(repository: string, args: string[]): string {
   return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
     encoding: 'utf8',
@@ -118,12 +126,14 @@ export function splitDiff(diff: string): Map<string, string> {
   return sections;
 }
 
-// Packs the per-file sections into parts of at most chunkChars, in review order so neighbouring files share a part.
-// Generated files get a one-line stub in the first part. A file too big for any part, or past the last part, is left out.
+// Packs the per-file sections into parts of at most chunkChars, in review order so neighbouring files share a part, with
+// the template's files last. Generated files get a one-line stub in the first part. A file too big for any part, or past
+// the last part, is left out.
 export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, chunkChars: number, maxChunks: number): string[] {
   const chunks: string[][] = [[]];
   const used = [0];
-  const ordered = [...files].sort((a, b) => reviewOrder(a.path) - reviewOrder(b.path) || a.path.localeCompare(b.path));
+  const order = (file: ChangedFile) => (file.templateOwned ? templateOrder : reviewOrder(file.path));
+  const ordered = [...files].sort((a, b) => order(a) - order(b) || a.path.localeCompare(b.path));
   for (const file of ordered) {
     const section = sections.get(file.path);
     if (file.generated) {
@@ -335,6 +345,15 @@ export function readPullRequest(event: any, repository: string): PullRequest {
   };
 }
 
+// The template whose files the review leaves to the template's repository, only for a pull request that adopts or
+// updates the template, which changes the answers file, from an author with write access. Anywhere else a change to
+// one of the template's files is an edit by hand, which the review treats as the project's. The default branch's answers
+// count; an adoption adds the answers file, so the default branch has none, and then the head's count.
+export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
+  if (!writers.has(pullRequest.authorAssociation) || !files.some((f) => f.path === answersFile)) return undefined;
+  return existsSync(path.join(basePath, answersFile)) ? readTemplate(basePath) : readTemplate(prPath);
+}
+
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
 export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
@@ -346,11 +365,16 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const settings = readProjectSettings(basePath);
   const skip = settings.config.skip.map(globToRegExp);
   const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
+  // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
+  const template = templateOf(pullRequest, changed, prPath, basePath);
   const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
   const files = changed.filter((f) => !skippedByConfig.includes(f.path));
+  for (const file of files) if (isTemplateOwned(file.path, template)) file.templateOwned = true;
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
   const chunks = chunkDiff(files, splitDiff(fullDiff), maxChunkChars, maxChunks);
   const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
+  // The repository's rules and the guidance are for its own files, not the template's.
+  const own = files.filter((f) => !f.generated && !f.templateOwned).map((f) => f.path);
   // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
   const proposed = readProposedDecisions(prPath, reviewed);
   const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
@@ -364,8 +388,8 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
     diff: chunks.join(''),
     chunks,
     conventions: withPolicies(readConventions(basePath), settings.policies),
-    reviewRules: [...readReviewRules(basePath, reviewed), ...projectGuidanceRules(settings.guidance, reviewed)],
-    guidance: guidanceDir ? readGuidance(guidanceDir, reviewed) : [],
+    reviewRules: [...readReviewRules(basePath, own), ...projectGuidanceRules(settings.guidance, own)],
+    guidance: guidanceDir ? readGuidance(guidanceDir, own) : [],
     decisions,
     commits,
     sensitive: settings.config.sensitive,
@@ -374,5 +398,6 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
     tiers: settings.config.tiers,
     projectReviewers: settings.reviewers,
     warnings: settings.warnings,
+    ...(template ? { template } : {}),
   };
 }
