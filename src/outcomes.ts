@@ -10,6 +10,7 @@ import { isFromFork, writerAssociations } from './command.ts';
 export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
+import type { Api } from './github.ts';
 import { writeLog } from './log.ts';
 import { assertNoSecrets, printable } from './outputs.ts';
 import {
@@ -174,28 +175,6 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
     ? listed
     : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
   return { id, severity, reviewers: reviewers.filter(Boolean) };
-}
-
-export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
-
-// GitHub's API with a token, throwing on a refused request. The review step reads with the workflow's read-only token.
-export function tokenApi(token: string, fetchImpl: typeof fetch = fetch): Api {
-  return async (method, url, body) => {
-    const response = await fetchImpl(url.startsWith('https://') ? url : `https://api.github.com${url}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!response.ok) throw new Error(`GitHub refused ${method} ${url}: HTTP ${response.status}`);
-    // An empty body, as a 204 has, is no answer rather than malformed JSON.
-    const text = await response.text();
-    return text ? JSON.parse(text) : undefined;
-  };
 }
 
 interface GraphComment {

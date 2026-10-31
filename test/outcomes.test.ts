@@ -23,7 +23,6 @@ import {
   readReviewThreads,
   recordOutcomes,
   threadPageSize,
-  tokenApi,
   withOutcomes,
   type Evidence,
   type FindingOutcome,
@@ -480,19 +479,6 @@ test('readReviewThreads stops after maxThreadPages pages and warns', async () =>
   assert.equal(pages, maxThreadPages);
   assert.equal(threads.length, maxThreadPages);
   assert.deepEqual(lines, [`::warning::#5 has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${maxThreadPages}.`]);
-});
-
-test('tokenApi calls GitHub with the token, throws on a refusal and reads an empty answer as none', async () => {
-  const seen: { url: string; authorization: string }[] = [];
-  const answer = (response: Response) => tokenApi('t0ken', async (url, init) => {
-    seen.push({ url: String(url), authorization: (init?.headers as Record<string, string>)['authorization']! });
-    return response;
-  });
-  assert.deepEqual(await answer(new Response('{"a":1}'))('GET', '/repos/o/r'), { a: 1 });
-  assert.deepEqual(seen, [{ url: 'https://api.github.com/repos/o/r', authorization: 'Bearer t0ken' }]);
-  assert.equal(await answer(new Response(null, { status: 204 }))('DELETE', '/x'), undefined);
-  assert.equal(await answer(new Response('', { status: 200 }))('GET', '/x'), undefined);
-  await assert.rejects(answer(new Response('nope', { status: 403 }))('GET', '/x'), /GitHub refused GET \/x: HTTP 403/);
 });
 
 const report: OutcomesReport = { repository: 'o/r', pullRequest: 5, state: 'merged', head: closedHead, findings, summaryCommentId: 42, summaryBody: `${summaryMarker}\n${headMarker(reviewedAt)}\nbody` };
