@@ -48,6 +48,8 @@ export interface Gathered {
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
+  // The repository's open issues opened by people with write access, for synthesis to mark a finding one already tracks.
+  openIssues?: { number: number; title: string }[];
 }
 
 const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);

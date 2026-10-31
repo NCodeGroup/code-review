@@ -51,6 +51,9 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      # The issues a pull request closes are context for its intent, and synthesis links a finding to an open issue
+      # that already tracks it.
+      issues: read
       pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,10 +130,20 @@ Each review, all from `ncode-review[bot]`:
 
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
   with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
-  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new;
+  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new. Nor is one whose
+  thread the maintainer dismissed, by resolving it while it was still on the code it was posted on or with a 👎 from
+  someone with write access, even at another severity;
+- marks a finding "Tracked in #N" instead of raising it as new, when an open issue someone with write access opened
+  already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding stays in the summary
+  and the check run but gets no thread;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
+
+After three reviews with no comment from someone with write access in between, counted from the summary comments, an
+automatic review stops before any model call and posts once "Paused: comment `/review` to resume". Comments the
+autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. A
+`/review` from someone with write access always reviews, and counts as their comment.
 
 ### Re-reviews
 
@@ -152,7 +165,11 @@ of review converge:
 - its summary lists the earlier findings it checked, and says "No further findings above nits" when nothing at or
   above should-fix is left, new or unresolved, so the author knows they can merge. When the earlier review threads
   can't be read, or what changed is only in generated files or files over the size budget, so no reviewer saw it, it
-  says so instead, and its verdict is never Approve.
+  says so instead, and its verdict is never Approve;
+- it closes the loop on the bot's own threads, never anyone else's: it resolves the thread of an earlier finding it
+  found fixed when the thread is outdated or its lines changed since the last review. When it finds one still open
+  and the thread's last comment is an `Autopilot:` reply, it replies once to say why it stays open, ending with a line
+  that asks the maintainer (`@<them>: needs you.`), and never a second time in that thread.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
 gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records

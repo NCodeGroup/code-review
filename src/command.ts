@@ -3,7 +3,8 @@
 
 export type Command = { kind: 'review' };
 
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+// The author associations of people with write access.
+export const writers: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
 // /review doesn't start a run.
