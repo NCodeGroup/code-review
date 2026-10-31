@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Settings checks: `tiers:` can't put `security` below Sonnet (a lower tier is raised to Sonnet, with a warning), and a `skip:` glob that matches nearly every path, such as `**`, and a `CODE_REVIEW_SHADOW` name that matches no reviewer are warnings in the check run ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
+- An eval case can record the author association of each issue its description closes, as `issueAssociations` (a member by default), and the evals leave out a non-writer's issue as the review step does ([#109](https://github.com/NCodeGroup/code-review/issues/109)).
 
 ### Changed
 
@@ -23,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A re-review also runs `security` when what changed since the last review touches a file `sensitive:` names or code the selection floor gives to `security`, such as a path with `auth`, `token` or `crypt` in it, and a change to a `sensitive:` file makes it a deep review: `correctness` and `security` run on Opus, unless `CODE_REVIEW_TIERS` names them, verification checks the findings in sensitive files on Opus, and the summary and the check run say so. Each of its reviewers checks the earlier findings, and the most cautious status counts; when one of them fails, the re-review posts no findings and the next one covers those changes again ([#86](https://github.com/NCodeGroup/code-review/issues/86)).
 - The tests check that the evals' review cost leaves out the concern judge's and precision judge's calls, which the case cost counts, so `eval:compare` never reports the judges' spend as review cost ([#107](https://github.com/NCodeGroup/code-review/issues/107)).
 - The tests check what a `/review explain` run leaves for the publish step: only `answer.json` for an unknown finding, without a model call, `trace.json` too when the call ran, the `answered` output, and never `results.json` ([#108](https://github.com/NCodeGroup/code-review/issues/108)).
+- The evals read the issues a case's pull request closes with the review step's own reader, so the two can't drift apart ([#111](https://github.com/NCodeGroup/code-review/issues/111)).
 - The `api-compat` floor places each changed C# line in its member by reading the file's braces, with comments, strings and preprocessor lines left out, instead of its indentation, so unusual formatting no longer misplaces a change; a file whose braces don't balance counts as a public change ([#112](https://github.com/NCodeGroup/code-review/issues/112)).
 
 ### Fixed
@@ -39,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A step that always runs revokes the acknowledgement's app token before the review step starts, even when the acknowledgement script never ran or stopped before revoking it ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - Changed file names are logged without control characters, so a file name can't break a log line or start a workflow command ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - One-click suggestion blocks are posted only on pull requests whose author can write to the repository. On anyone else's, the fix is in prose only and the check run says how many suggestions were held back, so a model-written change prompted by an outsider's code is never one click from being committed ([#88](https://github.com/NCodeGroup/code-review/issues/88)).
+- Every line the engine writes to the workflow log is made one printable line in one place: a line break becomes a space and other control characters are dropped, so a file name or other pull request text in any log line can't break it, start a workflow command or forge another line ([#110](https://github.com/NCodeGroup/code-review/issues/110)).
 
 ## [0.4.0] - 2026-10-31
 

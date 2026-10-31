@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { closedIssues, gather, readPullRequest, type Gathered } from '../src/gather.ts';
 import { pullRequestBlock, selectionFloor, sharedContext } from '../src/review.ts';
-import { readClosedIssues, writerCheck } from '../src/writers.ts';
+import { readClosedIssues, readWritersIssues, writerCheck } from '../src/writers.ts';
 
 const made: string[] = [];
 after(() => {
@@ -158,6 +158,31 @@ test('a closed issue that cannot be read is left out with a warning, and the oth
   assert.equal(lines.length, 2);
   assert.match(lines[0] ?? '', /^::warning::Couldn't read issue #22, which the description closes \(offline\)/);
   assert.match(lines[1] ?? '', /#23, .*\(HTTP 500\)/);
+});
+
+test("readWritersIssues keeps a writer's issues in order, leaving out pull requests and non-writers' issues", async () => {
+  const read: Record<number, object> = {
+    3: { title: 'C', body: 'c', author_association: 'MEMBER' },
+    1: { pull_request: {}, title: 'PR', author_association: 'MEMBER' },
+    2: { title: 'B', body: 'b', author_association: 'NONE' },
+  };
+  const issues = await readWritersIssues([3, 1, 2], async (number) => read[number], async (_login, association) => association === 'MEMBER', () => assert.fail('unreadable'));
+  assert.deepEqual(issues, [{ number: 3, title: 'C', body: 'c' }]);
+});
+
+test('readWritersIssues gives unreadable the reason and goes on', async () => {
+  const unreadable: [number, string][] = [];
+  const issues = await readWritersIssues(
+    [1, 2],
+    async (number) => {
+      if (number === 1) throw new Error('offline');
+      return { title: 'B', body: 'b' };
+    },
+    async () => true,
+    (number, reason) => unreadable.push([number, reason]),
+  );
+  assert.deepEqual(issues, [{ number: 2, title: 'B', body: 'b' }]);
+  assert.deepEqual(unreadable, [[1, 'offline']]);
 });
 
 test('a description from an author without write access stays out, and the context says it was left out', async () => {

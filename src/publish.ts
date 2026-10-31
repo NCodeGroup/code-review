@@ -16,6 +16,7 @@ import { errorText, postSummary, postThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
 import { githubApi, type Api } from './github.ts';
+import { writeErrorLog, writeLog } from './log.ts';
 import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
 import { readReviewThreads } from './rereview.ts';
@@ -72,13 +73,13 @@ async function main(): Promise<void> {
   const issuesApi = issuesToken ? githubApi(issuesToken) : undefined;
   const replyUrl = await publishTeaching(outDir, api, issuesApi, [token, ...(issuesToken ? [issuesToken] : [])]);
   if (replyUrl !== undefined) {
-    console.log(`Posted ${replyUrl}`);
+    writeLog(`Posted ${replyUrl}`);
     return;
   }
   // A `/review explain` run leaves one comment to post instead of a review.
   const answerUrl = await publishAnswer(outDir, api, [token]);
   if (answerUrl !== undefined) {
-    console.log(`Posted ${answerUrl}`);
+    writeLog(`Posted ${answerUrl}`);
     return;
   }
   const results = JSON.parse(readFileSync(path.join(outDir, 'results.json'), 'utf8')) as Results;
@@ -88,24 +89,24 @@ async function main(): Promise<void> {
   const check = { head_sha: results.headSha, conclusion: 'neutral' as const, output };
   assertNoSecrets(JSON.stringify(check), [token], 'The check run');
   const posted = await publishCheck(api, results.repository, check, acknowledged);
-  console.log(`Posted ${posted.html_url}`);
+  writeLog(`Posted ${posted.html_url}`);
   // Tells the finish step the check run is complete, so it leaves it alone.
   const stepOutput = process.env['GITHUB_OUTPUT'];
   if (stepOutput) appendFileSync(stepOutput, 'check-completed=true\n');
 
   // The bot's earlier threads, to tell which ones the maintainer dismissed and to resolve or answer them.
   const threads = await readReviewThreads(results.repository, results.pullRequest, token);
-  if (!threads) console.log("::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered.");
+  if (!threads) writeLog("::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered.");
   const dismissed = threads
     ? await dismissedThreads(threads, (login) =>
         isWriter(api, results.repository, login).catch((error) => {
-          console.log(`::warning::Couldn't read ${login}'s access (${errorText(error)}), so their 👎 or resolution doesn't count.`);
+          writeLog(`::warning::Couldn't read ${login}'s access (${errorText(error)}), so their 👎 or resolution doesn't count.`);
           return false;
         }),
       )
     : [];
 
-  await postThreads(api, results, [token], console.log, dismissed.map((d) => d.posted));
+  await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted));
   if (threads) {
     const actions = planFollowUps(threads, results, new Set(dismissed.map((d) => d.thread.id)));
     await followUpThreads((query, variables) => graphql(api, query, variables), actions, [token]);
@@ -117,6 +118,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(`::error::${(error as Error).message}`);
+  writeErrorLog(`::error::${(error as Error).message}`);
   process.exitCode = 1;
 });

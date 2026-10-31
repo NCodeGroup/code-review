@@ -45,30 +45,49 @@ export function writerCheck(repository: string, token: string | undefined, fetch
   };
 }
 
-// The issues a pull request closes, as context for intent. An issue whose author isn't a writer is left out, and so is
-// one that can't be read, with a warning through `log`.
-export async function readClosedIssues(
+export type ClosedIssue = { number: number; title: string; body: string };
+
+// The issues a pull request closes, as context for intent, in order: a pull request is left out, and so is an issue
+// whose author isn't a writer; one that can't be read is left out after `unreadable` gets the reason. The engine reads
+// them from the API (readClosedIssues), the evals with gh (caseIssues in evals/run.ts).
+export async function readWritersIssues(
+  numbers: number[],
+  readIssue: (number: number) => Promise<unknown>,
+  isWriter: WriterCheck,
+  unreadable: (number: number, reason: string) => void,
+): Promise<ClosedIssue[]> {
+  type Issue = { title?: unknown; body?: unknown; author_association?: string; user?: { login?: string }; pull_request?: unknown };
+  const issues: ClosedIssue[] = [];
+  for (const number of numbers) {
+    let issue: Issue;
+    try {
+      issue = (await readIssue(number)) as Issue;
+    } catch (error) {
+      unreadable(number, errorText(error));
+      continue;
+    }
+    if (issue.pull_request || !(await isWriter(issue.user?.login, issue.author_association))) continue;
+    issues.push({ number, title: String(issue.title ?? ''), body: String(issue.body ?? '').slice(0, maxIssueChars) });
+  }
+  return issues;
+}
+
+// The issues a pull request closes, read from the API. An issue whose author isn't a writer is left out, and so is one
+// that can't be read, with a warning through `log`.
+export function readClosedIssues(
   repository: string,
   numbers: number[],
   token: string | undefined,
   isWriter: WriterCheck,
   fetchJson: typeof fetch = fetch,
   log: (line: string) => void = () => {},
-): Promise<{ number: number; title: string; body: string }[]> {
-  type Issue = { title?: string; body?: string; author_association?: string; user?: { login?: string }; pull_request?: unknown };
-  const issues: { number: number; title: string; body: string }[] = [];
-  for (const number of numbers) {
-    let issue: Issue;
-    try {
-      const response = await fetchJson(`https://api.github.com/repos/${repository}/issues/${number}`, { headers: headers(token) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      issue = (await response.json()) as Issue;
-    } catch (error) {
-      log(`::warning::Couldn't read issue #${number}, which the description closes (${errorText(error)}); the reviewers go without it.`);
-      continue;
-    }
-    if (issue.pull_request || !(await isWriter(issue.user?.login, issue.author_association))) continue;
-    issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
-  }
-  return issues;
+): Promise<ClosedIssue[]> {
+  const readIssue = async (number: number): Promise<unknown> => {
+    const response = await fetchJson(`https://api.github.com/repos/${repository}/issues/${number}`, { headers: headers(token) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  };
+  return readWritersIssues(numbers, readIssue, isWriter, (number, reason) =>
+    log(`::warning::Couldn't read issue #${number}, which the description closes (${reason}); the reviewers go without it.`),
+  );
 }

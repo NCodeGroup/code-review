@@ -343,10 +343,10 @@ const evalCase: EvalCase = {
   expect: [], mustNotFlag: [], source: '',
 };
 
-test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', () => {
+test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', async () => {
   const lines: string[] = [];
   const issues: Record<number, object> = { 3: { title: 'Bug', body: 'Steps' }, 4: { pull_request: {}, title: 'PR' } };
-  const pullRequest = casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
+  const pullRequest = await casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
   assert.equal(pullRequest.body, evalCase.body);
   assert.equal(pullRequest.authorCanWrite, true);
   assert.equal(pullRequest.author, 'polewskm');
@@ -357,21 +357,40 @@ test('casePullRequest gives a member\'s description and the issues it closes, le
   assert.deepEqual(lines, []);
 });
 
-test('casePullRequest withholds a non-writer\'s description and reads none of its issues', () => {
+test('casePullRequest withholds a non-writer\'s description and reads none of its issues', async () => {
   const stranger = { ...evalCase, author: 'stranger', authorAssociation: 'CONTRIBUTOR' };
-  const pullRequest = casePullRequest(stranger, 'c'.repeat(40), () => assert.fail('read an issue'), () => {});
+  const read: number[] = [];
+  const lines: string[] = [];
+  const pullRequest = await casePullRequest(stranger, 'c'.repeat(40), (number) => {
+    read.push(number);
+    return {};
+  }, (line) => lines.push(line));
   assert.equal(pullRequest.body, undefined);
   assert.equal(pullRequest.bodyWithheld, true);
   assert.equal(pullRequest.authorCanWrite, false);
   assert.deepEqual(pullRequest.issues, []);
+  assert.deepEqual(read, []);
+  assert.deepEqual(lines, []);
 });
 
-test('caseIssues warns with the reason when an issue cannot be read, and goes on', () => {
+test('caseIssues warns with the reason when an issue cannot be read, and goes on', async () => {
   const lines: string[] = [];
-  const issues = caseIssues('o/r', 'Closes #3, closes #4', (number) => {
+  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3, closes #4', (number) => {
     if (number === 3) throw new Error('HTTP 404: Not Found');
     return { title: 'Ok', body: 'b' };
   }, (line) => lines.push(line));
   assert.deepEqual(issues, [{ number: 4, title: 'Ok', body: 'b' }]);
   assert.deepEqual(lines, ["::warning::Couldn't read issue #3 of o/r (HTTP 404: Not Found); the case runs without it."]);
+});
+
+test("caseIssues leaves out an issue the case records as a non-writer's", async () => {
+  const lines: string[] = [];
+  const issues = await caseIssues({ repository: 'o/r', issueAssociations: { '4': 'CONTRIBUTOR' } }, 'Closes #3 and fixes #4', () => ({ title: 'T', body: 'b' }), (line) => lines.push(line));
+  assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
+  assert.deepEqual(lines, []);
+});
+
+test("caseIssues counts an issue the case doesn't record as a member's, whatever the API says", async () => {
+  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3', () => ({ title: 'T', body: 'b', author_association: 'NONE' }), () => {});
+  assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
 });

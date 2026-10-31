@@ -25,14 +25,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { writerAssociations } from '../src/command.ts';
-import { errorText } from '../src/comments.ts';
-import { maxIssueChars, verificationOn } from '../src/config.ts';
+import { verificationOn } from '../src/config.ts';
 import { githubReader } from '../src/explain.ts';
 import { closedIssues, gather, readPullRequest, splitDiff, templateCandidate, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
 import { changedLines, loadCharters, review, severityRank, type Finding } from '../src/review.ts';
 import { confirmTemplateFiles } from '../src/template-check.ts';
+import { readWritersIssues, type ClosedIssue } from '../src/writers.ts';
 import { subsets, type Concern, type EvalCase } from './cases.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
@@ -206,30 +206,26 @@ export async function runCapped<T>(
 }
 
 // The issues a case's description closes, as the review step reads them: pull requests are left out, and an issue that
-// can't be read is left out with a warning that says why. Their authors aren't checked, since the smoke eval's token
-// can't read another repository's permissions.
+// can't be read is left out with a warning that says why. Each issue's author counts as a writer by the case's
+// issueAssociations (a member by default), never by the API or a permission lookup, since the smoke eval's token can't
+// read other repositories' permissions.
 export function caseIssues(
-  repository: string,
+  c: Pick<EvalCase, 'repository' | 'issueAssociations'>,
   body: string | undefined,
   readIssue: (number: number) => unknown,
   log: (line: string) => void,
-): { number: number; title: string; body: string }[] {
-  return closedIssues(body).flatMap((number) => {
-    let issue: { title?: unknown; body?: unknown; pull_request?: unknown };
-    try {
-      issue = readIssue(number) as typeof issue;
-    } catch (error) {
-      log(`::warning::Couldn't read issue #${number} of ${repository} (${errorText(error)}); the case runs without it.`);
-      return [];
-    }
-    return issue.pull_request ? [] : [{ number, title: String(issue.title ?? ''), body: String(issue.body ?? '').slice(0, maxIssueChars) }];
-  });
+): Promise<ClosedIssue[]> {
+  return readWritersIssues(
+    closedIssues(body),
+    async (number) => ({ ...(readIssue(number) as object), author_association: c.issueAssociations?.[String(number)] ?? 'MEMBER' }),
+    async (_login, association) => writerAssociations.has(association ?? ''),
+    (number, reason) => log(`::warning::Couldn't read issue #${number} of ${c.repository} (${reason}); the case runs without it.`),
+  );
 }
 
 // The pull request a case reviews, built as the review step builds it: the description, and so the issues it closes,
-// only from an author with write access, which the case's association decides. The issues' authors aren't checked, as
-// caseIssues says.
-export function casePullRequest(c: EvalCase, headSha: string, readIssue: (number: number) => unknown, log: (line: string) => void): PullRequest {
+// only from an author with write access, which the case's association decides.
+export async function casePullRequest(c: EvalCase, headSha: string, readIssue: (number: number) => unknown, log: (line: string) => void): Promise<PullRequest> {
   const association = c.authorAssociation ?? 'MEMBER';
   const event = {
     pull_request: {
@@ -238,7 +234,7 @@ export function casePullRequest(c: EvalCase, headSha: string, readIssue: (number
     },
   };
   const pullRequest = readPullRequest(event, c.repository, writerAssociations.has(association));
-  pullRequest.issues = caseIssues(c.repository, pullRequest.body, readIssue, log);
+  pullRequest.issues = await caseIssues(c, pullRequest.body, readIssue, log);
   return pullRequest;
 }
 
@@ -300,7 +296,7 @@ async function main(): Promise<void> {
       const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
       const head = worktree(repo, `${c.id}-head`, headSha);
       const base = worktree(repo, `${c.id}-base`, c.base);
-      const pullRequest = casePullRequest(
+      const pullRequest = await casePullRequest(
         c,
         headSha,
         (number) => JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' })),

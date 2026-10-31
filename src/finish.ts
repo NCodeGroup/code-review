@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { acknowledgedFrom, finishCheck, finishStatus, stepOutcomesFrom } from './checks.ts';
 import { githubApi, runUrl } from './github.ts';
+import { writeErrorLog, writeLog } from './log.ts';
 
 function readStatusFile(outDir: string): string | undefined {
   try {
@@ -23,11 +24,11 @@ async function main(): Promise<void> {
   if (!token || !outDir || !repository) throw new Error('CODE_REVIEW_APP_TOKEN, CODE_REVIEW_OUT and GITHUB_REPOSITORY must be set.');
   const acknowledged = acknowledgedFrom(process.env['CODE_REVIEW_CHECK_RUN_ID'], process.env['CODE_REVIEW_CHECK_RUN_SHA']);
   const status = finishStatus(readStatusFile(outDir), stepOutcomesFrom(process.env), { token, url: runUrl() });
-  if (await finishCheck(githubApi(token), repository, acknowledged, status)) console.log(`Completed the check run: ${status.title}`);
-  else console.log('No check run to complete.');
+  if (await finishCheck(githubApi(token), repository, acknowledged, status)) writeLog(`Completed the check run: ${status.title}`);
+  else writeLog('No check run to complete.');
 }
 
 main().catch((error) => {
-  console.error(`::error::${(error as Error).message}`);
+  writeErrorLog(`::error::${(error as Error).message}`);
   process.exitCode = 1;
 });

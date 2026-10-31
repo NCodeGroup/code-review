@@ -6,6 +6,7 @@
 
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
+import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { autopilotPrefix } from './pause.ts';
 import { botAuthor, type ThreadNode } from './rereview.ts';
@@ -114,7 +115,7 @@ export async function followUpThreads(
   graphql: (query: string, variables: Record<string, unknown>) => Promise<unknown>,
   actions: FollowUp[],
   secrets: Iterable<string>,
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<void> {
   for (const action of actions) {
     try {
