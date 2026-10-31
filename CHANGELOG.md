@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `api-compat` floor also reads `IsPackable` from `Directory.Build.props` and `Directory.Build.targets`, in MSBuild's order: the props from the root down, then the `.csproj`, then the targets, the last that sets it winning ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
 - Verification no longer drops a refuted blocker or `security` finding: it stays as a question one severity lower, with the refutation in its evidence. Any refutation must cite a line of the checkout outside the lines the pull request adds; one that rests only on the change's own lines keeps the finding as a question ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
 - Verification stops at the run's cost ceiling like the reviewer calls: its calls that haven't started are skipped, their findings stay unverified, and the summary says how many were skipped ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
+- The `api-compat` floor places each changed C# line in its member by reading the file's braces, with comments, strings and preprocessor lines left out, instead of its indentation, so unusual formatting no longer misplaces a change; a file whose braces don't balance counts as a public change ([#112](https://github.com/NCodeGroup/code-review/issues/112)).
 
 ### Fixed
 
@@ -28,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The log warns, with the reason, when the pull request's comments can't be read, so a run that couldn't tell which commit it reviewed last, and so reviews in full, says why ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - The evals build each case's pull request as the review step does: a case can name its author and association (a member by default), a description from an author without write access is left out with the issues it closes, and an issue that can't be read warns instead of vanishing ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - Findings an open issue already tracks no longer count toward the verdict or the finding totals, so a pull request doesn't show request-changes for problems tracked elsewhere. The summary comment and the check run list them apart, under "Tracked in open issues" ([#98](https://github.com/NCodeGroup/code-review/issues/98)).
+- A template adoption or update leaves a changed file to the template only when it matches NCodeGroup/project-template at the `_commit` the answers name, so a file edited by hand in the same pull request is reviewed as the project's, and every such file is when the template can't be read ([#113](https://github.com/NCodeGroup/code-review/issues/113)).
 
 ### Security
 
