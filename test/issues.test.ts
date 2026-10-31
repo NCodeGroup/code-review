@@ -88,7 +88,7 @@ async function synthesize(openIssues: { number: number; title: string }[] | unde
       request.role === 'selection' ? { add: [] }
       : request.role === 'synthesis' ? { summary: 'S.', verdict: 'comment', findings: [{ ...finding('Leaks the handle'), sources: ['R1'], tracked }] }
       : { findings: request.role === 'reviewer:correctness' ? [finding('Leaks the handle')] : [] };
-    return { output: output as T, record };
+    return { output: output as T, records: [record] };
   };
   const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, { ...gathered, ...(openIssues ? { openIssues } : {}) }, charters, () => {}, agent);
   return { result, synthesis: prompts.get('synthesis') ?? '' };
@@ -135,6 +135,7 @@ test('the summary comment and the check run say "Tracked in #N" for a tracked fi
     summary: 'S.',
     verdict: 'comment',
     calls: [],
+    dropped: [],
   } as unknown as Results;
   const summary = summaryComment(results, 'https://check', 'https://help');
   assert.match(summary, /\*\*F3\*\* `src\/a\.ts:3`: Known \(tracked in #12\)/);

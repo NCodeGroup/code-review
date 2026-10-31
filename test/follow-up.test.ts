@@ -248,6 +248,7 @@ test('on the next /review, the publish step resolves the thread of a fixed findi
     costUsd: 0.1,
     durationMs: 1000,
     notShown: [],
+    dropped: [],
     changedLines: {},
     reReview: { changedLines: {}, earlier: [{ url: url(fixed), status: 'fixed', note: 'The lock now covers it.' }, { url: url(theirs), status: 'fixed', note: '' }] },
   };
@@ -282,7 +283,7 @@ test('when the review threads can\'t be read, the publish step warns, posts as b
   mkdirSync(out);
   const results: Results = {
     repository: 'o/r', pullRequest: 1, headSha, provider: 'bedrock', providerReason: 'test', summary: 's', verdict: 'comment', findings: [],
-    reviewers: [], skipped: [], synthesisModel: '', calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
+    reviewers: [], skipped: [], synthesisModel: '', calls: [], costUsd: 0, durationMs: 0, notShown: [], dropped: [], changedLines: {},
     reReview: { changedLines: {}, earlier: [{ url: 'https://github.com/o/r/pull/1#discussion_r1', status: 'fixed', note: '' }] },
   };
   writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
