@@ -2,12 +2,28 @@
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { HookCallback, Options, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, Options, SDKAssistantMessageError, SDKMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { bedrockRegion, modelIds, type ModelTier, type Provider } from './config.ts';
+import { creditsRanOut, creditsRanOutReason } from './provider.ts';
 import { placeholderKey } from './proxy.ts';
+
+// Set on a run that starts on the Claude API and has a Bedrock key. Every call of the run shares the one object: the
+// first call that finds the API credits used up sets `switched` and `reason`, and every call after it goes straight to
+// Bedrock.
+export interface BedrockFallback {
+  switched: boolean;
+  reason?: string;
+}
+
+// The fallback for a run on `provider`: only a run that starts on the Claude API and has a Bedrock key can move.
+export function bedrockFallbackFor(provider: Provider, hasBedrockKey: boolean): BedrockFallback | undefined {
+  return provider === 'anthropic' && hasBedrockKey ? { switched: false } : undefined;
+}
+
+export type QueryFunction = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage>;
 
 export interface AgentRun {
   provider: Provider;
@@ -17,6 +33,19 @@ export interface AgentRun {
   // The working folder, outside the checkout. Reviewers of one review share it: Claude Code names its working folder in
   // the system prompt, so a folder of their own would give each reviewer a different prompt prefix and no shared cache.
   workdir?: string;
+  fallback?: BedrockFallback;
+  // The Agent SDK's query; tests pass a fake.
+  query?: QueryFunction;
+}
+
+// The same run for a call that gets no tools and its own working folder.
+export function withoutTools(run: AgentRun): AgentRun {
+  return {
+    provider: run.provider,
+    proxyUrl: run.proxyUrl,
+    ...(run.fallback ? { fallback: run.fallback } : {}),
+    ...(run.query ? { query: run.query } : {}),
+  };
 }
 
 export interface CallRecord {
@@ -35,8 +64,18 @@ export interface CallRecord {
 
 export interface AgentResult<T> {
   output: T | undefined;
-  record: CallRecord;
+  // One record per model call, in order: two when the API credits ran out and the request was rerun on Bedrock.
+  records: CallRecord[];
   error?: string;
+}
+
+export function totalCost(records: CallRecord[]): number {
+  return records.reduce((sum, r) => sum + r.costUsd, 0);
+}
+
+// The model of the role's last call: after a rerun on Bedrock, the Bedrock model rather than the refused one.
+export function lastModel(calls: CallRecord[], role: string): string {
+  return calls.findLast((c) => c.role === role)?.model ?? '';
 }
 
 // True when the path, with every symlink resolved, is the root or inside it. A pull request can add a symlink to
@@ -147,7 +186,30 @@ function promptInput(prompt: string | string[]): string | AsyncIterable<SDKUserM
   })();
 }
 
+// Runs the request on the run's provider. When the Claude API refuses it because the credits ran out and the run has a
+// Bedrock key, it switches the whole run to Bedrock and reruns the request there, on the same tier.
 export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> {
+  const provider = run.fallback?.switched ? 'bedrock' : run.provider;
+  const first = await callOnce<T>({ ...run, provider }, request);
+  if (provider !== 'anthropic' || !run.fallback || first.error === undefined || !first.creditsRanOut) {
+    return { output: first.output, records: [first.record], ...(first.error === undefined ? {} : { error: first.error }) };
+  }
+  run.fallback.switched = true;
+  run.fallback.reason = creditsRanOutReason;
+  first.record.outcome = creditsRanOutReason;
+  const retry = await callOnce<T>({ ...run, provider: 'bedrock' }, request);
+  return { output: retry.output, records: [first.record, retry.record], ...(retry.error === undefined ? {} : { error: retry.error }) };
+}
+
+interface CallOutcome<T> {
+  output: T | undefined;
+  record: CallRecord;
+  error?: string;
+  // The call failed because the API credits are used up.
+  creditsRanOut: boolean;
+}
+
+async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOutcome<T>> {
   const model = modelIds[run.provider][request.tier];
   const home = mkdtempSync(path.join(tmpdir(), 'code-review-agent-'));
   const tools = run.checkout ? ['Read', 'Grep', 'Glob'] : [];
@@ -173,14 +235,19 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
   const started = Date.now();
   let result: SDKResultMessage | undefined;
   let error: string | undefined;
+  // Claude Code's category of the API error the turn ended on, carried by the synthetic assistant message it reports.
+  let apiErrorKind: SDKAssistantMessageError | undefined;
   try {
-    for await (const message of query({ prompt: promptInput(request.prompt), options })) {
+    for await (const message of (run.query ?? query)({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
+      else if (message.type === 'assistant' && message.error) apiErrorKind = message.error;
     }
   } catch (e) {
     error = (e as Error).message;
   }
 
+  // A turn that ended on an API error, such as the API credits running out, is a success whose text is the error.
+  const apiError = result?.subtype === 'success' && result.is_error ? result.result || 'API error' : undefined;
   const record: CallRecord = {
     role: request.role,
     provider: run.provider,
@@ -192,11 +259,14 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
     cacheWriteTokens: result?.usage.cache_creation_input_tokens ?? 0,
     turns: result?.num_turns ?? 0,
     durationMs: Date.now() - started,
-    outcome: error ? 'error' : (result?.subtype ?? 'no result'),
+    outcome: error || apiError ? 'error' : (result?.subtype ?? 'no result'),
   };
-  if (result?.subtype !== 'success') {
-    const reason = error ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
-    return { output: undefined, record, error: reason };
+  if (result?.subtype !== 'success' || apiError) {
+    const reason = error ?? apiError ?? (result && 'errors' in result ? result.errors.join('; ') : 'no result');
+    // Claude Code's billing category decides. A thrown error carries no category or code (the SDK throws plain Errors),
+    // so only for it does the message text decide; a reported API error without the category never moves the run.
+    const outOfCredits = apiErrorKind === 'billing_error' || (error !== undefined && creditsRanOut(error));
+    return { output: undefined, record, error: reason, creditsRanOut: outOfCredits };
   }
-  return { output: result.structured_output as T, record };
+  return { output: result.structured_output as T, record, creditsRanOut: false };
 }
