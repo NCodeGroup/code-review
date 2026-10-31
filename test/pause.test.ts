@@ -189,6 +189,38 @@ test('an automatic review after the pause notice posts nothing more', () => {
   assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')), pausedStatus());
 });
 
+test('closing a pull request after three unanswered reviews records the outcomes and never pauses', () => {
+  const dir = temp('pause-closed-');
+  const out = path.join(dir, 'out');
+  const outputFile = path.join(dir, 'output');
+  const eventFile = path.join(dir, 'event.json');
+  writeFileSync(outputFile, '');
+  writeFileSync(eventFile, JSON.stringify({ action: 'closed', pull_request: { number: 1, merged: true, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } } }));
+  const comments = threeReviews();
+  const newest = comments.at(-1)!;
+  const noThreads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } } };
+  const { requests } = runStep(
+    'main.ts',
+    dir,
+    { rest: { 'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': comments }, graphql: [['reviewThreads', noThreads]] },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_PR_PATH: path.join(dir, 'pr'), CODE_REVIEW_BASE_PATH: path.join(dir, 'base'), CODE_REVIEW_GITHUB_TOKEN: 'read-token', GITHUB_REPOSITORY: 'o/r', GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile },
+  );
+  assert.equal(readFileSync(outputFile, 'utf8'), 'outcomes=true\n');
+  assert.ok(existsSync(path.join(out, 'outcomes.json')));
+  assert.ok(!existsSync(path.join(out, 'paused.json')));
+  assert.ok(!existsSync(path.join(out, 'status.json')));
+  assert.ok(!requests.some((r) => r.url.includes('/pulls/1/comments')));
+
+  const { requests: posted } = runStep(
+    'publish.ts',
+    temp('pause-closed-publish-'),
+    { rest: { [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`]: { id: newest.id } }, graphql: [] },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
+  );
+  assert.deepEqual(posted.map((r) => `${r.method} ${r.url}`), [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`]);
+  assert.ok(!String(posted[0]?.body?.body).includes(pausedMarker));
+});
+
 test('a /review from a writer on a paused pull request reviews it', () => {
   const dir = temp('pause-resume-');
   const checkout = pullRequestCheckout(dir);
