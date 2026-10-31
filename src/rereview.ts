@@ -40,7 +40,7 @@ import {
   type Severity,
   type Verdict,
 } from './review.ts';
-import { parsePosted, snapDistance } from './threads.ts';
+import { nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
 
 // The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
@@ -449,6 +449,29 @@ export function postable<T extends Pick<Finding, 'severity' | 'file' | 'line'>>(
   return { kept, nits, outside };
 }
 
+// Correctness and security can report one problem twice. Of two findings by different reviewers that sameProblem pairs,
+// only the more severe is posted, the more confident on a tie, naming both reviewers, so verification never drops it
+// when security is one of them. `near` counts the findings kept apart though close to another reviewer's, for the evals
+// to measure.
+export function mergeOverlapping<T extends Pick<Finding, 'severity' | 'file' | 'line' | 'title' | 'confidence'> & { reviewers: string[] }>(findings: T[]): { kept: T[]; merged: number; near: number } {
+  const ordered = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  const kept: T[] = [];
+  let merged = 0;
+  let near = 0;
+  for (const finding of ordered) {
+    const others = kept.flatMap((k, index) => (!k.reviewers.some((r) => finding.reviewers.includes(r)) && nearby(k, finding) ? [{ k, index }] : []));
+    const same = others.find(({ k }) => sameProblem(k, finding));
+    if (same) {
+      kept[same.index] = { ...same.k, reviewers: [...same.k.reviewers, ...finding.reviewers] };
+      merged++;
+    } else {
+      if (others.length) near++;
+      kept.push(finding);
+    }
+  }
+  return { kept, merged, near };
+}
+
 const maxEarlierChars = 60_000;
 
 // The earlier findings for the prompt, the unresolved ones first, as JSON with "<" escaped so no text in it can close
@@ -493,7 +516,7 @@ export function reReviewSummary(s: {
   outside: number;
   earlier: EarlierStatus[];
   // What verification did to what the re-review would post, when it ran.
-  verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped'>;
+  verification?: Pick<ReReviewVerification, 'refuted' | 'questionedPosted' | 'questionedDropped' | 'refutedKeptPosted' | 'refutedKeptDropped'>;
 }): string {
   const since = s.lastHead.slice(0, 7);
   const ran = s.reviewers ?? [reReviewer];
@@ -520,13 +543,21 @@ export function reReviewSummary(s: {
     const titles = v.refuted.map((r) => `"${r.finding.title}"`).join('; ');
     parts.push(`Verification refuted ${plural(v.refuted.length, 'finding')}, which the check run lists with ${v.refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}.`);
   }
+  if (v?.refutedKeptPosted) {
+    const n = v.refutedKeptPosted;
+    parts.push(`Verification refuted ${plural(n, 'blocker')} but kept ${n === 1 ? 'it as a should-fix question' : 'them as should-fix questions'}.`);
+  }
   if (v?.questionedPosted) parts.push(`Verification couldn't settle ${plural(v.questionedPosted, 'blocker')}, now ${v.questionedPosted === 1 ? 'a should-fix question' : 'should-fix questions'}.`);
+  if (v?.refutedKeptDropped) {
+    const n = v.refutedKeptDropped;
+    parts.push(`Verification refuted ${n === 1 ? "1 should-fix but kept it as a nit, which isn't" : `${n} should-fixes but kept them as nits, which aren't`} posted on a re-review.`);
+  }
   if (v?.questionedDropped) {
     const n = v.questionedDropped;
     parts.push(`Verification couldn't settle ${n === 1 ? '1 should-fix, now a nit, which isn\'t' : `${n} should-fixes, now nits, which aren't`} posted on a re-review.`);
   }
   // What verification took away is for the maintainer to look at, so the re-review doesn't say it's done.
-  const verifiedAway = Boolean(v && (v.refuted.length || v.questionedDropped));
+  const verifiedAway = Boolean(v && (v.refuted.length || v.refutedKeptDropped || v.questionedDropped));
   const waiting = s.earlier.filter(pending).length;
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
@@ -554,6 +585,10 @@ interface ReReviewVerification {
   // Blockers verification couldn't settle, posted as should-fix questions, and should-fixes it made nits, not posted.
   questionedPosted: number;
   questionedDropped: number;
+  // Blockers it refuted but kept, posted as should-fix questions, and should-fixes it refuted but kept, now nits and not
+  // posted.
+  refutedKeptPosted: number;
+  refutedKeptDropped: number;
   trace: VerificationCall[];
 }
 
@@ -587,11 +622,20 @@ async function verifyPosted(
     ...call,
     findings: call.findings.map(({ postedAs, ...f }) => (postedAs && ids.has(postedAs) ? { ...f, postedAs } : f)),
   }));
-  const questionedDropped = outcome.findings.length - posted.length;
+  const dropped = outcome.findings.length - posted.length;
+  const refutedKeptPosted = outcome.demotedBlockers;
+  const refutedKeptDropped = outcome.demoted - outcome.demotedBlockers;
   return {
     findings: posted,
     calls: outcome.calls,
-    verified: { refuted: outcome.refuted, questionedPosted: outcome.questioned - questionedDropped, questionedDropped, trace },
+    verified: {
+      refuted: outcome.refuted,
+      questionedPosted: outcome.questioned - dropped - refutedKeptPosted,
+      questionedDropped: dropped - refutedKeptDropped,
+      refutedKeptPosted,
+      refutedKeptDropped,
+      trace,
+    },
   };
 }
 
@@ -722,10 +766,11 @@ export async function reReview(
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged, gathered.files.map((f) => f.path));
   if (dropped.length) log(`  ${droppedLine(dropped)}`);
+  const { kept: distinct, merged, near } = mergeOverlapping(kept);
   // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
-  const placed = byOwner(kept, gathered.template);
+  const placed = byOwner(distinct, gathered.template);
   const upstream = upstreamFindings(placed.upstream);
-  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
+  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${merged} merged with another reviewer's, ${near} near another reviewer's, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
   const sensitive = roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined;
   const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, { ...verification, ...(sensitive ? { deep: sensitive } : {}) });
   return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);

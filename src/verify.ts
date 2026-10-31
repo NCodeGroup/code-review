@@ -50,8 +50,11 @@ export interface VerificationOutcome {
   // How many findings verification made questions one severity lower, because it couldn't settle them or wouldn't drop
   // them on its refutation.
   questioned: number;
-  // Of those, the refuted blockers and security findings, which a refutation never drops.
+  // Of those, the ones a call refuted with a reason: a blocker or security finding, which a refutation never drops, or one
+  // whose refutation cites no line of the checkout outside the lines the pull request adds.
   demoted: number;
+  // Of those, the blockers, which a re-review still posts as should-fix questions.
+  demotedBlockers: number;
   // Verification calls the run's cost ceiling skipped.
   skipped: number;
   calls: CallRecord[];
@@ -200,11 +203,12 @@ export function applyVerifications(
   verifications: Map<string, Verification>,
   added: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
   lines: CheckoutLines = () => undefined,
-): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; demoted: number; postedAs: Map<string, string> } {
+): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; demoted: number; demotedBlockers: number; postedAs: Map<string, string> } {
   const kept: ReviewedFinding[] = [];
   const refuted: RefutedFinding[] = [];
   let questioned = 0;
   let demoted = 0;
+  let demotedBlockers = 0;
   for (const f of findings) {
     const v = f.severity === 'nit' ? undefined : verifications.get(f.id);
     if (!v) {
@@ -219,7 +223,8 @@ export function applyVerifications(
         continue;
       }
       questioned++;
-      if (citesOutside) demoted++;
+      demoted++;
+      if (f.severity === 'blocker') demotedBlockers++;
       kept.push({
         ...f,
         severity: lowered[f.severity],
@@ -243,7 +248,7 @@ export function applyVerifications(
   }
   const ranked = kept.map((f, i) => ({ f, i })).sort((a, b) => severityRank[a.f.severity] - severityRank[b.f.severity] || a.i - b.i);
   const postedAs = new Map(ranked.map(({ f }, i) => [f.id, `F${i + 1}`]));
-  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, demoted, postedAs };
+  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, demoted, demotedBlockers, postedAs };
 }
 
 function appendEvidence(evidence: string, line: string): string {
@@ -281,7 +286,7 @@ function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallReco
 
 export async function verifyFindings(input: VerificationInput): Promise<VerificationOutcome> {
   const batches = input.enabled ? verificationBatches(input.findings) : [];
-  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, skipped: 0, calls: [], trace: [] };
+  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, demotedBlockers: 0, skipped: 0, calls: [], trace: [] };
 
   const agent: VerificationAgent = input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
   const sections = splitDiff(input.diff);
@@ -364,7 +369,7 @@ export function verdictAfterVerification(verdict: Verdict, findings: ReviewedFin
 
 // The sentence added to synthesis's summary, which was written before verification: what verification changed, and the
 // titles of the findings it refuted, since only the check run lists their reasons. `questioned` counts every finding it
-// made a question; `demoted`, the refuted blockers and security findings among them.
+// made a question; `demoted`, the refuted ones among them.
 export function verificationNote(refuted: RefutedFinding[], questioned: number, demoted = 0): string {
   const findings = (n: number) => (n === 1 ? 'one finding' : `${n} findings`);
   const changes: string[] = [];
@@ -376,8 +381,8 @@ export function verificationNote(refuted: RefutedFinding[], questioned: number, 
   if (unsettled) changes.push(`couldn't settle ${findings(unsettled)}, now ${unsettled === 1 ? 'a question' : 'questions'} one severity lower`);
   if (demoted) {
     changes.push(demoted === 1
-      ? 'kept one refuted blocker or security finding as a question one severity lower'
-      : `kept ${demoted} refuted blockers or security findings as questions one severity lower`);
+      ? 'kept one refuted finding as a question one severity lower'
+      : `kept ${demoted} refuted findings as questions one severity lower`);
   }
   return changes.length ? ` After this summary was written, verification ${changes.join(', and ')}.` : '';
 }
@@ -394,7 +399,7 @@ export interface SynthesizedReview {
 export async function verifyReview(
   review: SynthesizedReview,
   input: Omit<VerificationInput, 'findings'>,
-): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted' | 'skipped'>> {
+): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted' | 'demotedBlockers' | 'skipped'>> {
   const { findings, refuted, questioned, demoted, skipped, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
   let verdict = review.verdict;
   if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);

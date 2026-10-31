@@ -13,6 +13,7 @@ import {
   changedSince,
   earlierBlock,
   earlierFindings,
+  mergeOverlapping,
   planReReview,
   postable,
   readEarlierFindings,
@@ -30,7 +31,7 @@ import {
 } from '../src/rereview.ts';
 import { headMarker, recordedHead, summaryComment } from '../src/results.ts';
 import type { Charters, Finding, Review } from '../src/review.ts';
-import { threadBody } from '../src/threads.ts';
+import { sameProblem, threadBody } from '../src/threads.ts';
 import type { Verification, VerificationAgent } from '../src/verify.ts';
 
 const made: string[] = [];
@@ -276,6 +277,50 @@ test('postable keeps blockers and should-fixes on or next to a changed line, and
   assert.equal(result.outside, 2);
 });
 
+const by = (reviewer: string, f: Finding) => ({ ...f, reviewers: [reviewer] });
+
+test('mergeOverlapping posts the same problem from correctness and security once, at the higher severity, with both reviewers', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Token leaks into the log')), by('security', finding('blocker', 'a.ts', 12, 'Token leaks into the log!'))]);
+  assert.deepEqual(result.kept.map((f) => [f.severity, f.line, f.reviewers]), [['blocker', 12, ['security', 'correctness']]]);
+  assert.equal(result.merged, 1);
+  assert.equal(result.near, 0);
+});
+
+test('mergeOverlapping never merges two findings of the same reviewer', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('correctness', finding('should-fix', 'a.ts', 11, 'Same'))]);
+  assert.equal(result.kept.length, 2);
+  assert.equal(result.merged, 0);
+});
+
+test('mergeOverlapping keeps differently titled findings of two reviewers apart and counts them as near', () => {
+  const result = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Off by one')), by('security', finding('should-fix', 'a.ts', 13, 'Token leaks'))]);
+  assert.equal(result.kept.length, 2);
+  assert.equal(result.merged, 0);
+  assert.equal(result.near, 1);
+});
+
+test('mergeOverlapping keeps the same title apart when it is farther away or in another file', () => {
+  const far = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('security', finding('should-fix', 'a.ts', 14, 'Same'))]);
+  assert.deepEqual([far.kept.length, far.merged, far.near], [2, 0, 0]);
+  const elsewhere = mergeOverlapping([by('correctness', finding('should-fix', 'a.ts', 10, 'Same')), by('security', finding('should-fix', 'b.ts', 10, 'Same'))]);
+  assert.deepEqual([elsewhere.kept.length, elsewhere.merged, elsewhere.near], [2, 0, 0]);
+});
+
+test('mergeOverlapping keeps the more confident of two findings at the same severity', () => {
+  const result = mergeOverlapping([
+    by('correctness', { ...finding('should-fix', 'a.ts', 10, 'Same'), confidence: 0.6 }),
+    by('security', { ...finding('should-fix', 'a.ts', 10, 'Same'), confidence: 0.9 }),
+  ]);
+  assert.deepEqual(result.kept.map((f) => [f.confidence, f.reviewers]), [[0.9, ['security', 'correctness']]]);
+});
+
+test('sameProblem ignores severity and punctuation but not the file or distance', () => {
+  assert.ok(sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks!' }, { file: 'a.ts', line: 13, title: 'token LEAKS' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'a.ts', line: 14, title: 'Token leaks' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'b.ts', line: 10, title: 'Token leaks' }));
+  assert.ok(!sameProblem({ file: 'a.ts', line: 10, title: 'Token leaks' }, { file: 'a.ts', line: 10, title: 'Key leaks' }));
+});
+
 function earlierFinding(overrides: Partial<EarlierFinding> = {}): EarlierFinding {
   return { id: 'F1', file: 'a.ts', line: 3, severity: 'should-fix', title: 'Race', text: 't', resolved: false, url: 'https://github.com/o/r/pull/1#discussion_r1', replies: [], ...overrides };
 }
@@ -328,6 +373,20 @@ test('reReviewSummary says when what changed is only in files the reviewers do n
 test('reReviewSummary never says there are no further findings when the earlier threads could not be read', () => {
   const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, earlierUnread: true, posted: [], nits: 0, outside: 0, earlier: [] });
   assert.equal(summary, "Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness only. The earlier review threads couldn't be read, so their findings weren't checked.");
+});
+
+test('reReviewSummary counts several refuted blockers kept as should-fix questions in the plural', () => {
+  const verification = { refuted: [], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 2, refutedKeptDropped: 0 };
+  const posted: Pick<Finding, 'severity'>[] = [{ severity: 'should-fix' }, { severity: 'should-fix' }];
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted, nits: 0, outside: 0, earlier: [], verification });
+  assert.ok(summary.includes('Verification refuted 2 blockers but kept them as should-fix questions.'), summary);
+});
+
+test('reReviewSummary counts several refuted should-fixes kept as nits in the plural', () => {
+  const verification = { refuted: [], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 0, refutedKeptDropped: 2 };
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted: [], nits: 0, outside: 0, earlier: [], verification });
+  assert.ok(summary.includes("Verification refuted 2 should-fixes but kept them as nits, which aren't posted on a re-review."), summary);
+  assert.doesNotMatch(summary, /No further findings/);
 });
 
 // GraphQL lists a thread's first comment, and its newest ones, which include the first while the thread is short.
@@ -666,6 +725,21 @@ test('reReview adds security on Sonnet when what changed since the last review i
   assert.equal(outcome.depth, 'standard');
 });
 
+test('reReview posts a problem correctness and security both report once, with both reviewers', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = {
+    'reviewer:correctness': { findings: [finding('should-fix', 'token.ts', 1, 'Token is exported')], earlier: [] },
+    'reviewer:security': { findings: [finding('blocker', 'token.ts', 1, 'Token is exported.')], earlier: [] },
+  };
+  const lines: string[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, (line) => lines.push(line), roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.severity, f.reviewers]), [['F1', 'Token is exported.', 'blocker', ['security', 'correctness']]]);
+  assert.deepEqual(outcome.reviewers.map((r) => r.findings.length), [1, 1]);
+  assert.ok(lines.some((line) => /1 merged with another reviewer's, 0 near another reviewer's/.test(line)));
+});
+
 test('reReview keeps an earlier finding open when either reviewer finds it open', async () => {
   const { repo, reviewed, gathered } = securityChange();
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 20 })], log: () => {} });
@@ -906,7 +980,22 @@ test('reReview with verification on keeps a refuted blocker as a should-fix ques
   assert.match(outcome.findings[0]!.evidence, /a refuted blocker stays as a question: Not reachable\. \(a\.ts:1\)$/);
   assert.deepEqual(outcome.refuted, []);
   assert.equal(outcome.verdict, 'comment');
-  assert.match(outcome.summary, /1 blocker, now a should-fix question\. 1 new finding at should-fix or above\.$/);
+  assert.match(outcome.summary, /Verification refuted 1 blocker but kept it as a should-fix question\. 1 new finding at should-fix or above\.$/);
+});
+
+test('reReview with verification on says a should-fix refuted only on the change\'s own lines was kept as a nit, not posted, and never approves', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const agent = verifier({ Shaky: { verdict: 'refuted', path: 'a.ts:62', reason: 'Only the new line guards it.', question: '' } }, []);
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('should-fix', 'a.ts', 62, 'Shaky')], earlier: [] }, []), { enabled: true, agent });
+  assert.deepEqual(outcome.findings, []);
+  assert.deepEqual(outcome.refuted, []);
+  assert.equal(outcome.verdict, 'comment');
+  assert.match(outcome.summary, /Verification refuted 1 should-fix but kept it as a nit, which isn't posted on a re-review\./);
+  assert.doesNotMatch(outcome.summary, /couldn't settle|No further findings/);
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
