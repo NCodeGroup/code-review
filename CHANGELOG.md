@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The review is acknowledged within seconds, before setup-node and `npm ci`: 👀 on a `/review` comment and the "Code review" check run in progress, "Review started at <commit>; it usually takes a few minutes", which the publish step then completes instead of posting a second one. The acknowledgement makes the review step's own decision, so a comment that isn't `/review` from a writer, a fork, or an automatic run on a commit already reviewed gets nothing. Its token is minted from the app key the action already receives, used by the acknowledgement alone and revoked before the review step starts, so consuming workflows need no change ([#20](https://github.com/NCodeGroup/code-review/issues/20)).
+
 ### Changed
 
+- When no provider is available (the API credits used up or the Anthropic login failed, and the Bedrock key missing or refused), the "Code review" check run completes neutral, titled "Review budget used up", with the reason, and the job no longer fails. Bedrock is asked once, with a one-token call, whether it accepts the key before the review relies on it ([#20](https://github.com/NCodeGroup/code-review/issues/20)).
+- A review that fails, or a run that's cancelled, completes the "Code review" check run with the reason and a link to the run's log, instead of leaving nothing on the pull request ([#20](https://github.com/NCodeGroup/code-review/issues/20)).
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.
 - Consumers pin the action by a release's full commit SHA, with the tag in a comment, as the README now says: CodeQL's `extended` suite reports a tag pin, even an immutable release's, as an unpinned action. This repository's own workflow pins v0.3.1 that way.
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).

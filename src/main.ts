@@ -1,21 +1,46 @@
-// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step.
-// It holds the model credentials but never the app's private key, which only the publish step sees.
+// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step, or
+// status.json with why there's no review, for the finish step. It holds the model credentials but never the app's
+// private key or a token minted from it: those reach only the steps that write to the pull request.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReasonFor } from './command.ts';
+import { failureStatus, skippedStatus, type RunStatus } from './checks.ts';
+import { decideReview } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { fetchPullRequest, runUrl } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { chooseProvider } from './provider.ts';
+import { chooseProvider, NoProviderError } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// What the finish step needs when the review stops early: the commit, once the run has decided to review one, and the
+// secrets to keep out of the reason.
+const run: { headSha?: string | undefined; credentials: Credentials; githubToken?: string } = { credentials: {} };
+
+// Writes status.json for the finish step, and, once the run has decided to review a commit, tells the action's later
+// steps there's a check run to complete even without an acknowledgement.
+function writeStatus(status: RunStatus): void {
+  const outDir = process.env['CODE_REVIEW_OUT'];
+  if (!outDir) return;
+  const secrets = [...secretValues(run.credentials), ...(run.githubToken ? [run.githubToken] : [])];
+  let safe = { ...status, ...(run.headSha ? { headSha: run.headSha } : {}) };
+  try {
+    assertNoSecrets(JSON.stringify(safe), secrets, 'The reason');
+  } catch {
+    safe = { ...safe, summary: "The review stopped, and its reason can't be shown here; the run's log says why." };
+  }
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(path.join(outDir, 'status.json'), JSON.stringify(safe, null, 2));
+  const output = process.env['GITHUB_OUTPUT'];
+  if (output && run.headSha) appendFileSync(output, 'stopped=true\n');
+}
 
 function required(name: string): string {
   const value = process.env[name];
@@ -59,37 +84,25 @@ async function main(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
+  if (githubToken) run.githubToken = githubToken;
 
-  // A /review comment carries the issue, not the pull request, so read the pull request from the API.
-  if (event.comment) {
-    const request = commandFromEvent(event);
-    if (!request) {
-      console.log('Not a /review command from someone with write access; nothing to do.');
-      return;
-    }
-    const response = await fetch(`https://api.github.com/repos/${repository}/pulls/${request.number}`, {
-      headers: { accept: 'application/vnd.github+json', ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}) },
-    });
-    if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
-    const pullRequest = (await response.json()) as { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } };
-    const reason = await skipReasonFor('comment', pullRequest, repository, () => lastReviewedHead(repository, request.number, githubToken));
-    if (reason) {
-      console.log(reason);
-      return;
-    }
-    event = { pull_request: pullRequest };
-  } else {
-    // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
-    // the same review. /review still reviews it.
-    const pullRequest = event.pull_request;
-    const reason = await skipReasonFor('automatic', pullRequest, repository, () => lastReviewedHead(repository, pullRequest.number, githubToken));
-    if (reason) {
-      console.log(reason);
-      return;
-    }
+  // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
+  // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
+  // the same review; /review still reviews it.
+  const decision = await decideReview(
+    event,
+    repository,
+    (number) => fetchPullRequest(repository, number, githubToken),
+    (number) => lastReviewedHead(repository, number, githubToken),
+  );
+  if (!decision.review) {
+    console.log(decision.reason);
+    writeStatus(skippedStatus(decision.reason));
+    return;
   }
+  if (event.comment) event = { pull_request: decision.pullRequest };
 
-  const credentials: Credentials = {};
+  const credentials = run.credentials;
   const bedrockKey = take('CODE_REVIEW_BEDROCK_KEY');
   if (bedrockKey) credentials.bedrockKey = bedrockKey;
   const requestUrl = take('ACTIONS_ID_TOKEN_REQUEST_URL');
@@ -110,11 +123,13 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
+  run.headSha = pullRequest.headSha || undefined;
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
+  run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
@@ -174,6 +189,17 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
+  try {
+    writeStatus(failureStatus(error, runUrl()));
+  } catch (statusError) {
+    console.error(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
+  }
+  // No provider means the budget is used up, not that the review broke: the check run says so, neutral, and the job
+  // doesn't fail.
+  if (error instanceof NoProviderError) {
+    console.log(`::warning::${error.message} No review ran, and nothing was charged.`);
+    return;
+  }
   console.error(`::error::${(error as Error).message}`);
   process.exitCode = 1;
 });

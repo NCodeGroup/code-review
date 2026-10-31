@@ -13,7 +13,7 @@ export function parseCommand(body: string): Command | undefined {
 
 export interface CommentEvent {
   issue?: { number?: number; pull_request?: unknown };
-  comment?: { body?: string; author_association?: string };
+  comment?: { id?: number; body?: string; author_association?: string };
 }
 
 export function commandFromEvent(event: CommentEvent): { command: Command; number: number } | undefined {
@@ -52,4 +52,35 @@ export function skipReasonFor(
   reviewedHead: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
   return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
+}
+
+type PullRequestLike = NonNullable<Parameters<typeof skipReason>[0]>;
+
+export type ReviewDecision<P extends PullRequestLike> =
+  | { review: true; pullRequest: P; commentId?: number }
+  | { review: false; reason: string };
+
+// Whether this run reviews, and which pull request. The review step and the early acknowledgement both decide with
+// this, so a run acknowledges exactly what it goes on to review: a /review comment from a writer, or an automatic run,
+// on a pull request that isn't from a fork. `readPullRequest` reads the pull request a comment is on, and
+// `reviewedHead` the head the bot last reviewed; a comment that isn't a command costs no API call.
+export async function decideReview<P extends PullRequestLike>(
+  event: CommentEvent & { pull_request?: P },
+  repository: string,
+  readPullRequest: (number: number) => Promise<P>,
+  reviewedHead: (number: number) => Promise<string | undefined>,
+): Promise<ReviewDecision<P>> {
+  if (event.comment) {
+    const request = commandFromEvent(event);
+    if (!request) return { review: false, reason: 'Not a /review command from someone with write access; nothing to do.' };
+    const pullRequest = await readPullRequest(request.number);
+    const reason = await skipReasonFor('comment', pullRequest, repository, () => reviewedHead(request.number));
+    if (reason) return { review: false, reason };
+    const commentId = event.comment.id;
+    return { review: true, pullRequest, ...(typeof commentId === 'number' ? { commentId } : {}) };
+  }
+  const pullRequest = event.pull_request;
+  const reason = await skipReasonFor('automatic', pullRequest, repository, () => reviewedHead(Number(pullRequest?.number)));
+  if (reason || !pullRequest) return { review: false, reason: reason ?? 'The event has no pull request.' };
+  return { review: true, pullRequest };
 }
