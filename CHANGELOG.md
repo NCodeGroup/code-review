@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Consumers pin the action by a release's full commit SHA, with the tag in a comment, as the README now says: CodeQL's `extended` suite reports a tag pin, even an immutable release's, as an unpinned action. This repository's own workflow pins v0.3.1 that way.
+
+## [0.3.1] - 2026-10-31
+
+### Changed
+
+- Releases are immutable from this one on: GitHub refuses any change to a published release's tag or assets. The engine is the same as v0.3.0's.
+
 ## [0.3.0] - 2026-10-31
 
 ### Changed
@@ -33,7 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/NCodeGroup/code-review/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/NCodeGroup/code-review/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/NCodeGroup/code-review/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/NCodeGroup/code-review/compare/v0.1.0...v0.2.0
