@@ -270,6 +270,37 @@ test('writeAnswer never writes results.json, so the publish step posts no review
   assert.ok(!(await answerRun({ found }, agentResult({ answer: 'a', holds: true, reason: 'r' }))).files.includes('results.json'));
 });
 
+// Runs writeAnswer for a found F3 whose call returns `result`, with the run's secret `secret`, expecting it to refuse
+// with a SecretFoundError whose message matches `where`, and returns whether it wrote a file or set an output anyway.
+async function refusedAnswerRun(result: AgentResult<Explanation>, secret: string, where: RegExp): Promise<{ wrote: boolean; set: boolean }> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'answer-'));
+  const outDir = path.join(dir, 'out');
+  const outputFile = path.join(dir, 'github-output');
+  const saved = process.env['GITHUB_OUTPUT'];
+  process.env['GITHUB_OUTPUT'] = outputFile;
+  try {
+    const run = { repository: 'NCodeGroup/code-review', number: 7, question: 'why?', secrets: [secret] };
+    await assert.rejects(writeAnswer(outDir, run, { kind: 'id', id: 'F3' }, { found }, async () => result), (error: unknown) => error instanceof SecretFoundError && where.test(error.message));
+    return { wrote: existsSync(outDir), set: existsSync(outputFile) };
+  } finally {
+    if (saved === undefined) delete process.env['GITHUB_OUTPUT'];
+    else process.env['GITHUB_OUTPUT'] = saved;
+  }
+}
+
+const runSecret = 's'.repeat(20);
+
+test('writeAnswer throws SecretFoundError and writes nothing when the answer holds a secret', async () => {
+  const result = agentResult({ answer: `The token is ${runSecret}.`, holds: true, reason: 'r' });
+  assert.deepEqual(await refusedAnswerRun(result, runSecret, /^The answer contains one of this run's secrets\.$/), { wrote: false, set: false });
+});
+
+test('writeAnswer throws SecretFoundError and writes nothing when the trace holds a secret', async () => {
+  const clean = agentResult({ answer: 'a', holds: true, reason: 'r' });
+  const result = { ...clean, records: [{ ...clean.records[0]!, model: runSecret }] };
+  assert.deepEqual(await refusedAnswerRun(result, runSecret, /^The trace contains one of this run's secrets\.$/), { wrote: false, set: false });
+});
+
 function response(status: number, body: unknown = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
