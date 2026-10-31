@@ -13,7 +13,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { topSeverity, type Results } from './results.ts';
+import { callModels, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
         return {
           name,
           status,
-          model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+          model: callModels(outcome.calls, `reviewer:${name}`),
           findingCount: findings.length,
           ...(top ? { topSeverity: top } : {}),
           ...(error ? { error } : {}),
@@ -158,6 +158,8 @@ async function main(): Promise<void> {
       skippedByConfig: gathered.skippedByConfig,
       warnings: [...gathered.warnings, ...outcome.warnings],
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
+      depth: outcome.depth,
+      sensitiveFiles: outcome.sensitiveFiles,
     };
     const settings = {
       policies: gathered.policies,

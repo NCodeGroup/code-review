@@ -2,7 +2,7 @@
 
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import { depthLabel, severityRank, type Finding, type ReviewDepth, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
@@ -39,6 +39,10 @@ export interface Results {
   warnings?: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
+  // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.
+  depth?: ReviewDepth;
+  // The changed files config.yml's sensitive: names, which made the review deep.
+  sensitiveFiles?: string[];
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
@@ -49,9 +53,18 @@ export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | u
   return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
 }
 
-// "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5".
+// "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5", and a list of models as a list.
 export function shortModel(model: string): string {
-  return model.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '');
+  return model
+    .split(', ')
+    .map((m) => m.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, ''))
+    .join(', ');
+}
+
+// The models a role's calls ran on, once each, in the order they ran: a deep review's reviewer runs on Opus for the
+// parts with a sensitive file and on its usual model for the rest.
+export function callModels(calls: Pick<CallRecord, 'role' | 'model'>[], role: string): string {
+  return [...new Set(calls.filter((c) => c.role === role).map((c) => c.model))].join(', ');
 }
 
 // Marks the bot's summary comments on a pull request; each review posts a new one and collapses the earlier ones.
@@ -149,6 +162,11 @@ export function checkSummary(results: Results): string {
     `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,
   ];
   const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
+  if (results.depth === 'deep') {
+    lines.push('', `**${depthLabel.deep}**: ${files(results.sensitiveFiles ?? [])} ${(results.sensitiveFiles ?? []).length === 1 ? 'matches' : 'match'} \`sensitive:\` in \`.github/code-review/config.yml\`, so \`correctness\` and \`security\` reviewed the parts of the diff with them on Opus, unless \`CODE_REVIEW_TIERS\` names them, and verification, when it's on, checked the findings in them on Opus.`);
+  } else if (results.depth === 'light') {
+    lines.push('', `**${depthLabel.light}**: every changed file is documentation, a changelog or part of a template update, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
+  }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
   }
@@ -184,15 +202,15 @@ export function checkText(results: Results): string {
     }
     out.push('');
   }
-  out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
+  out.push('### Reviewers', '', '| Reviewer | Model | Status | Findings | Cost |', '|---|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
   for (const r of results.reviewers) {
-    out.push(`| ${r.name} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
+    out.push(`| ${r.name} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`);
   }
   for (const role of ['selection', 'synthesis', 'verification']) {
-    if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+    if (costs.has(role)) out.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
   return out.join('\n');
 }

@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
-import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
-import { globToRegExp, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
+import { guidanceRules, repositoryRules, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
+import { globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
@@ -42,6 +42,9 @@ export interface ReviewerOutcome {
 
 export type Verdict = 'approve' | 'request-changes' | 'comment';
 
+// How deep a review goes: deep for a change to a sensitive path, light for one to documentation only.
+export type ReviewDepth = 'standard' | 'deep' | 'light';
+
 export interface Review {
   reviewers: ReviewerOutcome[];
   summary: string;
@@ -55,6 +58,9 @@ export interface Review {
   skipped: string[];
   // What in the repository's settings the review couldn't use, beside gather's warnings, for the check run.
   warnings: string[];
+  depth: ReviewDepth;
+  // The changed files config.yml's sensitive: names, which made the review deep.
+  sensitiveFiles: string[];
 }
 
 const findingProperties = {
@@ -189,6 +195,69 @@ const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|pas
 const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
+const publicApiPath = /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/;
+
+// A file is sensitive when a glob from config.yml's sensitive: matches it.
+export function sensitiveMatcher(globs: string[]): (file: string) => boolean {
+  const patterns = globs.map(globToRegExp);
+  return (file) => patterns.some((p) => p.test(file));
+}
+
+// The changed files config.yml's sensitive: names, generated ones aside.
+export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] {
+  const sensitive = sensitiveMatcher(globs);
+  return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
+}
+
+// Code or a script that runs, wherever it is: a git hook, or a file with a code or script extension, even in docs/ or a
+// template update. A light review never takes it.
+const executablePath = /\.(cs|fs|ts|tsx|js|mjs|cjs|py|go|rs|java|ps1|psm1|psd1|sh|bash|zsh|cmd|bat|rb|pl|tf|tofu|hcl)$|(^|\/)\.githooks\//i;
+
+// A template update changes one of these, and with them only files the project template owns and replaces on every
+// update, as its instructions list them. Its scripts and git hooks are executable, so they get the standard review.
+const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
+const templateOwned = [
+  templateVersion,
+  /^CLAUDE\.md$/,
+  /^\.claude\/(agents\/plan-executor\.md$|commands\/)/,
+  /^\.github\/(agents|prompts|skills)\//,
+  /^\.github\/instructions\/project-template\.instructions\.md$/,
+];
+
+// A pull request that changes only documentation: every changed file is documentation (gather's pattern, which takes
+// in CHANGELOG.md), or, in a template update, a file the template owns, and none is executable. A public API listing is
+// a .txt file, but it is the API, so it isn't documentation.
+export function documentationOnly(files: ChangedFile[]): boolean {
+  if (!files.length) return false;
+  const templateUpdate = files.some((f) => templateVersion.test(f.path));
+  return files.every((f) =>
+    !publicApiPath.test(f.path) && !executablePath.test(f.path)
+    && (isDocumentation(f.path) || (templateUpdate && templateOwned.some((p) => p.test(f.path)))));
+}
+
+// Deep when any changed file is sensitive, even documentation in a sensitive folder; light when the change is only
+// documentation; standard otherwise. A small code change gets the standard review: the light review is for changes
+// with no code in them, never to save on reviewers that catch real problems.
+export function reviewDepth(files: ChangedFile[], sensitive: string[]): ReviewDepth {
+  if (sensitiveFiles(files, sensitive).length) return 'deep';
+  if (documentationOnly(files)) return 'light';
+  return 'standard';
+}
+
+// The parts of the diff a deep review's reviewers go deep on: those with a sensitive file in them. A sensitive file
+// too big for any part goes to the first, whose reviewers can read it in the checkout.
+export function sensitiveParts(parts: string[], files: string[]): Set<number> {
+  if (!files.length) return new Set();
+  const indexes = parts.flatMap((diff, i) => ([...splitDiff(diff).keys()].some((file) => files.includes(file)) ? [i] : []));
+  return new Set(indexes.length ? indexes : [0]);
+}
+
+// Each reviewer's model on one part of the diff. On a deep review's sensitive parts, correctness and security go to
+// Opus over the repository's tiers: setting. CODE_REVIEW_TIERS still overrides any reviewer, and anyone unnamed runs on Haiku.
+export function partTiers(depth: ReviewDepth, deepPart: boolean, repository: Record<string, ModelTier>, override?: string): Record<string, ModelTier> {
+  const tiers = depth === 'light' ? lightReviewerTiers : depth === 'deep' && deepPart ? deepReviewerTiers : {};
+  return reviewerTiers(override, repository, tiers);
+}
 
 // The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
@@ -197,7 +266,7 @@ export function selectionFloor(files: ChangedFile[], hasDescription: boolean, ha
   const floor = new Set<string>(['hygiene']);
   if (code.length) floor.add('correctness');
   if (code.some((f) => securityPath.test(f.path))) floor.add('security');
-  if (reviewed.some((f) => /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/.test(f.path))) floor.add('api-compat');
+  if (reviewed.some((f) => publicApiPath.test(f.path))) floor.add('api-compat');
   if (code.length && !reviewed.some((f) => testPath.test(f.path))) floor.add('tests');
   if (reviewed.some((f) => /(^|\/)Migrations\//i.test(f.path) || /\.sql$/i.test(f.path))) floor.add('data-model');
   if (hasDescription && code.length) floor.add('intent');
@@ -330,6 +399,9 @@ export async function review(
   const roster = [...charters.reviewers.keys()];
   const unknown = unknownTiers(gathered.tiers, roster);
   const warnings = unknown ? [unknown] : [];
+  const sensitive = sensitiveFiles(gathered.files, gathered.sensitive);
+  const depth = reviewDepth(gathered.files, gathered.sensitive);
+  const light = depth === 'light';
 
   // A pull request whose every changed file the repository's skip: leaves out has nothing to review: no model runs.
   if (!gathered.files.length && gathered.skippedByConfig.length) {
@@ -344,60 +416,76 @@ export async function review(
       calls,
       skipped: roster,
       warnings,
+      depth,
+      sensitiveFiles: sensitive,
     };
   }
+  if (depth === 'deep') log(`Deep review: sensitive files ${sensitive.join(', ')}`);
+  if (light) log('Light review (documentation only): hygiene alone, with no context, selection or synthesis');
 
-  // Context: the rules and decisions that bear on this change.
-  const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
-  const { context, result: contextResult } = await selectContext(
-    run,
-    gathered,
-    catalog,
-    gathered.decisions,
-    (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
-    agent,
-  );
-  if (contextResult) calls.push(contextResult.record);
-  const picked = [...new Set([...context.rulesFor.values()].flat())].length;
-  log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
+  // Context: the rules and decisions that bear on this change. A light review has none, beside the decision records
+  // the pull request itself adds or changes.
+  const catalog = light ? [] : [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
+  let context: Context = { rulesFor: new Map(), decisions: gathered.decisions.filter((d) => d.proposed) };
+  if (!light) {
+    const picked = await selectContext(
+      run,
+      gathered,
+      catalog,
+      gathered.decisions,
+      (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
+      agent,
+    );
+    context = picked.context;
+    if (picked.result) calls.push(picked.result.record);
+    const count = [...new Set([...context.rulesFor.values()].flat())].length;
+    log(`Context: ${count} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${picked.result?.error ? ` (failed: ${picked.result.error})` : ''}`);
+  }
 
-  // Selection only routes, so Sonnet is enough, at about half Opus's cost.
+  // Selection only routes, so Sonnet is enough, at about half Opus's cost. A light review has hygiene alone.
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
-  const floor = [...new Set([
+  const floor = light ? ['hygiene'] : [...new Set([
     ...selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions')),
     ...projectFloor(project, gathered.files),
   ])];
   const selected = new Set(floor);
-  const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
-    { provider: run.provider, proxyUrl: run.proxyUrl },
-    {
-      role: 'selection',
-      tier: 'sonnet',
-      systemPrompt: charters.selectionPrompt,
-      prompt: `Roster: ${roster.join(', ')}${projectRoster(project)}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
-      schema: selectionSchema,
-      maxTurns: 3,
-      budgetUsd: budgets.selection,
-      cache: false,
-    },
-  );
-  calls.push(selection.record);
-  for (const addition of selection.output?.add ?? []) {
-    if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
+  if (!light) {
+    const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
+      { provider: run.provider, proxyUrl: run.proxyUrl },
+      {
+        role: 'selection',
+        tier: 'sonnet',
+        systemPrompt: charters.selectionPrompt,
+        prompt: `Roster: ${roster.join(', ')}${projectRoster(project)}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
+        schema: selectionSchema,
+        maxTurns: 3,
+        budgetUsd: budgets.selection,
+        cache: false,
+      },
+    );
+    calls.push(selection.record);
+    for (const addition of selection.output?.add ?? []) {
+      if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
+    }
+    log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
   }
-  log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
   // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
   // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
-  // rest read the cache instead of each writing it again.
-  const tiers = reviewerTiers(undefined, gathered.tiers);
+  // rest read the cache instead of each writing it again. On a deep review, the parts with a sensitive file also get
+  // correctness and security, both on Opus.
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
+  const deepParts = depth === 'deep' ? sensitiveParts(parts, sensitive) : new Set<number>();
+  const deepReviewers = deepParts.size ? Object.keys(deepReviewerTiers).filter((name) => charters.reviewers.has(name)) : [];
+  if (deepParts.size) log(`Deep: ${deepReviewers.join(', ')} on ${parts.length > 1 ? `part ${[...deepParts].map((p) => p + 1).join(', ')}` : 'the diff'}`);
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
-  const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
+  const batches = !light && ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
   const jobs = parts.flatMap((diff, part) => {
     const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
+    const deepPart = deepParts.has(part);
+    const tiers = partTiers(depth, deepPart, gathered.tiers);
     return [
-      ...[...selected].map((reviewer) => ({
+      ...[...new Set([...selected, ...(deepPart ? deepReviewers : [])])].map((reviewer) => ({
         name: reviewer,
         part,
         label: '',
@@ -444,7 +532,8 @@ export async function review(
   ];
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
   // all of them were.
-  const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
+  const reviewers = [...new Set([...selected, ...deepReviewers])];
+  const outcomes: ReviewerOutcome[] = [...reviewers, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
     const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));
@@ -465,13 +554,19 @@ export async function review(
     log(`::warning::${ceilingWarning}`);
   }
 
-  // Synthesis.
+  // Synthesis. A light review posts hygiene's findings as it reported them, most severe first.
   const limit = findingLimit(parts.length);
   const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
-  if (raw.length) {
+  if (light) {
+    findings = mergeSynthesis([], raw, limit);
+    const failed = outcomes.find((o) => o.status === 'failed');
+    summary = failed ? `${failed.name} failed (${failed.error}), so nothing was reviewed.` : findings.length ? `${findings.length} finding${findings.length === 1 ? '' : 's'} from hygiene, not merged by synthesis.` : 'No findings.';
+    // A review whose one reviewer failed hasn't looked at the change, so it can't approve it.
+    if (failed && !findings.length) verdict = 'comment';
+  } else if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const synthesis = await agent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
@@ -500,7 +595,8 @@ export async function review(
     summary = 'No findings.';
   }
 
-  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  // Verification of the merged blockers and should-fixes, with the checkout, on Opus for a deep review's sensitive files.
+  // Off unless CODE_REVIEW_VERIFICATION=on, and never on a light review.
   const verified = await verifyReview({ summary, verdict, findings }, {
     run: reviewRun,
     diff: gathered.diff,
@@ -508,18 +604,27 @@ export async function review(
     systemPrompt: charters.verificationPrompt,
     charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
     log,
-    enabled: verificationOn(),
+    enabled: verificationOn() && !light,
+    ...(depth === 'deep' ? { deep: sensitiveMatcher(gathered.sensitive) } : {}),
     agent,
   });
   calls.push(...verified.calls);
   ({ summary, verdict, findings } = verified);
 
-  const skipped = roster.filter((name) => !selected.has(name));
+  const skipped = roster.filter((name) => !reviewers.includes(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  if (depth !== 'standard') summary = `${depthLabel[depth]}: ${summary}`;
   if (ceilingWarning) {
     summary = `${summary}\n\n⚠️ ${ceilingWarning}`;
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings };
+  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings, depth, sensitiveFiles: sensitive };
 }
+
+// How the summary and the check run name a review that isn't standard.
+export const depthLabel: Record<ReviewDepth, string> = {
+  standard: 'Standard review',
+  deep: 'Deep review (sensitive paths)',
+  light: 'Light review (documentation only)',
+};
