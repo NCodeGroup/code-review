@@ -22,6 +22,10 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings on the template's files, listed for the template's repository instead of posted as threads.
+  upstream?: ReviewedFinding[];
+  // The template's repository, such as NCodeGroup/project-template.
+  template?: string;
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -112,11 +116,27 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     }
     lines.push('', '</details>', '');
   }
+  lines.push(...upstreamList(results));
   const provider = results.provider === 'anthropic' ? 'Claude API' : 'Amazon Bedrock';
   lines.push(
     `<sub>Trial: findings are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
+}
+
+// Findings on the template's files, once, in the summary: they can't be fixed in this repository, so they aren't threads.
+function upstreamList(results: Results): string[] {
+  const upstream = results.upstream ?? [];
+  if (!upstream.length) return [];
+  const lines = [
+    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstream.length})</summary>`,
+    '',
+    'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
+    '',
+  ];
+  for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+  lines.push('', '</details>', '');
+  return lines;
 }
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
@@ -141,6 +161,9 @@ export function checkSummary(results: Results): string {
     '',
     `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,
   ];
+  if (results.upstream?.length) {
+    lines.push('', `${results.upstream.length} finding${results.upstream.length === 1 ? '' : 's'} in the template's files belong${results.upstream.length === 1 ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${results.upstream.length === 1 ? "isn't" : "aren't"} posted as threads.`);
+  }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
   }
@@ -162,6 +185,14 @@ export function checkText(results: Results): string {
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     );
+  }
+  const upstream = results.upstream ?? [];
+  if (upstream.length) {
+    out.push(`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, '');
+    for (const f of upstream) {
+      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`);
+    }
+    out.push('');
   }
   out.push('### Reviewers', '', '| Reviewer | Status | Findings | Cost |', '|---|---|---|---|');
   // A reviewer of a pull request reviewed in parts makes one call per part.

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Reviews know which files a repository's project template owns. When `.copier-answers.yml` names NCodeGroup/project-template, its replaced-on-update files (`.template/`, `.githooks/`, the generated commands, prompts, skills and agents, `CLAUDE.md` and a few more, minus `project_owned_files`) are marked template-owned for the reviewers and no longer choose reviewers or rules. Findings on them aren't posted as threads: the summary lists them once, with file and line, under "Belongs upstream, in NCodeGroup/project-template". An adoption or template update is still reviewed for the project's answers, merged files and own files. A new eval case replays the adoption in #23 ([#31](https://github.com/NCodeGroup/code-review/issues/31)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.

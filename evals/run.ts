@@ -158,7 +158,7 @@ async function main(): Promise<void> {
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
       ].join(', ');
       console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, raw, calls, costUsd: caseCost });
+      report.push({ id: c.id, verdicts, forbidden, findings: outcome.findings, upstream: outcome.upstream, raw, calls, costUsd: caseCost });
     }
   } finally {
     await proxy.close();

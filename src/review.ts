@@ -4,9 +4,10 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { isTemplateOwned, type Template } from './template.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -41,6 +42,8 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings on the template's files: they belong in the template's repository, not in threads on this pull request.
+  upstream: ReviewedFinding[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -138,9 +141,10 @@ const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
 
-// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove.
+// The reviewers every pull request gets from the paths it touches. Selection can add to these, never remove. The
+// template's files don't count: they aren't this repository's code to test or redesign.
 export function selectionFloor(files: ChangedFile[], hasDescription: boolean, hasReviewRules = false): string[] {
-  const reviewed = files.filter((f) => !f.generated);
+  const reviewed = files.filter((f) => !f.generated && !f.templateOwned);
   const code = reviewed.filter((f) => productCode.test(f.path) && !testPath.test(f.path));
   const floor = new Set<string>(['hygiene']);
   if (code.length) floor.add('correctness');
@@ -174,7 +178,7 @@ function pullRequestBlock(gathered: Gathered): string {
 
 function fileList(gathered: Gathered): string {
   return gathered.files
-    .map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`)
+    .map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.templateOwned ? ' [template-owned]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`)
     .join('\n');
 }
 
@@ -200,9 +204,17 @@ function decisionsBlock(decisions: Decision[]): string {
   return `\n\nDecisions this repository has accepted that bear on this change. Don't report what a decision deliberately accepts, including what its consequences accept; do report code that breaks one, citing it. A decision this pull request adds or changes is part of the change: what it accepts isn't a defect in the code, but you may question the decision itself.\n<decisions>\n${text}\n</decisions>`;
 }
 
+// Tells the reviewers which changed files are the template's, and that a template adoption or update is still reviewed
+// for what the project chose.
+export function templateBlock(gathered: Gathered): string {
+  const template = gathered.template;
+  if (!template || !gathered.files.some((f) => f.templateOwned)) return '';
+  return `\n\nThis repository is made from the project template ${template.repository}${template.commit ? ` (${template.commit})` : ''}. The changed files marked [template-owned] are the template's: a template update replaces them and discards any edit, so this repository can't fix them. Don't review them as this repository's code: don't ask for tests of them here, and don't report their style, comments or wording. Report a defect in one only when it's a real bug in the template; it goes on a list for ${template.repository}, never on this pull request. Every other file is the project's, so review it as usual, including what the project chose when it adopted or updated the template: its answers in .copier-answers.yml, the files it merges with the template's (such as .gitignore, .gitattributes, editor and tool settings and the workflows), AGENTS.md, and its own files.`;
+}
+
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
 function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
-  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}\n\n${changeContext(gathered, diff, part, parts)}`;
+  return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}${templateBlock(gathered)}\n\n${changeContext(gathered, diff, part, parts)}`;
 }
 
 // The limit on posted findings: higher for a pull request reviewed in parts.
@@ -242,6 +254,28 @@ export function mergeSynthesis(
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+}
+
+// Splits findings into the repository's own, which become threads, and the template's, which belong upstream.
+export function byOwner<T extends Pick<Finding, 'file'>>(findings: T[], template: Template | undefined): { own: T[]; upstream: T[] } {
+  return {
+    own: findings.filter((f) => !isTemplateOwned(f.file, template)),
+    upstream: findings.filter((f) => isTemplateOwned(f.file, template)),
+  };
+}
+
+// The findings on the template's files, for the summary's list for the template's repository: one per file and line,
+// keeping the most severe and naming every reviewer that raised it.
+export function upstreamFindings(findings: (Finding & { reviewers: string[] })[]): ReviewedFinding[] {
+  const byPlace = new Map<string, Finding & { reviewers: string[] }>();
+  const ranked = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  for (const f of ranked) {
+    const key = `${f.file}:${f.line}`;
+    const kept = byPlace.get(key);
+    if (kept) kept.reviewers = [...new Set([...kept.reviewers, ...f.reviewers])];
+    else byPlace.set(key, { ...f, reviewers: [...f.reviewers] });
+  }
+  return [...byPlace.values()].slice(0, maxUpstreamFindings).map((f, i) => ({ ...f, id: `U${i + 1}` }));
 }
 
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -374,7 +408,10 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
 
   // Synthesis.
   const limit = findingLimit(parts.length);
-  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  // Findings on the template's files skip synthesis: they're listed for the template's repository instead.
+  const split = byOwner(outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))), gathered.template);
+  const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
@@ -406,8 +443,14 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   } else {
     summary = 'No findings.';
   }
+  // Synthesis may still place a finding in a template's file.
+  const placed = byOwner(findings, gathered.template);
+  upstreamRaw.push(...placed.upstream);
+  findings = placed.own.map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  const upstream = upstreamFindings(upstreamRaw);
+  if (!findings.length && upstream.length) summary = `No findings in this repository's own files; ${upstream.length} in the template's belong upstream, in ${gathered.template!.repository}.`;
 
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, upstream, calls, skipped };
 }
