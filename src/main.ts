@@ -1,12 +1,12 @@
 // The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step. For a
-// `/review explain` comment it writes answer.json instead.
+// `/review explain` comment it writes answer.json instead, and for `/review teach` teach.json.
 // It holds the model credentials but never the app's private key, which only the publish step sees.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
-import { commandFromEvent, skipReasonFor, type Command } from './command.ts';
+import { commandFromEvent, skipReasonFor, type Command, type CommentEvent } from './command.ts';
 import { errorText, lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
@@ -17,6 +17,7 @@ import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
+import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -78,13 +79,41 @@ function takeCredentials(): Credentials {
 }
 
 // Writes what the publish step posts, scanned for secrets, and tells the action's later steps there's something to post.
-function writeForPublish(outDir: string, files: Record<string, unknown>, secrets: string[], flag: 'reviewed' | 'answered'): void {
+function writeForPublish(outDir: string, files: Record<string, unknown>, secrets: string[], flag: 'reviewed' | 'answered' | 'taught', outputs: Record<string, string> = {}): void {
   const texts = Object.entries(files).map(([name, value]) => [name, JSON.stringify(value, null, 2)] as const);
   for (const [name, text] of texts) assertNoSecrets(text, secrets, `The ${name.replace(/\.json$/, '')}`);
   mkdirSync(outDir, { recursive: true });
   for (const [name, text] of texts) writeFileSync(path.join(outDir, name), text);
   const output = process.env['GITHUB_OUTPUT'];
-  if (output) appendFileSync(output, `${flag}=true\n`);
+  if (output) appendFileSync(output, [`${flag}=true`, ...Object.entries(outputs).map(([key, value]) => `${key}=${value}`)].map((line) => `${line}\n`).join(''));
+}
+
+// `/review teach`: words the guidance issue, reading a finding it names with the read-only token, with no model call,
+// and leaves it for the publish step, which opens it with an issues token. A rule that can't be taught gets a reply.
+async function teach(
+  where: { outDir: string; repository: string; number: number; githubToken: string | undefined; event: CommentEvent },
+  command: Extract<Command, { kind: 'teach' }>,
+): Promise<void> {
+  const { outDir, repository, number, githubToken, event } = where;
+  const secrets = githubToken ? [githubToken] : [];
+  const host = new URL(process.env['GITHUB_SERVER_URL'] || 'https://github.com').host;
+  const context = {
+    repository,
+    number,
+    host,
+    commentUrl: event.comment?.html_url,
+    author: event.comment?.user?.login,
+    isPrivate: event.repository?.private !== false,
+  };
+  const plan = await planTeaching(command, context, githubReader(githubToken));
+  if ('answer' in plan) {
+    console.log(`Not teaching: ${plan.answer.body}`);
+    writeForPublish(outDir, { [answerFile]: plan.answer }, secrets, 'answered');
+    return;
+  }
+  const [owner, name] = plan.teaching.target.split('/') as [string, string];
+  console.log(`Teaching a ${command.scope === 'org' ? 'NCodeGroup-wide' : 'project'} rule: a ${guidanceLabel} issue in ${plan.teaching.target}`);
+  writeForPublish(outDir, { [teachingFile]: plan.teaching }, secrets, 'taught', { 'guidance-owner': owner, 'guidance-repository': name });
 }
 
 // `/review explain <ref>`: finds the finding with the read-only token, has one agent read the code again, and leaves the
@@ -156,6 +185,10 @@ async function main(): Promise<void> {
     }
     if (request.command.kind === 'explain') {
       await answer({ outDir, prPath, repository, number: request.number, headSha: pullRequest.head?.sha ?? '', githubToken }, request.command);
+      return;
+    }
+    if (request.command.kind === 'teach') {
+      await teach({ outDir, repository, number: request.number, githubToken, event }, request.command);
       return;
     }
     event = { pull_request: pullRequest };
