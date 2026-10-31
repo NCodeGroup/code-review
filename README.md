@@ -53,25 +53,21 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || format('refs/pull/{0}/head', github.event.issue.number) }}
-          path: pr
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: NCodeGroup/code-review@v0.1.0 # an exact release tag, never a branch or @v1
+      - uses: NCodeGroup/code-review@v0.3.0 # an exact release tag, never a branch or @v1
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 ```
 
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
-its own review, and the pull request's code is only read, never built or run. Pushes start nothing; comment `/review`
+its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head out: the
+engine fetches the exact commit itself, after it has decided to review, with git started without configuration, hooks or
+a credential helper (a workflow that checks the head out into `pr` itself is also accepted, if it is at that commit). Pushes start nothing; comment `/review`
 to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
 
 ## Versions
 
-Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.1.0`. Never a branch, and never a floating
+Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.3.0`. Never a branch, and never a floating
 major tag like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a
 release someone reviewed in a pull request in its own repository. The "Protect release tags" ruleset forbids moving or
 deleting any `v*` tag, so an exact tag is as fixed as a commit. Dependabot's `github-actions` ecosystem opens a pull

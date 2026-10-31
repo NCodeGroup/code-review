@@ -22,3 +22,9 @@ export function commandFromEvent(event: CommentEvent): { command: Command; numbe
   const command = parseCommand(event.comment?.body ?? '');
   return command ? { command, number: event.issue.number } : undefined;
 }
+
+// A pull request whose head is in another repository, or in none (a deleted fork), is not reviewed: its author has no
+// write access here, and the workflow's own condition is not the only guard.
+export function isFromFork(pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined, repository: string): boolean {
+  return pullRequest?.head?.repo?.full_name !== repository;
+}

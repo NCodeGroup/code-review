@@ -10,7 +10,7 @@ inputs:
     required: false
     default: ''
   pr-path:
-    description: Where the pull request's head is checked out, relative to the workspace.
+    description: Where the pull request's head is read, relative to the workspace. The engine fetches the reviewed commit into it, unless a workflow has already checked the head out there.
     required: false
     default: pr
   base-path:
@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token for the GitHub API, used to read the pull request a /review comment is on.
+    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and to fetch the pull request's head.
     required: false
     default: ${{ github.token }}
   app-client-id:

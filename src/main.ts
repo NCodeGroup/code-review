@@ -4,8 +4,9 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent } from './command.ts';
+import { commandFromEvent, isFromFork } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
+import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
@@ -85,12 +86,16 @@ async function main(): Promise<void> {
     });
     if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
     const pullRequest = (await response.json()) as { head?: { repo?: { full_name?: string } } };
-    if (pullRequest.head?.repo?.full_name !== repository) {
+    if (isFromFork(pullRequest, repository)) {
       console.log(`#${request.number} comes from a fork, and forks aren't reviewed.`);
       return;
     }
     event = { pull_request: pullRequest };
   } else {
+    if (isFromFork(event.pull_request, repository)) {
+      console.log(`#${event.pull_request?.number} comes from a fork, and forks aren't reviewed.`);
+      return;
+    }
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
     // the same review. /review still reviews it.
     const head = event.pull_request?.head?.sha;
@@ -121,6 +126,9 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
+  // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
+  const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
+  fetchPullRequestHead(headFetch);
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
