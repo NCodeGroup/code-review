@@ -159,6 +159,31 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
   assert.doesNotMatch(text, /```suggestion|shadow replacement/);
 });
 
+test("on a template update, a shadow reviewer's findings on the template's files stay out of the upstream list", async () => {
+  const owned = '.template/Get-PlanState.ps1';
+  const template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
+  const onTemplate = (title: string, severity: Finding['severity']) => ({ ...finding(title, severity), file: owned });
+  const { agent } = stubAgent((request) => {
+    if (request.role === 'reviewer:correctness') return { output: { findings: [finding('Live nit', 'nit'), onTemplate('Live upstream', 'should-fix')] } };
+    if (request.role === 'reviewer:performance') return { output: { findings: [onTemplate('Shadow upstream', 'should-fix')] } };
+    return reviewAnswers(request);
+  });
+  const updating: Gathered = {
+    ...gathered(),
+    files: [...gathered().files, { path: owned, additions: 1, deletions: 0, generated: false, shown: true, templateOwned: true }],
+    template,
+  };
+  const outcome = await review(run, updating, charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  assert.deepEqual(outcome.upstream.map((f) => [f.id, f.file, f.title]), [['U1', owned, 'Live upstream']]);
+  assert.deepEqual(outcome.shadow.map((o) => o.findings.map((f) => f.title)), [['Shadow upstream']]);
+
+  const results = buildResults(outcome, { ...context, template: template.repository });
+  assert.deepEqual(results.upstream?.map((f) => f.title), ['Live upstream']);
+  assert.equal(results.template, 'NCodeGroup/project-template');
+  assert.doesNotMatch(summaryComment(results, 'https://check', 'https://help'), /Shadow upstream/);
+  assert.equal(buildResults(outcome, context).upstream, undefined);
+});
+
 test('a reviewer not marked shadow goes to synthesis and the verdict as before', async () => {
   const { agent, requests } = stubAgent(reviewAnswers);
   const outcome = await review(run, gathered(), charters('# performance\n'), () => {}, agent);
