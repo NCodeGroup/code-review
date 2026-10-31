@@ -893,6 +893,9 @@ const edit = (n: number) => csSection(`@@ -${n},1 +${n},1 @@\n-${csLines[n - 1]!
 test('touchesPublicMember finds a change in the body of a public member of a public type', () => {
   assert.ok(touchesPublicMember(edit(9), csHead));
   assert.ok(touchesPublicMember(edit(28), csHead), 'an interface member is public without a modifier');
+  const attributed = csHead.replace('    public bool Verify', '    [Obsolete] public bool Verify').replace('    private void Helper', '    [Conditional("DEBUG")] private void Helper');
+  assert.ok(touchesPublicMember(edit(9), attributed), 'an attribute on the public method\'s line');
+  assert.ok(!touchesPublicMember(edit(14), attributed), 'an attribute on the private method\'s line');
 });
 
 test('touchesPublicMember finds a public or protected declaration added or removed', () => {

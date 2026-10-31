@@ -253,7 +253,8 @@ function scanHead(lines: string[]): HeadScan {
       }
       for (; position < Math.min(index, lines.length); position++) {
         const line = lines[position]!;
-        const found = isCode(line) ? declaration(line) : undefined;
+        // Not isCode: a declaration can follow an attribute on its line, and declaration() skips the attribute.
+        const found = line.trim() !== '' ? declaration(line) : undefined;
         if (!found) continue;
         const indent = indentOf(line);
         while (stack.length && stack[stack.length - 1]!.indent >= indent) stack.pop();
