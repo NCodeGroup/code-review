@@ -185,7 +185,7 @@ test('isNoise flags differences of 2 or less either way', () => {
   assert.equal(isNoise(-3), false);
 });
 
-test('compare prints recall, precision, findings per PR and cost, and flags differences within 2 as noise', () => {
+test('compare prints recall, precision, findings per PR and cost, and the differences per case', () => {
   const a = output([caseOutput('one', 1, 3, 4, 2, 0.5), caseOutput('two', 0, 2, 6, 3, 0.3)], true);
   const b = output([caseOutput('one', 3, 3, 10, 2.5, 0.7), caseOutput('two', 1, 2, 6, 3, 0.4)], true);
   const text = compare(a, b, ['base', 'next']);
@@ -195,11 +195,24 @@ test('compare prints recall, precision, findings per PR and cost, and flags diff
   assert.match(line('Matched + real'), /8\s+11\s+\+3$/);
   assert.match(line('Findings per PR (mean)'), /5\.0\s+8\.0\s+\+3\.0$/);
   assert.match(line('Findings per PR (max)'), /6\s+10\s+\+4$/);
-  assert.match(line('Must-not violations'), /0\s+0\s+±0 \(noise\)$/);
+  assert.match(line('Must-not violations'), /0\s+0\s+±0$/);
   assert.match(line('Review cost '), /\$5\.00\s+\$5\.50\s+\+\$0\.50$/);
   assert.match(line('Review cost per PR'), /\$2\.50\s+\$2\.75\s+\+\$0\.25$/);
-  assert.match(line('one '), /^one\s+1\/3\s+3\/3\s+\+2 \(noise\)\s+4\s+10\s+\+6\s+50%\s+70%\s+\$2\.00\s+\$2\.50$/);
-  assert.match(line('two '), /^two\s+0\/2\s+1\/2\s+\+1 \(noise\)\s+6\s+6\s+±0 \(noise\)\s+30%\s+40%\s+\$3\.00\s+\$3\.00$/);
+  assert.match(line('one '), /^one\s+1\/3\s+3\/3\s+\+2\s+4\s+10\s+\+6\s+50%\s+70%\s+\$2\.00\s+\$2\.50$/);
+  assert.match(line('two '), /^two\s+0\/2\s+1\/2\s+\+1\s+6\s+6\s+±0\s+30%\s+40%\s+\$3\.00\s+\$3\.00$/);
+});
+
+test('compare flags only whole-run recall differences of 2 or less as noise', () => {
+  const a = output([caseOutput('one', 1, 3, 4, 2, 0.5)], true);
+  const b = output([caseOutput('one', 3, 3, 5, 2, 0.5)], true);
+  const text = compare(a, b, ['base', 'next']);
+  const line = (start: string) => text.split('\n').find((l) => l.startsWith(start)) ?? '';
+  assert.match(line('Recall (caught)'), /\+2 \(noise\)$/);
+  assert.match(line('Caught before synthesis'), /\+2 \(noise\)$/);
+  assert.match(line('Findings per PR (mean)'), /\+1\.0$/);
+  assert.match(line('Must-not violations'), /±0$/);
+  assert.match(line('one '), /^one\s+1\/3\s+3\/3\s+\+2\s+4\s+5\s+\+1\s/);
+  assert.match(text, /A recall difference of 2 or less is within one run's variance/);
 });
 
 test('compare reads an output from before precision was measured, and says which cases only one run has', () => {

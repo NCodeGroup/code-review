@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Evals measure precision: each posted blocker and should-fix that matches no expected concern is judged `real`, `not-real` or `unsure` by Opus reading the checkout, with verdicts cached in `evals/verdicts.json`. Each output also reports findings per case (mean, max) and the review's cost per case. `npm run eval:compare` compares two runs, marking differences of 2 or less as noise, and `npm run eval:confirm` adds confirmed verdicts to `cases.json` as expected or must-not-flag concerns ([#51](https://github.com/NCodeGroup/code-review/issues/51)).
+- Evals measure precision: each posted blocker and should-fix that matches no expected concern is judged `real`, `not-real` or `unsure` by Opus reading the checkout, with verdicts cached in `evals/verdicts.json`. Each output also reports findings per case (mean, max) and the review's cost per case. `npm run eval:compare` compares two runs, marking recall differences of 2 or less as noise, and `npm run eval:confirm` adds confirmed verdicts to `cases.json` as expected or must-not-flag concerns ([#51](https://github.com/NCodeGroup/code-review/issues/51)).
 
 ### Changed
 

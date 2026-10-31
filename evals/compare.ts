@@ -1,5 +1,5 @@
 // Compares two eval outputs: recall, precision, findings per pull request and cost, then the per-case differences.
-// One run varies by about 2 findings, so a difference of 2 or less is flagged as noise.
+// Recall varies by about 2 caught concerns from run to run, so a recall difference of 2 or less is flagged as noise.
 //
 //   npm run eval:compare -- <a.json> <b.json>
 //
@@ -29,11 +29,13 @@ export interface EvalOutput {
 
 export const isNoise = (difference: number): boolean => Math.abs(difference) <= noiseLimit;
 
-const signed = (n: number, digits = 0) => `${n > 0 ? '+' : n < 0 ? '-' : '±'}${Math.abs(n).toFixed(digits)}`;
+const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '-' : '±');
+const signed = (n: number, digits = 0) => `${sign(n)}${Math.abs(n).toFixed(digits)}`;
 const money = (n: number) => `$${n.toFixed(2)}`;
-const signedMoney = (n: number) => `${n > 0 ? '+' : n < 0 ? '-' : '±'}$${Math.abs(n).toFixed(2)}`;
-// A count's difference, flagged when it is within the run-to-run noise.
-const countDiff = (n: number, digits = 0) => `${signed(n, digits)}${isNoise(n) ? ' (noise)' : ''}`;
+const signedMoney = (n: number) => `${sign(n)}$${Math.abs(n).toFixed(2)}`;
+// A whole run's recall difference, flagged when it is within the run-to-run variance. Only recall's variance was
+// measured, so the other rows and the per-case rows show the bare difference.
+const recallDiff = (n: number) => `${signed(n)}${isNoise(n) ? ' (noise)' : ''}`;
 const points = (a: number | null | undefined, b: number | null | undefined) =>
   a === null || a === undefined || b === null || b === undefined ? '—' : `${signed(Math.round((b - a) * 100))} pts`;
 
@@ -67,7 +69,7 @@ function totals(output: EvalOutput) {
   };
 }
 
-const optionalDiff = (a: number | undefined, b: number | undefined) => (a === undefined || b === undefined ? '—' : countDiff(b - a));
+const optionalDiff = (a: number | undefined, b: number | undefined) => (a === undefined || b === undefined ? '—' : signed(b - a));
 const optional = (n: number | undefined) => (n === undefined ? '—' : String(n));
 
 export function compare(a: EvalOutput, b: EvalOutput, names: [string, string]): string {
@@ -75,15 +77,15 @@ export function compare(a: EvalOutput, b: EvalOutput, names: [string, string]): 
   const recall = (t: typeof ta) => `${t.caught}/${t.expected} (${percent(t.expected ? t.caught / t.expected : null)})`;
   const overall = table([
     ['', names[0], names[1], 'difference'],
-    ['Recall (caught)', recall(ta), recall(tb), countDiff(tb.caught - ta.caught)],
-    ['Caught before synthesis', String(ta.caughtRaw), String(tb.caughtRaw), countDiff(tb.caughtRaw - ta.caughtRaw)],
+    ['Recall (caught)', recall(ta), recall(tb), recallDiff(tb.caught - ta.caught)],
+    ['Caught before synthesis', String(ta.caughtRaw), String(tb.caughtRaw), recallDiff(tb.caughtRaw - ta.caughtRaw)],
     ['Precision', percent(ta.precision), percent(tb.precision), points(ta.precision, tb.precision)],
     ['Matched + real', optional(ta.truePositives), optional(tb.truePositives), optionalDiff(ta.truePositives, tb.truePositives)],
     ['Blockers and should-fixes', optional(ta.posted), optional(tb.posted), optionalDiff(ta.posted, tb.posted)],
     ['Unsure', optional(ta.unsure), optional(tb.unsure), optionalDiff(ta.unsure, tb.unsure)],
-    ['Must-not violations', String(ta.violations), String(tb.violations), countDiff(tb.violations - ta.violations)],
-    ['Findings per PR (mean)', ta.findingsMean.toFixed(1), tb.findingsMean.toFixed(1), countDiff(tb.findingsMean - ta.findingsMean, 1)],
-    ['Findings per PR (max)', String(ta.findingsMax), String(tb.findingsMax), countDiff(tb.findingsMax - ta.findingsMax)],
+    ['Must-not violations', String(ta.violations),     String(tb.violations), signed(tb.violations - ta.violations)],
+        ['Findings per PR (mean)', ta.findingsMean.toFixed(1), tb.findingsMean.toFixed(1), signed(tb.findingsMean - ta.findingsMean, 1)],
+        ['Findings per PR (max)', String(ta.findingsMax), String(tb.findingsMax), signed(tb.findingsMax - ta.findingsMax)],
     ['Review cost', money(ta.reviewCost), money(tb.reviewCost), signedMoney(tb.reviewCost - ta.reviewCost)],
     ['Review cost per PR', money(ta.reviewCostPerCase), money(tb.reviewCostPerCase), signedMoney(tb.reviewCostPerCase - ta.reviewCostPerCase)],
     ['Total cost with judges', money(ta.totalCost), money(tb.totalCost), signedMoney(tb.totalCost - ta.totalCost)],
@@ -108,7 +110,7 @@ export function compare(a: EvalOutput, b: EvalOutput, names: [string, string]): 
     }),
   ]);
 
-  const notes = [`A difference of ${noiseLimit} or less is within one run's variance: (noise).`];
+  const notes = [`A recall difference of ${noiseLimit} or less is within one run's variance: (noise). Other differences aren't flagged; their variance hasn't been measured.`];
   const onlyIn = (from: Map<string, unknown>, other: Map<string, unknown>) => [...from.keys()].filter((id) => !other.has(id));
   if (onlyIn(ca, cb).length || onlyIn(cb, ca).length) notes.push(`The runs cover different cases; totals aren't comparable. Only in ${names[0]}: ${onlyIn(ca, cb).join(', ') || 'none'}. Only in ${names[1]}: ${onlyIn(cb, ca).join(', ') || 'none'}.`);
   if (ta.precision === undefined || tb.precision === undefined) notes.push('A run without precision fields predates the precision judge: — marks what it lacks, and its review cost includes the eval\'s judges.');
