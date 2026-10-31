@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
-import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, type CaseTally } from '../evals/run.ts';
+import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, writeRunOutput, type CaseTally } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
 import type { CallRecord } from '../src/agent.ts';
 import type { Finding } from '../src/review.ts';
@@ -111,6 +111,27 @@ test('capOutcome fails a run that passed the cap, and records the cap and the ca
 test('capOutcome passes a run within the cap, and records nothing without one', () => {
   assert.deepEqual(capOutcome(8, { costUsd: 8, ran: 2, exceeded: false }, 2, 'smoke'), { record: { maxCostUsd: 8, casesRun: 2, casesSelected: 2 } });
   assert.deepEqual(capOutcome(undefined, { costUsd: 80, ran: 2, exceeded: false }, 2, 'smoke'), {});
+});
+
+test('writeRunOutput writes the output before it fails a run that passed the cap', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'run-output-'));
+  try {
+    const out = path.join(dir, 'out');
+    const output = { summary: { caught: 1 }, cases: [{ id: 'large' }] };
+    assert.throws(() => writeRunOutput(out, 'smoke', output, 'Stopped over --max-cost'), /Stopped over --max-cost/);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'smoke.json'), 'utf8')), output);
+    assert.equal(writeRunOutput(out, 'full', output, undefined), path.join(out, 'full.json'));
+    assert.ok(existsSync(path.join(out, 'full.json')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// main needs Bedrock, so its source is checked: a capped run fails only after writeRunOutput has written the output.
+test("evals/run.ts's main fails a capped run only through writeRunOutput", () => {
+  const source = readFileSync(path.join(root, 'evals', 'run.ts'), 'utf8');
+  assert.ok(source.includes("writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);"));
+  assert.doesNotMatch(source, /throw new Error\(cap\.error\)/);
 });
 
 test('the smoke subset is 4 existing cases, with the must-not case', () => {

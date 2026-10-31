@@ -262,6 +262,16 @@ export function tallyCase(
 // How the output names a finding that raised a concern.
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
+// Writes the run's output to <dir>/<label>.json, then fails a run that passed --max-cost, so the smoke eval still checks
+// and uploads the cases that ran.
+export function writeRunOutput(dir: string, label: string, output: { summary: unknown; cases: unknown[] }, capError: string | undefined): string {
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${label}.json`);
+  writeFileSync(file, JSON.stringify(output, null, 2));
+  if (capError) throw new Error(capError);
+  return file;
+}
+
 async function main(): Promise<void> {
   const maxCost = maxCostFrom(process.argv);
   const precisionOn = parsePrecision(arg('precision'));
@@ -418,9 +428,7 @@ async function main(): Promise<void> {
   if (precision) console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
   console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
   if (shadowNames.size) console.log(`Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`);
-  mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
-  writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
-  if (cap.error) throw new Error(cap.error);
+  writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
