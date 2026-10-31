@@ -318,6 +318,13 @@ prompt, skill, agent or hook it adds under a name the template doesn't use, the 
 (`AGENTS.md`, `README.md`, `code-review.yml`), the files it merges with the project's (`.gitignore`, `.gitattributes`, the
 settings, `ci.yml`, `dependabot.yml`) and the answers file.
 
+The engine also compares each changed file the template would own with NCodeGroup/project-template
+at the `_commit` the head's answers name, reading it through GitHub's API with the run's read-only token. A file that
+differs, such as one edited by hand in the same pull request, is the project's and reviewed as usual. A file the
+template renders from a `.jinja` source matches when its text outside the template's expressions and conditional blocks
+is the template's. When the template can't be read at that commit, every such file is the project's, and the run's log
+says why.
+
 The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
 finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs
 upstream, in NCodeGroup/project-template", up to 20 places with a count of the rest, and the check run has the details.
