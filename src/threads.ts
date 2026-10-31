@@ -83,7 +83,7 @@ const severities: Severity[] = ['blocker', 'should-fix', 'nit'];
 // maintainer dismissed also repeats at any severity, so raising or lowering it doesn't post it again.
 function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: boolean): boolean {
   if (thread.fingerprint === fingerprint(finding)) return true;
-  if (thread.path === finding.file && thread.severity === finding.severity && Math.abs(thread.line - finding.line) <= repeatDistance) return true;
+  if (thread.severity === finding.severity && nearby({ file: thread.path, line: thread.line }, finding)) return true;
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
 }
 

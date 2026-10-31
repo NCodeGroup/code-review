@@ -375,6 +375,20 @@ test('reReviewSummary never says there are no further findings when the earlier 
   assert.equal(summary, "Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness only. The earlier review threads couldn't be read, so their findings weren't checked.");
 });
 
+test('reReviewSummary counts several refuted blockers kept as should-fix questions in the plural', () => {
+  const verification = { refuted: [], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 2, refutedKeptDropped: 0 };
+  const posted: Pick<Finding, 'severity'>[] = [{ severity: 'should-fix' }, { severity: 'should-fix' }];
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted, nits: 0, outside: 0, earlier: [], verification });
+  assert.ok(summary.includes('Verification refuted 2 blockers but kept them as should-fix questions.'), summary);
+});
+
+test('reReviewSummary counts several refuted should-fixes kept as nits in the plural', () => {
+  const verification = { refuted: [], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 0, refutedKeptDropped: 2 };
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted: [], nits: 0, outside: 0, earlier: [], verification });
+  assert.ok(summary.includes("Verification refuted 2 should-fixes but kept them as nits, which aren't posted on a re-review."), summary);
+  assert.doesNotMatch(summary, /No further findings/);
+});
+
 // GraphQL lists a thread's first comment, and its newest ones, which include the first while the thread is short.
 function thread(body: string, replies: { login: string; association: string; body: string }[] = [], resolved = false, login = 'ncode-review'): ThreadNode {
   const first = { author: { login }, authorAssociation: 'NONE', body, url: 'https://github.com/o/r/pull/1#discussion_r9' };
