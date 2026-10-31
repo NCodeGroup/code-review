@@ -96,7 +96,7 @@ export function dropContradicted<T extends Omit<ReviewedFinding, 'id'>>(findings
       kept.push(finding);
       continue;
     }
-    const { id: _id, ...rest } = finding as T & { id?: string };
+    const { id: _id, ...rest } = finding as Omit<ReviewedFinding, 'id'> & { id?: string };
     dropped.push({ finding: rest, ...hit });
   }
   return { kept, dropped };
