@@ -91,7 +91,7 @@ test("review() gives each part's reviewers that part's diff, and marks the other
   assert.match(String(reviewerCalls(requests, 2)[0]!.prompt[0]), /\nsrc\/A\.cs \(\+1 -0\) \[diff in another part\]\nsrc\/B\.cs \(\+1 -0\)\n/);
 });
 
-test("review() gives each reviewer call its part's rules and its own charter", async () => {
+test("review() gives each reviewer call its part's rules and its own charter, and the rule check the rule-check prompt", async () => {
   const { agent, requests } = stubAgent(answers);
   await review(run, twoParts(), charters, () => {}, agent);
 
