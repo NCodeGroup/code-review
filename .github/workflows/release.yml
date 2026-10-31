@@ -59,6 +59,10 @@ jobs:
         with:
           node-version: 24
 
+      # The release's notes are its section of CHANGELOG.md, which must exist, dated, before the tag does.
+      - name: Check the changelog has the version's section
+        run: node tools/release-notes.ts "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+
       # The same checks as CI, on the commit about to be tagged: a tag can't be undone.
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -70,5 +74,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "v$VERSION" \
-            --generate-notes \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             ${{ startsWith(inputs.version, '0.') && '--prerelease' || '' }}
