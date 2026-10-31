@@ -7,7 +7,7 @@ import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
   name: string;
-  status: 'ran' | 'failed';
+  status: 'ran' | 'failed' | 'skipped';
   model: string;
   findingCount: number;
   topSeverity?: Severity;
@@ -107,8 +107,8 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     lines.push(`| synthesis | ${shortModel(results.synthesisModel)} | ${count} | ${severityDot[topSeverity(results.findings)!]} |`);
   }
   for (const r of [...results.reviewers].sort((a, b) => a.name.localeCompare(b.name))) {
-    const top = r.status === 'failed' ? '⚠️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
-    lines.push(`| ${cell(r.name)} | ${shortModel(r.model)} | ${r.status === 'failed' ? 'failed' : r.findingCount} | ${top} |`);
+    const top = r.status === 'failed' ? '⚠️' : r.status === 'skipped' ? '⏭️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
+    lines.push(`| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status === 'ran' ? r.findingCount : r.status} | ${top} |`);
   }
   lines.push('');
   if (results.skipped.length) lines.push(`*Skipped: ${results.skipped.join(', ')}*`, '');
