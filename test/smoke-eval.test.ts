@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
-import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, type CaseTally } from '../evals/run.ts';
-import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, writeRunOutput, type CaseTally } from '../evals/run.ts';
+import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
 import type { CallRecord } from '../src/agent.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -112,6 +113,27 @@ test('capOutcome passes a run within the cap, and records nothing without one', 
   assert.deepEqual(capOutcome(undefined, { costUsd: 80, ran: 2, exceeded: false }, 2, 'smoke'), {});
 });
 
+test('writeRunOutput writes the output before it fails a run that passed the cap', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'run-output-'));
+  try {
+    const out = path.join(dir, 'out');
+    const output = { summary: { caught: 1 }, cases: [{ id: 'large' }] };
+    assert.throws(() => writeRunOutput(out, 'smoke', output, 'Stopped over --max-cost'), /Stopped over --max-cost/);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'smoke.json'), 'utf8')), output);
+    assert.equal(writeRunOutput(out, 'full', output, undefined), path.join(out, 'full.json'));
+    assert.ok(existsSync(path.join(out, 'full.json')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// main needs Bedrock, so its source is checked: a capped run fails only after writeRunOutput has written the output.
+test("evals/run.ts's main fails a capped run only through writeRunOutput", () => {
+  const source = readFileSync(path.join(root, 'evals', 'run.ts'), 'utf8');
+  assert.ok(source.includes("writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);"));
+  assert.doesNotMatch(source, /throw new Error\(cap\.error\)/);
+});
+
 test('the smoke subset is 4 existing cases, with the must-not case', () => {
   const smoke = selectCases(allCases, undefined, 'smoke');
   assert.equal(smoke.length, 4);
@@ -191,6 +213,13 @@ test('smokeCheck passes with a notice and the run alone when there is no baselin
   assert.match(verdict.markdown, /\*\*Passed\*\* with no baseline/);
   assert.match(verdict.markdown, /^large\s+1\/4\s+0\s+2\s+\$1\.00$/m);
   assert.match(verdict.markdown, /Caught 1\/4; must-not violations 0; review cost \$2\.00, with judges \$2\.50\./);
+});
+
+test('smokeCheck fails when the baseline was committed once and is missing now', () => {
+  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4)]), undefined, 'abc1234');
+  assert.deepEqual(verdict.failures, ["evals/baseline-smoke.json is missing, but commit abc1234 deleted it: restore it, or adopt a new baseline from this run's proposed-baseline-smoke.json in a pull request."]);
+  assert.deepEqual(verdict.notices, []);
+  assert.match(verdict.markdown, /\*\*Failed\.\*\*/);
 });
 
 test('smokeCheck keeps model text inside its code block', () => {
@@ -286,6 +315,50 @@ test('checkFiles with no baseline file records no failure and writes the propose
   }
 });
 
+test('checkFiles fails a run whose missing baseline a commit deleted, and still writes the proposed baseline', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
+  try {
+    const runFile = path.join(dir, 'run.json');
+    writeFileSync(runFile, JSON.stringify(regressed));
+    const verdict = checkFiles(runFile, path.join(dir, 'missing-baseline.json'), 'abc1234');
+    assert.equal(verdict.failures.length, 1);
+    assert.match(verdict.failures[0] ?? '', /commit abc1234 deleted it/);
+    assert.ok(existsSync(path.join(dir, proposedName)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Runs git, since what the check reads is a real repository's history.
+test('lastBaselineCommit names the commit that deleted the baseline, none before one was committed, and fails on a shallow checkout', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-history-'));
+  // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], {
+    encoding: 'utf8',
+    env: { PATH: process.env['PATH'] ?? '', ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}), HOME: dir, USERPROFILE: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_NOSYSTEM: '1' },
+  });
+  try {
+    const repo = path.join(dir, 'repo');
+    mkdirSync(path.join(repo, 'evals'), { recursive: true });
+    git(repo, 'init', '-q');
+    writeFileSync(path.join(repo, 'README.md'), 'r\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'first');
+    assert.equal(lastBaselineCommit(repo), undefined);
+    writeFileSync(path.join(repo, 'evals', 'baseline-smoke.json'), '{}\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'adopt');
+    git(repo, 'rm', '-q', 'evals/baseline-smoke.json');
+    git(repo, 'commit', '-q', '-m', 'delete');
+    assert.equal(lastBaselineCommit(repo), git(repo, 'rev-parse', '--short', 'HEAD').trim());
+    const shallow = path.join(dir, 'shallow');
+    git(dir, 'clone', '-q', '--depth', '1', pathToFileURL(repo).href, shallow);
+    assert.throws(() => lastBaselineCommit(shallow), /The checkout is shallow/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('checkFiles records a failure for a run that regressed from the baseline file, and none for a run that matches it', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
   try {
@@ -336,6 +409,52 @@ test('the smoke eval workflow runs only on main and by hand, in the code-review 
   const uses = workflow.match(/uses: .*/g) ?? [];
   assert.ok(uses.length > 0);
   for (const line of uses) assert.match(line, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, line);
+});
+
+// The steps of the smoke eval workflow, read just far enough to see each step's name, id, if, uses and run.
+interface WorkflowStep { name: string; id: string; if: string; uses: string; run: string; text: string }
+function workflowSteps(): WorkflowStep[] {
+  const lines = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  const steps: WorkflowStep[] = [];
+  for (const line of lines.slice(lines.indexOf('    steps:') + 1)) {
+    if (line.startsWith('      - ')) steps.push({ name: '', id: '', if: '', uses: '', run: '', text: '' });
+    const step = steps.at(-1);
+    if (!step || line.trimStart().startsWith('#')) continue;
+    step.text += `${line}\n`;
+    const field = /^ {6}(?:- | {2})([\w-]+): ?(.*)$/.exec(line);
+    if (!field) continue;
+    const [, key = '', value = ''] = field;
+    if (key === 'name' || key === 'id' || key === 'if' || key === 'uses' || key === 'run') step[key] = value;
+  }
+  return steps;
+}
+
+test('the smoke eval workflow uploads the outputs only after the secret scan passes', () => {
+  const steps = workflowSteps();
+  const scan = steps.findIndex((s) => s.id === 'scan');
+  const upload = steps.findIndex((s) => s.uses.startsWith('actions/upload-artifact@'));
+  assert.ok(scan >= 0 && upload >= 0, 'a scan step and an upload step');
+  assert.ok(scan < upload, 'the scan runs before the upload');
+  assert.equal(steps[scan]!.if, '${{ !cancelled() }}');
+  assert.equal(steps[scan]!.run, 'node evals/smoke.ts scan evals/out');
+  assert.ok(steps[scan]!.text.includes('AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}'), 'the scan knows the Bedrock key');
+  assert.equal(steps[upload]!.if, "${{ !cancelled() && steps.scan.outcome == 'success' }}");
+  assert.ok(steps[upload]!.text.includes('path: evals/out/'), 'the upload takes the folder the scan read');
+  assert.equal(upload, steps.length - 1, 'nothing runs after the upload');
+});
+
+test('the smoke eval workflow fails the job when the run or the check fails, and checks out the full history', () => {
+  const steps = workflowSteps();
+  for (const step of steps) assert.doesNotMatch(step.text, /continue-on-error/, step.name || step.uses || step.run);
+  const run = steps.findIndex((s) => s.name === 'Run the smoke subset');
+  const compare = steps.findIndex((s) => s.name === 'Compare with the baseline');
+  assert.ok(run >= 0 && compare > run, 'the check runs after the run');
+  assert.equal(steps[run]!.if, '');
+  assert.ok(steps[run]!.run.includes('--label "$LABEL"'), steps[run]!.run);
+  assert.equal(steps[compare]!.if, '');
+  assert.equal(steps[compare]!.run, 'node evals/smoke.ts check "evals/out/$LABEL.json"');
+  assert.ok(steps[0]!.uses.startsWith('actions/checkout@'), steps[0]!.uses);
+  assert.ok(steps[0]!.text.includes('fetch-depth: 0'), 'the full history');
 });
 
 const evalCase: EvalCase = {

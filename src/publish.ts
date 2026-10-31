@@ -22,6 +22,7 @@ import { postPausedNotice, type Paused } from './pause.ts';
 import { readReviewThreads } from './rereview.ts';
 import { annotations, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 import { publishTeaching } from './teach.ts';
+import { writerCheck } from './writers.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
 
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
 
   await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted));
   if (threads) {
-    const actions = planFollowUps(threads, results, new Set(dismissed.map((d) => d.thread.id)));
+    const actions = await planFollowUps(threads, results, writerCheck(results.repository, token, fetch, writeLog), new Set(dismissed.map((d) => d.thread.id)));
     await followUpThreads((query, variables) => graphql(api, query, variables), actions, [token]);
   }
 

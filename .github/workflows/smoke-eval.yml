@@ -3,7 +3,8 @@
 #
 # It runs the smoke subset in evals/cases.ts with the production guidance, stops and fails past $8, and compares the run
 # with evals/baseline-smoke.json in the job summary: it fails when caught drops by more than 2 or the must-not case is
-# flagged. With no baseline yet, the run is uploaded as the proposed one and the job passes with a notice.
+# flagged. Until a baseline is first committed, the run is uploaded as the proposed one and the job passes with a notice;
+# once one has been, a run without it fails.
 #
 # It uses the organization's Bedrock key in the code-review environment, which only the default branch can use. Never
 # add a pull_request trigger: the key would then run code from any pull request.
@@ -41,6 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The full history, so the check can tell a deleted baseline from one never committed.
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

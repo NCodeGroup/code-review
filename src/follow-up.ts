@@ -1,10 +1,10 @@
 // Closing the loop on the bot's own review threads, in the publish step with the app's token. A re-review that finds an
 // earlier finding fixed, where the thread is outdated or its lines changed, resolves the thread. One that finds it still
-// open after the autopilot replied posts one reply saying why and asking the maintainer, and never a second. It never
-// resolves or answers anyone else's thread. A thread someone with write access dismissed, by resolving it without a code
-// change or with a 👎, counts as already posted, so its finding isn't posted again.
+// open after the autopilot replied, from an account with write access by the engine's writer check (its association, or
+// failing that its permission on the repository), posts one reply saying why and asking the maintainer, and never a
+// second. It never resolves or answers anyone else's thread. A thread someone with write access dismissed, by resolving
+// it without a code change or with a 👎, counts as already posted, so its finding isn't posted again.
 
-import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { writeLog } from './log.ts';
 import { neutralizeMentions } from './markdown.ts';
@@ -13,6 +13,7 @@ import { autopilotPrefix } from './pause.ts';
 import { botAuthor, type ThreadNode } from './rereview.ts';
 import type { Results } from './results.ts';
 import { parsePosted, snapDistance, type PostedThread } from './threads.ts';
+import type { WriterCheck } from './writers.ts';
 
 export const stillOpenMarker = '<!-- ncode-review:still-open -->';
 
@@ -80,11 +81,12 @@ export function stillOpenReply(headSha: string, note: string, maintainer: string
 
 // What to do with each of the bot's unresolved threads after a re-review, from the status it gave each one. A full
 // review gives none, so it does nothing: it can't tell an earlier finding it no longer raises from one it words anew.
-export function planFollowUps(
+export async function planFollowUps(
   threads: ThreadNode[],
   results: Pick<Results, 'headSha' | 'reReview'>,
+  isWriter: WriterCheck,
   dismissed: ReadonlySet<string> = new Set(),
-): FollowUp[] {
+): Promise<FollowUp[]> {
   const reReview = results.reReview;
   if (!reReview) return [];
   const statuses = new Map(reReview.earlier.map((e) => [e.url, e]));
@@ -101,8 +103,9 @@ export function planFollowUps(
     if (status.status !== 'open' || dismissed.has(thread.id)) continue;
     const last = thread.comments.nodes.at(-1);
     const login = last?.author?.login;
-    if (!last || !login || login === botAuthor || !writerAssociations.has(last.authorAssociation) || !last.body.trimStart().startsWith(autopilotPrefix)) continue;
+    if (!last || !login || login === botAuthor || !last.body.trimStart().startsWith(autopilotPrefix)) continue;
     if (alreadyAnswered(thread)) continue;
+    if (!(await isWriter(login, last.authorAssociation))) continue;
     actions.push({ kind: 'reply', thread, id: posted.id, body: stillOpenReply(results.headSha, status.note, login) });
   }
   return actions;

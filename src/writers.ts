@@ -3,7 +3,8 @@
 //
 // author_association alone misses writers: GitHub reports an organization member whose membership is private as
 // CONTRIBUTOR, in event payloads and to the workflow's token. So an author it doesn't name a writer is looked up in the
-// repository's permissions, which the workflow's token can read (metadata: read).
+// repository's permissions, which the workflow's token can read (metadata: read). The loop limit (pause.ts), the open
+// issues synthesis reads (issues.ts) and the replies to the autopilot (follow-up.ts) use the same check.
 
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
@@ -34,7 +35,7 @@ export function writerCheck(repository: string, token: string | undefined, fetch
     } catch (error) {
       reason = errorText(error);
     }
-    log(`::warning::Couldn't read ${login}'s permission (${reason}); their text counts as a non-writer's and stays out of the prompts.`);
+    log(`::warning::Couldn't read ${login}'s permission (${reason}); their text counts as a non-writer's.`);
     return false;
   };
   return async (login, association) => {

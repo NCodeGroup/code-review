@@ -182,10 +182,11 @@ async function main(): Promise<void> {
     await teach({ outDir, repository, number, githubToken, event }, command);
     return;
   }
+  const isWriter = writerCheck(repository, githubToken, fetch, log);
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
   if (!event.comment) {
-    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), log });
+    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), isWriter, log });
     if (pause !== 'review') writeStatus(pausedStatus());
     if (pause === 'paused') {
       writeLog('Paused, and the notice is posted already; comment /review to resume.');
@@ -205,7 +206,6 @@ async function main(): Promise<void> {
   const credentials = takeCredentials();
   const started = Date.now();
   const pullRequestEvent = event.pull_request ?? event.issue;
-  const isWriter = writerCheck(repository, githubToken, fetch, log);
   const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
   const pullRequest = readPullRequest(event, repository, authorCanWrite);
   run.headSha = pullRequest.headSha || undefined;
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
-  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
+  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, isWriter, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
