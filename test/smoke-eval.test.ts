@@ -319,10 +319,10 @@ const evalCase: EvalCase = {
   expect: [], mustNotFlag: [], source: '',
 };
 
-test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', () => {
+test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', async () => {
   const lines: string[] = [];
   const issues: Record<number, object> = { 3: { title: 'Bug', body: 'Steps' }, 4: { pull_request: {}, title: 'PR' } };
-  const pullRequest = casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
+  const pullRequest = await casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
   assert.equal(pullRequest.body, evalCase.body);
   assert.equal(pullRequest.authorCanWrite, true);
   assert.equal(pullRequest.author, 'polewskm');
@@ -333,18 +333,18 @@ test('casePullRequest gives a member\'s description and the issues it closes, le
   assert.deepEqual(lines, []);
 });
 
-test('casePullRequest withholds a non-writer\'s description and reads none of its issues', () => {
+test('casePullRequest withholds a non-writer\'s description and reads none of its issues', async () => {
   const stranger = { ...evalCase, author: 'stranger', authorAssociation: 'CONTRIBUTOR' };
-  const pullRequest = casePullRequest(stranger, 'c'.repeat(40), () => assert.fail('read an issue'), () => {});
+  const pullRequest = await casePullRequest(stranger, 'c'.repeat(40), () => assert.fail('read an issue'), () => {});
   assert.equal(pullRequest.body, undefined);
   assert.equal(pullRequest.bodyWithheld, true);
   assert.equal(pullRequest.authorCanWrite, false);
   assert.deepEqual(pullRequest.issues, []);
 });
 
-test('caseIssues warns with the reason when an issue cannot be read, and goes on', () => {
+test('caseIssues warns with the reason when an issue cannot be read, and goes on', async () => {
   const lines: string[] = [];
-  const issues = caseIssues('o/r', 'Closes #3, closes #4', (number) => {
+  const issues = await caseIssues('o/r', 'Closes #3, closes #4', (number) => {
     if (number === 3) throw new Error('HTTP 404: Not Found');
     return { title: 'Ok', body: 'b' };
   }, (line) => lines.push(line));
