@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
+import { isFromFork } from '../src/command.ts';
 import { pathToFileURL } from 'node:url';
 import { authEnvironment, fetchHeadFor, fetchPullRequestHead } from '../src/fetch-head.ts';
 
@@ -128,4 +129,40 @@ test('fetchHeadFor builds the remote from the server and repository, and refuses
   assert.equal('token' in fetchHeadFor(base), false);
   assert.equal(fetchHeadFor(base).sha, 'a'.repeat(40));
   assert.throws(() => fetchHeadFor({ ...base, headSha: '' }), /no head commit/);
+});
+
+test('fetchPullRequestHead reports a repository with no commit checked out, with the message git gave', () => {
+  const dir = target();
+  mkdirSync(dir, { recursive: true });
+  git(dir, 'init', '-q', '-b', 'main');
+  assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: 'https://github.com/o/r.git', number: 1, sha: 'a'.repeat(40) }), /without a commit checked out\. \(.+\)/s);
+});
+
+test('fetchPullRequestHead sends the token to the remote as a Basic header', async () => {
+  // The server runs in its own process, because the fetch blocks this one while git runs.
+  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer((q,r)=>{console.log('H '+(q.headers.authorization||''));r.statusCode=404;r.end();});s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += String(chunk); });
+  try {
+    while (!/^P \d+$/m.test(output)) await new Promise((resolve) => setTimeout(resolve, 20));
+    const port = /^P (\d+)$/m.exec(output)![1];
+    const dir = target();
+    // The server has no repository, so the fetch fails; what matters is what it received before that.
+    assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'b'.repeat(40), token: 'ghs_tokentoken' }), /Couldn't fetch commit bbbbbbb/);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const headers = [...output.matchAll(/^H (.*)$/gm)].map((match) => match[1]);
+    assert.ok(headers.length > 0, 'the server saw no request');
+    const expected = `basic ${Buffer.from('x-access-token:ghs_tokentoken').toString('base64')}`;
+    assert.ok(headers.every((value) => value === expected), headers.join(' | '));
+  } finally {
+    server.kill();
+  }
+});
+
+test('isFromFork treats a head in another repository, or in none, as a fork', () => {
+  assert.equal(isFromFork({ head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review'), false);
+  assert.equal(isFromFork({ head: { repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork({ head: { repo: null } }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork({ head: {} }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork(undefined, 'NCodeGroup/code-review'), true);
 });

@@ -51,7 +51,8 @@ export function authEnvironment(remoteUrl: string, token: string | undefined): R
 
 // An empty folder stands in for the home directory, the hooks folder and the global configuration, so nothing a runner
 // or the checked-out code could hold there is read.
-function git(cwd: string, empty: string, args: string[], extra: Record<string, string> = {}): string {
+function git(where: { cwd: string; empty: string }, args: string[], extra: Record<string, string> = {}): string {
+  const { cwd, empty } = where;
   return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -69,9 +70,10 @@ function git(cwd: string, empty: string, args: string[], extra: Record<string, s
   }).trim();
 }
 
-function has(cwd: string, empty: string, sha: string): boolean {
+// Any failure counts as "not there": the fetch by name that follows reports a broken repository with git's own message.
+function has(where: { cwd: string; empty: string }, sha: string): boolean {
   try {
-    git(cwd, empty, ['cat-file', '-e', `${sha}^{commit}`]);
+    git(where, ['cat-file', '-e', `${sha}^{commit}`]);
     return true;
   } catch {
     return false;
@@ -82,13 +84,14 @@ export function fetchPullRequestHead(options: FetchHead): void {
   if (!/^[0-9a-f]{40}$/i.test(options.sha)) throw new Error(`"${options.sha}" isn't a full commit SHA.`);
   if (!Number.isInteger(options.number) || options.number < 1) throw new Error(`"${options.number}" isn't a pull request number.`);
   const empty = mkdtempSync(path.join(os.tmpdir(), 'code-review-git-'));
+  const where = { cwd: options.path, empty };
   try {
     if (existsSync(path.join(options.path, '.git'))) {
       let head: string;
       try {
-        head = git(options.path, empty, ['rev-parse', 'HEAD']);
-      } catch {
-        throw new Error(`${options.path} is a repository without a commit checked out.`);
+        head = git(where, ['rev-parse', 'HEAD']);
+      } catch (error) {
+        throw new Error(`${options.path} is a repository without a commit checked out. (${error instanceof Error ? error.message : String(error)})`);
       }
       if (head.toLowerCase() !== options.sha.toLowerCase()) {
         throw new Error(`${options.path} is checked out at ${head.slice(0, 7)}, not at the pull request's head ${options.sha.slice(0, 7)}; the head moved or the checkout is stale. Comment /review to review the latest commit.`);
@@ -99,14 +102,14 @@ export function fetchPullRequestHead(options: FetchHead): void {
     if (readdirSync(options.path).length) throw new Error(`${options.path} isn't empty and isn't a repository.`);
     try {
       const auth = authEnvironment(options.remoteUrl, options.token);
-      git(options.path, empty, ['init', '-q']);
-      git(options.path, empty, ['remote', 'add', 'origin', options.remoteUrl]);
+      git(where, ['init', '-q']);
+      git(where, ['remote', 'add', 'origin', options.remoteUrl]);
       // The branches give the merge base its history; the pull request's own ref carries the head, which a pull request
       // may not have on any branch yet.
-      git(options.path, empty, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], auth);
+      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], auth);
       // A push after the event leaves the event's commit off both, so ask for it by name.
-      if (!has(options.path, empty, options.sha)) git(options.path, empty, ['fetch', '-q', '--no-tags', 'origin', options.sha], auth);
-      git(options.path, empty, ['checkout', '-q', '--force', '--detach', options.sha]);
+      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], auth);
+      git(where, ['checkout', '-q', '--force', '--detach', options.sha]);
     } catch (error) {
       // A half-made repository would be taken for a checkout by the next attempt.
       rmSync(options.path, { recursive: true, force: true });
