@@ -140,6 +140,22 @@ test('dropContradicted matches a bare file name only when one changed file has i
   assert.equal(dropContradicted([finding({ problem: 'src/b/index.ts is unchanged.' })], files).dropped[0]?.file, 'src/b/index.ts');
 });
 
+test('dropContradicted matches a file name with no dot or slash only in backticks or quotes', () => {
+  const files = ['auth', 'lib/token', 'src/command.ts'];
+  const kept = [
+    'The diff contains no changes to auth, so the login path is never rechecked.',
+    'The diff does not include validation of the token.',
+    'There are no changes to token handling.',
+  ];
+  for (const problem of kept) assert.equal(dropContradicted([finding({ problem })], files).dropped.length, 0, problem);
+  const claims: [string, string][] = [
+    ['The diff never touches `auth`.', 'auth'],
+    ["'token' is unchanged.", 'lib/token'],
+    ['There are no changes to lib/token.', 'lib/token'],
+  ];
+  for (const [problem, file] of claims) assert.equal(dropContradicted([finding({ problem })], files).dropped[0]?.file, file, problem);
+});
+
 const raw = (title: string, severity: Finding['severity'], problem = 'p') => ({ ...finding({ title, severity, problem }), id: `R-${title}`, reviewer: 'tests' });
 const contradicted = 'The diff contains no changes to `command.ts`.';
 

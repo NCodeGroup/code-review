@@ -21,11 +21,17 @@ function baseName(file: string): string {
 }
 
 // The file named by its path, or by its name when no other changed file has that name, in backticks or quotes or as
-// ./name, but not as part of a longer path or name, nor as "name's".
+// ./name, but not as part of a longer path or name, nor as "name's". A name with no dot or slash, such as `auth`, counts
+// only in backticks or quotes: the author picks the file names, and a bare word would match ordinary prose.
 function mention(file: string, nameIsUnique: boolean): string {
   const name = baseName(file);
-  const names = nameIsUnique && name !== file ? [escape(file), escape(name)] : [escape(file)];
-  return String.raw`[\x60'"]?(?<![\w./-])(?:\.\/)?(?:${names.join('|')})(?![\w/-]|\.\w|'s\b)[\x60'"]?`;
+  const names = nameIsUnique && name !== file ? [file, name] : [file];
+  const paths = names.filter((n) => /[./]/.test(n)).map(escape);
+  const words = names.filter((n) => !/[./]/.test(n)).map(escape);
+  const forms: string[] = [];
+  if (paths.length) forms.push(String.raw`[\x60'"]?(?<![\w./-])(?:\.\/)?(?:${paths.join('|')})(?![\w/-]|\.\w|'s\b)[\x60'"]?`);
+  if (words.length) forms.push(String.raw`[\x60'"](?:\.\/)?(?:${words.join('|')})[\x60'"]`);
+  return `(?:${forms.join('|')})`;
 }
 
 const changes = String.raw`(?:changes?|hunks?|diffs?|edits?|modifications?)`;

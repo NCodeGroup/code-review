@@ -449,7 +449,8 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       },
     );
     calls.push(synthesis.record);
-    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, gathered.files.map((f) => f.path), limit));
+    const changedFiles = gathered.files.map((f) => f.path);
+    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, changedFiles, limit));
     if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
   } else {
     summary = 'No findings.';

@@ -114,6 +114,7 @@ test('mergeSynthesis adds back every reviewer finding synthesis left out, most s
     ['F3', 'style', ['conventions']],
   ]);
   assert.equal(mergeSynthesis([], raw, 2).length, 2);
+  assert.equal(mergeSynthesis([], raw).length, raw.length);
 });
 
 test('mergeSynthesis does not count a finding in another file as merged', () => {
