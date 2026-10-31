@@ -49,8 +49,7 @@ export function creditsRanOut(message: string): boolean {
   return /credit balance/i.test(message);
 }
 
-// Why a run moved to Bedrock partway: the refused call's trace outcome and the check run's "Switched to Bedrock" note.
-export const creditsRanOutReason = 'credits ran out';
+export { creditsRanOutReason } from './credits.ts';
 
 // A one-token call to Anthropic tells whether the credits are there. A refusal for any reason falls back to Bedrock
 // when the run has its key and Bedrock accepts it.

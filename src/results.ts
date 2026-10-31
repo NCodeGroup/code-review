@@ -3,6 +3,8 @@
 import type { CallRecord } from './agent.ts';
 import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
+import { creditsRanOutReason } from './credits.ts';
+import { depthLabel, type ReviewDepth } from './depth.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 import type { RefutedFinding } from './verify.ts';
@@ -53,8 +55,16 @@ export interface Results {
   costUsd: number;
   durationMs: number;
   notShown: string[];
+  // Changed files the repository's config.yml skip: leaves out of the review.
+  skippedByConfig?: string[];
+  // What in the repository's .github/code-review/ settings couldn't be used.
+  warnings?: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
+  // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.
+  depth?: ReviewDepth;
+  // The changed files config.yml's sensitive: names, which made the review deep.
+  sensitiveFiles?: string[];
   // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
   // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
   recordedHead?: string;
@@ -96,9 +106,23 @@ function switchNote(results: Results): string {
   return results.switchedToBedrock ? ` Switched to Bedrock partway: ${results.switchedToBedrock}.` : '';
 }
 
-// "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5".
+// "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5", and a list of models as a list,
+// each once: a run that switched to Bedrock partway ran one tier on both providers' ids.
 export function shortModel(model: string): string {
-  return model.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '');
+  return [
+    ...new Set(
+      model
+        .split(', ')
+        .map((m) => m.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '')),
+    ),
+  ].join(', ');
+}
+
+// The models a role's calls ran on, once each, in the order they ran: a deep review's reviewer runs on Opus for the
+// parts with a sensitive file and on its usual model for the rest. A call the Claude API refused for credits, and that
+// reran on Bedrock, didn't run on its model.
+export function callModels(calls: (Pick<CallRecord, 'role' | 'model'> & Partial<Pick<CallRecord, 'outcome'>>)[], role: string): string {
+  return [...new Set(calls.filter((c) => c.role === role && c.outcome !== creditsRanOutReason).map((c) => c.model))].join(', ');
 }
 
 // Marks the bot's summary comments on a pull request; each review posts a new one and collapses the earlier ones.
@@ -286,13 +310,25 @@ export function checkSummary(results: Results): string {
     '',
     `Shadow mode: these findings appear only in this check run. ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
   ];
+  const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
+  if (results.depth === 'deep') {
+    lines.push('', `**${depthLabel.deep}**: ${files(results.sensitiveFiles ?? [])} ${(results.sensitiveFiles ?? []).length === 1 ? 'matches' : 'match'} \`sensitive:\` in \`.github/code-review/config.yml\`, so \`correctness\` and \`security\` reviewed the parts of the diff with them on Opus, unless \`CODE_REVIEW_TIERS\` names them, and verification, when it's on, checked the findings in them on Opus.`);
+  } else if (results.depth === 'light') {
+    lines.push('', `**${depthLabel.light}**: every changed file is documentation, a changelog or part of a template update, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
+  }
   const upstreamTotal = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
   if (upstreamTotal) {
     const one = upstreamTotal === 1;
     lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
   }
   if (results.notShown.length) {
-    lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
+    lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
+  }
+  if (results.skippedByConfig?.length) {
+    lines.push('', `Skipped by config (\`skip:\` in \`.github/code-review/config.yml\`): ${files(results.skippedByConfig)}.`);
+  }
+  if (results.warnings?.length) {
+    lines.push('', '**Settings warnings** (the review ran without what each one names):', '', ...results.warnings.slice(0, 20).map((w) => `- ⚠️ ${cell(w)}`));
   }
   const dropped = results.dropped.length;
   if (dropped) {
@@ -338,7 +374,7 @@ export function checkText(results: Results): string {
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
   out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
   for (const role of ['selection', 'synthesis', 'verification']) {
-    if (costs.has(role)) out.push(`| ${role} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+    if (costs.has(role)) out.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
   if (results.dropped.length) {
     out.push('', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', '');
@@ -395,9 +431,9 @@ function shadowSection(results: Results, costs: Map<string, number>, room: numbe
 // The live and the shadow reviewers' tables share one row format.
 function reviewerTable(reviewers: ReviewerResult[], costs: Map<string, number>): string[] {
   return [
-    '| Reviewer | Status | Findings | Cost |',
-    '|---|---|---|---|',
-    ...reviewers.map((r) => `| ${cell(r.name)} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
+    '| Reviewer | Model | Status | Findings | Cost |',
+    '|---|---|---|---|---|',
+    ...reviewers.map((r) => `| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
   ];
 }
 

@@ -30,7 +30,7 @@ function stubAgent(answer: (request: AgentRequest) => { output?: unknown; error?
 const diff = ['diff --git a/src/A.cs b/src/A.cs', '--- a/src/A.cs', '+++ b/src/A.cs', '@@ -1,1 +1,2 @@', ' line', '+added', ''].join('\n');
 
 const gathered = (number = 7, headSha = 'a'.repeat(40)): Gathered => ({
-  pullRequest: { repository: 'o/r', number, title: 'Add a line', author: 'someone', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b'.repeat(40), headSha },
+  pullRequest: { repository: 'o/r', number, title: 'Add a line', author: 'someone', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b'.repeat(40), headSha },
   mergeBase: 'b'.repeat(40),
   files: [{ path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true }],
   diff,
@@ -40,6 +40,12 @@ const gathered = (number = 7, headSha = 'a'.repeat(40)): Gathered => ({
   guidance: [],
   decisions: [],
   commits: [],
+  sensitive: [],
+  skippedByConfig: [],
+  policies: [],
+  tiers: {},
+  projectReviewers: [],
+  warnings: [],
 });
 
 const charters = (performance: string, shadowPrompts: Partial<Record<PromptName, string>> = {}): Charters => ({
@@ -153,7 +159,7 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
   const [posted, shadowSection] = text.split('<details><summary>Shadow findings (not posted)</summary>');
   assert.ok(shadowSection, 'the check run has a shadow section');
   assert.doesNotMatch(posted!, /Shadow blocker|performance/);
-  assert.match(shadowSection, /\| performance \| ran \| 1 \| \$0\.010 \|/);
+  assert.match(shadowSection, /\| performance \| haiku-5-5 \| ran \| 1 \| \$0\.010 \|/);
   assert.match(shadowSection, /🔴 Blocker · `src\/A\.cs:2` · \*\*Shadow blocker\*\* Shadow blocker problem/);
   assert.match(shadowSection, /<\/details>$/);
   assert.doesNotMatch(text, /```suggestion|shadow replacement/);
@@ -222,7 +228,7 @@ test("with verification on, a shadow reviewer's findings are never verified, ref
   assert.deepEqual(results.refuted, []);
   const [posted, shadowSection] = checkText(results).split('<details><summary>Shadow findings (not posted)</summary>');
   assert.doesNotMatch(posted!, /Shadow blocker|Refuted by verification/);
-  assert.match(posted!, /\| verification \| ran \| \| \$0\.010 \|/);
+  assert.match(posted!, /\| verification \| sonnet-5-5 \| ran \| \| \$0\.010 \|/);
   assert.match(shadowSection!, /Shadow blocker/);
 });
 
@@ -420,7 +426,7 @@ test('a shadow reviewer or shadow prompt that fails leaves the live review as it
   const results = buildResults(outcome, context);
   const [posted, shadowSection] = checkText(results).split('<details><summary>Shadow findings (not posted)</summary>');
   assert.doesNotMatch(posted!, /is down|performance/);
-  assert.match(shadowSection!, /\| performance \| failed: shadow reviewer is down \| 0 \| \$0\.010 \|/);
+  assert.match(shadowSection!, /\| performance \| haiku-5-5 \| failed: shadow reviewer is down \| 0 \| \$0\.010 \|/);
   assert.match(shadowSection!, /`prompts\/synthesis\.shadow\.md`/);
   assert.doesNotMatch(summaryComment(results, 'https://check', 'https://help'), /is down|performance/);
 });

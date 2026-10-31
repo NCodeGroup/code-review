@@ -15,7 +15,7 @@ import { AnthropicTokenSource, secretValues, type Credentials } from './credenti
 import { required, take } from './env.ts';
 import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
-import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { assertNoSecrets } from './outputs.ts';
@@ -26,6 +26,7 @@ import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
 import type { Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
+import { readClosedIssues, writerCheck } from './writers.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,22 +45,6 @@ function writeStatus(status: RunStatus): void {
   writeFileSync(path.join(outDir, 'status.json'), record.json);
   const output = process.env['GITHUB_OUTPUT'];
   if (output && record.output) appendFileSync(output, record.output);
-}
-
-// The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
-// text could steer the review.
-async function readClosedIssues(repository: string, numbers: number[], token: string | undefined) {
-  const issues: { number: number; title: string; body: string }[] = [];
-  for (const number of numbers) {
-    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}`, {
-      headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    });
-    if (!response.ok) continue;
-    const issue = (await response.json()) as { title?: string; body?: string; author_association?: string; pull_request?: unknown };
-    if (issue.pull_request || !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(issue.author_association ?? '')) continue;
-    issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
-  }
-  return issues;
 }
 
 // The model credentials, taken out of this process's environment so nothing started later inherits them, and kept in
@@ -212,17 +197,23 @@ async function main(): Promise<void> {
   const credentials = takeCredentials();
   const log = (line: string) => console.log(line);
   const started = Date.now();
-  const pullRequest = readPullRequest(event, repository);
+  const pullRequestEvent = event.pull_request ?? event.issue;
+  const isWriter = writerCheck(repository, githubToken);
+  const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
+  const pullRequest = readPullRequest(event, repository, authorCanWrite);
   run.headSha = pullRequest.headSha || undefined;
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
-  pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
+  const closedNumbers = closedIssues(pullRequest.body);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
+  log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
+  for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
-  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
+  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
   // A pull request the bot reviewed before gets a re-review of what changed since then.
   const last = await reviewedHead(pullRequest.number);
   const plan = await planReReview({
@@ -250,6 +241,7 @@ async function main(): Promise<void> {
       full: () => review(agentRun, gathered, loadCharters(root), log),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
+    for (const warning of outcome.warnings) log(`::warning::${warning}`);
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = buildResults(outcome, {
       repository,
@@ -261,6 +253,8 @@ async function main(): Promise<void> {
       ...(gathered.template ? { template: gathered.template.repository } : {}),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
+      skippedByConfig: gathered.skippedByConfig,
+      warnings: gathered.warnings,
       diff: gathered.diff,
       recordedHead,
     });
@@ -272,6 +266,12 @@ async function main(): Promise<void> {
       shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
       files: gathered.files,
       conventionsChars: gathered.conventions.length,
+      settings: {
+        policies: gathered.policies,
+        projectReviewers: gathered.projectReviewers.map((r) => ({ name: r.name, paths: r.paths, ...(r.shadow ? { shadow: true } : {}) })),
+        sensitive: gathered.sensitive,
+        tiers: gathered.tiers,
+      },
       ...reReviewTrace,
     };
     writeForPublish(outDir, { 'results.json': results, 'trace.json': trace }, secretValues(credentials), 'reviewed');
