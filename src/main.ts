@@ -12,7 +12,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { botLogin, reviewedHead, summaryMarker, topSeverity, type Results } from './results.ts';
+import { reviewedHead, summaryComments, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -35,19 +35,20 @@ function changedLinesFor(diff: string, files: string[]): Record<string, number[]
   return Object.fromEntries([...new Set(files)].map((file) => [file, [...(all.get(file) ?? [])]]));
 }
 
-// The commit the bot's summary comment says it last reviewed, or undefined when there's none or it can't be read.
+// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it can't be read.
 async function lastReviewedHead(repository: string, number: number, token: string | undefined): Promise<string | undefined> {
+  const all: { body?: string; user?: { login?: string } }[] = [];
   for (let page = 1; page <= 10; page++) {
     const response = await fetch(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=100&page=${page}`, {
       headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     });
     if (!response.ok) return undefined;
     const comments = (await response.json()) as { body?: string; user?: { login?: string } }[];
-    const mine = comments.find((c) => c.user?.login === botLogin && c.body?.startsWith(summaryMarker));
-    if (mine) return reviewedHead(mine.body ?? '');
-    if (comments.length < 100) return undefined;
+    all.push(...comments);
+    if (comments.length < 100) break;
   }
-  return undefined;
+  const newest = summaryComments(all).at(-1);
+  return newest ? reviewedHead(newest.body ?? '') : undefined;
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its
