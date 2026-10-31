@@ -144,7 +144,7 @@ holds decides:
 
 | Outcome | When |
 |---|---|
-| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. |
+| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. |
 | dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". |
 | acknowledged | A 👍 or a reply from a writer, without a change. |
 | ignored | None of these. |

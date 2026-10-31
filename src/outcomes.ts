@@ -120,14 +120,17 @@ export interface ComparedFile {
   patch?: string;
 }
 
+// GitHub's comparison of two commits lists this many files at most, and pages only its commits.
+export const maxComparedFiles = 300;
+
 // Whether a comparison from a finding's commit to the closing head changed the finding's line. A file the comparison
-// doesn't list didn't change; one listed without a patch, as GitHub does for a large or binary diff, counts as unchanged,
-// so the thread's own state decides.
-export function lineChanged(files: ComparedFile[], file: string, line: number): boolean {
+// doesn't list didn't change. Undefined when the comparison can't tell: the file is listed without a patch, as GitHub
+// does for a large or binary diff, or isn't listed in a comparison that reached GitHub's file limit.
+export function lineChanged(files: ComparedFile[], file: string, line: number): boolean | undefined {
   const entry = files.find((f) => f.filename === file || (f.status === 'renamed' && f.previous_filename === file));
-  if (!entry) return false;
+  if (!entry) return files.length >= maxComparedFiles ? undefined : false;
   if (entry.status === 'removed') return true;
-  return entry.patch !== undefined && patchTouches(entry.patch, line);
+  return entry.patch === undefined ? undefined : patchTouches(entry.patch, line);
 }
 
 export interface FindingOutcome {
@@ -334,8 +337,13 @@ export async function collectOutcomes(
       if (!login || botLogins.has(login) || (reaction.content !== 'THUMBS_UP' && reaction.content !== 'THUMBS_DOWN')) continue;
       reactions.push({ content: reaction.content, writer: await isWriter(login) });
     }
+    // When the comparison can't tell, GitHub's own judgment that the code under the thread changed stands in.
+    const changed = files && first.originalLine !== null ? lineChanged(files, thread.path, first.originalLine) : false;
+    if (changed === undefined) {
+      log(`::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${thread.path} changed; its thread being outdated decides.`);
+    }
     const outcome = classify({
-      linesChanged: !!files && first.originalLine !== null && lineChanged(files, thread.path, first.originalLine),
+      linesChanged: changed ?? thread.isOutdated,
       isResolved: thread.isResolved,
       isOutdated: thread.isOutdated,
       reactions,
