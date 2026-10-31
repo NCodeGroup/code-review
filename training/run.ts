@@ -3,13 +3,16 @@
 //
 //   node training/run.ts --repo NCodeGroup/Identity --checkout C:\GitHub\NCode\Identity [--maintainer polewskm]
 //   node training/run.ts --generalize-only [--holdout-only]
+//   node training/run.ts --retag
 //
 // 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The result
 //    is saved under training/extracted/<repository>/ with the source's content hash, so a rerun reads only sources that
-//    changed.
+//    changed. An instruction file's rules also keep the file's applyTo globs.
 // 2. Generalize: Opus merges every repository's extracted rules, topic by topic, into guidance/<topic>.md, which the
 //    engine gives the conventions reviewer in every repository. training/feedback.md holds the maintainer's
-//    corrections, and every generalization follows them.
+//    corrections, and every generalization follows them. Each rule learned only from instruction files is tagged with
+//    the files they apply to ("*Applies to:* `**/*.cs`"), and the engine gives it only to reviews that change such a
+//    file. --retag rewrites those tags in guidance/ and guidance-holdout/ from the rules' sources, without a model.
 // 3. Hold out: the same generalization, without the review comments and decision records of the eval cases' pull
 //    requests, into guidance-holdout/. The evals use it, so a catch shows what the bot learned in general rather than
 //    the answer to that case. Production uses guidance/.
@@ -22,6 +25,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { appliesToLabel, applyToGlobs, bulletGlobs } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { mapWithConcurrency } from '../src/review.ts';
 
@@ -32,7 +36,8 @@ const topics = [
   'dependency-injection', 'persistence', 'code-organization', 'documentation', 'performance',
 ] as const;
 
-interface Source { kind: string; id: string; label: string; text: string }
+// applyTo: the globs of the instruction file a source comes from, as its frontmatter lists them.
+interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
 interface Rule {
   statement: string;
   why: string;
@@ -43,7 +48,7 @@ interface Rule {
   applies_to: string[];
   enforced_by_tools: boolean;
 }
-interface Extracted { hash: string; promptHash: string; label: string; rules: Rule[] }
+interface Extracted { hash: string; promptHash: string; label: string; applyTo?: string[]; rules: Rule[] }
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -103,8 +108,10 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
   const instructions = path.join(checkout, '.github', 'instructions');
   if (existsSync(instructions)) {
     for (const name of readdirSync(instructions).filter((n) => n.endsWith('.instructions.md')).sort()) {
-      chunkByHeading(readFileSync(path.join(instructions, name), 'utf8')).forEach((text, i) =>
-        sources.push({ kind: 'instructions', id: `${name.replace('.instructions.md', '')}-${i + 1}`, label: `${repoName} ${name}`, text }),
+      const file = readFileSync(path.join(instructions, name), 'utf8');
+      const applyTo = applyToGlobs(file);
+      chunkByHeading(file).forEach((text, i) =>
+        sources.push({ kind: 'instructions', id: `${name.replace('.instructions.md', '')}-${i + 1}`, label: `${repoName} ${name}`, text, ...(applyTo.length ? { applyTo } : {}) }),
       );
     }
   }
@@ -193,6 +200,12 @@ const guidanceSchema = {
   additionalProperties: false,
 };
 
+function saveExtracted(file: string, { hash, promptHash, label, applyTo, rules }: Extracted): void {
+  mkdirSync(path.dirname(file), { recursive: true });
+  const saved: Extracted = { hash, promptHash, label, ...(applyTo?.length ? { applyTo } : {}), rules };
+  writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`);
+}
+
 async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[]): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'extract.md'), 'utf8');
   const promptHash = sha(prompt);
@@ -202,7 +215,12 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
     const hash = sha(source.text);
     if (existsSync(file)) {
       const saved = JSON.parse(readFileSync(file, 'utf8')) as Extracted;
-      if (saved.hash === hash && saved.promptHash === promptHash) { reused++; return; }
+      if (saved.hash === hash && saved.promptHash === promptHash) {
+        // An instruction file whose applyTo changed and whose text didn't keeps its rules with the new globs.
+        if ((saved.applyTo ?? []).join(',') !== (source.applyTo ?? []).join(',')) saveExtracted(file, { ...saved, applyTo: source.applyTo ?? [] });
+        reused++;
+        return;
+      }
     }
     const result = await runAgent<{ rules: Rule[] }>(run, {
       role: `extract:${source.kind}`,
@@ -216,29 +234,99 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
     });
     calls.push(result.record);
     if (!result.output) { failed++; console.log(`  ${source.label}: failed (${result.error})`); return; }
-    mkdirSync(path.dirname(file), { recursive: true });
-    const saved: Extracted = { hash, promptHash, label: source.label, rules: result.output.rules };
-    writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`);
+    saveExtracted(file, { hash, promptHash, label: source.label, ...(source.applyTo ? { applyTo: source.applyTo } : {}), rules: result.output.rules });
     console.log(`  ${source.label}: ${result.output.rules.length} rules, $${result.record.costUsd.toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
 }
 
-function loadExtracted(): { rule: Rule; source: string }[] {
-  const all: { rule: Rule; source: string }[] = [];
+function readExtracted(): Extracted[] {
+  const all: Extracted[] = [];
   const base = path.join(root, 'training', 'extracted');
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith('.json')) {
-        const saved = JSON.parse(readFileSync(full, 'utf8')) as Extracted;
-        for (const rule of saved.rules) all.push({ rule, source: saved.label });
-      }
+      else if (entry.name.endsWith('.json')) all.push(JSON.parse(readFileSync(full, 'utf8')) as Extracted);
     }
   };
   if (existsSync(base)) walk(base);
   return all;
+}
+
+function loadExtracted(): { rule: Rule; source: string }[] {
+  return readExtracted().flatMap((saved) => saved.rules.map((rule) => ({ rule, source: saved.label })));
+}
+
+// The files each instruction-file source applies to, by its label, as globs for any NCodeGroup repository.
+export function sourceScopes(extracted: Pick<Extracted, 'label' | 'applyTo'>[] = readExtracted()): Map<string, string[]> {
+  const scopes = new Map<string, string[]>();
+  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, applyTo.map(generalGlob));
+  return scopes;
+}
+
+// One repository's folders don't carry over to another, so a glob keeps only its file pattern: src/**/*.cs and
+// tests/**/*.cs both become **/*.cs.
+export function generalGlob(glob: string): string {
+  const name = glob.split('/').pop()!;
+  return name === '**' || name === '' ? '**' : `**/${name}`;
+}
+
+// The globs a learned rule applies to: those of the instruction files it was learned from. A rule with any source that
+// applies to every file, or isn't an instruction file (a decision record, a review, a document), applies to every file,
+// and gets no globs.
+export function ruleScope(sources: string[], scopes: Map<string, string[]>): string[] {
+  const globs = new Set<string>();
+  for (const source of sources) {
+    const scope = scopes.get(source);
+    if (!scope || scope.includes('**')) return [];
+    for (const glob of scope) globs.add(glob);
+  }
+  return [...globs].sort();
+}
+
+export interface GuidanceRule { statement: string; why: string; check: string; sources: string[]; note?: string }
+
+// One guidance bullet: "- **statement** why *Check:* check *Note:* note *Applies to:* `glob` <sub>sources</sub>".
+export function formatBullet(rule: GuidanceRule, globs: string[]): string {
+  const scope = globs.length ? ` ${appliesToLabel} ${globs.map((g) => `\`${g}\``).join(', ')}` : '';
+  return `- **${rule.statement}** ${rule.why} *Check:* ${rule.check}${rule.note ? ` *Note:* ${rule.note}` : ''}${scope} <sub>${rule.sources.join('; ')}</sub>`;
+}
+
+export function parseBullet(line: string): GuidanceRule | undefined {
+  const match = /^- \*\*(.+?)\*\* (.*?) \*Check:\* (.*?)(?: \*Note:\* (.*?))?(?: \*Applies to:\* (?:`[^`]+`(?:, )?)+)? <sub>(.*)<\/sub>$/.exec(line);
+  if (!match) return undefined;
+  const [, statement, why, check, note, sources] = match;
+  return { statement: statement!, why: why!, check: check!, ...(note ? { note } : {}), sources: sources!.split('; ') };
+}
+
+// Rewrites each bullet's "*Applies to:*" tag in a guidance file from its sources, with the same formatter a training
+// run uses, and changes nothing else. Refuses a bullet the formatter wouldn't write back exactly as it was.
+export function retagGuidance(text: string, scopes: Map<string, string[]>): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      if (!line.startsWith('- **')) return line;
+      const rule = parseBullet(line);
+      if (!rule || formatBullet(rule, bulletGlobs(line)) !== line) throw new Error(`Can't retag this bullet: ${line.slice(0, 120)}`);
+      return formatBullet(rule, ruleScope(rule.sources, scopes));
+    })
+    .join('\n');
+}
+
+function retag(folders: string[]): void {
+  const scopes = sourceScopes();
+  for (const folder of folders) {
+    const dir = path.join(root, folder);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir).filter((n) => n.endsWith('.md')).sort()) {
+      const file = path.join(dir, name);
+      const text = readFileSync(file, 'utf8');
+      const retagged = retagGuidance(text, scopes);
+      if (retagged !== text) writeFileSync(file, retagged);
+      console.log(`  ${folder}/${name}: ${retagged.split('\n').filter((l) => l.startsWith('- **') && bulletGlobs(l).length).length} tagged rules`);
+    }
+  }
 }
 
 const titles: Record<string, string> = {
@@ -254,6 +342,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
   const feedbackFile = path.join(root, 'training', 'feedback.md');
   const feedback = existsSync(feedbackFile) ? readFileSync(feedbackFile, 'utf8') : '';
   const usable = loadExtracted().filter(({ rule, source }) => rule.scope !== 'repository' && !rule.enforced_by_tools && !exclude.has(source));
+  const scopes = sourceScopes();
   console.log(`${folder}/: ${usable.length} rules${exclude.size ? `, holding out ${exclude.size} sources` : ''}`);
   const out = path.join(root, folder);
   rmSync(out, { recursive: true, force: true });
@@ -262,7 +351,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
     const rules = usable.filter(({ rule }) => rule.topic === topic);
     if (!rules.length) return;
     const input = rules.map(({ rule, source }) => ({ ...rule, source }));
-    const result = await runAgent<{ description: string; applies_to: string[]; rules: { statement: string; why: string; check: string; sources: string[]; note?: string }[] }>(run, {
+    const result = await runAgent<{ description: string; applies_to: string[]; rules: GuidanceRule[] }>(run, {
       role: `generalize:${topic}`,
       tier: 'opus',
       systemPrompt: prompt,
@@ -285,7 +374,7 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       '',
       '<!-- Generated by `npm run train` from the sources each rule cites. To change a rule for good, change its source or say so in training/feedback.md; the next training run regenerates this file. -->',
       '',
-      ...final.map((r) => `- **${r.statement}** ${r.why} *Check:* ${r.check}${r.note ? ` *Note:* ${r.note}` : ''} <sub>${r.sources.join('; ')}</sub>`),
+      ...final.map((r) => formatBullet(r, ruleScope(r.sources, scopes))),
       '',
     ];
     writeFileSync(path.join(out, `${topic}.md`), lines.join('\n'));
@@ -294,6 +383,10 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--retag')) {
+    retag(['guidance', 'guidance-holdout']);
+    return;
+  }
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to train on Bedrock.');
   const proxy = await startProxy({ bedrockKey: key });

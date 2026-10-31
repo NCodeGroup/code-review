@@ -16,6 +16,8 @@ repository under review. Results and the trace are scanned for secrets before th
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
+A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.
+
 ## Using it
 
 ```yaml

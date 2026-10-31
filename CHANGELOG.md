@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Consumers pin the action by a release's full commit SHA, with the tag in a comment, as the README now says: CodeQL's `extended` suite reports a tag pin, even an immutable release's, as an unpinned action. This repository's own workflow pins v0.3.1 that way.
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 
+### Fixed
+
+- A learned guidance rule that came only from instruction files, such as Identity's C# conventions, is tagged with the files they apply to (`` *Applies to:* `**/*.cs` ``) and reaches only reviews, and parts of a diff, that change such a file, so a C# rule no longer reaches a review of TypeScript. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them without a model ([#36](https://github.com/NCodeGroup/code-review/issues/36)).
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed

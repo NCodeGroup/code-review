@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
-import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
+import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
@@ -116,6 +116,11 @@ export function ruleBatches(catalog: IndexedRule[], rulesFor: Map<string, Indexe
   const batches: IndexedRule[][] = [];
   for (let i = 0; i < rules.length; i += size) batches.push(rules.slice(i, i + size));
   return batches;
+}
+
+// The files one part of the diff covers, and the changed files no part shows, which every part's reviewers may read.
+export function partFiles(files: ChangedFile[], diff: string): string[] {
+  return [...splitDiff(diff).keys(), ...files.filter((f) => !f.generated && !f.shown).map((f) => f.path)];
 }
 
 export function loadCharters(root: string): Charters {
@@ -311,30 +316,38 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
   log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
-  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
-  // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
-  // rest read the cache instead of each writing it again.
+  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
+  // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
+  // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
+  // writing it again.
   const tiers = reviewerTiers();
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
   const jobs = parts.flatMap((diff, part) => {
     const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
+    const files = partFiles(gathered.files, diff);
+    const scoped = (rules: IndexedRule[] | undefined) => rulesForFiles(rules ?? [], files);
     return [
       ...[...selected].map((reviewer) => ({
         name: reviewer,
         part,
         label: '',
         tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-        prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
+        prompt: [sharedBlock, `${rulesBlock(scoped(context.rulesFor.get(reviewer))).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
       })),
-      ...batches.map((batch, i) => ({
-        name: ruleCheckName,
-        part,
-        label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
-        tier: 'sonnet' as ModelTier,
-        prompt: [sharedBlock, `${rulesBlock(batch).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
-      })),
+      ...batches.flatMap((batch, i) => {
+        const rules = scoped(batch);
+        return rules.length
+          ? [{
+              name: ruleCheckName,
+              part,
+              label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
+              tier: 'sonnet' as ModelTier,
+              prompt: [sharedBlock, `${rulesBlock(rules).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
+            }]
+          : [];
+      }),
     ];
   });
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
@@ -361,7 +374,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
   ];
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran.
-  const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
+  const outcomes: ReviewerOutcome[] = [...selected, ...(jobs.some((job) => job.name === ruleCheckName) ? [ruleCheckName] : [])].map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const errors = mine.flatMap((o) => (o.error ? [o.error] : []));
     return {
