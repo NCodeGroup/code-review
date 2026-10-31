@@ -109,3 +109,45 @@ test("review() gives each reviewer call its part's rules and its own charter, an
     assert.ok(calls.every((r) => r.systemPrompt === 'SPECIALIST PROMPT'));
   }
 });
+
+// Two project reviewers: oauth's paths match the changed file, billing's match none.
+const projectReviewers = [
+  { name: 'oauth', text: '# oauth\n\nDoes the change follow RFC 6749?\n', paths: ['src/**/OAuth/**'], shadow: false },
+  { name: 'billing', text: '# billing\n\nAre amounts in cents?\n', paths: ['src/Billing/**'], shadow: false },
+];
+const oauthChange = (): Gathered => {
+  const diff = diffA.replaceAll('src/A.cs', 'src/Server/OAuth/Token.cs');
+  return twoParts({
+    files: [{ path: 'src/Server/OAuth/Token.cs', additions: 1, deletions: 0, generated: false, shown: true }],
+    diff,
+    chunks: [diff],
+    guidance: [],
+    projectReviewers,
+    tiers: { 'project:oauth': 'opus' },
+  });
+};
+
+test("review() runs a project reviewer whose paths match a changed file, on the tier the repository's config gives it", async () => {
+  const { agent, requests } = stubAgent(answers);
+  const outcome = await review(run, oauthChange(), charters, () => {}, agent);
+
+  const selection = String(requests.find((r) => r.role === 'selection')!.prompt);
+  assert.match(selection, /^Roster: correctness, hygiene, security, tests, project:oauth, project:billing\nThis repository's own reviewers:\n- project:oauth: Does the change follow RFC 6749\?\n- project:billing: Are amounts in cents\?\nAlready chosen: [^\n]*\bproject:oauth\b/);
+  assert.doesNotMatch(selection, /Already chosen: [^\n]*project:billing/);
+  const oauth = requests.find((r) => r.role === 'reviewer:project:oauth')!;
+  assert.equal(oauth.tier, 'opus');
+  assert.match(String(oauth.prompt[1]), /Your charter:\n# oauth\n\nDoes the change follow RFC 6749\?\n$/);
+  assert.ok(!requests.some((r) => r.role === 'reviewer:project:billing'));
+  assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:oauth')?.status, 'ran');
+  assert.ok(outcome.skipped.includes('project:billing'));
+});
+
+test('selection can add a project reviewer whose paths match no changed file, and it runs on Haiku by default', async () => {
+  const { agent, requests } = stubAgent((request) =>
+    request.role === 'selection' ? { add: [{ reviewer: 'project:billing', reason: 'it charges a fee' }] } : answers(request));
+  const outcome = await review(run, oauthChange(), charters, () => {}, agent);
+
+  assert.equal(requests.find((r) => r.role === 'reviewer:project:billing')?.tier, 'haiku');
+  assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:billing')?.status, 'ran');
+  assert.ok(!outcome.skipped.includes('project:billing'));
+});
