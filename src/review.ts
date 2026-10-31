@@ -6,12 +6,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, withoutTools, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { parseCharter, type Charter } from './charter.ts';
-import { dropContradicted, type DroppedFinding } from './claims.ts';
+import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
 import { closedIssues, globToRegExp, isDocumentation, publicApiPath, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { printable } from './outputs.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, templateVersionFiles, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -334,6 +335,11 @@ export function sensitiveMatcher(globs: string[]): (file: string) => boolean {
 export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] {
   const sensitive = sensitiveMatcher(globs);
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
+}
+
+// The log line a deep review starts with, its file names made printable.
+export function deepReviewLine(sensitive: string[]): string {
+  return `Deep review: sensitive files ${sensitive.map(printable).join(', ')}`;
 }
 
 // What a light review takes: documentation, by gather's allowlist (isDocumentation), and the template's version files,
@@ -690,7 +696,7 @@ export async function review(
       sensitiveFiles: sensitive,
     };
   }
-  if (depth === 'deep') log(`Deep review: sensitive files ${sensitive.join(', ')}`);
+  if (depth === 'deep') log(deepReviewLine(sensitive));
   if (light) log('Light review (documentation only): hygiene alone, with no context, selection or synthesis');
 
   // Context: the rules and decisions that bear on this change. A light review has none, beside the decision records
@@ -899,7 +905,7 @@ export async function review(
   } else {
     summary = 'No findings.';
   }
-  if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  if (dropped.length) log(droppedLine(dropped));
   // Synthesis may still place a finding in a template's file. Its verdict is capped when that moved some of its findings
   // upstream; without one, the verdict comes from the findings verification leaves.
   const settled = settleUpstream(findings, guardedUpstream.kept, gathered.template, summary);

@@ -129,22 +129,40 @@ export async function postSummary(
 }
 
 // A pull request's issue comments, oldest first, read with the review step's optional token; undefined when they can't
-// all be read, as for readComments. `newestReviewedHead` of them is the commit the bot last reviewed.
-export function readIssueComments(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ListedComment[] | undefined> {
-  return readComments(issueComments(repository, number), token, fetchPage);
+// all be read, as for readComments, and `log` gets a warning that says why. `newestReviewedHead` of them is the commit
+// the bot last reviewed.
+export function readIssueComments(
+  repository: string,
+  number: number,
+  token: string | undefined,
+  fetchPage: typeof fetch = fetch,
+  log: (line: string) => void = () => {},
+): Promise<ListedComment[] | undefined> {
+  return readComments(issueComments(repository, number), token, fetchPage, log);
 }
 
 // A comment endpoint read with an optional token, which gives up: undefined on a refused request, a fetch that rejects,
-// or a body that isn't JSON, and when there are more comments than readCommentPages reads.
-export async function readComments(endpoint: string, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ListedComment[] | undefined> {
-  return readCommentPages(endpoint, async (url) => {
+// or a body that isn't JSON, and when there are more comments than readCommentPages reads. `log` gets a warning that
+// says why.
+export async function readComments(
+  endpoint: string,
+  token: string | undefined,
+  fetchPage: typeof fetch = fetch,
+  log: (line: string) => void = () => {},
+): Promise<ListedComment[] | undefined> {
+  let reason = `more than ${commentPageSize * maxCommentPages} comments`;
+  const listed = await readCommentPages(endpoint, async (url) => {
     try {
       const response = await fetchPage(`https://api.github.com${url}`, {
         headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
       });
-      return response.ok ? ((await response.json()) as ListedComment[]) : undefined;
-    } catch {
-      return undefined;
+      if (response.ok) return (await response.json()) as ListedComment[];
+      reason = `HTTP ${response.status}`;
+    } catch (error) {
+      reason = errorText(error);
     }
+    return undefined;
   });
+  if (!listed) log(`::warning::Couldn't read ${endpoint} (${reason}); the run goes on without those comments.`);
+  return listed;
 }

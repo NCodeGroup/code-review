@@ -76,7 +76,7 @@ export async function checkPause(options: {
   log: (line: string) => void;
 }): Promise<PauseDecision> {
   const { repository, number, token, issueComments, log } = options;
-  const reviewComments = issueComments && (await readComments(`/repos/${repository}/pulls/${number}/comments`, token, options.fetchPage ?? fetch));
+  const reviewComments = issueComments && (await readComments(`/repos/${repository}/pulls/${number}/comments`, token, options.fetchPage ?? fetch, log));
   if (!issueComments || !reviewComments) {
     log("::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.");
     return 'review';

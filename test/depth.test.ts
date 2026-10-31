@@ -6,7 +6,7 @@ import type { Decision } from '../src/context.ts';
 import type { ChangedFile, Gathered, RuleFile } from '../src/gather.ts';
 import { creditsRanOutReason } from '../src/provider.ts';
 import { callModels, checkSummary, checkText, shortModel, type Results } from '../src/results.ts';
-import { documentationOnly, partTiers, review, reviewDepth, sensitiveFiles, sensitiveParts, type Charters, type Finding } from '../src/review.ts';
+import { deepReviewLine, documentationOnly, partTiers, review, reviewDepth, sensitiveFiles, sensitiveParts, type Charters, type Finding } from '../src/review.ts';
 
 const file = (path: string, generated = false): ChangedFile => ({ path, additions: 10, deletions: 0, generated, shown: true });
 
@@ -124,6 +124,10 @@ test('sensitiveParts finds the parts of the diff with a sensitive file, or the f
   assert.deepEqual([...sensitiveParts(parts, ['src/Jose/B.cs', 'src/Jose/D.cs'])], [1, 2]);
   assert.deepEqual([...sensitiveParts(parts, ['src/Jose/Huge.cs'])], [0]);
   assert.deepEqual([...sensitiveParts(parts, [])], []);
+});
+
+test('deepReviewLine names the sensitive files, made printable', () => {
+  assert.equal(deepReviewLine(['src/Jose/A.cs\n::error::x', 'src/Jose/B\u2028.cs']), 'Deep review: sensitive files src/Jose/A.cs::error::x, src/Jose/B.cs');
 });
 
 const charters: Charters = {
