@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A request for the earlier summary comments that fails outright, such as on a DNS failure or a reset connection, no longer fails the review step: the run reviews the pull request again, as it does when GitHub refuses the request ([#39](https://github.com/NCodeGroup/code-review/issues/39)).
+- The `data-model` reviewer joins every review that changes a `Migrations/` folder or a `.sql` file. The floor matched one pattern against all changed paths joined together, so a `.sql` file counted only when it was the last path and a root `Migrations/` folder only when it was the first; any other order relied on the selection call. Found by CodeQL's extended suite (`js/regex/missing-regexp-anchor`).
+- `npm run train` reads a saved extraction directly instead of checking that it exists first, so the file can't change between the check and the read (`js/file-system-race`).
 
 ## [0.3.1] - 2026-10-31
 
