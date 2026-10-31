@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, verificationOn, type ModelTier } from './config.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { isTemplateOwned, type Template } from './template.ts';
@@ -34,7 +34,8 @@ export interface ReviewedFinding extends Finding {
 
 export interface ReviewerOutcome {
   name: string;
-  status: 'ran' | 'failed';
+  // Skipped: the run's cost ceiling was reached before any of the reviewer's calls started.
+  status: 'ran' | 'failed' | 'skipped';
   findings: Finding[];
   error?: string;
 }
@@ -339,14 +340,29 @@ export function changedLines(diff: string): Map<string, Set<number>> {
   return lines;
 }
 
-export async function review(run: AgentRun, gathered: Gathered, charters: Charters, log: (line: string) => void): Promise<Review> {
+// Why a reviewer call that never started was skipped, in the check run.
+export const runBudgetReason = 'run budget';
+
+export async function review(
+  run: AgentRun,
+  gathered: Gathered,
+  charters: Charters,
+  log: (line: string) => void,
+  agent: typeof runAgent = runAgent,
+): Promise<Review> {
   const calls: CallRecord[] = [];
+  const spent = () => calls.reduce((sum, c) => sum + c.costUsd, 0);
   const roster = [...charters.reviewers.keys()];
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
-  const { context, result: contextResult } = await selectContext(run, gathered, catalog, gathered.decisions, (g) =>
-    `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
+  const { context, result: contextResult } = await selectContext(
+    run,
+    gathered,
+    catalog,
+    gathered.decisions,
+    (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
+    agent,
   );
   if (contextResult) calls.push(contextResult.record);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
@@ -356,7 +372,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
-  const selection = await runAgent<{ add: { reviewer: string; reason: string }[] }>(
+  const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
     { provider: run.provider, proxyUrl: run.proxyUrl },
     {
       role: 'selection',
@@ -402,8 +418,15 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     ];
   });
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
+  // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
+  const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
   const reviewOne = async ({ name, part, label, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
-    const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
+    const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
+    if (spent() >= ceiling) {
+      log(`  ${name}${where ? ` (${where})` : ''}: skipped (${runBudgetReason})`);
+      return { name, status: 'skipped', findings: [], error: runBudgetReason };
+    }
+    const result = await agent<{ findings: Finding[] }>(reviewRun, {
       role: `reviewer:${name}`,
       tier,
       systemPrompt: charters.specialistPrompt,
@@ -415,7 +438,6 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(result.record);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
     log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   };
@@ -424,17 +446,28 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     ...(await mapWithConcurrency(first, concurrency, reviewOne)),
     ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
   ];
-  // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran.
+  // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
+  // all of them were.
   const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
     const mine = perJob.filter((o) => o.name === name);
-    const errors = mine.flatMap((o) => (o.error ? [o.error] : []));
+    const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
+    const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));
+    const skippedCalls = mine.filter((o) => o.status === 'skipped').length;
+    if (skippedCalls) errors.push(status === 'skipped' ? runBudgetReason : `${skippedCalls} of ${mine.length} calls skipped: ${runBudgetReason}`);
     return {
       name,
-      status: mine.some((o) => o.status === 'ran') ? 'ran' : 'failed',
+      status,
       findings: mine.flatMap((o) => o.findings),
       ...(errors.length ? { error: errors.join('; ') } : {}),
     };
   });
+  const skippedJobs = perJob.filter((o) => o.status === 'skipped').length;
+  let ceilingWarning = '';
+  if (skippedJobs) {
+    const names = [...new Set(perJob.filter((o) => o.status === 'skipped').map((o) => o.name))].join(', ');
+    ceilingWarning = `This review reached its $${ceiling.toFixed(2)} cost ceiling ($${spent().toFixed(2)} spent) and skipped ${skippedJobs} of ${jobs.length} reviewer calls (${names}), so it is incomplete.`;
+    log(`::warning::${ceilingWarning}`);
+  }
 
   // Synthesis.
   const limit = findingLimit(parts.length);
@@ -447,7 +480,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   let findings: ReviewedFinding[] = [];
   if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
-    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
+    const synthesis = await agent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
       { provider: run.provider, proxyUrl: run.proxyUrl },
       {
         role: 'synthesis',
@@ -488,12 +521,18 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
     log,
     enabled: verificationOn(),
+    agent,
   });
   calls.push(...verified.calls);
   ({ summary, verdict, findings } = verified);
 
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  if (ceilingWarning) {
+    summary = `${summary}\n\n⚠️ ${ceilingWarning}`;
+    // A review cut short hasn't seen enough of the change to approve it.
+    if (verdict === 'approve') verdict = 'comment';
+  }
   return {
     reviewers: outcomes,
     summary,
