@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
-import { changedHunksDiff, postable, reReview, sinceLastReview, takenBackText, type EarlierFinding, type ReReview } from '../src/rereview.ts';
+import { planReReview, postable, reReview, type EarlierFinding, type ReReview } from '../src/rereview.ts';
 import { changedLines, loadCharters, review, type Finding } from '../src/review.ts';
 
 interface Concern { file?: string; line?: number; concern: string }
@@ -160,10 +160,19 @@ async function main(): Promise<void> {
       let reReviewed: ReReview | undefined;
       let offChanged: string[] = [];
       if (c.reviewed) {
-        ensureCommit(repo, c.reviewed);
-        const changed = sinceLastReview(head, c.base, gathered.mergeBase, gathered.pullRequest.headSha, c.reviewed);
-        log(`Re-review since ${c.reviewed.slice(0, 7)}: ${changed.hunks} changed hunks in ${Object.keys(changed.lines).length} files`);
-        const plan = { lastHead: c.reviewed, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier: c.earlier ?? [], earlierUnread: false };
+        const plan = await planReReview({
+          gathered,
+          checkout: head,
+          lastHead: c.reviewed,
+          fetchCommit: (sha) => {
+            ensureCommit(repo, sha);
+            return true;
+          },
+          readEarlier: async () => c.earlier ?? [],
+          log,
+        });
+        if (!plan) throw new Error(`${c.id}: no re-review plan since ${c.reviewed.slice(0, 7)}; see the log above.`);
+        const { changed } = plan;
         reReviewed = await reReview({ ...run, checkout: head }, gathered, charters, plan, log);
         // A re-review posts nothing below should-fix, and nothing away from what the author changed since the last
         // review. That is worked out here apart from the engine: the lines the diff from the reviewed head adds, less
