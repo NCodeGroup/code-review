@@ -75,7 +75,8 @@ export interface VerificationInput {
   // A deep review's sensitive files: their findings are verified on Opus instead of Sonnet.
   deep?: (file: string) => boolean;
   // The run's cost ceiling: once what the run spent before verification, plus the verification calls that finished,
-  // reaches limit, the calls not yet started are skipped and their findings stay unverified.
+  // reaches limit, the calls not yet started are skipped and their findings stay unverified. Calls already running
+  // finish, so the run can go past limit, as with the reviewer calls.
   ceiling?: { limit: number; spent: () => number };
   agent?: VerificationAgent;
   // How many lines each checkout file has, to confirm a refutation's cites; read from run.checkout by default, and none
@@ -292,6 +293,7 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   let spentHere = 0;
   const verifyOne = async (batch: ReviewedFinding[]): Promise<{ records: CallRecord[]; call: VerificationCall }> => {
     const findings = batch.map(({ id, severity, file, line, title }) => ({ id, severity, file, line, title }));
+    // Only a call that starts after the spending reached the limit is skipped: the calls that start together all pass.
     if (input.ceiling && input.ceiling.spent() + spentHere >= input.ceiling.limit) {
       return { records: [], call: { file: batch[0]!.file, findings, verifications: [], costUsd: 0, skipped: true } };
     }

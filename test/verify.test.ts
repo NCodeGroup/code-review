@@ -446,6 +446,7 @@ test('verifyReview without synthesis\'s verdict gives a comment, not an approval
 test('verification skips the calls not yet started once the run\'s cost ceiling is reached', async () => {
   const { agent, requests } = fakeAgent(new Map([['F2', verdict('F2', 'refuted')]]), 0.1);
   const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2)];
+  // The first call runs alone, so the second starts only after it finished and its cost counted.
   const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 0.15, spent: () => 0.1 } });
   assert.equal(requests.length, 1);
   assert.equal(out.skipped, 1);
@@ -453,6 +454,15 @@ test('verification skips the calls not yet started once the run\'s cost ceiling 
   assert.deepEqual(out.refuted, []);
   assert.deepEqual(out.findings.map((f) => [f.title, f.severity, f.evidence]), [['title F1', 'should-fix', 'e'], ['title F2', 'should-fix', 'e']]);
   assert.equal(out.calls.length, 1);
+});
+
+test('verification calls that start together all run, even when together they pass the cost ceiling', async () => {
+  const { agent, requests } = fakeAgent(new Map(), 0.1);
+  const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2), finding('F3', 'should-fix', 'src/c.ts', 2)];
+  const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 0.15, spent: () => 0 } });
+  assert.equal(requests.length, 3);
+  assert.equal(out.skipped, 0);
+  assert.equal(Math.round(out.trace.reduce((sum, c) => sum + c.costUsd, 0) * 100) / 100, 0.3);
 });
 
 test('verification makes no call when the run reached its cost ceiling before it', async () => {
