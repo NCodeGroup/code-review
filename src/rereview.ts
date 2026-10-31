@@ -16,6 +16,7 @@ import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, 
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { botLogin, recordedHead } from './results.ts';
 import {
+  byOwner,
   completeList,
   fileList,
   findingLimit,
@@ -23,6 +24,8 @@ import {
   findingRequired,
   pullRequestBlock,
   severityRank,
+  templateBlock,
+  upstreamFindings,
   type Charters,
   type Finding,
   type Review,
@@ -558,7 +561,7 @@ export async function reReview(
   verification: ReReviewVerificationOptions = { enabled: verificationOn() },
 ): Promise<ReReview> {
   const statuses: EarlierStatus[] = plan.earlier.map((finding) => ({ finding, status: 'unchecked', note: '' }));
-  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification, dropped: DroppedFinding[] = []): ReReview => {
+  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification, dropped: DroppedFinding[] = [], upstream: { upstream: ReviewedFinding[]; omitted: number } = { upstream: [], omitted: 0 }): ReReview => {
     const summary = reReviewSummary({
       lastHead: plan.lastHead,
       changed: plan.changed,
@@ -584,6 +587,8 @@ export async function reReview(
       summary,
       verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
       findings,
+      upstream: upstream.upstream,
+      upstreamOmitted: upstream.omitted,
       dropped,
       refuted: verified?.refuted ?? [],
       verification: verified?.trace ?? [],
@@ -597,7 +602,7 @@ export async function reReview(
   const tier: ModelTier = reviewerTiers()[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
   const since = plan.lastHead.slice(0, 7);
   const context = [
-    `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>`,
+    `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${templateBlock(gathered)}`,
     pullRequestBlock(gathered),
     `${completeList}\n${fileList(gathered)}`,
     `The hunks of the pull request's diff against its merge base that changed since the last review at ${since}, with their context. The pull request's head is checked out at the path given below; use it to read whole files.\n<diff>\n${plan.diff || '(none)'}\n</diff>`,
@@ -635,9 +640,12 @@ export async function reReview(
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged.map((f) => ({ ...f, reviewers: [reReviewer] })), gathered.files.map((f) => f.path));
   if (dropped.length) log(`  Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
-  log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(result.records).toFixed(3)}`);
-  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(kept), log, verification);
-  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [...result.records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped);
+  // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
+  const placed = byOwner(kept, gathered.template);
+  const upstream = upstreamFindings(placed.upstream);
+  log(`  ${reReviewer}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(result.records).toFixed(3)}`);
+  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, verification);
+  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [...result.records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);
 }
 
 // --- Choosing the review ---

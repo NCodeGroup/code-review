@@ -519,6 +519,26 @@ test('reReview leaves out a finding that says a file the pull request changes is
   assert.equal(outcome.verdict, 'comment');
 });
 
+test('reReview lists a finding below blocker on a template-owned file upstream, as the first review does', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  gathered.template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  plan.changed.lines['.template/Get-PlanState.ps1'] = [10];
+  const requests: AgentRequest[] = [];
+  const output = {
+    findings: [finding('should-fix', '.template/Get-PlanState.ps1', 10, 'Template'), finding('blocker', '.template/Get-PlanState.ps1', 10, 'Unsafe'), finding('should-fix', 'a.ts', 62, 'Real')],
+    earlier: [],
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title]), [['F1', 'Unsafe'], ['F2', 'Real']]);
+  assert.deepEqual(outcome.upstream.map((f) => [f.id, f.file, f.title, f.reviewers]), [['U1', '.template/Get-PlanState.ps1', 'Template', ['correctness']]]);
+  assert.equal(outcome.upstreamOmitted, 0);
+  assert.equal(outcome.verdict, 'request-changes');
+});
+
 test('reReview makes no model call when nothing in the pull request changed', async () => {
   const { repo, reviewed } = pullRequestRepo();
   const main = moveMain(repo);
@@ -688,7 +708,7 @@ test('reReview with verification on never approves after refuting what it would 
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
-  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
 }
 
 test('runReview does the full review without a plan, and records the head it read', async () => {

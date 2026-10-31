@@ -3,7 +3,18 @@
 
 export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
 
-// Calls GitHub with a token, and throws on any answer but a success. A path starting with / is under api.github.com.
+// A refusal from GitHub's API, with its status, so the publish step can tell a missing permission from an outage.
+export class GitHubError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Calls GitHub with a token, and throws a GitHubError on any answer but a success. A path starting with / is under
+// api.github.com.
 export function githubApi(token: string, fetchFn: typeof fetch = fetch): Api {
   return async (method, url, body) => {
     const response = await fetchFn(url.startsWith('https://') ? url : `https://api.github.com${url}`, {
@@ -16,7 +27,7 @@ export function githubApi(token: string, fetchFn: typeof fetch = fetch): Api {
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (!response.ok) throw new Error(`GitHub refused ${method} ${url}: HTTP ${response.status} ${await response.text()}`);
+    if (!response.ok) throw new GitHubError(`GitHub refused ${method} ${url}: HTTP ${response.status} ${await response.text()}`, response.status);
     return response.status === 204 ? undefined : response.json();
   };
 }

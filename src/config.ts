@@ -41,6 +41,8 @@ export const budgets = {
   // loses its findings.
   specialist: { haiku: 0.4, sonnet: 1, opus: 2 } as Record<ModelTier, number>,
   synthesis: 0.75,
+  // One Sonnet call that answers `/review explain` about one finding.
+  explain: 0.5,
   // Per verification call, on Sonnet.
   verification: 0.5,
 };
@@ -65,7 +67,7 @@ export function runCeiling(
   return fallback;
 }
 
-export const maxTurns = { specialist: 30, verification: 20 };
+export const maxTurns = { specialist: 30, explain: 20, verification: 20 };
 
 // Verification: after synthesis, Sonnet calls with the checkout try to prove or refute each blocker and should-fix, a
 // file's findings at a time, up to findingsPerVerification per call. It stays off until an eval shows it gains more than
@@ -116,5 +118,7 @@ export const maxFindings = 40;
 export const findingsPerExtraChunk = 20;
 export const maxFindingsCap = 100;
 export const minConfidence = 0.3;
+// Findings on the template's files listed in the summary for its repository, one per file and line.
+export const maxUpstreamFindings = 20;
 // The most lines a suggestion may replace, or write. Defined in threads.ts, which the acknowledgement loads before npm ci.
 export { maxSuggestionLines } from './threads.ts';

@@ -16,6 +16,8 @@ export interface ReviewContext {
   durationMs: number;
   notShown: string[];
   diff: string;
+  // The project template's repository, when the pull request adopts or updates it: where upstream findings belong.
+  template?: string;
   // The head the summary records as reviewed: see recordedHead.
   recordedHead?: string;
 }
@@ -61,6 +63,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     summary: outcome.summary,
     verdict: outcome.verdict,
     findings: outcome.findings,
+    ...(outcome.upstream.length && context.template ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: context.template } : {}),
     dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),

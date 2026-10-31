@@ -20,7 +20,7 @@ import {
   stoppedStatus,
 } from '../src/checks.ts';
 import { decideAcknowledgement, postAcknowledgement } from '../src/acknowledgement.ts';
-import { decideReview } from '../src/command.ts';
+import { decideReview, decideRun } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
 import { fetchPullRequest, githubApi, type Api } from '../src/github.ts';
@@ -80,6 +80,35 @@ test('decideReview gives nothing for a comment that is not exactly /review, with
     const decision = await decideReview(comment(body), repository, r.readPullRequest, r.reviewedHead);
     assert.equal(decision.review, false);
     assert.deepEqual(r.counts, { pullRequest: 0, reviewedHead: 0 });
+  }
+});
+
+test('decideReview gives nothing for /review explain or /review teach from a writer, without an API call', async () => {
+  for (const body of ['/review explain F1', '/review explain F2 why?', '/review teach Prefer early returns.', '/review teach org Use LF.']) {
+    const r = readers(own);
+    const decision = await decideReview(comment(body), repository, r.readPullRequest, r.reviewedHead);
+    assert.equal(decision.review, false, body);
+    assert.match(decision.review ? '' : decision.reason, /isn't a review/);
+    assert.deepEqual(r.counts, { pullRequest: 0, reviewedHead: 0 });
+  }
+});
+
+test('decideRun gives the review step a writer\'s /review explain or /review teach, with the pull request it is on', async () => {
+  for (const [body, kind] of [['/review', 'review'], ['/review explain F1', 'explain'], ['/review teach Prefer early returns.', 'teach']] as const) {
+    const r = readers(own, sha);
+    const decision = await decideRun(comment(body), repository, r.readPullRequest, r.reviewedHead);
+    assert.equal(decision.run && decision.command.kind, kind, body);
+    assert.equal(decision.run && decision.number, 7);
+    assert.equal(decision.run && decision.pullRequest, own);
+    assert.equal(r.counts.reviewedHead, 0);
+  }
+});
+
+test('decideRun refuses /review explain and /review teach on a pull request from a fork', async () => {
+  for (const body of ['/review explain F1', '/review teach Prefer early returns.']) {
+    const r = readers({ ...own, head: { sha, repo: { full_name: 'someone/code-review' } } });
+    const decision = await decideRun(comment(body), repository, r.readPullRequest, r.reviewedHead);
+    assert.match(decision.run ? '' : decision.reason, /comes from a fork/, body);
   }
 });
 
@@ -548,12 +577,17 @@ test('action.yml passes the check run on to the publish and finish steps, and fi
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_ID'], '${{ steps.ack.outputs.check-run-id }}');
     assert.equal(step?.env['CODE_REVIEW_CHECK_RUN_SHA'], '${{ steps.ack.outputs.head-sha }}');
   }
-  // The token is minted, after a failure too, for a review to publish, a stop to report, or an acknowledged check run.
+  // The token is minted, after a failure too, for a review, an explain answer or a teach reply to publish, a stop to
+  // report, or an acknowledged check run.
   assert.equal(
     steps.find((s) => s.id === 'app-token')?.if,
-    "always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')",
+    "always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true' || " +
+      "steps.review.outputs.taught == 'true' || steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')",
   );
-  assert.equal(publish?.if, "steps.review.outputs.reviewed == 'true'");
+  assert.equal(
+    publish?.if,
+    "steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'",
+  );
   // The finish step runs, after a failure too, only with the token, only when the publish step didn't complete the
   // check run, and only when there's one to complete.
   assert.equal(
