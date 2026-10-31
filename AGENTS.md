@@ -34,7 +34,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 
 ## Conventions
 
-- Releases are cut by hand with the `release.yml` workflow (`gh workflow run release.yml -f version=<x.y.z>`), never by a plan: `release` stays `none`. Every consumer pins an exact release tag, and the "Protect release tags" ruleset forbids moving or deleting a `v*` tag.
+- Releases are cut by hand with the `release.yml` workflow (`gh workflow run release.yml -f version=<x.y.z>`), never by a plan: `release` stays `none`. Releases are immutable, and every consumer pins a release's full commit SHA with its tag in a comment, which is the one pin CodeQL's `extended` suite accepts.
 - The engine runs on Node 24 with TypeScript run directly (`node file.ts`); `tsconfig.json` is strict. Tests use `node:test` in `test/*.test.ts`, one behavior per test, and stay hermetic, except where a comment says why a test needs a real process or socket.
 - Third-party actions in `action.yml` and the workflows are pinned by full commit SHA with the version in a trailing comment.
 - Secrets stay out of the agents: the review step's process holds the model credentials and gives the agents a proxy address and a placeholder; the app's private key reaches only the publish step. A change that widens what an agent or the review step can see needs a test that shows it can't leak.

@@ -53,7 +53,7 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@v0.3.0 # an exact release tag, never a branch or @v1
+      - uses: NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -68,11 +68,15 @@ that checks the head out into `pr` itself is also accepted, if it is at that com
 
 ## Versions
 
-Pin the action to an exact release tag, such as `NCodeGroup/code-review@v0.3.0`. Never a branch, and never a floating
-major tag like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a
-release someone reviewed in a pull request in its own repository. The "Protect release tags" ruleset forbids moving or
-deleting any `v*` tag, so an exact tag is as fixed as a commit. Dependabot's `github-actions` ecosystem opens a pull
-request in the consumer for each new release.
+Pin the action to a release's full commit SHA, with the release's tag in a comment:
+`NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1`. Never a tag, a branch or a floating major
+like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a release
+someone reviewed in a pull request in its own repository, and a SHA is the one pin nobody can move. CodeQL's `extended`
+suite reports any other pin as an unpinned tag, even an immutable release's. Dependabot's `github-actions` ecosystem
+opens a pull request in the consumer for each new release and updates the SHA and the comment together.
+
+Releases are immutable from v0.3.1 on, and the "Protect release tags" ruleset forbids moving or deleting a `v*` tag, so
+the tag in the comment always names the commit it sits beside.
 
 To release, run the Release workflow from `main` with the version, such as `0.2.0`. It checks that the version is
 `MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, runs the typecheck and tests on the commit, then creates
