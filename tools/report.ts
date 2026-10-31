@@ -197,8 +197,9 @@ function markerFindings(body: string): PullRecord['findings'] {
 }
 
 // What the bot recorded on one pull request, from its own comments only, since anyone can write a marker in a comment.
-// Undefined when the bot never reviewed it. The newest outcomes marker wins, as a pull request reopened and closed again
-// gets its outcomes rewritten; every review marker counts, since each one is a review that ran.
+// Undefined when the bot never reviewed it. The newest outcomes marker wins: a pull request reopened, reviewed again and
+// closed again has its earlier outcomes kept in the summary it superseded. Every review marker counts, since each one is
+// a review that ran.
 export async function readPull(api: Api, repository: string, number: number): Promise<PullRecord | undefined> {
   type Listed = { body?: string; user?: { login?: string } };
   let failure = '';

@@ -154,7 +154,9 @@ severity and outcome, with the pull request's state, and a hidden `<!-- ncode-re
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
 model, for the monthly report. When there's no summary comment, a final one is posted. A finding with no changed line to
 sit on, posted in the review's body rather than as a thread, gets no outcome. The caller needs `closed` in its
-`pull_request_target` types for this.
+`pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
+treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
+that bump.
 
 ### Monthly report
 

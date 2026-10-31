@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import {
   classify,
@@ -7,19 +9,25 @@ import {
   isClosedEvent,
   isDeclining,
   lineChanged,
+  maxOutcomeRows,
+  maxThreadPages,
   outcomesMarker,
   outcomesSection,
   parseFindingComment,
   parseOutcomesMarker,
   patchTouches,
   publishOutcomes,
+  readOutcomes,
+  readReviewThreads,
   recordOutcomes,
+  threadPageSize,
+  tokenApi,
   withOutcomes,
   type Evidence,
   type FindingOutcome,
   type OutcomesReport,
 } from '../src/outcomes.ts';
-import { headMarker, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
+import { headMarker, newestReviewedHead, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
 
@@ -69,10 +77,34 @@ test('an autopilot "fixed in" reply counts only when the lines changed', () => {
 });
 
 test('isDeclining reads common ways to decline and leaves agreement alone', () => {
-  for (const reply of ["Won't fix", 'wontfix', 'This is a false positive.', 'Not a bug: the caller checks it.', 'This is by design.', 'I disagree.', 'No, the lock is held here.', 'Dismissing: not applicable here.']) {
+  for (const reply of [
+    "Won't fix",
+    'wontfix',
+    'This is a false positive.',
+    'Not a bug: the caller checks it.',
+    'This is by design.',
+    'I disagree.',
+    'No, the lock is held here.',
+    'No.',
+    'Not needed.',
+    'Dismissing: not applicable here.',
+    'Ignoring this one.',
+    "We'll ignore it for now.",
+    'Autopilot: declined: the caller already checks it.',
+  ]) {
     assert.ok(isDeclining(reply), reply);
   }
-  for (const reply of ['Good catch, thanks!', 'Will fix in a follow-up.', 'Agreed.', 'Noted, tracking in #12.']) {
+  for (const reply of [
+    'Good catch, thanks!',
+    'Will fix in a follow-up.',
+    'Agreed.',
+    'Noted, tracking in #12.',
+    'No worries, fixing it.',
+    'No problem, done.',
+    "Don't ignore this, good catch.",
+    'Good catch, the cast is unnecessary; removing it.',
+    'Nothing to add, fixed.',
+  ]) {
     assert.ok(!isDeclining(reply), reply);
   }
 });
@@ -117,6 +149,11 @@ test('parseFindingComment reads the marker, and the visible reviewers of a comme
   assert.equal(parseFindingComment('Just a comment.'), undefined);
 });
 
+test('parseFindingComment falls back to the visible reviewers when the marker encodes them badly', () => {
+  const damaged = '🔴 **Blocker: t** <sub>F2 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F2 fp=0123456789abcdef severity=blocker reviewers=a%,b -->';
+  assert.deepEqual(parseFindingComment(damaged), { id: 'F2', severity: 'blocker', reviewers: ['correctness'] });
+});
+
 const findings: FindingOutcome[] = [
   { id: 'F1', reviewedAt: 'a'.repeat(40), reviewers: ['security'], severity: 'blocker', outcome: 'fixed', costUsd: 0.69, provider: 'bedrock', model: 'sonnet' },
   { id: 'F2', reviewedAt: 'a'.repeat(40), reviewers: ['tests'], severity: 'should-fix', outcome: 'dismissed' },
@@ -143,6 +180,21 @@ test('the outcomes section shows the state and a row per finding', () => {
   assert.match(outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [] }), /Merged at bbbbbbb\. No findings were posted as threads\./);
   const odd = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [{ ...findings[0]!, reviewers: ['a\\|b <i>'] }] });
   assert.ok(odd.includes('| a\\\\\\|b &lt;i> |'), odd);
+});
+
+test('the outcomes section names the commit of findings from several reviews', () => {
+  const later = { ...findings[0]!, reviewedAt: 'c'.repeat(40) };
+  const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [findings[0]!, later] });
+  assert.match(section, /\| F1 at aaaaaaa \|/);
+  assert.match(section, /\| F1 at ccccccc \|/);
+});
+
+test('the outcomes section shows at most maxOutcomeRows rows, and the marker holds every finding', () => {
+  const many = Array.from({ length: maxOutcomeRows + 1 }, (_, i) => ({ ...findings[0]!, id: `F${i + 1}` }));
+  const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: many });
+  assert.equal(section.match(/^\| F\d+ \|/gm)?.length, maxOutcomeRows);
+  assert.match(section, /\*And 1 more\.\*$/);
+  assert.equal(parseOutcomesMarker(section)?.findings.length, maxOutcomeRows + 1);
 });
 
 test('withOutcomes appends the section and replaces an earlier one', () => {
@@ -186,17 +238,19 @@ test("the summary comment records the review's cost, provider and models, and a 
   assert.deepEqual(reviewRecords(supersededComment('b'.repeat(40), 'https://example.test/c/1', [marker])), reviewRecords(marker));
 });
 
-test('postSummary keeps the review marker of the summary it collapses', async () => {
+test('postSummary keeps the review and outcomes markers of the summary it collapses', async () => {
   const { postSummary } = await import('../src/comments.ts');
   const marker = reviewMarker(reviewResults as unknown as Results);
+  const outcomes = outcomesMarker({ state: 'closed', head: 'a'.repeat(40), findings });
   const bodies: unknown[] = [];
   const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
-    if (method === 'GET') return [{ id: 1, user: { login: 'ncode-review[bot]' }, body: `${summaryMarker}\n${headMarker('a'.repeat(40))}\n${marker}\nold` }];
+    if (method === 'GET') return [{ id: 1, user: { login: 'ncode-review[bot]' }, body: `${summaryMarker}\n${headMarker('a'.repeat(40))}\n${marker}\nold\n\n${outcomes}\n### 📋 Outcomes` }];
     bodies.push(body);
     return method === 'POST' ? { html_url: 'https://example.test/c/2' } : undefined;
   };
   await postSummary(api, { repository: 'o/r', pullRequest: 1, headSha: 'b'.repeat(40) }, 'new body', () => {});
-  assert.deepEqual(bodies[1], { body: supersededComment('b'.repeat(40), 'https://example.test/c/2', [marker]) });
+  assert.deepEqual(bodies[1], { body: supersededComment('b'.repeat(40), 'https://example.test/c/2', [marker, outcomes]) });
+  assert.deepEqual(parseOutcomesMarker((bodies[1] as { body: string }).body)?.findings, findings);
 });
 
 const reviewedAt = 'a'.repeat(40);
@@ -318,6 +372,74 @@ test('collectOutcomes still records the threads when there is no summary comment
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome, f.costUsd]), [['F1', 'fixed', undefined], ['F2', 'dismissed', undefined], ['F3', 'ignored', undefined]]);
 });
 
+test("collectOutcomes counts a reactor whose permission can't be read as a non-writer", async () => {
+  const { api: base } = fakeGitHub();
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url.endsWith('/collaborators/maintainer/permission')) throw new Error('HTTP 404');
+    return base(method, url, body);
+  };
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.equal(report?.findings.find((f) => f.id === 'F2')?.outcome, 'ignored');
+});
+
+test("collectOutcomes leaves out the bot's own reactions and replies", async () => {
+  const { api: base, calls } = fakeGitHub();
+  const thread = botThread(reviewed({ id: 'F9', file: 'src/Z.cs', line: 99, severity: 'nit' }), {
+    reactions: [{ content: 'THUMBS_UP', login: 'ncode-review[bot]' }, { content: 'THUMBS_DOWN', login: 'ncode-review' }],
+    replies: [{ login: 'ncode-review', association: 'MEMBER', body: "Won't fix this." }, { login: 'ncode-review[bot]', association: 'MEMBER', body: 'Thanks.' }],
+  });
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url === '/graphql') return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [thread] } } } } };
+    return base(method, url, body);
+  };
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
+  assert.ok(!calls.some((call) => call.includes('/permission')), calls.join('\n'));
+});
+
+test('collectOutcomes takes the newest review marker of a commit reviewed twice', async () => {
+  const { api: base, summaryBody } = fakeGitHub();
+  const earlier = supersededComment(reviewedAt, 'https://example.test/c/42', [reviewMarker({ ...reviewResults, costUsd: 0.1, provider: 'anthropic' } as unknown as Results)]);
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url.startsWith('/repos/o/r/issues/5/comments')) return [{ id: 41, user: { login: 'ncode-review[bot]' }, body: earlier }, { id: 42, user: { login: 'ncode-review[bot]' }, body: summaryBody }];
+    return base(method, url, body);
+  };
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.deepEqual(report?.findings.map((f) => [f.costUsd, f.provider]), [[0.6912, 'bedrock'], [0.6912, 'bedrock'], [0.6912, 'bedrock']]);
+  assert.equal(report?.summaryCommentId, 42);
+});
+
+test("readReviewThreads throws on GraphQL errors and on an answer without the threads, rather than reading no threads", async () => {
+  await assert.rejects(readReviewThreads(async () => ({ errors: [{ message: 'boom' }] }), 'o/r', 5, () => {}), /refused the review threads: boom/);
+  await assert.rejects(readReviewThreads(async () => ({ data: { repository: null } }), 'o/r', 5, () => {}), /Couldn't read the review threads of #5/);
+});
+
+test('readReviewThreads stops after maxThreadPages pages and warns', async () => {
+  let pages = 0;
+  const api = async () => {
+    pages++;
+    return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true, endCursor: `c${pages}` }, nodes: [{ isResolved: false, isOutdated: false, path: 'a', comments: { nodes: [] } }] } } } } };
+  };
+  const lines: string[] = [];
+  const threads = await readReviewThreads(api, 'o/r', 5, (line) => lines.push(line));
+  assert.equal(pages, maxThreadPages);
+  assert.equal(threads.length, maxThreadPages);
+  assert.deepEqual(lines, [`::warning::#5 has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${maxThreadPages}.`]);
+});
+
+test('tokenApi calls GitHub with the token, throws on a refusal and reads an empty answer as none', async () => {
+  const seen: { url: string; authorization: string }[] = [];
+  const answer = (response: Response) => tokenApi('t0ken', async (url, init) => {
+    seen.push({ url: String(url), authorization: (init?.headers as Record<string, string>)['authorization']! });
+    return response;
+  });
+  assert.deepEqual(await answer(new Response('{"a":1}'))('GET', '/repos/o/r'), { a: 1 });
+  assert.deepEqual(seen, [{ url: 'https://api.github.com/repos/o/r', authorization: 'Bearer t0ken' }]);
+  assert.equal(await answer(new Response(null, { status: 204 }))('DELETE', '/x'), undefined);
+  assert.equal(await answer(new Response('', { status: 200 }))('GET', '/x'), undefined);
+  await assert.rejects(answer(new Response('nope', { status: 403 }))('GET', '/x'), /GitHub refused GET \/x: HTTP 403/);
+});
+
 const report: OutcomesReport = { repository: 'o/r', pullRequest: 5, state: 'merged', head: closedHead, findings, summaryCommentId: 42, summaryBody: `${summaryMarker}\n${headMarker(reviewedAt)}\nbody` };
 
 test('publishOutcomes adds the outcomes to the newest summary comment', async () => {
@@ -346,6 +468,10 @@ test('publishOutcomes posts a final comment when there is no summary or it canno
   const posted = calls[0]!.body.body as string;
   assert.ok(posted.startsWith(`${summaryMarker}\n<!-- ncode-review:outcomes `));
   assert.equal(parseOutcomesMarker(posted)?.state, 'merged');
+  // The final comment that stands in for a summary it couldn't edit names that summary's commit, so a reopen skips it.
+  const fallback = calls[2]!.body.body as string;
+  assert.ok(fallback.startsWith(`${summaryMarker}\n${headMarker(reviewedAt)}\n<!-- ncode-review:outcomes `));
+  assert.equal(newestReviewedHead([{ user: { login: 'ncode-review[bot]' }, body: report.summaryBody! }, { user: { login: 'ncode-review[bot]' }, body: fallback }]), reviewedAt);
 });
 
 test('publishOutcomes refuses to post a secret', async () => {
@@ -372,10 +498,70 @@ test("recordOutcomes skips a fork's pull request without a call", async () => {
   assert.match(lines[0]!, /comes from a fork/);
 });
 
+// Runs recordOutcomes with a scratch output folder and GITHUB_OUTPUT file, removed afterwards.
+async function recordInScratch(api: Parameters<typeof recordOutcomes>[0], event: Parameters<typeof recordOutcomes>[1]) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'outcomes-'));
+  const saved = process.env['GITHUB_OUTPUT'];
+  process.env['GITHUB_OUTPUT'] = path.join(dir, 'github-output');
+  const lines: string[] = [];
+  try {
+    await recordOutcomes(api, event, 'o/r', path.join(dir, 'out'), (line) => lines.push(line));
+    const output = existsSync(path.join(dir, 'github-output')) ? readFileSync(path.join(dir, 'github-output'), 'utf8') : '';
+    return { report: existsSync(path.join(dir, 'out')) ? readOutcomes(path.join(dir, 'out')) : undefined, output, lines };
+  } finally {
+    if (saved === undefined) delete process.env['GITHUB_OUTPUT'];
+    else process.env['GITHUB_OUTPUT'] = saved;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const closedEvent = { pull_request: { number: 5, merged: true, head: { sha: closedHead, repo: { full_name: 'o/r' } } } };
+
+test('recordOutcomes writes outcomes.json for the publish step and sets the outcomes output', async () => {
+  const { report, output, lines } = await recordInScratch(fakeGitHub().api, closedEvent);
+  assert.equal(report?.state, 'merged');
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F1', 'fixed'], ['F2', 'dismissed'], ['F3', 'ignored']]);
+  assert.equal(output, 'outcomes=true\n');
+  assert.deepEqual(lines, ['Merged: F1 fixed, F2 dismissed, F3 ignored.']);
+});
+
+test('recordOutcomes writes nothing for a pull request the bot never reviewed', async () => {
+  const { report, output, lines } = await recordInScratch(fakeGitHub({ summary: false, threads: false }).api, closedEvent);
+  assert.equal(report, undefined);
+  assert.equal(output, '');
+  assert.deepEqual(lines, ['#5 was never reviewed; no outcomes to record.']);
+});
+
+test("recordOutcomes refuses a closed event that doesn't name the head", async () => {
+  await assert.rejects(recordOutcomes(fakeGitHub().api, { pull_request: { number: 5, head: { repo: { full_name: 'o/r' } } } }, 'o/r', 'unused', () => {}), /doesn't name the pull request and its head/);
+});
+
+test('readOutcomes reads the outcomes the review step left, and none after a review', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'outcomes-read-'));
+  try {
+    assert.equal(readOutcomes(dir), undefined);
+    writeFileSync(path.join(dir, 'outcomes.json'), JSON.stringify(report));
+    assert.deepEqual(readOutcomes(dir), report);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the caller triggers on closed, and the action gives a closed run no model key', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /types: \[opened, reopened, ready_for_review, closed\]/);
-  assert.match(workflow, /github\.event\.action == 'closed' \|\|/);
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  assert.match(readme, /types: \[opened, reopened, ready_for_review, closed\]/);
+  assert.match(readme, /github\.event\.action == 'closed' \|\|/);
   const action = readFileSync(new URL('../action.yml', import.meta.url), 'utf8');
   assert.match(action, /CODE_REVIEW_BEDROCK_KEY: \$\{\{ github\.event\.action != 'closed' && inputs\.bedrock-api-key \|\| '' \}\}/);
+});
+
+test("this repository's workflow triggers on closed exactly when its pin is a release that records outcomes", () => {
+  const workflow = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /github\.event\.action == 'closed' \|\|/);
+  const pin = /NCodeGroup\/code-review@[0-9a-f]{40} # v(\d+)\.(\d+)\.(\d+)/.exec(workflow);
+  assert.ok(pin, 'the action is pinned to a release');
+  const [major, minor, patch] = pin.slice(1).map(Number) as [number, number, number];
+  // v0.3.1 and earlier review a closed pull request at model cost; a later release records its outcomes instead.
+  const recordsOutcomes = major > 0 || minor > 3 || (minor === 3 && patch > 1);
+  assert.equal(/types: \[[^\]]*\bclosed\b/.test(workflow), recordsOutcomes, recordsOutcomes ? 'add closed to the types with this pin' : 'closed waits for a pin that records outcomes');
 });

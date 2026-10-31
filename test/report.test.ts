@@ -174,7 +174,12 @@ test("a pull request's findings come from the newest outcomes marker, and its co
   const github = new FakeGitHub();
   const first = summary(sha('a'), 'anthropic', 1.5);
   github.comments.set('NCodeGroup/a#7', [
-    bot(supersededComment(sha('b'), 'https://example.test/c', [review(sha('a'), 'anthropic', 1.5)])),
+    bot(
+      supersededComment(sha('b'), 'https://example.test/c', [
+        review(sha('a'), 'anthropic', 1.5),
+        outcomesMarker({ state: 'closed', head: sha('a'), findings: [finding('F1', 'ignored', ['correctness'])] }),
+      ]),
+    ),
     { body: `${first}\n${outcomesMarker({ state: 'merged', head: sha('a'), findings: [finding('F1', 'fixed', ['x'])] })}`, user: { login: 'mallory' } },
     bot(summary(sha('b'), 'bedrock', 2.25, [finding('F1', 'fixed', ['correctness']), finding('F2', 'dismissed', ['security', 'correctness'])])),
   ]);

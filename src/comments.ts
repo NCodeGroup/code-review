@@ -2,7 +2,7 @@
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
 import { assertNoSecrets } from './outputs.ts';
-import { botLogin, newestReviewedHead, reviewMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
+import { botLogin, keptMarkerLines, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody, type PostedThread } from './threads.ts';
 
 // GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
@@ -112,7 +112,7 @@ export async function postSummary(
   log(`Posted ${comment.html_url}`);
   for (const { id, body: olderBody } of older) {
     try {
-      const superseded = supersededComment(results.headSha, comment.html_url, reviewMarkerLines(olderBody ?? ''));
+      const superseded = supersededComment(results.headSha, comment.html_url, keptMarkerLines(olderBody ?? ''));
       await api('PATCH', `/repos/${results.repository}/issues/comments/${id}`, { body: superseded });
       log(`Collapsed the earlier summary comment ${id}`);
     } catch (error) {
