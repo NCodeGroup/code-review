@@ -12,9 +12,10 @@
 
 import { acknowledge, decisionOutputs, isSha } from './checks.ts';
 import { decideReview, type CommentEvent } from './command.ts';
-import { errorText, lastReviewedHead } from './comments.ts';
+import { errorText, readIssueComments } from './comments.ts';
 import { required } from './env.ts';
 import { fetchPullRequest, runUrl, type Api, type PullRequestRef } from './github.ts';
+import { newestReviewedHead } from './results.ts';
 
 // The step outputs for a run that will review, or undefined when there's nothing to acknowledge.
 export async function decideAcknowledgement(
@@ -27,7 +28,7 @@ export async function decideAcknowledgement(
     event,
     repository,
     (number) => fetchPullRequest(repository, number, token, fetchFn),
-    (number) => lastReviewedHead(repository, number, token, fetchFn),
+    async (number) => newestReviewedHead(await readIssueComments(repository, number, token, fetchFn)),
   );
   if (!decision.review) {
     log(`No acknowledgement: ${decision.reason}`);

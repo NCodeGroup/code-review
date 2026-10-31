@@ -2,7 +2,7 @@
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
 import { assertNoSecrets } from './outputs.ts';
-import { botLogin, keptMarkerLines, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
+import { botLogin, keptMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, reviewComment, type PostedThread } from './threads.ts';
 
 // GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
@@ -32,7 +32,7 @@ export async function readCommentPages<T>(endpoint: string, readPage: (url: stri
 
 // A comment as GitHub lists it, and the API path of a pull request's issue comments. The publish and review steps read
 // them through different transports: the app's token, which throws, and an optional token, which gives up.
-type ListedComment = { id: number; body?: string; user?: { login?: string } };
+export type ListedComment = { id: number; body?: string; user?: { login?: string; type?: string }; author_association?: string; created_at?: string };
 function issueComments(repository: string, number: number): string {
   return `/repos/${repository}/issues/${number}/comments`;
 }
@@ -49,7 +49,8 @@ export async function readPostedThreads(
   return listed && parsePosted(listed.filter((comment) => comment.user?.login === botLogin));
 }
 
-// Posts the findings as one review of inline threads, leaving out ones the bot already posted on this pull request.
+// Posts the findings as one review of inline threads, leaving out ones the bot already posted on this pull request, and
+// ones like a thread the maintainer dismissed, at any severity, and ones an open issue tracks.
 // GitHub rejects the whole review when any comment's line isn't in the diff, so on a rejection it posts them all in
 // the review's body instead. When the pull request has more review comments than it reads, it posts none, since it
 // can't tell which findings are already posted; the check run still has them all. A page that can't be read throws.
@@ -58,15 +59,20 @@ export async function postThreads(
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines'>,
   secrets: Iterable<string>,
   log: (line: string) => void = console.log,
+  dismissed: PostedThread[] = [],
 ): Promise<void> {
   const posted = await readPostedThreads(api, results.repository, results.pullRequest);
   if (!posted) {
     log(`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`);
     return;
   }
-  const placement = placeFindings(results.findings, results.changedLines, posted);
+  const placement = placeFindings(results.findings, results.changedLines, posted, dismissed);
   if (!placement.inline.length && !placement.inBody.length) {
-    log(`No new findings to post${placement.alreadyPosted.length ? ` (${placement.alreadyPosted.length} already posted)` : ''}.`);
+    const left = [
+      placement.alreadyPosted.length ? `${placement.alreadyPosted.length} already posted` : '',
+      placement.tracked.length ? `${placement.tracked.length} tracked in open issues` : '',
+    ].filter(Boolean).join(', ');
+    log(`No new findings to post${left ? ` (${left})` : ''}.`);
     return;
   }
   const reviews = `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`;
@@ -82,7 +88,7 @@ export async function postThreads(
     log(`Posted a review with ${placement.inline.length} threads and ${placement.inBody.length} findings in its body.`);
   } catch (error) {
     log(`::warning::GitHub refused the inline threads (${errorText(error)}); posting them in the review's body.`);
-    const fallback = { inline: [], inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody], alreadyPosted: placement.alreadyPosted };
+    const fallback = { inline: [], inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody], alreadyPosted: placement.alreadyPosted, tracked: placement.tracked };
     await api('POST', reviews, { commit_id: results.headSha, event: 'COMMENT', body: reviewBody(fallback, results.headSha) });
   }
 }
@@ -122,10 +128,16 @@ export async function postSummary(
   return comment.html_url;
 }
 
-// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable:
-// a refused request, a fetch that rejects, such as on a DNS failure or a reset connection, or a body that isn't JSON.
-export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
-  const all = await readCommentPages(issueComments(repository, number), async (url) => {
+// A pull request's issue comments, oldest first, read with the review step's optional token; undefined when they can't
+// all be read, as for readComments. `newestReviewedHead` of them is the commit the bot last reviewed.
+export function readIssueComments(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ListedComment[] | undefined> {
+  return readComments(issueComments(repository, number), token, fetchPage);
+}
+
+// A comment endpoint read with an optional token, which gives up: undefined on a refused request, a fetch that rejects,
+// or a body that isn't JSON, and when there are more comments than readCommentPages reads.
+export async function readComments(endpoint: string, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ListedComment[] | undefined> {
+  return readCommentPages(endpoint, async (url) => {
     try {
       const response = await fetchPage(`https://api.github.com${url}`, {
         headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
@@ -135,5 +147,4 @@ export async function lastReviewedHead(repository: string, number: number, token
       return undefined;
     }
   });
-  return newestReviewedHead(all);
 }

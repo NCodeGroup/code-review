@@ -5,6 +5,7 @@ import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
 import { creditsRanOutReason } from './credits.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
+import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 import type { RefutedFinding } from './verify.ts';
@@ -68,6 +69,10 @@ export interface Results {
   // The head the summary records as reviewed, when it isn't headSha, and '' for none: see recordedHead. Absent means
   // headSha. It crosses to the publish step as JSON, which would drop an undefined, so '' stands for none.
   recordedHead?: string;
+  // For a re-review: what it found of each earlier finding, by the URL of its thread's first comment, and the lines
+  // changed since the last review, so the publish step can resolve the threads of fixed findings and answer the
+  // autopilot once.
+  reReview?: { changedLines: Record<string, number[]>; earlier: { url: string; status: EarlierState; note: string }[] };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
 }
@@ -248,7 +253,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   if (count) {
     lines.push('<details><summary>Findings</summary>', '');
     for (const f of results.findings) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}${f.tracked ? ` (tracked in #${f.tracked})` : ''}`);
     }
     lines.push('', '</details>', '');
   }
@@ -345,6 +350,7 @@ export function checkText(results: Results): string {
       '',
       `**${cell(f.title)}** ${f.problem.replace(/</g, '&lt;')}`,
       '',
+      ...(f.tracked ? [`Tracked in #${f.tracked}.`, ''] : []),
       `*Consequence:* ${f.consequence.replace(/</g, '&lt;')}`,
       '',
       `*Fix:* ${f.fix.replace(/</g, '&lt;')}`,

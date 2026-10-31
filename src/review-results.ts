@@ -24,6 +24,8 @@ export interface ReviewContext {
   template?: string;
   // The head the summary records as reviewed: see recordedHead.
   recordedHead?: string;
+  // For a re-review: what it found of each earlier finding, and the lines changed since the last review.
+  reReview?: NonNullable<Results['reReview']>;
 }
 
 function reviewerResults(outcomes: ReviewerOutcome[], calls: CallRecord[]): ReviewerResult[] {
@@ -83,6 +85,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     depth: outcome.depth,
     sensitiveFiles: outcome.sensitiveFiles,
     ...(context.recordedHead !== undefined ? { recordedHead: context.recordedHead } : {}),
+    ...(context.reReview ? { reReview: context.reReview } : {}),
     ...(shadow ? { shadow } : {}),
   };
 }

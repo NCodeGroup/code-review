@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on, the issues it closes and whether their authors can write to the repository, and the finding a /review explain or /review teach comment names, to fetch the pull request's head and the head the last review read, and to read the earlier review threads for a re-review.
+    description: A read-only token (contents and pull requests, and issues to link findings to open issues), used to read the pull request a /review comment is on, the issues it closes and whether their authors can write to the repository, and the finding a /review explain or /review teach comment names, to fetch the pull request's head and the head the last review read, to read the pull request's comments and the earlier review threads, and to read the open issues.
     required: false
     default: ${{ github.token }}
   app-client-id:
@@ -102,7 +102,9 @@ runs:
     # Neither the app's private key nor a token minted from it is in this step's environment.
     # For a comment that isn't a /review, /review explain or /review teach command from someone with write access, it stops
     # here and the later steps skip. For a closed pull request it records each finding's outcome by rules, with no model
-    # call, so it gets no model key.
+    # call, so it gets no model key. After three automatic reviews with no comment from someone with write access, it
+    # stops before any model call and sets `paused`, so the later steps post only the paused notice and complete an
+    # acknowledged check run as paused.
     - name: Review
       id: review
       shell: bash
@@ -119,12 +121,13 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
-    # comments: to publish the review, a closed pull request's outcomes, or a /review explain or /review teach reply, or
-    # to complete the check run with why there's no review.
+    # comments and review threads: to publish the review, a closed pull request's outcomes, the paused notice or a
+    # /review explain or /review teach reply, or to complete the check run with why there's no review.
     - name: Get the app's token
       id: app-token
       if: >-
         always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.paused == 'true' ||
           steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true' ||
           steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -155,6 +158,7 @@ runs:
       id: publish
       if: >-
         steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.paused == 'true' ||
           steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'
       shell: bash
       env:
@@ -166,7 +170,8 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/publish.ts"
 
     # Completes the check run when the publish step didn't, so it never stays in progress: neutral "Review budget used
-    # up" when no provider was available, failure with the reason when the review failed, cancelled when the run was.
+    # up" when no provider was available, neutral "Review paused" when the loop limit paused an automatic review, failure
+    # with the reason when the review failed, cancelled when the run was.
     - name: Finish the check run
       if: >-
         always() && steps.app-token.outcome == 'success' && steps.publish.outputs.check-completed != 'true' &&

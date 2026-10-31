@@ -328,12 +328,15 @@ test('reReviewSummary never says there are no further findings when the earlier 
 function thread(body: string, replies: { login: string; association: string; body: string }[] = [], resolved = false, login = 'ncode-review'): ThreadNode {
   const first = { author: { login }, authorAssociation: 'NONE', body, url: 'https://github.com/o/r/pull/1#discussion_r9' };
   return {
+    id: 'PRRT_1',
     isResolved: resolved,
+    isOutdated: true,
+    resolvedBy: null,
     path: 'src/a.ts',
     line: null,
     originalLine: 12,
-    first: { nodes: [first] },
-    comments: { nodes: [first, ...replies.map((r, i) => ({ author: { login: r.login }, authorAssociation: r.association, body: r.body, url: `https://github.com/o/r/pull/1#discussion_r${100 + i}` }))] },
+    first: { nodes: [{ ...first, reactions: { nodes: [] } }] },
+    comments: { totalCount: replies.length + 1, nodes: [first, ...replies.map((r, i) => ({ author: { login: r.login }, authorAssociation: r.association, body: r.body, url: `https://github.com/o/r/pull/1#discussion_r${100 + i}` }))] },
   };
 }
 

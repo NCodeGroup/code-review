@@ -792,8 +792,15 @@ test('postThreads posts the findings in the review body when GitHub refuses the 
   assert.ok(lines.includes("::warning::GitHub refused the inline threads (HTTP 422); posting them in the review's body."));
 });
 
-test('lastReviewedHead takes the head of the newest bot summary across pages', async () => {
-  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+// The head the bot last reviewed, read as main.ts reads it: the issue comments, then the newest summary's head.
+async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch): Promise<string | undefined> {
+  const { readIssueComments } = await import('../src/comments.ts');
+  const { newestReviewedHead } = await import('../src/results.ts');
+  return newestReviewedHead(await readIssueComments(repository, number, token, fetchPage));
+}
+
+test('the last reviewed head takes the head of the newest bot summary across pages', async () => {
+  const { commentPageSize } = await import('../src/comments.ts');
   const { summaryMarker, headMarker } = await import('../src/results.ts');
   const a = 'a'.repeat(40);
   const b = 'b'.repeat(40);
@@ -813,8 +820,8 @@ test('lastReviewedHead takes the head of the newest bot summary across pages', a
   ]);
 });
 
-test('lastReviewedHead gives undefined when a page cannot be read', async () => {
-  const { lastReviewedHead, commentPageSize } = await import('../src/comments.ts');
+test('the last reviewed head gives undefined when a page cannot be read', async () => {
+  const { commentPageSize } = await import('../src/comments.ts');
   const { summaryMarker, headMarker } = await import('../src/results.ts');
   const a = 'a'.repeat(40);
   const bot = { login: 'ncode-review[bot]' };
@@ -826,28 +833,24 @@ test('lastReviewedHead gives undefined when a page cannot be read', async () => 
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
-test('lastReviewedHead gives undefined when the first page cannot be read', async () => {
-  const { lastReviewedHead } = await import('../src/comments.ts');
+test('the last reviewed head gives undefined when the first page cannot be read', async () => {
   const fetchPage = (async () => new Response('', { status: 500 })) as typeof fetch;
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
-test('lastReviewedHead gives undefined when the fetch rejects', async () => {
-  const { lastReviewedHead } = await import('../src/comments.ts');
+test('the last reviewed head gives undefined when the fetch rejects', async () => {
   const fetchPage = (async () => {
     throw new TypeError('fetch failed');
   }) as typeof fetch;
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
-test('lastReviewedHead gives undefined when a page body is not JSON', async () => {
-  const { lastReviewedHead } = await import('../src/comments.ts');
+test('the last reviewed head gives undefined when a page body is not JSON', async () => {
   const fetchPage = (async () => new Response('not json', { status: 200 })) as typeof fetch;
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
 });
 
-test('lastReviewedHead sends no authorization header without a token', async () => {
-  const { lastReviewedHead } = await import('../src/comments.ts');
+test('the last reviewed head sends no authorization header without a token', async () => {
   const sent: Headers[] = [];
   const fetchPage = (async (_url: string | URL | Request, init?: RequestInit) => {
     sent.push(new Headers(init?.headers));
@@ -859,8 +862,7 @@ test('lastReviewedHead sends no authorization header without a token', async () 
   assert.equal(sent[0]!.has('authorization'), false);
 });
 
-test('lastReviewedHead sends the token as a bearer authorization header', async () => {
-  const { lastReviewedHead } = await import('../src/comments.ts');
+test('the last reviewed head sends the token as a bearer authorization header', async () => {
   const sent: Headers[] = [];
   const fetchPage = (async (_url: string | URL | Request, init?: RequestInit) => {
     sent.push(new Headers(init?.headers));

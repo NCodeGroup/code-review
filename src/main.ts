@@ -1,8 +1,8 @@
 // The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step, or
 // status.json with why there's no review, for the finish step. For a `/review explain` comment it writes answer.json
-// instead, and for `/review teach` teach.json. On a closed pull request it writes outcomes.json, without a model call
-// (outcomes.ts). It holds the model credentials but never the app's private key or a token minted from it: those reach
-// only the steps that write to the pull request.
+// instead, for `/review teach` teach.json, and for an automatic review the loop limit pauses, paused.json. On a closed
+// pull request it writes outcomes.json, without a model call (outcomes.ts). It holds the model credentials but never
+// the app's private key or a token minted from it: those reach only the steps that write to the pull request.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -10,21 +10,23 @@ import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, totalCost, type AgentRun } from './agent.ts';
 import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideRun, type Command, type CommentEvent } from './command.ts';
-import { errorText, lastReviewedHead } from './comments.ts';
+import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
 import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
+import { readOpenIssues } from './issues.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { assertNoSecrets } from './outputs.ts';
+import { checkPause, pausedStatus, type Paused } from './pause.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
-import type { Results } from './results.ts';
+import { newestReviewedHead, type Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
 import { readClosedIssues, writerCheck } from './writers.ts';
 
@@ -158,9 +160,10 @@ async function main(): Promise<void> {
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
-  // The head the bot last reviewed, looked up once: the skip rule and the re-review both need it.
-  let lastHead: Promise<string | undefined> | undefined;
-  const reviewedHead = (number: number) => (lastHead ??= lastReviewedHead(repository, number, githubToken));
+  // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
+  let comments: Promise<ListedComment[] | undefined> | undefined;
+  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken));
+  const reviewedHead = async (number: number) => newestReviewedHead(await issueComments(number));
 
   // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
   // no credentials. It never reviews.
@@ -191,6 +194,24 @@ async function main(): Promise<void> {
   if (command.kind === 'teach') {
     await teach({ outDir, repository, number, githubToken, event }, command);
     return;
+  }
+  // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
+  // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
+  if (!event.comment) {
+    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), log: console.log });
+    if (pause !== 'review') writeStatus(pausedStatus());
+    if (pause === 'paused') {
+      console.log('Paused, and the notice is posted already; comment /review to resume.');
+      return;
+    }
+    if (pause === 'pause') {
+      const paused: Paused = { repository, pullRequest: number };
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(path.join(outDir, 'paused.json'), JSON.stringify(paused));
+      const output = process.env['GITHUB_OUTPUT'];
+      if (output) appendFileSync(output, 'paused=true\n');
+      return;
+    }
   }
   if (event.comment) event = { pull_request: decision.pullRequest };
 
@@ -224,6 +245,8 @@ async function main(): Promise<void> {
     readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken),
     log,
   });
+  // Only a full review's synthesis can mark a finding as tracked in an open issue.
+  if (!plan) gathered.openIssues = await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -257,6 +280,9 @@ async function main(): Promise<void> {
       warnings: gathered.warnings,
       diff: gathered.diff,
       recordedHead,
+      ...(reReviewTrace.reReview
+        ? { reReview: { changedLines: reReviewTrace.reReview.changedLines, earlier: reReviewTrace.reReview.earlier.map(({ url, status, note }) => ({ url, status, note })) } }
+        : {}),
     });
     // The shadow reviewers' findings and the shadow prompts' outputs, beside the live ones they shadow.
     const trace = {
