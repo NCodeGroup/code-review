@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Shadow mode for a new reviewer or prompt: a charter with `shadow: true` in its frontmatter, or named in `CODE_REVIEW_SHADOW`, runs as usual, but its findings go only to the trace and a collapsed "Shadow findings (not posted)" section of the check run, never to synthesis, the threads, the summary or the verdict. A `prompts/<name>.shadow.md` runs beside the live prompt on the share of reviews `CODE_REVIEW_SHADOW_RATE` sets (0 by default), sampled by pull request and head, with both outputs in the trace. The evals score shadow reviewers apart from the live ones ([#53](https://github.com/NCodeGroup/code-review/issues/53)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.

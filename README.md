@@ -16,6 +16,31 @@ repository under review. Results and the trace are scanned for secrets before th
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
+### Shadow reviewers and prompts
+
+A new reviewer or prompt can run without posting until its precision holds. Mark a charter in shadow in its
+frontmatter:
+
+```markdown
+---
+shadow: true
+---
+# performance
+```
+
+A shadow reviewer is chosen and runs like any other, but its findings go only to the trace and to a collapsed
+"Shadow findings (not posted)" section of the check run. They aren't given to synthesis, posted as threads, shown in
+the summary comment or the annotations, or counted in the verdict. For an experiment, set
+`CODE_REVIEW_SHADOW=performance,tests` in the review job's `env:` to put those reviewers in shadow too; `rule-check`
+works as a name.
+
+A shadow prompt, `prompts/<name>.shadow.md` beside `specialist`, `selection`, `synthesis` or `rule-check`, runs
+alongside the live prompt with the same input on a share of reviews set by `CODE_REVIEW_SHADOW_RATE`, from `0` (the
+default: never) to `1` (every review). The sample is picked from the pull request's number and head commit, so the
+same commit is always sampled the same way. Both outputs go to the trace (`trace.json`, under `shadow.prompts`); the
+shadow output is never posted, and the check run's shadow section only names the prompts that ran and their cost. A
+shadow specialist prompt runs every reviewer a second time, so a sampled review costs up to about twice as much.
+
 ## Using it
 
 ```yaml
@@ -130,6 +155,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. Run each setup at least twice: one run varies by about 2 of 55.
+
+Shadow reviewers ([Shadow reviewers and prompts](#shadow-reviewers-and-prompts)) are scored on their own: `--shadow performance` (or `CODE_REVIEW_SHADOW`) runs `performance` in shadow, and the report gives its catches, must-not violations and findings apart from the live reviewers', whose scores never include them.
 
 ## Checks
 

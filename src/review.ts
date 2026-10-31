@@ -1,10 +1,12 @@
 // Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
 
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
+import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { parseCharter, type Charter } from './charter.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, shadowOverride, shadowPromptRate, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 
@@ -36,13 +38,31 @@ export interface ReviewerOutcome {
 
 export type Verdict = 'approve' | 'request-changes' | 'comment';
 
+export type PromptName = 'specialist' | 'selection' | 'synthesis' | 'rule-check';
+export const promptNames: PromptName[] = ['specialist', 'selection', 'synthesis', 'rule-check'];
+
+// A shadow prompt's call beside the live call it shadows, for comparison in the trace. Its output is never posted.
+export interface ShadowPromptRun {
+  prompts: PromptName[];
+  role: string;
+  live: unknown;
+  shadow: unknown;
+}
+
 export interface Review {
+  // The live reviewers: what synthesis, the threads, the summary and the verdict are made from.
   reviewers: ReviewerOutcome[];
+  // The shadow reviewers that ran. Their findings go only to the trace and the check run's shadow section.
+  shadow: ReviewerOutcome[];
+  // Shadow reviewers the path rules and selection didn't choose.
+  shadowSkipped: string[];
+  // The shadow prompts' calls, when this review was sampled for them.
+  shadowPrompts: ShadowPromptRun[];
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
   calls: CallRecord[];
-  // Roster reviewers the path rules and selection didn't choose.
+  // Live roster reviewers the path rules and selection didn't choose.
   skipped: string[];
 }
 
@@ -105,7 +125,9 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
-  reviewers: Map<string, string>;
+  reviewers: Map<string, Charter>;
+  // prompts/<name>.shadow.md, for each prompt that has one: run alongside the live prompt on a sample of reviews.
+  shadowPrompts: Partial<Record<PromptName, string>>;
 }
 
 // The rules the context stage picked for any reviewer, once each and in catalog order so a topic's rules share a batch,
@@ -119,18 +141,46 @@ export function ruleBatches(catalog: IndexedRule[], rulesFor: Map<string, Indexe
 }
 
 export function loadCharters(root: string): Charters {
-  const reviewers = new Map<string, string>();
+  const reviewers = new Map<string, Charter>();
   for (const name of readdirSync(path.join(root, 'reviewers')).filter((n) => n.endsWith('.md')).sort()) {
-    reviewers.set(name.slice(0, -3), readFileSync(path.join(root, 'reviewers', name), 'utf8'));
+    reviewers.set(name.slice(0, -3), parseCharter(readFileSync(path.join(root, 'reviewers', name), 'utf8')));
   }
   const prompt = (name: string) => readFileSync(path.join(root, 'prompts', `${name}.md`), 'utf8');
+  const shadowPrompts: Partial<Record<PromptName, string>> = {};
+  for (const name of promptNames) {
+    try {
+      shadowPrompts[name] = readFileSync(path.join(root, 'prompts', `${name}.shadow.md`), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
   return {
     specialistPrompt: prompt('specialist'),
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
     reviewers,
+    shadowPrompts,
   };
+}
+
+// The reviewers whose findings go only to the trace and the check run's shadow section: the charters marked shadow,
+// and the names CODE_REVIEW_SHADOW adds.
+export function shadowReviewers(charters: Charters, override = shadowOverride()): Set<string> {
+  return new Set([...[...charters.reviewers].filter(([, charter]) => charter.shadow).map(([name]) => name), ...override]);
+}
+
+// Whether this review runs the shadow prompts: the share given by the rate, picked by the pull request's number and
+// head, so a re-run of the same commit samples the same way and tests are stable.
+export function shadowSampled(number: number, headSha: string, rate: number): boolean {
+  if (rate <= 0) return false;
+  if (rate >= 1) return true;
+  return createHash('sha256').update(`${number}:${headSha}`).digest().readUInt32BE(0) / 2 ** 32 < rate;
+}
+
+function shadowPromptRun(prompts: PromptName[], role: string, live: AgentResult<unknown>, shadow: AgentResult<unknown>): ShadowPromptRun {
+  const output = (result: AgentResult<unknown>) => (result.error ? { error: result.error } : result.output);
+  return { prompts, role, live: output(live), shadow: output(shadow) };
 }
 
 const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf|iam|role|policy|kms|trust|firewall)/i;
@@ -275,9 +325,24 @@ export function changedLines(diff: string): Map<string, Set<number>> {
   return lines;
 }
 
-export async function review(run: AgentRun, gathered: Gathered, charters: Charters, log: (line: string) => void): Promise<Review> {
+
+type Selection = { add: { reviewer: string; reason: string }[] };
+type Synthesis = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] };
+
+// The agent runs through a function the caller can replace, so a test can review with a stub that makes no model call.
+export async function review(
+  run: AgentRun,
+  gathered: Gathered,
+  charters: Charters,
+  log: (line: string) => void,
+  agent: typeof runAgent = runAgent,
+): Promise<Review> {
   const calls: CallRecord[] = [];
   const roster = [...charters.reviewers.keys()];
+  const shadow = shadowReviewers(charters);
+  const variants = shadowSampled(gathered.pullRequest.number, gathered.pullRequest.headSha, shadowPromptRate()) ? charters.shadowPrompts : {};
+  const shadowPrompts: ShadowPromptRun[] = [];
+  if (Object.keys(variants).length) log(`Shadow prompts: ${Object.keys(variants).join(', ')}`);
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
@@ -292,24 +357,30 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
-  const selection = await runAgent<{ add: { reviewer: string; reason: string }[] }>(
-    { provider: run.provider, proxyUrl: run.proxyUrl },
-    {
-      role: 'selection',
-      tier: 'sonnet',
-      systemPrompt: charters.selectionPrompt,
-      prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
-      schema: selectionSchema,
-      maxTurns: 3,
-      budgetUsd: budgets.selection,
-      cache: false,
-    },
-  );
+  const oneShot: AgentRun = { provider: run.provider, proxyUrl: run.proxyUrl };
+  const selectionRequest = (role: string, systemPrompt: string): AgentRequest => ({
+    role,
+    tier: 'sonnet',
+    systemPrompt,
+    prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
+    schema: selectionSchema,
+    maxTurns: 3,
+    budgetUsd: budgets.selection,
+    cache: false,
+  });
+  const [selection, shadowSelection] = await Promise.all([
+    agent<Selection>(oneShot, selectionRequest('selection', charters.selectionPrompt)),
+    variants.selection === undefined ? undefined : agent<Selection>(oneShot, selectionRequest('shadow-prompt:selection', variants.selection)),
+  ]);
   calls.push(selection.record);
+  if (shadowSelection) {
+    calls.push(shadowSelection.record);
+    shadowPrompts.push(shadowPromptRun(['selection'], 'selection', selection, shadowSelection));
+  }
   for (const addition of selection.output?.add ?? []) {
     if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
   }
-  log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
+  log(`Reviewers: ${[...selected].map((name) => (shadow.has(name) ? `${name} (shadow)` : name)).join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
 
   // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
   // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
@@ -318,32 +389,50 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
-  const jobs = parts.flatMap((diff, part) => {
-    const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
+  interface Job { name: string; part: number; label: string; tier: ModelTier; role: string; systemPrompt: string; shared: string; rules: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
+  const jobs: Job[] = parts.flatMap((diff, part) => {
+    const shared = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
     return [
       ...[...selected].map((reviewer) => ({
         name: reviewer,
         part,
         label: '',
         tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-        prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
+        role: `reviewer:${reviewer}`,
+        systemPrompt: charters.specialistPrompt,
+        shared,
+        rules: rulesBlock(context.rulesFor.get(reviewer)),
+        charter: charters.reviewers.get(reviewer)!.text,
       })),
       ...batches.map((batch, i) => ({
         name: ruleCheckName,
         part,
         label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
         tier: 'sonnet' as ModelTier,
-        prompt: [sharedBlock, `${rulesBlock(batch).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
+        role: `reviewer:${ruleCheckName}`,
+        systemPrompt: charters.specialistPrompt,
+        shared,
+        rules: rulesBlock(batch),
+        charter: charters.ruleCheckPrompt,
       })),
     ];
   });
+  // A sampled review runs each job again with the shadow prompts, after the live jobs have written the shared cache.
+  const twins: Job[] = jobs.flatMap((job) => {
+    const charter = job.name === ruleCheckName ? variants['rule-check'] : undefined;
+    const prompts: PromptName[] = [...(variants.specialist !== undefined ? ['specialist' as const] : []), ...(charter !== undefined ? ['rule-check' as const] : [])];
+    if (!prompts.length) return [];
+    return [{ ...job, role: `shadow-prompt:${job.role}`, systemPrompt: variants.specialist ?? job.systemPrompt, charter: charter ?? job.charter, twinOf: job, prompts }];
+  });
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
-  const reviewOne = async ({ name, part, label, tier, prompt }: (typeof jobs)[number]): Promise<ReviewerOutcome> => {
-    const result = await runAgent<{ findings: Finding[] }>(reviewRun, {
-      role: `reviewer:${name}`,
+  const outcomeOf = new Map<Job, ReviewerOutcome>();
+  const reviewOne = async (job: Job): Promise<void> => {
+    const { name, part, label, tier } = job;
+    const result = await agent<{ findings: Finding[] }>(reviewRun, {
+      role: job.role,
       tier,
-      systemPrompt: charters.specialistPrompt,
-      prompt,
+      systemPrompt: job.systemPrompt,
+      prompt: [job.shared, `${job.rules.trimStart()}\n\nYour charter:\n${job.charter}`],
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
@@ -351,15 +440,18 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(result.record);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');
+    const where = [parts.length > 1 ? `part ${part + 1}` : '', label, shadow.has(name) ? 'shadow' : '', job.twinOf ? 'shadow prompt' : ''].filter(Boolean).join(', ');
     log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
-    return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
+    outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
   };
   const concurrency = 6;
-  const perJob = [
-    ...(await mapWithConcurrency(first, concurrency, reviewOne)),
-    ...(await mapWithConcurrency(jobs.filter((job) => !first.includes(job)), concurrency, reviewOne)),
-  ];
+  await mapWithConcurrency(first, concurrency, reviewOne);
+  await mapWithConcurrency([...jobs.filter((job) => !first.includes(job)), ...twins], concurrency, reviewOne);
+  for (const twin of twins) {
+    const output = (o: ReviewerOutcome) => (o.error ? { error: o.error } : { findings: o.findings });
+    shadowPrompts.push({ prompts: twin.prompts!, role: `${twin.twinOf!.role}${parts.length > 1 ? ` part ${twin.part + 1}` : ''}${twin.label ? ` ${twin.label}` : ''}`, live: output(outcomeOf.get(twin.twinOf!)!), shadow: output(outcomeOf.get(twin)!) });
+  }
+  const perJob = jobs.map((job) => outcomeOf.get(job)!);
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran.
   const outcomes: ReviewerOutcome[] = [...selected, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
     const mine = perJob.filter((o) => o.name === name);
@@ -371,29 +463,38 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       ...(errors.length ? { error: errors.join('; ') } : {}),
     };
   });
+  // A shadow reviewer's findings stop here: they never reach synthesis, the threads, the summary or the verdict.
+  const live = outcomes.filter((o) => !shadow.has(o.name));
+  const shadowOutcomes = outcomes.filter((o) => shadow.has(o.name));
+  if (shadowOutcomes.length) log(`Shadow reviewers (not posted): ${shadowOutcomes.map((o) => `${o.name} ${o.findings.length} findings`).join(', ')}`);
 
   // Synthesis.
   const limit = findingLimit(parts.length);
-  const raw = outcomes.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  const raw = live.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))).map((f, i) => ({ id: `R${i + 1}`, ...f }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
   if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
-    const synthesis = await runAgent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
-      { provider: run.provider, proxyUrl: run.proxyUrl },
-      {
-        role: 'synthesis',
-        tier: 'opus',
-        systemPrompt: charters.synthesisPrompt,
-        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
-        schema: synthesisSchema,
-        maxTurns: 3,
-        budgetUsd: budgets.synthesis,
-        cache: false,
-      },
-    );
+    const synthesisRequest = (role: string, systemPrompt: string): AgentRequest => ({
+      role,
+      tier: 'opus',
+      systemPrompt,
+      prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
+      schema: synthesisSchema,
+      maxTurns: 3,
+      budgetUsd: budgets.synthesis,
+      cache: false,
+    });
+    const [synthesis, shadowSynthesis] = await Promise.all([
+      agent<Synthesis>(oneShot, synthesisRequest('synthesis', charters.synthesisPrompt)),
+      variants.synthesis === undefined ? undefined : agent<Synthesis>(oneShot, synthesisRequest('shadow-prompt:synthesis', variants.synthesis)),
+    ]);
     calls.push(synthesis.record);
+    if (shadowSynthesis) {
+      calls.push(shadowSynthesis.record);
+      shadowPrompts.push(shadowPromptRun(['synthesis'], 'synthesis', synthesis, shadowSynthesis));
+    }
     if (synthesis.output) {
       summary = synthesis.output.summary;
       verdict = synthesis.output.verdict;
@@ -407,7 +508,17 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     summary = 'No findings.';
   }
 
-  const skipped = roster.filter((name) => !selected.has(name));
+  const notSelected = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-  return { reviewers: outcomes, summary, verdict, findings, calls, skipped };
+  return {
+    reviewers: live,
+    shadow: shadowOutcomes,
+    shadowSkipped: notSelected.filter((name) => shadow.has(name)),
+    shadowPrompts,
+    summary,
+    verdict,
+    findings,
+    calls,
+    skipped: notSelected.filter((name) => !shadow.has(name)),
+  };
 }
