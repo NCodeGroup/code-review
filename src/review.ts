@@ -10,7 +10,7 @@ import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Decision, type IndexedRule } from './context.ts';
-import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { closedIssues, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { isTemplateOwned, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
@@ -295,12 +295,20 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
+// The pull request as every stage sees it. Whether it has a description is stated either way, so no reviewer takes a
+// description it wasn't shown for a missing one.
 export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
-  const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
+  const description = pr.body
+    ? `\nDescription:\n${pr.body}`
+    : pr.bodyWithheld
+      ? "\n(The pull request has a description, left out because its author lacks write access. Don't report it as missing, or anything as absent from it.)"
+      : '\n(The pull request has no description.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
+  const unread = closedIssues(pr.body).filter((n) => !(pr.issues ?? []).some((i) => i.number === n));
+  const unreadIssues = unread.length ? `\nIt also closes ${unread.map((n) => `#${n}`).join(', ')}, whose text isn't shown.` : '';
   const commits = gathered.commits.length ? `\nCommits:\n${gathered.commits.map((c) => `- ${c}`).join('\n')}` : '';
-  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
+  return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${unreadIssues}${commits}\n</pull_request>`;
 }
 
 // Every file the pull request changes. Given the files a diff holds, it marks the others that have a diff as `elsewhere`.
@@ -347,7 +355,7 @@ export function templateBlock(gathered: Gathered): string {
 }
 
 // The part every specialist on one part of the diff shares, so the provider can cache it; each charter comes after it.
-function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
+export function sharedContext(gathered: Gathered, decisions: Decision[], diff: string, part: number, parts: number): string {
   return `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${decisionsBlock(decisions)}${templateBlock(gathered)}\n\n${changeContext(gathered, diff, part, parts)}`;
 }
 

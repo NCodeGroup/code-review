@@ -30,7 +30,7 @@ function stubAgent(answer: (request: AgentRequest) => { output?: unknown; error?
 const diff = ['diff --git a/src/A.cs b/src/A.cs', '--- a/src/A.cs', '+++ b/src/A.cs', '@@ -1,1 +1,2 @@', ' line', '+added', ''].join('\n');
 
 const gathered = (number = 7, headSha = 'a'.repeat(40)): Gathered => ({
-  pullRequest: { repository: 'o/r', number, title: 'Add a line', author: 'someone', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b'.repeat(40), headSha },
+  pullRequest: { repository: 'o/r', number, title: 'Add a line', author: 'someone', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b'.repeat(40), headSha },
   mergeBase: 'b'.repeat(40),
   files: [{ path: 'src/A.cs', additions: 1, deletions: 0, generated: false, shown: true }],
   diff,

@@ -7,7 +7,6 @@ import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars }
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
-export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
   repository: string;
@@ -15,10 +14,14 @@ export interface PullRequest {
   title: string;
   // Present only when the author has write access; anyone else's text stays out of the prompts.
   body?: string;
+  // The pull request has a description, left out because its author lacks write access.
+  bodyWithheld?: boolean;
   // Issues the description says it closes, each present only when its author has write access.
   issues?: { number: number; title: string; body: string }[];
   author: string;
   authorAssociation: string;
+  // Whether the author has write access: the event's association, or failing that the repository's permissions.
+  authorCanWrite: boolean;
   draft: boolean;
   baseRef: string;
   baseSha: string;
@@ -61,8 +64,6 @@ export interface Gathered {
   // The project template the repository is made from, when it's one whose files the engine knows.
   template?: Template;
 }
-
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 const generatedPatterns = [
   /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|packages\.lock\.json|Cargo\.lock|poetry\.lock|uv\.lock)$/,
@@ -517,18 +518,21 @@ export function closedIssues(body: string | undefined): number[] {
   return [...new Set(numbers)].slice(0, 5);
 }
 
-export function readPullRequest(event: any, repository: string): PullRequest {
+// canWrite is whether the author has write access, from writerCheck. It is required: the event's author_association
+// alone reports a private organization member as CONTRIBUTOR.
+export function readPullRequest(event: any, repository: string, canWrite: boolean): PullRequest {
   const pr = event.pull_request ?? event.issue;
   if (!pr) throw new Error('The event has no pull request.');
   const association = String(pr.author_association ?? '');
-  const body = typeof pr.body === 'string' ? pr.body.slice(0, maxPullRequestTextChars) : undefined;
+  const body = typeof pr.body === 'string' && pr.body.trim() ? pr.body.slice(0, maxPullRequestTextChars) : undefined;
   return {
     repository,
     number: Number(pr.number),
     title: String(pr.title ?? ''),
-    ...(writers.has(association) && body ? { body } : {}),
+    ...(body ? (canWrite ? { body } : { bodyWithheld: true }) : {}),
     author: String(pr.user?.login ?? ''),
     authorAssociation: association,
+    authorCanWrite: canWrite,
     draft: Boolean(pr.draft),
     baseRef: String(pr.base?.ref ?? ''),
     baseSha: String(pr.base?.sha ?? ''),
@@ -541,7 +545,7 @@ export function readPullRequest(event: any, repository: string): PullRequest {
 // one of the template's files is an edit by hand, which the review treats as the project's. The default branch's answers
 // count; an adoption adds the answers file, so the default branch has none, and then the head's count.
 export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
-  if (!writers.has(pullRequest.authorAssociation) || !files.some((f) => f.path === answersFile)) return undefined;
+  if (!pullRequest.authorCanWrite || !files.some((f) => f.path === answersFile)) return undefined;
   return existsSync(path.join(basePath, answersFile)) ? readTemplate(basePath) : readTemplate(prPath);
 }
 
@@ -571,7 +575,7 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
   const proposed = readProposedDecisions(prPath, reviewed);
   const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
-  const commits = writers.has(pullRequest.authorAssociation)
+  const commits = pullRequest.authorCanWrite
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
   return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, own), guidance: guidanceDir ? readGuidance(guidanceDir, own) : [], decisions, commits, ...(template ? { template } : {}) };
