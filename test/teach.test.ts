@@ -267,7 +267,9 @@ test('openGuidanceIssue reads 404 as no permission and 410 as issues turned off,
   assert.deepEqual(await openGuidanceIssue(recorder(() => new GitHubError('x', 404)).api, teaching), { refused: 'permission' });
   assert.deepEqual(await openGuidanceIssue(recorder((m) => (m === 'GET' ? {} : new GitHubError('x', 410))).api, teaching), { refused: 'disabled' });
   assert.match(replyBody(teaching, { refused: 'disabled' }), /issues are turned off in NCodeGroup\/code-review/);
-  await assert.rejects(openGuidanceIssue(recorder(() => new GitHubError('x', 500)).api, teaching), /x/);
+  const failing = recorder(() => new GitHubError('x', 500));
+  await assert.rejects(openGuidanceIssue(failing.api, teaching), /x/);
+  assert.equal(failing.calls.length, 1, 'a label read failing with anything but 404 creates no label');
 });
 
 test('postTeaching opens nothing and posts nothing when the issue or the reply holds a secret', async () => {
