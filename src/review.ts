@@ -304,6 +304,16 @@ export function settleUpstream(
   };
 }
 
+const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
+
+// The review's verdict: synthesis's when it gave one, else what the findings call for. When settling moved some of
+// synthesis's findings upstream, its verdict may rest on them, so it's capped at what the findings left here call for.
+export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: boolean, findings: Pick<Finding, 'severity'>[]): Verdict {
+  const called: Verdict = findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  if (!synthesized) return called;
+  return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
+}
+
 export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
@@ -439,7 +449,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
   const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
   let summary = '';
-  let verdict: Verdict | undefined;
+  let synthesized: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
   if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
@@ -459,7 +469,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     calls.push(synthesis.record);
     if (synthesis.output) {
       summary = synthesis.output.summary;
-      verdict = synthesis.output.verdict;
+      synthesized = synthesis.output.verdict;
       findings = mergeSynthesis(synthesis.output.findings, raw, limit);
     } else {
       // Without synthesis, fall back to the reviewers' own findings, most severe first.
@@ -473,6 +483,6 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   const settled = settleUpstream(findings, upstreamRaw, gathered.template, summary);
 
   const skipped = roster.filter((name) => !selected.has(name));
-  verdict ??= settled.findings.some((f) => f.severity === 'blocker') ? 'request-changes' : settled.findings.length ? 'comment' : 'approve';
+  const verdict = settledVerdict(synthesized, settled.findings.length < findings.length, settled.findings);
   return { reviewers: outcomes, summary: settled.summary, verdict, findings: settled.findings, upstream: settled.upstream, upstreamOmitted: settled.upstreamOmitted, calls, skipped };
 }

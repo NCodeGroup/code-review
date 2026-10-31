@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
-import { byOwner, selectionFloor, settleUpstream, templateBlock, upstreamFindings, type Finding, type ReviewedFinding } from '../src/review.ts';
+import { byOwner, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { isTemplateOwned, parseAnswers, readTemplate, templateFromAnswers, templateRepository, type Template } from '../src/template.ts';
 import { placeFindings } from '../src/threads.ts';
 
@@ -246,6 +246,16 @@ test('settleUpstream moves what synthesis placed in the template\'s files upstre
   assert.equal(settleUpstream([], [], template, 'No findings.').summary, 'No findings.');
 });
 
+test('the verdict drops to what the findings left here call for when settling moved some of synthesis\'s upstream', () => {
+  assert.equal(settledVerdict('request-changes', true, [{ severity: 'nit' }]), 'comment');
+  assert.equal(settledVerdict('comment', true, []), 'approve');
+  assert.equal(settledVerdict('request-changes', true, [{ severity: 'blocker' }]), 'request-changes');
+  assert.equal(settledVerdict('approve', true, [{ severity: 'nit' }]), 'approve');
+  assert.equal(settledVerdict('request-changes', false, [{ severity: 'should-fix' }]), 'request-changes');
+  assert.equal(settledVerdict(undefined, false, [{ severity: 'should-fix' }]), 'comment');
+  assert.equal(settledVerdict(undefined, false, []), 'approve');
+});
+
 test('the summary lists the template\'s findings once, under the template\'s repository, with file and line', () => {
   const upstream: ReviewedFinding[] = [{ ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), id: 'U1', reviewers: ['hygiene'] }];
   const results = {
@@ -255,10 +265,11 @@ test('the summary lists the template\'s findings once, under the template\'s rep
   } as Results;
   const body = summaryComment(results, 'https://check', 'https://help');
   assert.match(body, /<summary>Belongs upstream, in NCodeGroup\/project-template \(1\)<\/summary>/);
+  assert.match(body, /Trial: findings in this repository's files are posted as review threads/);
   assert.match(body, /- 🟠 `\.template\/Get-PlanState\.ps1:155`: Empty catch/);
   assert.match(checkText(results), /### Belongs upstream, in NCodeGroup\/project-template\n\n- \*\*U1 Should fix\*\* `\.template\/Get-PlanState\.ps1:155`/);
   assert.match(checkSummary(results), /1 finding in the template's files belongs upstream, in NCodeGroup\/project-template/);
-  assert.doesNotMatch(summaryComment({ ...results, upstream: [] }, 'https://check', 'https://help'), /Belongs upstream/);
+  assert.doesNotMatch(summaryComment({ ...results, upstream: [] }, 'https://check', 'https://help'), /Belongs upstream|in this repository's files/);
 });
 
 test('the summary and check run count every upstream finding, and say how many past the limit aren\'t listed', () => {

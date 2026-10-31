@@ -122,7 +122,8 @@ settings, `ci.yml`, `dependabot.yml`) and the answers file.
 The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
 finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs
 upstream, in NCodeGroup/project-template", up to 20 places with a count of the rest, and the check run has the details.
-A blocker stays a thread, since it makes the change unsafe to merge. An adoption or template update is still reviewed
+A blocker stays a thread, since it makes the change unsafe to merge. Findings that move upstream don't raise the
+review's verdict. An adoption or template update is still reviewed
 for what the project chose: its answers, its merged files and its own files.
 
 ## Opting a repository in

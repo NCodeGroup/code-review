@@ -121,7 +121,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   lines.push(...upstreamList(results));
   const provider = results.provider === 'anthropic' ? 'Claude API' : 'Amazon Bedrock';
   lines.push(
-    `<sub>Trial: findings are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
+    `<sub>Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run. $${results.costUsd.toFixed(2)} on ${provider}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}. ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
 }
