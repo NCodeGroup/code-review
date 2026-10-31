@@ -178,6 +178,9 @@ test('each part of a large diff gets only the guidance rules tagged for its file
   // A changed file no part shows may be read by any part's reviewers, so its rules reach every part.
   files[1]!.shown = false;
   assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-1', 'G-a-2']);
+  // A generated file isn't reviewed, so its rules don't reach the other parts.
+  files[1]!.generated = true;
+  assert.deepEqual(rulesForFiles([csharp, anywhere], partFiles(files, tsPart)).map((r) => r.id), ['G-a-2']);
 });
 
 test('a guidance bullet tagged with several globs reaches a review that changes a file any of them matches', async () => {
@@ -227,7 +230,7 @@ test('review jobs give each part of the diff only the rules tagged for its files
 
 test('training tags a guidance rule with the files its instruction-file sources apply to', async () => {
   const { generalGlob, retagGuidance, ruleScope, sourceScopes } = await import('../training/run.ts');
-  const { formatBullet, parseBullet } = await import('../src/guidance.ts');
+  const { bulletGlobs, formatBullet, parseBullet } = await import('../src/guidance.ts');
   assert.equal(generalGlob('src/**/*.cs'), '**/*.cs');
   assert.equal(generalGlob('tests/**/*.cs'), '**/*.cs');
   assert.equal(generalGlob('**'), '**');
@@ -244,6 +247,7 @@ test('training tags a guidance rule with the files its instruction-file sources 
   const tagged = formatBullet(rule, ['**/*.cs']);
   assert.equal(tagged, '- **Keep functions small.** Why. *Check:* Look. *Note:* Note. *Applies to:* `**/*.cs` <sub>Identity csharp-production.instructions.md</sub>');
   assert.deepEqual(parseBullet(tagged), rule);
+  assert.deepEqual(bulletGlobs(tagged), ['**/*.cs']);
   assert.equal(retagGuidance(formatBullet(rule, []), scopes), tagged);
 });
 
