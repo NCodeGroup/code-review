@@ -3,13 +3,14 @@
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, totalCost, withoutTools, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, withoutTools, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
-import { guidanceRules, repositoryRules, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
+import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
-import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
+import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 // Most severe first.
@@ -58,6 +59,8 @@ export interface Review {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
+  // Findings left out because they say a file the pull request changes isn't changed.
+  dropped: DroppedFinding[];
   // Findings verification refuted and dropped, with its reasons, and every verification call.
   refuted: RefutedFinding[];
   verification: VerificationCall[];
@@ -71,7 +74,7 @@ export interface Review {
   sensitiveFiles: string[];
 }
 
-const findingProperties = {
+export const findingProperties = {
   severity: { type: 'string', enum: ['blocker', 'should-fix', 'nit'] },
   file: { type: 'string' },
   line: { type: 'integer', minimum: 1 },
@@ -93,7 +96,7 @@ const findingProperties = {
     additionalProperties: false,
   },
 };
-const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
+export const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
 export const specialistSchema = {
   type: 'object',
@@ -141,6 +144,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  reReviewPrompt: string;
   verificationPrompt: string;
   reviewers: Map<string, string>;
 }
@@ -155,6 +159,45 @@ export function ruleBatches(catalog: IndexedRule[], rulesFor: Map<string, Indexe
   return batches;
 }
 
+// The files one part of the diff covers, and the changed files no part shows, which every part's reviewers may read.
+export function partFiles(files: ChangedFile[], diff: string): string[] {
+  return [...splitDiff(diff).keys(), ...files.filter((f) => !f.generated && !f.shown).map((f) => f.path)];
+}
+
+export interface ReviewJob { name: string; part: number; label: string; tier: ModelTier; rules: IndexedRule[] }
+
+// The reviewer calls for each part of the diff: every selected reviewer with its picked rules, and each rule batch.
+// A rule learned for some files reaches only the parts that change them, and a batch left with no rules for a part
+// doesn't run on it. The reviewers and their models may differ by part, as a deep review's sensitive parts do.
+export function reviewJobs(
+  parts: string[],
+  files: ChangedFile[],
+  selected: string[] | ((part: number) => string[]),
+  rulesFor: Map<string, IndexedRule[]>,
+  batches: IndexedRule[][],
+  tiers: Record<string, ModelTier> | ((part: number) => Record<string, ModelTier>),
+): ReviewJob[] {
+  return parts.flatMap((diff, part) => {
+    const shown = partFiles(files, diff);
+    const scoped = (rules: IndexedRule[] | undefined) => rulesForFiles(rules ?? [], shown);
+    const reviewers = typeof selected === 'function' ? selected(part) : selected;
+    const models = typeof tiers === 'function' ? tiers(part) : tiers;
+    return [
+      ...reviewers.map((reviewer) => ({ name: reviewer, part, label: '', tier: models[reviewer] ?? ('haiku' as ModelTier), rules: scoped(rulesFor.get(reviewer)) })),
+      ...batches.flatMap((batch, i) => {
+        const rules = scoped(batch);
+        const label = `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`;
+        return rules.length ? [{ name: ruleCheckName, part, label, tier: 'sonnet' as ModelTier, rules }] : [];
+      }),
+    ];
+  });
+}
+
+// The reviewers that get an outcome: every selected one, and the rule check when any of its calls is planned.
+export function outcomeNames(selected: string[], jobs: Pick<ReviewJob, 'name'>[]): string[] {
+  return [...selected, ...(jobs.some((job) => job.name === ruleCheckName) ? [ruleCheckName] : [])];
+}
+
 export function loadCharters(root: string): Charters {
   const reviewers = new Map<string, string>();
   for (const name of readdirSync(path.join(root, 'reviewers')).filter((n) => n.endsWith('.md')).sort()) {
@@ -166,6 +209,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    reReviewPrompt: prompt('re-review'),
     verificationPrompt: prompt('verification'),
     reviewers,
   };
@@ -304,7 +348,7 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
-function pullRequestBlock(gathered: Gathered): string {
+export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
@@ -312,20 +356,28 @@ function pullRequestBlock(gathered: Gathered): string {
   return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
-export function fileList(gathered: Gathered): string {
+// Every file the pull request changes, the ones the repository's config skips last. Given the files a diff holds, it
+// marks the others that have a diff as `elsewhere`.
+export function fileList(gathered: Pick<Gathered, 'files'> & Partial<Pick<Gathered, 'skippedByConfig'>>, inDiff?: Set<string>, elsewhere = ''): string {
   return [
-    ...gathered.files.map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`),
-    ...gathered.skippedByConfig.map((f) => `${f} [not reviewed: skipped by the repository's config]`),
+    ...gathered.files.map((f) => {
+      const notShown = !f.shown ? ' [diff not shown: over the size budget]' : inDiff && !inDiff.has(f.path) ? ` [${elsewhere}]` : '';
+      return `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${notShown}`;
+    }),
+    ...(gathered.skippedByConfig ?? []).map((f) => `${f} [not reviewed: skipped by the repository's config]`),
   ].join('\n');
 }
+
+export const completeList = 'Changed files, every file this pull request changes, each changed whether or not its hunks are in the diff below:';
 
 function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
   const scope = parts > 1
     ? ` This pull request is too large for one review, so its diff is reviewed in ${parts} parts and this is part ${part + 1}. Review the files in this part's diff; other reviewers have the rest. Read any other file when you need its context.`
     : '';
+  const inPart = parts > 1 ? new Set(splitDiff(diff).keys()) : undefined;
   return [
     pullRequestBlock(gathered),
-    `Changed files:\n${fileList(gathered)}`,
+    `${completeList}\n${fileList(gathered, inPart, 'diff in another part')}`,
     `The diff against the merge base. The pull request's head is checked out at the path given below; use it to read whole files.${scope}\n<diff>\n${diff}\n</diff>`,
   ].join('\n\n');
 }
@@ -351,24 +403,29 @@ export function findingLimit(parts: number): number {
   return Math.min(maxFindingsCap, maxFindings + findingsPerExtraChunk * Math.max(0, parts - 1));
 }
 
-// What synthesis sees of the diff: the files the findings name, then the start of the diff, within the budget.
-function synthesisDiff(gathered: Gathered, files: string[], budget: number): string {
+// What synthesis sees of the diff: the files the findings name first, then every other file that fits the budget, and
+// the files it holds. Synthesis sees every changed file it can, or it can wrongly say one isn't in the diff (issue #32).
+export function synthesisDiff(gathered: Pick<Gathered, 'diff'>, files: string[], budget: number): { diff: string; files: Set<string> } {
   const sections = splitDiff(gathered.diff);
   let out = '';
-  for (const file of new Set(files)) {
+  const shown = new Set<string>();
+  for (const file of new Set([...files, ...sections.keys()])) {
     const section = sections.get(file);
-    if (section && out.length + section.length <= budget) out += section;
+    if (section && out.length + section.length <= budget) {
+      out += section;
+      shown.add(file);
+    }
   }
-  return out || gathered.diff.slice(0, budget);
+  return out ? { diff: out, files: shown } : { diff: gathered.diff.slice(0, budget), files: shown };
 }
 
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
-// naming it doesn't count.
+// naming it doesn't count. Without a limit, it keeps every finding.
 export function mergeSynthesis(
   merged: (Finding & { sources: string[] })[],
   raw: (Finding & { id: string; reviewer: string })[],
-  limit: number,
+  limit?: number,
 ): ReviewedFinding[] {
   const byId = new Map(raw.map((f) => [f.id, f]));
   for (const f of merged) f.sources = f.sources.filter((id) => byId.get(id)?.file === f.file);
@@ -381,6 +438,45 @@ export function mergeSynthesis(
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+}
+
+type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] };
+
+const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
+
+function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
+  return findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+}
+
+// Synthesis gave its verdict with the dropped findings in view, so a verdict they carried gives way to the one the kept
+// findings call for. Its request-changes on should-fixes that together make the change unsafe stands while one is kept
+// and no blocker was dropped. Without synthesis's verdict there is none to settle: review() derives one from the
+// findings it posts, after verification.
+function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], dropped: DroppedFinding[]): Verdict | undefined {
+  if (!verdict || !dropped.length) return verdict;
+  if (verdict === 'request-changes' && findings.length && !dropped.some((d) => d.finding.severity === 'blocker')) return verdict;
+  const fromFindings = verdictFor(findings);
+  return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
+}
+
+// What a review posts from synthesis's answer, or from the reviewers' own findings when synthesis failed: the findings
+// that say a changed file isn't changed are dropped before the limit, so each frees its place, and the rest are numbered.
+export function settleFindings(
+  synthesis: Pick<AgentResult<SynthesisOutput>, 'output' | 'error'>,
+  raw: (Finding & { id: string; reviewer: string })[],
+  changedFiles: string[],
+  limit: number,
+): SynthesizedReview & Pick<Review, 'dropped'> {
+  // Without synthesis, fall back to the reviewers' own findings, most severe first.
+  const merged = mergeSynthesis(synthesis.output?.findings ?? [], raw);
+  const { kept, dropped } = dropContradicted(merged, changedFiles);
+  const findings = kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
+  return {
+    summary: synthesis.output?.summary ?? `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`,
+    verdict: settleVerdict(synthesis.output?.verdict, findings, dropped),
+    findings,
+    dropped,
+  };
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -431,6 +527,7 @@ export async function review(
       verdict: 'comment',
       findings: [],
       refuted: [],
+      dropped: [],
       verification: [],
       calls,
       skipped: roster,
@@ -489,37 +586,22 @@ export async function review(
     log(`Reviewers: ${[...selected].join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
   }
 
-  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
-  // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
-  // rest read the cache instead of each writing it again. On a deep review, the parts with a sensitive file also get
-  // correctness and security, both on Opus.
+  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
+  // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
+  // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
+  // writing it again. On a deep review, the parts with a sensitive file also get correctness and security, both on Opus.
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const deepParts = depth === 'deep' ? sensitiveParts(parts, sensitive) : new Set<number>();
   const deepReviewers = deepParts.size ? Object.keys(deepReviewerTiers).filter((name) => charters.reviewers.has(name)) : [];
   if (deepParts.size) log(`Deep: ${deepReviewers.join(', ')} on ${parts.length > 1 ? `part ${[...deepParts].map((p) => p + 1).join(', ')}` : 'the diff'}`);
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = !light && ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
-  const jobs = parts.flatMap((diff, part) => {
-    const sharedBlock = `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`;
-    const deepPart = deepParts.has(part);
-    const tiers = partTiers(depth, deepPart, gathered.tiers);
-    return [
-      ...[...new Set([...selected, ...(deepPart ? deepReviewers : [])])].map((reviewer) => ({
-        name: reviewer,
-        part,
-        label: '',
-        tier: tiers[reviewer] ?? ('haiku' as ModelTier),
-        prompt: [sharedBlock, `${rulesBlock(context.rulesFor.get(reviewer)).trimStart()}\n\nYour charter:\n${charters.reviewers.get(reviewer)!}`],
-      })),
-      ...batches.map((batch, i) => ({
-        name: ruleCheckName,
-        part,
-        label: `rules ${i * rulesPerCheck + 1}-${i * rulesPerCheck + batch.length}`,
-        tier: 'sonnet' as ModelTier,
-        prompt: [sharedBlock, `${rulesBlock(batch).trimStart()}\n\nYour charter:\n${charters.ruleCheckPrompt}`],
-      })),
-    ];
-  });
+  const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
+  const partReviewers = (part: number) => [...new Set([...selected, ...(deepParts.has(part) ? deepReviewers : [])])];
+  const jobs = reviewJobs(parts, gathered.files, partReviewers, context.rulesFor, batches, (part) => partTiers(depth, deepParts.has(part), gathered.tiers)).map((job) => ({
+    ...job,
+    prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!}`],
+  }));
   const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
   // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
   const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
@@ -553,7 +635,7 @@ export async function review(
   // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
   // all of them were.
   const reviewers = [...new Set([...selected, ...deepReviewers])];
-  const outcomes: ReviewerOutcome[] = [...reviewers, ...(batches.length ? [ruleCheckName] : [])].map((name) => {
+  const outcomes: ReviewerOutcome[] = outcomeNames(reviewers, jobs).map((name) => {
     const mine = perJob.filter((o) => o.name === name);
     const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
     const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));
@@ -580,21 +662,26 @@ export async function review(
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
+  let dropped: DroppedFinding[] = [];
+  const changedFiles = gathered.files.map((f) => f.path);
   if (light) {
-    findings = mergeSynthesis([], raw, limit);
+    // No synthesis, but the same guard: a finding that says a changed file isn't changed is left out.
+    const settled = dropContradicted(mergeSynthesis([], raw), changedFiles);
+    dropped = settled.dropped;
+    findings = settled.kept.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
     const failed = outcomes.find((o) => o.status === 'failed');
     summary = failed ? `${failed.name} failed (${failed.error}), so nothing was reviewed.` : findings.length ? `${findings.length} finding${findings.length === 1 ? '' : 's'} from hygiene, not merged by synthesis.` : 'No findings.';
     // A review whose one reviewer failed hasn't looked at the change, so it can't approve it.
     if (failed && !findings.length) verdict = 'comment';
   } else if (raw.length) {
-    const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
-    const synthesis = await agent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
+    const excerpt = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
+    const synthesis = await agent<SynthesisOutput>(
       withoutTools(run),
       {
         role: 'synthesis',
         tier: 'opus',
         systemPrompt: charters.synthesisPrompt,
-        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n<diff>\n${diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
+        prompt: `Limit: ${limit} findings.\n\n${pullRequestBlock(gathered)}\n\n${completeList}\n${fileList(gathered, excerpt.files, 'diff not in this excerpt')}\n\n<diff>\n${excerpt.diff}\n</diff>\n\nFindings from the reviewers:\n<findings>\n${JSON.stringify(raw, null, 1)}\n</findings>`,
         schema: synthesisSchema,
         maxTurns: 3,
         budgetUsd: budgets.synthesis,
@@ -602,18 +689,11 @@ export async function review(
       },
     );
     calls.push(...synthesis.records);
-    if (synthesis.output) {
-      summary = synthesis.output.summary;
-      verdict = synthesis.output.verdict;
-      findings = mergeSynthesis(synthesis.output.findings, raw, limit);
-    } else {
-      // Without synthesis, fall back to the reviewers' own findings, most severe first.
-      summary = `Synthesis failed (${synthesis.error}); these are the reviewers' unmerged findings.`;
-      findings = mergeSynthesis([], raw, limit);
-    }
+    ({ summary, verdict, findings, dropped } = settleFindings(synthesis, raw, changedFiles, limit));
   } else {
     summary = 'No findings.';
   }
+  if (dropped.length) log(`Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
 
   // Verification of the merged blockers and should-fixes, with the checkout, on Opus for a deep review's sensitive files.
   // Off unless CODE_REVIEW_VERIFICATION=on, and never on a light review.
@@ -632,14 +712,14 @@ export async function review(
   ({ summary, verdict, findings } = verified);
 
   const skipped = roster.filter((name) => !reviewers.includes(name));
-  verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  verdict ??= verdictFor(findings);
   if (depth !== 'standard') summary = `${depthLabel[depth]}: ${summary}`;
   if (ceilingWarning) {
     summary = `${summary}\n\n⚠️ ${ceilingWarning}`;
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings, depth, sensitiveFiles: sensitive };
+  return { reviewers: outcomes, summary, verdict, findings, dropped, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings, depth, sensitiveFiles: sensitive };
 }
 
 // How the summary and the check run name a review that isn't standard.

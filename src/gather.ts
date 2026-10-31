@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
+import { bulletGlobs } from './guidance.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
 export { maxIssueChars } from './config.ts';
 
@@ -95,7 +96,7 @@ export function reviewOrder(file: string): number {
   return 0;
 }
 
-function git(repository: string, args: string[]): string {
+export function git(repository: string, args: string[]): string {
   return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
@@ -201,6 +202,11 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`);
 }
 
+export function matchesAnyFile(globs: string[], files: string[]): boolean {
+  const patterns = globs.map(globToRegExp);
+  return files.some((file) => patterns.some((p) => p.test(file)));
+}
+
 // The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
 // YAML the settings parser would refuse. The split and the glob lists are shared with the project reviewers' paths:.
 function frontmatter(text: string): { fields: Map<string, string>; body: string } {
@@ -211,6 +217,23 @@ function frontmatter(text: string): { fields: Map<string, string>; body: string 
     if (field) fields.set(field[1]!, field[2]!.trim().replace(/^["']|["']$/g, ''));
   }
   return { fields, body };
+}
+
+// The globs an instruction file's frontmatter applyTo lists.
+export function applyToGlobs(text: string): string[] {
+  return globList(frontmatter(text).fields.get('applyTo') ?? '');
+}
+
+// Drops the bullets tagged for files this pull request doesn't change. Untagged bullets and other lines stay.
+export function keepBulletsFor(text: string, changed: string[]): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      if (!line.startsWith('- **')) return true;
+      const globs = bulletGlobs(line);
+      return !globs.length || matchesAnyFile(globs, changed);
+    })
+    .join('\n');
 }
 
 // Drops rules marked ✅ (tool-enforced: the build already fails on them) with their continuation lines. Rules marked
@@ -247,16 +270,19 @@ export function readReviewRules(basePath: string, changed: string[]): RuleFile[]
   return readRuleFolder(path.join(basePath, '.github', 'instructions'), '.instructions.md', changed, '.github/instructions');
 }
 
-// NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes.
+// NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes:
+// a topic file whose applyTo matches a changed file, without the bullets tagged for files the pull request doesn't
+// change, so a rule learned from C# conventions never reaches a review of TypeScript.
 export function readGuidance(guidanceDir: string, changed: string[]): RuleFile[] {
-  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance');
+  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance', (body) => keepBulletsFor(body, changed))
+    .filter((file) => file.text.split('\n').some((line) => line.startsWith('- **')));
 }
 
-function readRuleFolder(folder: string, suffix: string, changed: string[], label: string): RuleFile[] {
+function readRuleFolder(folder: string, suffix: string, changed: string[], label: string, filter = (body: string) => body): RuleFile[] {
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
   for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
-    const file = ruleFile(name, label, readFileSync(path.join(folder, name), 'utf8'), changed);
+    const file = ruleFile(name, label, readFileSync(path.join(folder, name), 'utf8'), changed, [], filter);
     if (file) files.push(file);
   }
   const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
@@ -264,13 +290,12 @@ function readRuleFolder(folder: string, suffix: string, changed: string[], label
 }
 
 // A rule file when its applyTo (or, without one, defaultGlobs) matches a changed file.
-function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = []): RuleFile | undefined {
-  const { fields, body } = frontmatter(text);
-  const applyTo = globList(fields.get('applyTo') ?? '');
+function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = [], filter = (body: string) => body): RuleFile | undefined {
+  const { body } = frontmatter(text);
+  const applyTo = applyToGlobs(text);
   const globs = applyTo.length ? applyTo : defaultGlobs;
-  const patterns = globs.map(globToRegExp);
-  if (!changed.some((file) => patterns.some((p) => p.test(file)))) return undefined;
-  return { name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` };
+  if (!matchesAnyFile(globs, changed)) return undefined;
+  return { name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}` };
 }
 
 // The project's rules in .github/code-review/guidance.md, which join the catalog like the instruction files. Without

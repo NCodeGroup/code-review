@@ -8,11 +8,12 @@ import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent
 import { commandFromEvent, skipReasonFor } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
-import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
+import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
+import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { changedLines, loadCharters, review } from './review.ts';
 import { callModels, topSeverity, type Results } from './results.ts';
 
@@ -60,6 +61,9 @@ async function main(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
+  // The head the bot last reviewed, looked up once: the skip rule and the re-review both need it.
+  let lastHead: Promise<string | undefined> | undefined;
+  const reviewedHead = (number: number) => () => (lastHead ??= lastReviewedHead(repository, number, githubToken));
 
   // A /review comment carries the issue, not the pull request, so read the pull request from the API.
   if (event.comment) {
@@ -73,7 +77,7 @@ async function main(): Promise<void> {
     });
     if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
     const pullRequest = (await response.json()) as { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } };
-    const reason = await skipReasonFor('comment', pullRequest, repository, () => lastReviewedHead(repository, request.number, githubToken));
+    const reason = await skipReasonFor('comment', pullRequest, repository, reviewedHead(request.number));
     if (reason) {
       console.log(reason);
       return;
@@ -83,7 +87,7 @@ async function main(): Promise<void> {
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
     // the same review. /review still reviews it.
     const pullRequest = event.pull_request;
-    const reason = await skipReasonFor('automatic', pullRequest, repository, () => lastReviewedHead(repository, pullRequest.number, githubToken));
+    const reason = await skipReasonFor('automatic', pullRequest, repository, reviewedHead(pullRequest.number));
     if (reason) {
       console.log(reason);
       return;
@@ -120,6 +124,16 @@ async function main(): Promise<void> {
   for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
+  // A pull request the bot reviewed before gets a re-review of what changed since then.
+  const last = await reviewedHead(pullRequest.number)();
+  const plan = await planReReview({
+    gathered,
+    checkout: prPath,
+    lastHead: last,
+    fetchCommit: (sha) => fetchCommit({ ...headFetch, sha }),
+    readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken),
+    log,
+  });
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -130,7 +144,13 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
-    const outcome = await review(run, gathered, loadCharters(root), log);
+    const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
+      plan,
+      headSha: pullRequest.headSha,
+      lastHead: last,
+      full: () => review(run, gathered, loadCharters(root), log),
+      again: (p) => reReview(run, gathered, loadCharters(root), p, log),
+    });
     for (const warning of outcome.warnings) log(`::warning::${warning}`);
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = {
@@ -143,6 +163,7 @@ async function main(): Promise<void> {
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      dropped: outcome.dropped,
       ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
@@ -166,6 +187,7 @@ async function main(): Promise<void> {
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
       depth: outcome.depth,
       sensitiveFiles: outcome.sensitiveFiles,
+      recordedHead,
     };
     const settings = {
       policies: gathered.policies,
@@ -173,7 +195,7 @@ async function main(): Promise<void> {
       sensitive: gathered.sensitive,
       tiers: gathered.tiers,
     };
-    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, settings };
+    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, settings, ...reReviewTrace };
 
     const secrets = secretValues(credentials);
     const resultsJson = JSON.stringify(results, null, 2);

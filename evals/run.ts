@@ -1,5 +1,6 @@
 // Replays the eval cases through the review pipeline and scores them: each expected concern must be raised, and no
-// must-not-flag concern may be. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.
+// must-not-flag concern may be. A re-review case, one with a last reviewed head, also may post nothing below should-fix
+// or off the lines changed since that head. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.
 //
 //   node evals/run.ts [--only id,id] [--tiers "conventions=haiku"] [--label name] [--guidance full]
 //
@@ -18,7 +19,8 @@ import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agen
 import { verificationOn } from '../src/config.ts';
 import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
-import { loadCharters, review, severityRank, type Finding } from '../src/review.ts';
+import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
+import { changedLines, loadCharters, review, severityRank, type Finding } from '../src/review.ts';
 import type { Concern, EvalCase } from './cases.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
@@ -47,17 +49,31 @@ function clone(repository: string): string {
   return dir;
 }
 
+function ensureCommit(repo: string, sha: string): void {
+  try {
+    git(repo, 'cat-file', '-e', `${sha}^{commit}`);
+  } catch {
+    git(repo, 'fetch', '-q', 'origin', sha);
+  }
+}
+
 function worktree(repo: string, name: string, sha: string): string {
   const dir = path.join(work, 'trees', name);
   if (!existsSync(dir)) {
-    try {
-      git(repo, 'cat-file', '-e', `${sha}^{commit}`);
-    } catch {
-      git(repo, 'fetch', '-q', 'origin', sha);
-    }
+    ensureCommit(repo, sha);
     git(repo, 'worktree', 'add', '-q', '--detach', dir, sha);
   }
   return dir;
+}
+
+// The merge of a base branch commit into a head, made without a worktree and with a fixed author and date, so every
+// run reviews the same commit. A merge that conflicts throws.
+function mergeCommit(repo: string, head: string, base: string): string {
+  ensureCommit(repo, head);
+  ensureCommit(repo, base);
+  const tree = git(repo, 'merge-tree', '--write-tree', head, base).split('\n')[0]!.trim();
+  const who = { GIT_AUTHOR_NAME: 'eval', GIT_AUTHOR_EMAIL: 'eval@example.com', GIT_COMMITTER_NAME: 'eval', GIT_COMMITTER_EMAIL: 'eval@example.com', GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' };
+  return execFileSync('git', ['-C', repo, 'commit-tree', tree, '-p', head, '-p', base, '-m', `Merge ${base.slice(0, 7)} into ${head.slice(0, 7)}`], { encoding: 'utf8', env: { ...process.env, ...who } }).trim();
 }
 
 const sameFile = (a: string, b: string) => a.replace(/\\/g, '/').endsWith(b.replace(/\\/g, '/')) || b.replace(/\\/g, '/').endsWith(a.replace(/\\/g, '/'));
@@ -128,11 +144,12 @@ async function main(): Promise<void> {
   try {
     for (const c of cases) {
       const repo = clone(c.repository);
-      const head = worktree(repo, `${c.id}-head`, c.head);
+      const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
+      const head = worktree(repo, `${c.id}-head`, headSha);
       const base = worktree(repo, `${c.id}-base`, c.base);
       const pullRequest: PullRequest = {
         repository: c.repository, number: c.pullRequest ?? 0, title: c.title, body: c.body, author: 'polewskm',
-        authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: c.base, headSha: c.head,
+        authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: c.base, headSha,
         issues: closedIssues(c.body).flatMap((number) => {
           try {
             const issue = JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' }));
@@ -143,7 +160,38 @@ async function main(): Promise<void> {
         }),
       };
       const gathered = gather(pullRequest, head, base, guidance);
-      const outcome = await review({ ...run, checkout: head }, gathered, charters, (line) => console.log(`  ${line}`));
+      const log = (line: string) => console.log(`  ${line}`);
+      let reReviewed: ReReview | undefined;
+      let offChanged: string[] = [];
+      if (c.reviewed) {
+        const plan = await planReReview({
+          gathered,
+          checkout: head,
+          lastHead: c.reviewed,
+          fetchCommit: (sha) => {
+            ensureCommit(repo, sha);
+            return true;
+          },
+          readEarlier: async () => c.earlier ?? [],
+          log,
+        });
+        if (!plan) throw new Error(`${c.id}: no re-review plan since ${c.reviewed.slice(0, 7)}; see the log above.`);
+        const { changed } = plan;
+        reReviewed = await reReview({ ...run, checkout: head }, gathered, charters, plan, log);
+        // A re-review posts nothing below should-fix, and nothing away from what the author changed since the last
+        // review. That is worked out here apart from the engine: the lines the diff from the reviewed head adds, less
+        // the ones a merge of the base branch brought in, which also must not count as changed.
+        const fromBase = c.mergeIntoHead ? changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.head, headSha)) : new Map<string, Set<number>>();
+        const byAuthor = Object.fromEntries(
+          [...changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.reviewed, headSha))].map(([file, lines]) => [file, [...lines].filter((l) => !fromBase.get(file)?.has(l))]),
+        );
+        const { kept } = postable(reReviewed.findings, byAuthor);
+        offChanged = [
+          ...reReviewed.findings.filter((f) => !kept.includes(f)).map((f) => `posted ${f.file}:${f.line} (${f.severity})`),
+          ...Object.entries(changed.lines).flatMap(([file, lines]) => lines.filter((l) => fromBase.get(file)?.has(l)).map((l) => `reviewed ${file}:${l} from the base branch`)),
+        ];
+      }
+      const outcome = reReviewed ?? (await review({ ...run, checkout: head }, gathered, charters, log));
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       const calls = [...outcome.calls];
       const verdicts: Verdict[] = [];
@@ -182,7 +230,7 @@ async function main(): Promise<void> {
       expected += verdicts.length;
       caught += verdicts.filter((v) => v.caught).length;
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
-      violations += forbidden.filter((f) => f.raisedBy.length).length;
+      violations += forbidden.filter((f) => f.raisedBy.length).length + offChanged.length;
       findingCount += outcome.findings.length;
       seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
       refutedCount += outcome.refuted.length;
@@ -190,9 +238,13 @@ async function main(): Promise<void> {
       const status = [
         ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
+        ...(reReviewed ? [offChanged.length ? `OFF THE CHANGED LINES: ${offChanged.join(', ')}` : 'stayed on the changed lines'] : []),
       ].join(', ');
       console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, precision ${percent(precision.precision)} (${precision.unsure} unsure), $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, refuted: outcome.refuted, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost });
+      const reReviewReport = reReviewed
+        ? { reReview: { summary: reReviewed.summary, offChanged, earlier: reReviewed.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, status, note })) } }
+        : {};
+      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, refuted: outcome.refuted, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost, ...reReviewReport });
     }
   } finally {
     await proxy.close();
