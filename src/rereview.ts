@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
-import { dropContradicted, type DroppedFinding } from './claims.ts';
+import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
@@ -293,28 +293,29 @@ export async function readEarlierFindings(repository: string, number: number, to
   return threads && earlierFindings(threads);
 }
 
-// A pull request's review threads, or undefined when they can't all be read. The review step reads them with its
-// read-only token, and the publish step with the app's token, to resolve and answer the bot's own threads.
+type ThreadsAnswer = { data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] } } } } };
+
+// A pull request's review threads, or undefined when they can't all be read: a refused request, a fetch that rejects,
+// or a body that isn't JSON. The review step reads them with its read-only token, and the publish step with the app's
+// token, to resolve and answer the bot's own threads.
 export async function readReviewThreads(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ThreadNode[] | undefined> {
   if (!token) return undefined;
   const [owner, name] = repository.split('/');
   const threads: ThreadNode[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < maxThreadPages; page++) {
-    let response: Response;
+    let json: ThreadsAnswer;
     try {
-      response = await fetchPage('https://api.github.com/graphql', {
+      const response = await fetchPage('https://api.github.com/graphql', {
         method: 'POST',
         headers: { accept: 'application/vnd.github+json', authorization: `bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ query: threadsQuery, variables: { owner, name, number, cursor } }),
       });
+      if (!response.ok) return undefined;
+      json = (await response.json()) as ThreadsAnswer;
     } catch {
       return undefined;
     }
-    if (!response.ok) return undefined;
-    const json = (await response.json()) as {
-      data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] } } } };
-    };
     const listed = json.data?.repository?.pullRequest?.reviewThreads;
     if (!listed) return undefined;
     threads.push(...listed.nodes);
@@ -660,7 +661,7 @@ export async function reReview(
   const { kept: onChanged, nits, outside } = postable(reported, plan.changed.lines);
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged.map((f) => ({ ...f, reviewers: [reReviewer] })), gathered.files.map((f) => f.path));
-  if (dropped.length) log(`  Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  if (dropped.length) log(`  ${droppedLine(dropped)}`);
   // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
   const placed = byOwner(kept, gathered.template);
   const upstream = upstreamFindings(placed.upstream);

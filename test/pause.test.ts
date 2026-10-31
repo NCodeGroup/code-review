@@ -100,6 +100,7 @@ test('checkPause reads the review comments too, and reviews when it cannot read 
   assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), fetchPage: refused, log: (l) => logs.push(l) }), 'review');
   assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: undefined, fetchPage: empty, log: (l) => logs.push(l) }), 'review');
   assert.equal(logs.filter((l) => l === "::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.").length, 2);
+  assert.ok(logs.includes("::warning::Couldn't read /repos/o/r/pulls/1/comments (HTTP 500); the run goes on without those comments."));
 });
 
 test('postPausedNotice posts the notice as a comment on the pull request', async () => {

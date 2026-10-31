@@ -3,6 +3,7 @@
 // record it. The guard is best-effort, behind synthesis seeing every changed file: its patterns catch the usual
 // phrasings of the claim, kept narrow to spare findings about what the code does.
 
+import { printable } from './outputs.ts';
 import type { ReviewedFinding } from './review.ts';
 
 export interface DroppedFinding {
@@ -10,6 +11,11 @@ export interface DroppedFinding {
   // The changed file the finding says isn't changed, and the words that say so.
   file: string;
   claim: string;
+}
+
+// The log line for the dropped findings: how many, and the changed files they named, made printable.
+export function droppedLine(dropped: DroppedFinding[]): string {
+  return `Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => printable(d.file)))].join(', ')}`;
 }
 
 function escape(text: string): string {
