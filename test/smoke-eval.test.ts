@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
 import type { RealityJudge } from '../evals/precision.ts';
-import { casePrecision, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
+import { capOutcome, casePrecision, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -25,6 +25,13 @@ test('parseMaxCost refuses a flag without a positive number, instead of running 
   for (const value of ['', '0', '-1', 'eight', '8usd', 'Infinity']) {
     assert.throws(() => parseMaxCost(value), /--max-cost takes a positive number of dollars/, value);
   }
+});
+
+test('maxCostFrom reads --max-cost from argv, fails on a bare flag, and is absent without it', () => {
+  assert.equal(maxCostFrom(['node', 'run.ts', '--subset', 'smoke', '--max-cost', '8']), 8);
+  assert.equal(maxCostFrom(['node', 'run.ts', '--subset', 'smoke']), undefined);
+  assert.throws(() => maxCostFrom(['node', 'run.ts', '--max-cost']), /--max-cost takes a positive number of dollars/);
+  assert.throws(() => maxCostFrom(['node', 'run.ts', '--max-cost', '--label', 'x']), /--max-cost takes a positive number of dollars/);
 });
 
 test('parsePrecision is on by default and refuses anything but on or off', () => {
@@ -67,6 +74,18 @@ test('runCapped counts a run whose last case passes the cap as exceeded', async 
 test('runCapped runs every case when the total stays at or under the cap, or without one', async () => {
   assert.deepEqual(await runCapped([0, 1], fakeCases([4, 4]).runOne, 8), { costUsd: 8, ran: 2, exceeded: false });
   assert.deepEqual(await runCapped([0, 1], fakeCases([40, 40]).runOne), { costUsd: 80, ran: 2, exceeded: false });
+});
+
+test('capOutcome fails a run that passed the cap, and records the cap and the cases run', () => {
+  assert.deepEqual(capOutcome(5, { costUsd: 6, ran: 2, exceeded: true }, 3, 'smoke'), {
+    record: { maxCostUsd: 5, casesRun: 2, casesSelected: 3 },
+    error: 'Stopped over --max-cost: the run cost $6.00, more than $5.00, after 2 of 3 cases. evals/out/smoke.json has the cases that ran.',
+  });
+});
+
+test('capOutcome passes a run within the cap, and records nothing without one', () => {
+  assert.deepEqual(capOutcome(8, { costUsd: 8, ran: 2, exceeded: false }, 2, 'smoke'), { record: { maxCostUsd: 8, casesRun: 2, casesSelected: 2 } });
+  assert.deepEqual(capOutcome(undefined, { costUsd: 80, ran: 2, exceeded: false }, 2, 'smoke'), {});
 });
 
 test('the smoke subset is 4 existing cases, with the must-not case', () => {
@@ -241,7 +260,7 @@ test('checkFiles with no baseline file records no failure and writes the propose
   }
 });
 
-test('checkFiles records a failure for a run that regressed from the baseline file', () => {
+test('checkFiles records a failure for a run that regressed from the baseline file, and none for a run that matches it', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
   try {
     const runFile = path.join(dir, 'run.json');
@@ -250,6 +269,7 @@ test('checkFiles records a failure for a run that regressed from the baseline fi
     writeFileSync(baselineFile, JSON.stringify(baseline));
     assert.deepEqual(checkFiles(runFile, baselineFile).failures, ['Caught dropped by 3, from 6/6 to 3/6: more than the 2 a run varies by.']);
     assert.ok(existsSync(path.join(dir, proposedName)));
+    assert.deepEqual(checkFiles(baselineFile, baselineFile).failures, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

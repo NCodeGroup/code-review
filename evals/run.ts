@@ -113,6 +113,31 @@ export function parseMaxCost(value: string | undefined): number | undefined {
   return Number(text);
 }
 
+// The --max-cost value in argv. A --max-cost with no value reaches parseMaxCost as '' and fails, instead of running
+// uncapped.
+export function maxCostFrom(argv: readonly string[]): number | undefined {
+  const index = argv.indexOf('--max-cost');
+  const value = index >= 0 ? (argv[index + 1] ?? '') : undefined;
+  return parseMaxCost(value);
+}
+
+// What a capped run's summary records about the cap, and the error that fails the run once the cap was passed. A run
+// without --max-cost records nothing.
+export function capOutcome(
+  maxCostUsd: number | undefined,
+  capped: { costUsd: number; ran: number; exceeded: boolean },
+  casesSelected: number,
+  label: string,
+): { record?: { maxCostUsd: number; casesRun: number; casesSelected: number }; error?: string } {
+  if (maxCostUsd === undefined) return {};
+  const record = { maxCostUsd, casesRun: capped.ran, casesSelected };
+  if (!capped.exceeded) return { record };
+  return {
+    record,
+    error: `Stopped over --max-cost: the run cost $${capped.costUsd.toFixed(2)}, more than $${maxCostUsd.toFixed(2)}, after ${capped.ran} of ${casesSelected} cases. evals/out/${label}.json has the cases that ran.`,
+  };
+}
+
 // Whether the precision judge runs: --precision on, the default, or off.
 export function parsePrecision(value: string | undefined): boolean {
   const setting = value ?? 'on';
@@ -136,7 +161,7 @@ export function selectCases(all: EvalCase[], only: string | undefined, subset: s
   }
   if (!ids) return all;
   const missing = ids.filter((id) => !all.some((c) => c.id === id));
-  if (missing.length) throw new Error(`No eval case named ${missing.join(', ')}.`);
+  if (missing.length) throw new Error(`No eval case named ${missing.join(', ')}; evals/cases.json lists the case ids.`);
   return all.filter((c) => ids.includes(c.id));
 }
 
@@ -160,9 +185,7 @@ export async function runCapped<T>(
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
 async function main(): Promise<void> {
-  // A --max-cost with no value reaches parseMaxCost as '' and fails, instead of running uncapped.
-  const maxCostArg = process.argv.includes('--max-cost') ? (arg('max-cost') ?? '') : undefined;
-  const maxCost = parseMaxCost(maxCostArg);
+  const maxCost = maxCostFrom(process.argv);
   const precisionOn = parsePrecision(arg('precision'));
   const key = process.env['CODE_REVIEW_BEDROCK_KEY'] ?? process.env['AWS_BEARER_TOKEN_BEDROCK'];
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
@@ -264,21 +287,20 @@ async function main(): Promise<void> {
   }
 
   const precision = precisionOn ? totalPrecision(precisions) : undefined;
+  const cap = capOutcome(maxCost, capped, cases.length, label);
   const summary = {
     label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations,
     findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount,
     precision, findingsPerCase: spread(findingsPerCase), reviewCostUsd: reviewCosts.reduce((a, b) => a + b, 0),
     reviewCostPerCase: spread(reviewCosts), costUsd: cost,
-    ...(maxCost === undefined ? {} : { maxCostUsd: maxCost, casesRun: capped.ran, casesSelected: cases.length }),
+    ...cap.record,
   };
   console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
   if (precision) console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
   console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
   writeFileSync(path.join(root, 'evals', 'out', `${label}.json`), JSON.stringify({ summary, cases: report }, null, 2));
-  if (capped.exceeded) {
-    throw new Error(`Stopped over --max-cost: the run cost $${capped.costUsd.toFixed(2)}, more than $${maxCost?.toFixed(2)}, after ${capped.ran} of ${cases.length} cases. evals/out/${label}.json has the cases that ran.`);
-  }
+  if (cap.error) throw new Error(cap.error);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
