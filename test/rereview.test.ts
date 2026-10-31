@@ -726,6 +726,21 @@ test('reReview with verification on never approves after refuting what it would 
   assert.match(clean.summary, /No further findings above nits\.$/);
 });
 
+test('reReview with verification on keeps a refuted blocker as a should-fix question', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const agent = verifier({ Serious: { verdict: 'refuted', path: 'a.ts:1', reason: 'Not reachable.', question: '' } }, []);
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [finding('blocker', 'a.ts', 62, 'Serious')], earlier: [] }, []), { enabled: true, agent });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.severity]), [['F1', 'Serious', 'should-fix']]);
+  assert.match(outcome.findings[0]!.evidence, /a refuted blocker stays as a question: Not reachable\. \(a\.ts:1\)$/);
+  assert.deepEqual(outcome.refuted, []);
+  assert.equal(outcome.verdict, 'comment');
+  assert.match(outcome.summary, /1 blocker, now a should-fix question\. 1 new finding at should-fix or above\.$/);
+});
+
 function review(statuses: ('ran' | 'failed')[]): Review {
   return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), shadow: [], shadowSkipped: [], shadowPrompts: [], summary: 's', verdict: 'comment', findings: [], upstream: [], upstreamOmitted: 0, dropped: [], refuted: [], verification: [], calls: [], skipped: [], warnings: [], depth: 'standard', sensitiveFiles: [] };
 }
