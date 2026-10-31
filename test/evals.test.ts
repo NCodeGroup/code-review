@@ -96,7 +96,7 @@ function fakeAgent(reply: RealityVerdict | undefined) {
       role: 'precision-judge', provider: 'bedrock', model: 'opus', costUsd: 0.25, inputTokens: 0, outputTokens: 0,
       cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success',
     };
-    return { output: reply as T | undefined, record };
+    return { output: reply as T | undefined, records: [record] };
   };
   return { requests, agent };
 }
