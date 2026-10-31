@@ -294,6 +294,79 @@ test('supersededComment collapses an older summary so only the newest is still a
   assert.deepEqual(summaryComments(comments).map((c) => c.id), [2]);
 });
 
+const postedUrl = 'https://github.com/o/r/pull/1#issuecomment-9';
+
+// A fake GitHub API for postSummary: it records each call and answers like the real one.
+function fakeApi(summaryMarker: string, failOn?: { call: string; error: Error }) {
+  const bot = { login: 'ncode-review[bot]' };
+  const calls: string[] = [];
+  const bodies: unknown[] = [];
+  const api = async (method: string, url: string, body?: unknown): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (failOn && `${method} ${url}`.endsWith(failOn.call)) throw failOn.error;
+    if (method === 'GET') {
+      return [
+        { id: 1, user: bot, body: `${summaryMarker}\nold` },
+        { id: 2, user: { login: 'someone' }, body: `${summaryMarker}\nnot ours` },
+        { id: 3, user: bot, body: `${summaryMarker}\nolder still` },
+      ];
+    }
+    if (method === 'POST') return { html_url: postedUrl };
+    bodies.push(body);
+    return undefined;
+  };
+  return { api, calls, bodies };
+}
+
+const summaryResults = { repository: 'o/r', pullRequest: 1, headSha: 'b'.repeat(40) };
+
+test('postSummary posts the new summary before collapsing only the earlier bot summaries', async () => {
+  const { postSummary, supersededComment, summaryMarker } = await import('../src/results.ts');
+  const { api, calls, bodies } = fakeApi(summaryMarker);
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'POST /repos/o/r/issues/1/comments',
+    'PATCH /repos/o/r/issues/comments/1',
+    'PATCH /repos/o/r/issues/comments/3',
+  ]);
+  const expected = { body: supersededComment('b'.repeat(40), postedUrl) };
+  assert.deepEqual(bodies, [expected, expected]);
+});
+
+test('postSummary only warns when an earlier summary cannot be collapsed', async () => {
+  const { postSummary, summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: '/comments/1', error: new Error('HTTP 403') });
+  const lines: string[] = [];
+  const url = await postSummary(api,summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.ok(calls.includes('PATCH /repos/o/r/issues/comments/3'));
+  assert.ok(lines.some((line) => line.startsWith('::warning::') && line.includes('1')));
+});
+
+test('postSummary collapses nothing when the new summary cannot be posted', async () => {
+  const { postSummary, summaryMarker } = await import('../src/results.ts');
+  const { api, calls } = fakeApi(summaryMarker, { call: '/issues/1/comments', error: new Error('HTTP 500') });
+  const lines: string[] = [];
+  await assert.rejects(postSummary(api, summaryResults, 'new body', (line) => lines.push(line)));
+  assert.ok(!calls.some((call) => call.startsWith('PATCH')));
+});
+
+test('readCommentPages reads every page until a short one, and gives undefined when a page cannot be read', async () => {
+  const { readCommentPages } = await import('../src/results.ts');
+  const pages: number[] = [];
+  const all = await readCommentPages(async (page) => {
+    pages.push(page);
+    return page === 1 ? Array.from({ length: 100 }, (_, i) => i) : [100, 101, 102];
+  });
+  assert.equal(all?.length, 103);
+  assert.deepEqual(pages, [1, 2]);
+  const broken = await readCommentPages(async (page) => (page === 1 ? Array.from({ length: 100 }, (_, i) => i) : undefined));
+  assert.equal(broken, undefined);
+});
+
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
   const { placeFindings, fingerprint, parsePosted, threadBody } = await import('../src/threads.ts');
   const base = { title: 'Missing null check', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
