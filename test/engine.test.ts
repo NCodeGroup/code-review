@@ -258,7 +258,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\| synthesis \| opus-5-5 \| 1 \| 🟠 \|/);
   assert.match(body, /\| correctness \| sonnet-5-5 \| 0 \| 🟢 \|/);
   assert.match(body, /\| security \| sonnet-5-5 \| failed \| ⚠️ \|/);
-  assert.match(body, /\| architecture \|  \| skipped \| ⏭️ \|/);
+  assert.match(body, /\| architecture \| — \| skipped \| ⏭️ \|/);
   assert.match(body, /\*Skipped: performance, data-model\*/);
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);

@@ -101,7 +101,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   }
   for (const r of [...results.reviewers].sort((a, b) => a.name.localeCompare(b.name))) {
     const top = r.status === 'failed' ? '⚠️' : r.status === 'skipped' ? '⏭️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
-    lines.push(`| ${cell(r.name)} | ${shortModel(r.model)} | ${r.status === 'ran' ? r.findingCount : r.status} | ${top} |`);
+    lines.push(`| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status === 'ran' ? r.findingCount : r.status} | ${top} |`);
   }
   lines.push('');
   if (results.skipped.length) lines.push(`*Skipped: ${results.skipped.join(', ')}*`, '');
