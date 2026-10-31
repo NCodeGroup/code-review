@@ -16,7 +16,8 @@ export const modelIds: Record<Provider, Record<ModelTier, string>> = {
 export const bedrockRegion = 'us-west-2';
 
 // Each reviewer's model. Haiku by default; Sonnet where the job needs deeper reasoning or reads a lot of rules, since
-// Sonnet 5.5 has no long-prompt premium. CODE_REVIEW_TIERS overrides it, for example "conventions=haiku,tests=sonnet".
+// Sonnet 5.5 has no long-prompt premium. The repository's tiers: setting overrides it, and CODE_REVIEW_TIERS overrides
+// both, for example "conventions=haiku,tests=sonnet".
 export const defaultReviewerTiers: Record<string, ModelTier> = {
   correctness: 'sonnet',
   security: 'sonnet',
@@ -25,8 +26,8 @@ export const defaultReviewerTiers: Record<string, ModelTier> = {
   completeness: 'sonnet',
 };
 
-export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? ''): Record<string, ModelTier> {
-  const tiers = { ...defaultReviewerTiers };
+export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? '', repository: Record<string, ModelTier> = {}): Record<string, ModelTier> {
+  const tiers = { ...defaultReviewerTiers, ...repository };
   for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
     const [name, tier] = pair.split('=').map((s) => s.trim());
     if (name && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) tiers[name] = tier;
@@ -93,6 +94,11 @@ export function ruleChecksOn(value = process.env['CODE_REVIEW_RULE_CHECKS'] ?? '
 export const maxChunkChars = 160_000;
 export const maxChunks = 6;
 export const maxConventionChars = 40_000;
+// The repository's own settings (.github/code-review/): the policies config.yml names have a budget of their own, after
+// the conventions from AGENTS.md; each settings file is read up to maxSettingsFileChars.
+export const maxPolicyChars = 40_000;
+export const maxSettingsFileChars = 100_000;
+export const maxProjectReviewers = 10;
 export const maxPullRequestTextChars = 8_000;
 export const maxIssueChars = 8_000;
 

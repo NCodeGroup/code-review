@@ -33,6 +33,10 @@ export interface Results {
   costUsd: number;
   durationMs: number;
   notShown: string[];
+  // Changed files the repository's config.yml skip: leaves out of the review.
+  skippedByConfig?: string[];
+  // What in the repository's .github/code-review/ settings couldn't be used.
+  warnings?: string[];
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
 }
@@ -144,8 +148,15 @@ export function checkSummary(results: Results): string {
     '',
     `Shadow mode: these findings appear only in this check run. ${cost} on ${results.provider === 'anthropic' ? 'the Claude API' : 'Amazon Bedrock'}, ${Math.round(results.durationMs / 1000)}s.`,
   ];
+  const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
   if (results.notShown.length) {
-    lines.push('', `Not reviewed (over the size budget): ${results.notShown.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${results.notShown.length > 20 ? ` and ${results.notShown.length - 20} more` : ''}.`);
+    lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
+  }
+  if (results.skippedByConfig?.length) {
+    lines.push('', `Skipped by config (\`skip:\` in \`.github/code-review/config.yml\`): ${files(results.skippedByConfig)}.`);
+  }
+  if (results.warnings?.length) {
+    lines.push('', '**Settings warnings** (the review ran without what each one names):', '', ...results.warnings.slice(0, 20).map((w) => `- ⚠️ ${cell(w)}`));
   }
   return lines.join('\n');
 }

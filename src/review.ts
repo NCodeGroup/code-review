@@ -7,7 +7,8 @@ import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
-import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { globToRegExp, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
@@ -52,6 +53,8 @@ export interface Review {
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
+  // What in the repository's settings the review couldn't use, beside gather's warnings, for the check run.
+  warnings: string[];
 }
 
 const findingProperties = {
@@ -143,6 +146,45 @@ export function loadCharters(root: string): Charters {
   };
 }
 
+export const projectPrefix = 'project:';
+
+// The engine's charters with the repository's own reviewers added as project:<name>. An engine charter is never
+// replaced by a project one.
+export function withProjectCharters(charters: Charters, project: ProjectCharter[]): Charters {
+  const reviewers = new Map(charters.reviewers);
+  for (const charter of project) {
+    const name = `${projectPrefix}${charter.name}`;
+    if (!reviewers.has(name)) reviewers.set(name, charter.text);
+  }
+  return { ...charters, reviewers };
+}
+
+// The project reviewers whose paths: match a reviewed file, which join the floor.
+export function projectFloor(project: ProjectCharter[], files: ChangedFile[]): string[] {
+  const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
+  return project
+    .filter((charter) => charter.paths.map(globToRegExp).some((p) => reviewed.some((file) => p.test(file))))
+    .map((charter) => `${projectPrefix}${charter.name}`);
+}
+
+// What each project reviewer looks at, for selection: the roster's engine names say it, a project's may not.
+export function projectRoster(project: ProjectCharter[]): string {
+  if (!project.length) return '';
+  const describe = (text: string) => {
+    const line = text.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#')) ?? '';
+    return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+  };
+  return `\nThis repository's own reviewers:\n${project.map((c) => `- ${projectPrefix}${c.name}: ${describe(c.text)}`).join('\n')}`;
+}
+
+// A warning for the tiers: names that match no reviewer on the roster, such as a misspelled one, which would
+// otherwise change no model without a word.
+export function unknownTiers(tiers: Record<string, ModelTier>, roster: string[]): string | undefined {
+  const unknown = Object.keys(tiers).filter((name) => !roster.includes(name));
+  if (!unknown.length) return undefined;
+  return `"tiers" in ${settingsFolder}/config.yml names no reviewer: ${unknown.join(', ')}; the reviewers are ${roster.join(', ')}.`;
+}
+
 const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|password|oauth|oidc|openid|saml|serializ|pars|claim|session|cookie|cors|csrf|iam|role|policy|kms|trust|firewall)/i;
 const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
@@ -182,10 +224,11 @@ function pullRequestBlock(gathered: Gathered): string {
   return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
-function fileList(gathered: Gathered): string {
-  return gathered.files
-    .map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`)
-    .join('\n');
+export function fileList(gathered: Gathered): string {
+  return [
+    ...gathered.files.map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`),
+    ...gathered.skippedByConfig.map((f) => `${f} [not reviewed: skipped by the repository's config]`),
+  ].join('\n');
 }
 
 function changeContext(gathered: Gathered, diff: string, part: number, parts: number): string {
@@ -276,13 +319,33 @@ export const runBudgetReason = 'run budget';
 export async function review(
   run: AgentRun,
   gathered: Gathered,
-  charters: Charters,
+  engineCharters: Charters,
   log: (line: string) => void,
   agent: typeof runAgent = runAgent,
 ): Promise<Review> {
   const calls: CallRecord[] = [];
   const spent = () => calls.reduce((sum, c) => sum + c.costUsd, 0);
+  const project = gathered.projectReviewers;
+  const charters = withProjectCharters(engineCharters, project);
   const roster = [...charters.reviewers.keys()];
+  const unknown = unknownTiers(gathered.tiers, roster);
+  const warnings = unknown ? [unknown] : [];
+
+  // A pull request whose every changed file the repository's skip: leaves out has nothing to review: no model runs.
+  if (!gathered.files.length && gathered.skippedByConfig.length) {
+    log('Every changed file is skipped by config; nothing to review');
+    return {
+      reviewers: [],
+      summary: `Nothing was reviewed: every changed file is skipped by \`skip:\` in \`${settingsFolder}/config.yml\`.`,
+      verdict: 'comment',
+      findings: [],
+      refuted: [],
+      verification: [],
+      calls,
+      skipped: roster,
+      warnings,
+    };
+  }
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
@@ -300,7 +363,10 @@ export async function review(
 
   // Selection only routes, so Sonnet is enough, at about half Opus's cost.
   const hasRules = (context.rulesFor.get('conventions')?.length ?? 0) > 0;
-  const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
+  const floor = [...new Set([
+    ...selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions')),
+    ...projectFloor(project, gathered.files),
+  ])];
   const selected = new Set(floor);
   const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
     { provider: run.provider, proxyUrl: run.proxyUrl },
@@ -308,7 +374,7 @@ export async function review(
       role: 'selection',
       tier: 'sonnet',
       systemPrompt: charters.selectionPrompt,
-      prompt: `Roster: ${roster.join(', ')}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
+      prompt: `Roster: ${roster.join(', ')}${projectRoster(project)}\nAlready chosen: ${floor.join(', ')}\n\n${pullRequestBlock(gathered)}\n\nChanged files:\n${fileList(gathered)}\n\n<diff>\n${gathered.diff.slice(0, 60_000)}\n</diff>`,
       schema: selectionSchema,
       maxTurns: 3,
       budgetUsd: budgets.selection,
@@ -324,7 +390,7 @@ export async function review(
   // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them. The
   // part of the prompt they share is its first block; one reviewer per model and part goes first and caches it, and the
   // rest read the cache instead of each writing it again.
-  const tiers = reviewerTiers();
+  const tiers = reviewerTiers(undefined, gathered.tiers);
   const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
   const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
@@ -455,5 +521,5 @@ export async function review(
     // A review cut short hasn't seen enough of the change to approve it.
     if (verdict === 'approve') verdict = 'comment';
   }
-  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped };
+  return { reviewers: outcomes, summary, verdict, findings, refuted: verified.refuted, verification: verified.trace, calls, skipped, warnings };
 }

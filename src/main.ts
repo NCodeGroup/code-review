@@ -116,8 +116,9 @@ async function main(): Promise<void> {
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
+  for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
-  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters`);
+  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
@@ -126,6 +127,7 @@ async function main(): Promise<void> {
   let results: Results;
   try {
     const outcome = await review({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, gathered, loadCharters(root), log);
+    for (const warning of outcome.warnings) log(`::warning::${warning}`);
     results = {
       repository,
       pullRequest: pullRequest.number,
@@ -153,9 +155,17 @@ async function main(): Promise<void> {
       costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
+      skippedByConfig: gathered.skippedByConfig,
+      warnings: [...gathered.warnings, ...outcome.warnings],
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
     };
-    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length };
+    const settings = {
+      policies: gathered.policies,
+      projectReviewers: gathered.projectReviewers.map((r) => ({ name: r.name, paths: r.paths })),
+      sensitive: gathered.sensitive,
+      tiers: gathered.tiers,
+    };
+    const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length, settings };
 
     const secrets = secretValues(credentials);
     const resultsJson = JSON.stringify(results, null, 2);

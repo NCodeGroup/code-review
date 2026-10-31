@@ -46,6 +46,12 @@ const gathered: Gathered = {
   guidance: [],
   decisions: [],
   commits: [],
+  sensitive: [],
+  skippedByConfig: [],
+  policies: [],
+  tiers: {},
+  projectReviewers: [],
+  warnings: [],
 };
 
 const charters: Charters = {
