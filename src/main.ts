@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, isFromFork } from './command.ts';
+import { commandFromEvent, isFromFork, skipReason } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
@@ -92,15 +92,12 @@ async function main(): Promise<void> {
     }
     event = { pull_request: pullRequest };
   } else {
-    if (isFromFork(event.pull_request, repository)) {
-      console.log(`#${event.pull_request?.number} comes from a fork, and forks aren't reviewed.`);
-      return;
-    }
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
     // the same review. /review still reviews it.
-    const head = event.pull_request?.head?.sha;
-    if (head && (await lastReviewedHead(repository, event.pull_request.number, githubToken)) === head) {
-      console.log(`${String(head).slice(0, 7)} was already reviewed; comment /review to review it again.`);
+    const pullRequest = event.pull_request;
+    const reason = skipReason(pullRequest, repository) ?? (pullRequest?.head?.sha ? skipReason(pullRequest, repository, await lastReviewedHead(repository, pullRequest.number, githubToken)) : undefined);
+    if (reason) {
+      console.log(reason);
       return;
     }
   }

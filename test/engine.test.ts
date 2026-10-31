@@ -365,3 +365,23 @@ test('decision records the pull request adds or changes are read from its head a
   assert.equal(result, undefined);
   assert.deepEqual(context.decisions.map((d) => d.id), ['ADR-0009']);
 });
+
+test('isFromFork treats a head in another repository, or in none, as a fork', async () => {
+  const { isFromFork } = await import('../src/command.ts');
+  assert.equal(isFromFork({ head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review'), false);
+  assert.equal(isFromFork({ head: { repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork({ head: { repo: null } }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork({ head: {} }, 'NCodeGroup/code-review'), true);
+  assert.equal(isFromFork(undefined, 'NCodeGroup/code-review'), true);
+});
+
+test('skipReason skips an automatic review of a fork or of a head already reviewed, and nothing else', async () => {
+  const { skipReason } = await import('../src/command.ts');
+  const own = { number: 7, head: { sha: 'a'.repeat(40), repo: { full_name: 'NCodeGroup/code-review' } } };
+  assert.equal(skipReason(own, 'NCodeGroup/code-review'), undefined);
+  assert.equal(skipReason(own, 'NCodeGroup/code-review', 'b'.repeat(40)), undefined);
+  assert.match(skipReason(own, 'NCodeGroup/code-review', 'a'.repeat(40)) ?? '', /aaaaaaa was already reviewed; comment \/review/);
+  assert.match(skipReason({ ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } }, 'NCodeGroup/code-review') ?? '', /#7 comes from a fork/);
+  assert.match(skipReason({ ...own, head: { sha: own.head.sha, repo: null } }, 'NCodeGroup/code-review') ?? '', /comes from a fork/);
+  assert.equal(skipReason({ number: 7, head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review', 'a'.repeat(40)), undefined);
+});

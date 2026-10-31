@@ -13,6 +13,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs
 import os from 'node:os';
 import path from 'node:path';
 
+// How long a fetch may take before the run reports it instead of waiting for the job's own limit.
+export const fetchTimeoutMs = 180_000;
+
 export interface FetchHead {
   // The folder to fill. A folder that is already a repository at the named commit is left alone, as a workflow that
   // checks the head out itself expects.
@@ -23,6 +26,8 @@ export interface FetchHead {
   // The commit to check out.
   sha: string;
   token?: string;
+  // Replaces the default limit on each fetch, in milliseconds.
+  timeoutMs?: number;
 }
 
 // The fetch's inputs from the parsed pull request: the commit is the one the event or the API named.
@@ -51,10 +56,11 @@ export function authEnvironment(remoteUrl: string, token: string | undefined): R
 
 // An empty folder stands in for the home directory, the hooks folder and the global configuration, so nothing a runner
 // or the checked-out code could hold there is read.
-function git(where: { cwd: string; empty: string }, args: string[], extra: Record<string, string> = {}): string {
+function git(where: { cwd: string; empty: string }, args: string[], extra: Record<string, string> = {}, timeout?: number): string {
   const { cwd, empty } = where;
   return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...args], {
     encoding: 'utf8',
+    ...(timeout ? { timeout, killSignal: 'SIGKILL' as const } : {}),
     stdio: ['ignore', 'pipe', 'inherit'],
     env: {
       PATH: process.env['PATH'] ?? '',
@@ -102,17 +108,24 @@ export function fetchPullRequestHead(options: FetchHead): void {
     if (readdirSync(options.path).length) throw new Error(`${options.path} isn't empty and isn't a repository.`);
     try {
       const auth = authEnvironment(options.remoteUrl, options.token);
+      const limit = options.timeoutMs ?? fetchTimeoutMs;
       git(where, ['init', '-q']);
       git(where, ['remote', 'add', 'origin', options.remoteUrl]);
       // The branches give the merge base its history; the pull request's own ref carries the head, which a pull request
       // may not have on any branch yet.
-      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], auth);
+      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], auth, limit);
       // A push after the event leaves the event's commit off both, so ask for it by name.
-      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], auth);
+      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], auth, limit);
       git(where, ['checkout', '-q', '--force', '--detach', options.sha]);
     } catch (error) {
-      // A half-made repository would be taken for a checkout by the next attempt.
-      rmSync(options.path, { recursive: true, force: true });
+      // A half-made repository would be taken for a checkout by the next attempt, which refuses one with no commit. A
+      // git killed at its time limit can leave a child holding the folder for a moment, so retry, and never let a failed
+      // cleanup hide the fetch's own error.
+      try {
+        rmSync(options.path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch {
+        // The error below says what went wrong; the folder is refused as it is by the next attempt.
+      }
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`Couldn't fetch commit ${options.sha.slice(0, 7)} of pull request #${options.number}; if it was pushed over since, comment /review to review the latest one. (${detail})`);
     }

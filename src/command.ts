@@ -28,3 +28,17 @@ export function commandFromEvent(event: CommentEvent): { command: Command; numbe
 export function isFromFork(pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined, repository: string): boolean {
   return pullRequest?.head?.repo?.full_name !== repository;
 }
+
+// Why an automatic review is skipped, if it is: the pull request comes from a fork, or its head was already reviewed
+// (`reviewedHead` is the head the bot last reviewed, when the caller has looked it up). /review is not an automatic review
+// and doesn't ask.
+export function skipReason(
+  pullRequest: { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } } | undefined,
+  repository: string,
+  reviewedHead?: string,
+): string | undefined {
+  if (isFromFork(pullRequest, repository)) return `#${pullRequest?.number} comes from a fork, and forks aren't reviewed.`;
+  const head = pullRequest?.head?.sha;
+  if (head && reviewedHead === head) return `${head.slice(0, 7)} was already reviewed; comment /review to review it again.`;
+  return undefined;
+}
