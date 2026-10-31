@@ -1198,6 +1198,23 @@ test('isPackableProject reads IsPackable from Directory.Build.props and Director
   assert.ok(isPackableProject(base, 'src/Cond/A.cs', new Map()), 'a conditional true counts');
 });
 
+// A folder named like the MSBuild file can't be read as one; the .csproj says false, so only that file can pack it.
+test("isPackableProject counts a project as packed when a Directory.Build.props above it can't be read", () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-props-unreadable-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>');
+  mkdirSync(path.join(base, 'Directory.Build.props'));
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs'));
+});
+
+test("isPackableProject counts a project as packed when a Directory.Build.targets above it can't be read", () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'packable-targets-unreadable-'));
+  mkdirSync(path.join(base, 'src', 'Lib'), { recursive: true });
+  writeFileSync(path.join(base, 'src', 'Lib', 'Lib.csproj'), '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>');
+  mkdirSync(path.join(base, 'src', 'Directory.Build.targets'));
+  assert.ok(isPackableProject(base, 'src/Lib/A.cs'));
+});
+
 // A file at the pull request's head, one line per entry; line numbers below are 1-based.
 const csLines = [
   'namespace NCode.Lib;', // 1
