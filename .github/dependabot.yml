@@ -1,0 +1,19 @@
+# Dependabot, built into GitHub: each week, a pull request for every newer version, which CI tests and you merge.
+# Every update of one kind, major ones included, comes together in a single pull request, so a project gets one for its
+# actions and one for its packages instead of one per package.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]

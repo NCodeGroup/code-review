@@ -1,3 +1,33 @@
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+*.swp
+.vs/
+.idea/
+
+# Claude Code: personal settings and worktrees
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+
+# Leftovers from `copier update --conflict rej`
+*.rej
+
+# The plan in progress: a local working file, never committed
+PLAN.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+/secrets/
+
+# Node.js
+node_modules/
+dist/
+coverage/
+
+# Kept from this repository's own .gitignore when it adopted the project template
 node_modules/
 out/
 evals/.work/
