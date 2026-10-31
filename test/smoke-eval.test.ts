@@ -6,9 +6,10 @@ import path from 'node:path';
 import { test } from 'node:test';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
-import type { RealityJudge } from '../evals/precision.ts';
-import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
+import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
+import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, type CaseTally } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import type { CallRecord } from '../src/agent.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
 
@@ -50,6 +51,29 @@ test('casePrecision with precision off asks the judge nothing and has no precisi
   assert.deepEqual(asked, []);
   assert.equal((await casePrecision(true, input))?.real, 1);
   assert.deepEqual(asked, ['Unmatched']);
+});
+
+// A call record of one role and cost.
+function call(role: string, costUsd: number): CallRecord {
+  return { role, provider: 'bedrock', model: 'm', costUsd, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' };
+}
+
+test('tallyCase leaves the concern and precision judges out of the review cost and counts them in the case cost', () => {
+  const review = [call('security', 1), call('synthesis', 0.5)];
+  const calls = [...review, call('judge', 2), call('precision-judge', 4)];
+  const tally: CaseTally = { precisions: [], findingsPerCase: [], reviewCosts: [] };
+  assert.deepEqual(tallyCase(tally, { findings: [], calls: review }, calls, undefined), { reviewCost: 1.5, caseCost: 7.5 });
+  assert.deepEqual(tally.reviewCosts, [1.5]);
+});
+
+test('tallyCase adds each case\'s findings and its precision, when it has one, to the tallies', () => {
+  const finding: Finding = { severity: 'should-fix', file: 'src/a.cs', line: 10, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
+  const precision: CasePrecision = { posted: 1, matched: 1, mustNot: 0, real: 0, notReal: 0, unsure: 0, precision: 1, judged: [] };
+  const tally: CaseTally = { precisions: [], findingsPerCase: [], reviewCosts: [] };
+  tallyCase(tally, { findings: [finding], calls: [] }, [], precision);
+  tallyCase(tally, { findings: [], calls: [] }, [], undefined);
+  assert.deepEqual(tally.precisions, [precision]);
+  assert.deepEqual(tally.findingsPerCase, [1, 0]);
 });
 
 // A runner whose cases cost what the table says, recording the ones it started.
