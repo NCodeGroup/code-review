@@ -187,7 +187,8 @@ export function checkText(results: Results): string {
 export const maxCheckText = 65_535;
 
 // Collapsed, so the shadow reviewers' findings stay out of the way of the ones that were posted. It takes only the room
-// the posted part leaves, so it can't make GitHub refuse the check run; findings that don't fit are counted.
+// the posted part leaves, so it can't make GitHub refuse the check run; findings that don't fit are counted, and when
+// not even the section's frame fits, a one-line note says the shadow findings are in the trace.
 function shadowSection(results: Results, costs: Map<string, number>, room: number): string[] {
   const shadow = results.shadow;
   if (!shadow) return [];
@@ -214,7 +215,10 @@ function shadowSection(results: Results, costs: Map<string, number>, room: numbe
   const size = (lines: string[]) => lines.join('\n').length;
   let shown = findings.length;
   while (shown >= 0 && size([...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail]) > room) shown--;
-  if (shown < 0) return [];
+  if (shown < 0) {
+    const note = ['', "*Shadow findings (not posted) didn't fit in this check run; they are in the trace.*"];
+    return size(note) <= room ? note : [];
+  }
   return [...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail];
 }
 

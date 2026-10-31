@@ -170,12 +170,14 @@ export function shadowReviewers(charters: Charters, override = shadowOverride())
   return new Set([...[...charters.reviewers].filter(([, charter]) => charter.shadow).map(([name]) => name), ...override]);
 }
 
+const uint32Range = 2 ** 32;
+
 // Whether this review runs the shadow prompts: the share given by the rate, picked by the pull request's number and
 // head, so a re-run of the same commit samples the same way and tests are stable.
 export function shadowSampled(number: number, headSha: string, rate: number): boolean {
   if (rate <= 0) return false;
   if (rate >= 1) return true;
-  return createHash('sha256').update(`${number}:${headSha}`).digest().readUInt32BE(0) / 2 ** 32 < rate;
+  return createHash('sha256').update(`${number}:${headSha}`).digest().readUInt32BE(0) / uint32Range < rate;
 }
 
 function shadowPromptRun(prompts: PromptName[], role: string, live: AgentResult<unknown>, shadow: AgentResult<unknown>): ShadowPromptRun {

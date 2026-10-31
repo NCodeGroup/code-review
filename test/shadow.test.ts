@@ -7,7 +7,7 @@ import type { AgentRequest, AgentResult, AgentRun, CallRecord, runAgent } from '
 import { parseCharter } from '../src/charter.ts';
 import { shadowOverride, shadowPromptRate } from '../src/config.ts';
 import type { Gathered } from '../src/gather.ts';
-import { annotations, checkText, checkTitle, summaryComment } from '../src/results.ts';
+import { annotations, checkText, checkTitle, maxCheckText, summaryComment } from '../src/results.ts';
 import { buildResults } from '../src/review-results.ts';
 import { loadCharters, review, shadowSampled, type Charters, type Finding, type PromptName } from '../src/review.ts';
 import { placeFindings } from '../src/threads.ts';
@@ -184,7 +184,6 @@ test('a shadow reviewer selection does not choose is recorded for the trace, not
 });
 
 test('the shadow section never takes the check run past the text GitHub accepts', async () => {
-  const { maxCheckText } = await import('../src/results.ts');
   const { agent } = stubAgent((request) =>
     request.role === 'reviewer:performance'
       ? { output: { findings: Array.from({ length: 200 }, (_, i) => ({ ...finding(`Shadow ${i}`, 'nit'), problem: 'x'.repeat(400) })) } }
@@ -194,6 +193,22 @@ test('the shadow section never takes the check run past the text GitHub accepts'
   assert.ok(text.length <= maxCheckText, `${text.length} characters`);
   assert.match(text, /- \d+ more shadow findings, in the trace\.\n\n<\/details>$/);
   assert.match(text, /Shadow 0/);
+});
+
+test('when the posted part leaves no room for the shadow section, a one-line note stands in for it', async () => {
+  const { agent } = stubAgent(reviewAnswers);
+  const outcome = await review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const results = buildResults(outcome, context);
+  const { shadow: _, ...live } = results;
+  const posted = (problem: string) => checkText({ ...live, findings: [{ ...results.findings[0]!, problem }] });
+  const added = "\n\n*Shadow findings (not posted) didn't fit in this check run; they are in the trace.*";
+  const base = posted('').length;
+  for (const fits of [true, false]) {
+    const problem = 'x'.repeat(maxCheckText - base - added.length + (fits ? 0 : 1));
+    const text = checkText({ ...results, findings: [{ ...results.findings[0]!, problem }] });
+    assert.ok(text.length <= maxCheckText, `${text.length} characters`);
+    assert.equal(text, `${posted(problem)}${fits ? added : ''}`);
+  }
 });
 
 test('shadowPromptRate reads a share from 0 to 1, and anything else as 0', () => {
