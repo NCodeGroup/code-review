@@ -77,6 +77,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     verdict: outcome.verdict,
     findings,
     ...(outcome.upstream.length && context.template ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: context.template } : {}),
+    ...(outcome.tracked?.length ? { tracked: outcome.tracked } : {}),
     dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),

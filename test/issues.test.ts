@@ -7,8 +7,9 @@ import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { postThreads } from '../src/comments.ts';
 import type { Gathered } from '../src/gather.ts';
 import { maxOpenIssuePages, readOpenIssues } from '../src/issues.ts';
-import { botLogin, checkText, headMarker, summaryComment, summaryMarker, type Results } from '../src/results.ts';
+import { annotations, botLogin, checkSummary, checkText, checkTitle, headMarker, summaryComment, summaryMarker, type Results } from '../src/results.ts';
 import { mergeSynthesis, review, settleTracked, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
+import { buildResults } from '../src/review-results.ts';
 import { placeFindings, reviewBody } from '../src/threads.ts';
 import { pullRequestCheckout, reviewStep } from './steps.ts';
 
@@ -154,9 +155,10 @@ test('a tracked finding is not posted as a new thread, and the review says which
   assert.deepEqual(logs, ['No new findings to post (1 tracked in open issues).']);
 });
 
-test('the summary comment and the check run say "Tracked in #N" for a tracked finding', () => {
+test('the summary comment and the check run list tracked findings apart, and leave them out of the counts', () => {
   const results = {
-    findings: [reviewed('Known', 3, 12), reviewed('New', 2)],
+    findings: [reviewed('New', 2)],
+    tracked: [{ ...reviewed('Known', 3, 12), id: 'T1' }],
     reviewers: [],
     skipped: [],
     synthesisModel: 'opus',
@@ -168,12 +170,25 @@ test('the summary comment and the check run say "Tracked in #N" for a tracked fi
     verdict: 'comment',
     calls: [],
     dropped: [],
+    notShown: [],
   } as unknown as Results;
   const summary = summaryComment(results, 'https://check', 'https://help');
-  assert.match(summary, /\*\*F3\*\* `src\/a\.ts:3`: Known \(tracked in #12\)/);
+  assert.match(summary, /<details><summary>Tracked in open issues \(1\)<\/summary>/);
+  assert.match(summary, /^- 🟠 \*\*T1\*\* `src\/a\.ts:3`: Known \(tracked in #12\)$/m);
   assert.match(summary, /\*\*F2\*\* `src\/a\.ts:2`: New$/m);
-  assert.match(checkText(results), /\*\*Known\*\* p\n\nTracked in #12\.\n/);
-  assert.equal(checkText(results).match(/Tracked in/g)?.length, 1);
+  assert.match(summary, /— 1 finding \(/);
+  assert.equal(checkTitle(results), '0 blocker, 1 should-fix, 0 nit (shadow mode)');
+  const text = checkText(results);
+  assert.match(text, /### Tracked in open issues\n\n- \*\*T1 Should fix\*\* `src\/a\.ts:3`: \*\*Known\*\* p \*Fix:\* f — tracked in #12\.\n/);
+  assert.match(checkSummary(results), /1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict\./);
+  assert.ok(!annotations(results).some((a) => a.title.includes('Known')));
+});
+
+test('buildResults lists the findings an open issue tracks apart from the findings', async () => {
+  const { result } = await synthesize([{ number: 12, title: 'Leaked handles' }], 12);
+  const results = buildResults(result, { repository: 'o/r', pullRequest: 1, headSha: 'h', provider: 'bedrock', providerReason: 'r', durationMs: 0, notShown: [], diff });
+  assert.deepEqual(results.findings, []);
+  assert.deepEqual(results.tracked?.map((f) => [f.id, f.tracked]), [['T1', 12]]);
 });
 
 // main.ts on a pull request: a full review reads the open issues for synthesis, and a re-review, whose synthesis can't
