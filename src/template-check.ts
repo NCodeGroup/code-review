@@ -5,8 +5,8 @@
 // read-only token, and anything that can't be read or confirmed is the project's, so the check fails closed.
 
 import { errorText } from './comments.ts';
-import type { ReadApi } from './explain.ts';
 import { git, readBlobs } from './gather.ts';
+import type { ReadApi } from './github.ts';
 import { answersFile, answerValues, matchesTemplateSource, renderedTemplatePaths, templateRef, type TemplateCandidate } from './template.ts';
 
 const sha = /^[0-9a-f]{40}$/;

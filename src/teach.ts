@@ -6,8 +6,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxRuleChars, type Command, type FindingRef } from './command.ts';
-import { findFinding, type Answer, type GitHubApi, type ReadApi, type Resolution } from './explain.ts';
-import { GitHubError } from './github.ts';
+import { findFinding, type Answer, type GitHubApi, type Resolution } from './explain.ts';
+import { GitHubError, type ReadApi } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
 
 export { GitHubError };
