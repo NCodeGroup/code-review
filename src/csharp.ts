@@ -120,3 +120,106 @@ export function maskCSharp(text: string): string {
   }
   return out.join('');
 }
+
+export type Declaration =
+  | { kind: 'namespace' }
+  | { kind: 'type'; visible: boolean; membersPublic: boolean }
+  | { kind: 'member'; visible: boolean };
+
+const modifierRun = /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
+const accessWords = new Set(['public', 'protected', 'private', 'internal']);
+
+// A C# line read as a declaration, from its leading modifiers. Members without an access modifier are private (or a
+// statement) and read as nothing.
+export function declaration(line: string): Declaration | undefined {
+  if (/^\s*namespace\b/.test(line)) return { kind: 'namespace' };
+  const match = modifierRun.exec(line)!;
+  const modifiers = match[1]!.split(/\s+/).filter(Boolean);
+  const visible = modifiers.includes('public') || (modifiers.includes('protected') && !modifiers.includes('private'));
+  const type = /^(class|struct|interface|enum|record)\s+[A-Za-z_@]/.exec(line.slice(match[0].length));
+  if (type) return { kind: 'type', visible, membersPublic: type[1] === 'interface' || type[1] === 'enum' };
+  if (modifiers.some((m) => accessWords.has(m))) return { kind: 'member', visible };
+  return undefined;
+}
+
+export type MemberOrType = Exclude<Declaration, { kind: 'namespace' }>;
+
+// A type or member declaration and the lines it spans, 0-based and inclusive: from its first attribute or modifier to
+// its closing brace, or its semicolon when it has no body. `open` is the line of its opening brace, or of that semicolon.
+export interface DeclarationSpan {
+  start: number;
+  open: number;
+  end: number;
+  declaration: MemberOrType;
+  parent: DeclarationSpan | undefined;
+}
+
+// Drops leading attributes, counting brackets, so an attribute with an array or an indexer in it ends where it does.
+function stripAttributes(header: string): string {
+  let text = header;
+  while (text.startsWith('[')) {
+    let depth = 0;
+    let end = -1;
+    for (let k = 0; k < text.length; k++) {
+      if (text[k] === '[') depth++;
+      else if (text[k] === ']' && --depth === 0) {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) return text;
+    text = text.slice(end + 1).trimStart();
+  }
+  return text;
+}
+
+// A statement's masked text, read as the declaration it opens; a namespace isn't one a member can sit in.
+function classify(header: string): MemberOrType | undefined {
+  const found = declaration(stripAttributes(header.replace(/\s+/g, ' ').trim()));
+  return found?.kind === 'namespace' ? undefined : found;
+}
+
+// The type and member declarations in a C# file, in the order they open, each with the one it sits in. Only braces and
+// semicolons outside parentheses and brackets count, so a lambda in an argument or an attribute's array stays inside its
+// statement. Undefined when the braces don't balance, such as #if branches that each open one.
+export function declarationSpans(text: string): DeclarationSpan[] | undefined {
+  const masked = maskCSharp(text);
+  const spans: DeclarationSpan[] = [];
+  const frames: (DeclarationSpan | undefined)[] = [];
+  const parent = () => frames.findLast((frame) => frame !== undefined);
+  let line = 0;
+  let depth = 0;
+  let start = -1;
+  let startLine = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i]!;
+    if (c === '\n') {
+      line++;
+      continue;
+    }
+    if (/\s/.test(c)) continue;
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1);
+    if (depth > 0 || !'{};'.includes(c)) {
+      if (start < 0) {
+        start = i;
+        startLine = line;
+      }
+      continue;
+    }
+    const found = start < 0 ? undefined : classify(masked.slice(start, i));
+    if (c === '{') {
+      const span = found ? { start: startLine, open: line, end: line, declaration: found, parent: parent() } : undefined;
+      if (span) spans.push(span);
+      frames.push(span);
+    } else if (c === '}') {
+      if (!frames.length) return undefined;
+      const span = frames.pop();
+      if (span) span.end = line;
+    } else if (found) {
+      spans.push({ start: startLine, open: line, end: line, declaration: found, parent: parent() });
+    }
+    start = -1;
+  }
+  return frames.length ? undefined : spans;
+}

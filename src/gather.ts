@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
+import { declaration, type Declaration } from './csharp.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
@@ -291,27 +292,6 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
     return answer(names.includes('PublicAPI.Shipped.txt') || projects.some((p) => projectPacks(basePath, folder, p)));
   }
   return answer(false);
-}
-
-type Declaration =
-  | { kind: 'namespace' }
-  | { kind: 'type'; visible: boolean; membersPublic: boolean }
-  | { kind: 'member'; visible: boolean };
-
-const modifierRun = /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
-const accessWords = new Set(['public', 'protected', 'private', 'internal']);
-
-// A C# line read as a declaration, from its leading modifiers. Members without an access modifier are private (or a
-// statement) and read as nothing.
-function declaration(line: string): Declaration | undefined {
-  if (/^\s*namespace\b/.test(line)) return { kind: 'namespace' };
-  const match = modifierRun.exec(line)!;
-  const modifiers = match[1]!.split(/\s+/).filter(Boolean);
-  const visible = modifiers.includes('public') || (modifiers.includes('protected') && !modifiers.includes('private'));
-  const type = /^(class|struct|interface|enum|record)\s+[A-Za-z_@]/.exec(line.slice(match[0].length));
-  if (type) return { kind: 'type', visible, membersPublic: type[1] === 'interface' || type[1] === 'enum' };
-  if (modifiers.some((m) => accessWords.has(m))) return { kind: 'member', visible };
-  return undefined;
 }
 
 const indentOf = (line: string) => /^\s*/.exec(line)![0].length;
