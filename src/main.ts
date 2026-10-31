@@ -1,12 +1,14 @@
-// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step.
+// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step. For a
+// `/review explain` comment it writes answer.json instead.
 // It holds the model credentials but never the app's private key, which only the publish step sees.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReasonFor } from './command.ts';
-import { lastReviewedHead } from './comments.ts';
+import { commandFromEvent, skipReasonFor, type Command } from './command.ts';
+import { errorText, lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
+import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
 import { assertNoSecrets } from './outputs.ts';
@@ -52,6 +54,76 @@ async function readClosedIssues(repository: string, numbers: number[], token: st
   return issues;
 }
 
+// The model credentials, taken out of this process's environment so nothing started later inherits them.
+function takeCredentials(): Credentials {
+  const credentials: Credentials = {};
+  const bedrockKey = take('CODE_REVIEW_BEDROCK_KEY');
+  if (bedrockKey) credentials.bedrockKey = bedrockKey;
+  const requestUrl = take('ACTIONS_ID_TOKEN_REQUEST_URL');
+  const requestToken = take('ACTIONS_ID_TOKEN_REQUEST_TOKEN');
+  if (requestUrl && requestToken && process.env['CODE_REVIEW_FEDERATION_RULE_ID']) {
+    credentials.anthropic = new AnthropicTokenSource(
+      {
+        ruleId: required('CODE_REVIEW_FEDERATION_RULE_ID'),
+        organizationId: required('CODE_REVIEW_ORGANIZATION_ID'),
+        serviceAccountId: required('CODE_REVIEW_SERVICE_ACCOUNT_ID'),
+        workspaceId: required('CODE_REVIEW_WORKSPACE_ID'),
+      },
+      requestUrl,
+      requestToken,
+    );
+  }
+  return credentials;
+}
+
+// Writes what the publish step posts, scanned for secrets, and tells the action's later steps there's something to post.
+function writeForPublish(outDir: string, files: Record<string, unknown>, secrets: string[], flag: 'reviewed' | 'answered'): void {
+  const texts = Object.entries(files).map(([name, value]) => [name, JSON.stringify(value, null, 2)] as const);
+  for (const [name, text] of texts) assertNoSecrets(text, secrets, `The ${name.replace(/\.json$/, '')}`);
+  mkdirSync(outDir, { recursive: true });
+  for (const [name, text] of texts) writeFileSync(path.join(outDir, name), text);
+  const output = process.env['GITHUB_OUTPUT'];
+  if (output) appendFileSync(output, `${flag}=true\n`);
+}
+
+// `/review explain <ref>`: finds the finding with the read-only token, has one agent read the code again, and leaves the
+// answer for the publish step. An unknown ref gets the newest review's ids, without a model call.
+async function answer(
+  where: { outDir: string; prPath: string; repository: string; number: number; headSha: string; githubToken: string | undefined },
+  command: Extract<Command, { kind: 'explain' }>,
+): Promise<void> {
+  const { outDir, prPath, repository, number, headSha, githubToken } = where;
+  const credentials = takeCredentials();
+  const secrets = [...secretValues(credentials), ...(githubToken ? [githubToken] : [])];
+  const host = new URL(process.env['GITHUB_SERVER_URL'] || 'https://github.com').host;
+  const resolution = await findFinding(command.ref, { repository, number, host }, githubReader(githubToken));
+  if ('validIds' in resolution) console.log(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
+
+  const ask = async (found: FoundFinding) => {
+    console.log(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
+    fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number, headSha, token: githubToken }));
+    const choice = await chooseProvider(credentials);
+    console.log(`Provider: ${choice.reason}`);
+    const proxy = await startProxy(credentials);
+    try {
+      const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
+      return await explainFinding({ provider: choice.provider, proxyUrl: proxy.url, checkout: prPath }, systemPrompt, { found, question: command.question, headSha });
+    } finally {
+      await proxy.close();
+    }
+  };
+  const { body, explained } = await answerFor(command.ref, resolution, ask);
+  const files: Record<string, unknown> = { [answerFile]: { repository, pullRequest: number, body } satisfies Answer };
+  if (explained) {
+    const { found, result } = explained;
+    if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
+    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, call: result.record } };
+    const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
+    console.log(`${outcome}, $${result.record.costUsd.toFixed(2)}`);
+  }
+  writeForPublish(outDir, files, secrets, 'answered');
+}
+
 async function main(): Promise<void> {
   const outDir = required('CODE_REVIEW_OUT');
   const prPath = path.resolve(required('CODE_REVIEW_PR_PATH'));
@@ -77,6 +149,10 @@ async function main(): Promise<void> {
       console.log(reason);
       return;
     }
+    if (request.command.kind === 'explain') {
+      await answer({ outDir, prPath, repository, number: request.number, headSha: pullRequest.head?.sha ?? '', githubToken }, request.command);
+      return;
+    }
     event = { pull_request: pullRequest };
   } else {
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
@@ -89,24 +165,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const credentials: Credentials = {};
-  const bedrockKey = take('CODE_REVIEW_BEDROCK_KEY');
-  if (bedrockKey) credentials.bedrockKey = bedrockKey;
-  const requestUrl = take('ACTIONS_ID_TOKEN_REQUEST_URL');
-  const requestToken = take('ACTIONS_ID_TOKEN_REQUEST_TOKEN');
-  if (requestUrl && requestToken && process.env['CODE_REVIEW_FEDERATION_RULE_ID']) {
-    credentials.anthropic = new AnthropicTokenSource(
-      {
-        ruleId: required('CODE_REVIEW_FEDERATION_RULE_ID'),
-        organizationId: required('CODE_REVIEW_ORGANIZATION_ID'),
-        serviceAccountId: required('CODE_REVIEW_SERVICE_ACCOUNT_ID'),
-        workspaceId: required('CODE_REVIEW_WORKSPACE_ID'),
-      },
-      requestUrl,
-      requestToken,
-    );
-  }
-
+  const credentials = takeCredentials();
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
@@ -156,18 +215,7 @@ async function main(): Promise<void> {
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
     };
     const trace = { results, rawFindings: outcome.reviewers, verification: outcome.verification, files: gathered.files, conventionsChars: gathered.conventions.length };
-
-    const secrets = secretValues(credentials);
-    const resultsJson = JSON.stringify(results, null, 2);
-    const traceJson = JSON.stringify(trace, null, 2);
-    assertNoSecrets(resultsJson, secrets, 'The results');
-    assertNoSecrets(traceJson, secrets, 'The trace');
-    mkdirSync(outDir, { recursive: true });
-    writeFileSync(path.join(outDir, 'results.json'), resultsJson);
-    writeFileSync(path.join(outDir, 'trace.json'), traceJson);
-    // Tells the action's later steps there's a review to publish.
-    const output = process.env['GITHUB_OUTPUT'];
-    if (output) appendFileSync(output, 'reviewed=true\n');
+    writeForPublish(outDir, { 'results.json': results, 'trace.json': trace }, secretValues(credentials), 'reviewed');
   } finally {
     await proxy.close();
   }

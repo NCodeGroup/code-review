@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and to fetch the pull request's head.
+    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain comment asks about, and to fetch the pull request's head.
     required: false
     default: ${{ github.token }}
   app-client-id:
@@ -56,7 +56,8 @@ runs:
 
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # The app's private key is not in this step's environment.
-    # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
+    # For a comment that isn't a /review or /review explain command from someone with write access, it stops here and the
+    # later steps skip.
     - name: Review
       id: review
       shell: bash
@@ -76,7 +77,7 @@ runs:
     # comments.
     - name: Get the app's token
       id: app-token
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true'
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
@@ -86,7 +87,7 @@ runs:
         permission-pull-requests: write
 
     - name: Publish
-      if: steps.review.outputs.reviewed == 'true'
+      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.answered == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review

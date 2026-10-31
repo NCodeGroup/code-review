@@ -32,8 +32,8 @@ on:
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, or a top-level `/review` comment on one from someone with write
-    # access. The engine checks the comment again and skips anything else.
+    # A pull request when it opens or is marked ready, or a top-level `/review` or `/review explain` comment on one from
+    # someone with write access. The engine checks the comment again and skips anything else.
     if: >-
       github.event.sender.type != 'Bot' && (
         (github.event_name == 'pull_request_target' &&
@@ -46,7 +46,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ startsWith(github.event.comment.body, '/review explain') && format('explain-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write
@@ -120,6 +120,15 @@ Comment on a pull request, as a top-level comment, not a reply in a review threa
 | Comment | What happens |
 |---|---|
 | `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+| `/review explain F3 [question]` | Reads the code again and answers about the newest review's F3 in a comment: "Re F3 (link): …", ending with "Still holds because …" or "On reflection this doesn't hold: …". The question is optional and may go on over several lines. |
+| `/review explain <link> [question]` | The same for the inline finding comment the link points to, from any review of this pull request. Finding ids restart at F1 in every review, so use a link for an earlier review's finding. |
+
+`/review explain` finds an id among the bot's inline finding comments of the newest review; a finding that went in a
+review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
+review's ids, with no model call. Otherwise one Sonnet agent with Read, Grep and Glob, locked down like the reviewers,
+reads the pull request's latest commit, within a budget of about $0.50. The `if:` above already lets the command through,
+since it checks only that the comment starts with `/review`. The `concurrency` group above gives each explain comment a
+group of its own, so asking while a review is running doesn't cancel that review, and a review doesn't cancel an answer.
 
 To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
 

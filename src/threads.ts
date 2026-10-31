@@ -26,13 +26,18 @@ export interface PostedThread {
   fingerprint: string;
 }
 
+// The fields of an inline comment's finding marker (id, fp, severity), or undefined when it has none.
+export function markerFields(body: string | undefined): Map<string, string> | undefined {
+  const marker = markerPattern.exec(body ?? '');
+  return marker ? new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string])) : undefined;
+}
+
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
 export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null }[]): PostedThread[] {
   const posted: PostedThread[] = [];
   for (const comment of comments) {
-    const marker = markerPattern.exec(comment.body ?? '');
-    if (!marker || !comment.path) continue;
-    const fields = new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string]));
+    const fields = markerFields(comment.body);
+    if (!fields || !comment.path) continue;
     posted.push({
       path: comment.path,
       line: comment.line ?? comment.original_line ?? 0,

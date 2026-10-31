@@ -731,6 +731,7 @@ test('errorText keeps an error message on one line', async () => {
   const { errorText } = await import('../src/comments.ts');
   assert.equal(errorText(new Error('HTTP 422 {"message":"x"}\n::error::injected\r\n  more')), 'HTTP 422 {"message":"x"} ::error::injected more');
   assert.equal(errorText(new Error('y'.repeat(300))).length, 200);
+  assert.equal(errorText('rate limited\n::error::x'), 'rate limited ::error::x');
 });
 
 test('placeFindings anchors findings to changed lines, snaps near ones, and skips repeats', async () => {
@@ -750,10 +751,11 @@ test('placeFindings anchors findings to changed lines, snaps near ones, and skip
 });
 
 test('threadBody escapes HTML and carries the finding marker', async () => {
-  const { threadBody } = await import('../src/threads.ts');
+  const { threadBody, markerFields } = await import('../src/threads.ts');
   const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
   assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
   assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker -->$/);
+  assert.equal(markerFields(body)?.get('id'), 'F2');
 });
 
 test('closedIssues reads the issues a description closes', async () => {

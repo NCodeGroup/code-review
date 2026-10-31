@@ -1,14 +1,50 @@
-// Pull request comment commands. Only a top-level comment from someone with write access counts: a reply inside a
-// review thread would start a workflow from the pull request's own code.
+// Pull request comment commands: `/review`, and `/review explain <finding>` with an optional question. Only a top-level
+// comment from someone with write access counts: a reply inside a review thread would start a workflow from the pull
+// request's own code.
 
-export type Command = { kind: 'review' };
+// Which finding `/review explain` asks about: an id such as F3, which means the newest review's F3; a link to one of the
+// bot's inline finding comments; or something that is neither, which gets the list of valid ids.
+export type FindingRef =
+  | { kind: 'id'; id: string }
+  | { kind: 'url'; host: string; repository: string; number: number; commentId: number }
+  | { kind: 'invalid'; text: string };
+
+export type Command = { kind: 'review' } | { kind: 'explain'; ref: FindingRef; question: string };
 
 const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
+// The longest question passed on to the agent; the rest is cut off.
+export const maxQuestionChars = 2_000;
+
+// A link to a review comment, as GitHub shows it in the conversation (#discussion_r<id>) or in the files view (#r<id>).
+const commentUrlPath = /^\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)(?:\/(?:files|changes))?\/?$/;
+const commentUrlHash = /^#(?:discussion_)?r(\d+)$/;
+
+export function parseFindingRef(token: string): FindingRef {
+  const text = token.replace(/^<(.*)>$/, '$1');
+  const id = /^F([1-9]\d{0,3})[.,:;!?]?$/i.exec(text);
+  if (id) return { kind: 'id', id: `F${id[1]}` };
+  let url: URL | undefined;
+  try {
+    url = new URL(text);
+  } catch {
+    return { kind: 'invalid', text };
+  }
+  const where = commentUrlPath.exec(url.pathname);
+  const comment = commentUrlHash.exec(url.hash);
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || !where || !comment) return { kind: 'invalid', text };
+  return { kind: 'url', host: url.host.toLowerCase(), repository: where[1]!, number: Number(where[2]), commentId: Number(comment[1]) };
+}
+
 // The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
-// /review doesn't start a run.
+// /review doesn't start a run. `/review explain <ref>` may go on with a question, on the same line or the next ones.
 export function parseCommand(body: string): Command | undefined {
-  return body.trim() === '/review' ? { kind: 'review' } : undefined;
+  const text = body.trim();
+  if (text === '/review') return { kind: 'review' };
+  const explain = /^\/review[ \t]+explain(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(text);
+  if (!explain) return undefined;
+  const ref = explain[1] ? parseFindingRef(explain[1]) : { kind: 'invalid' as const, text: '' };
+  return { kind: 'explain', ref, question: (explain[2] ?? '').trim().slice(0, maxQuestionChars) };
 }
 
 export interface CommentEvent {
