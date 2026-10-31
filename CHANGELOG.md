@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Consumers pin the action by a release's full commit SHA, with the tag in a comment, as the README now says: CodeQL's `extended` suite reports a tag pin, even an immutable release's, as an unpinned action. This repository's own workflow pins v0.3.1 that way.
 - Each review posts its own summary comment, at the bottom of the conversation, and the previous summary collapses to one line that links to it, instead of the first summary being edited in place, so a `/review` or re-review shows its verdict and findings where it ran ([#21](https://github.com/NCodeGroup/code-review/issues/21)).
 - The inline threads read the pull request's earlier review comments through the same pager as the summary comment, up to 10,000 instead of 1,000. When a pull request has more, no threads are posted, with a warning, instead of findings already posted on comments past the limit being posted again; the check run still has every finding ([#38](https://github.com/NCodeGroup/code-review/issues/38)).
+- The Release workflow fails before it tags when `CHANGELOG.md` has no dated `## [<version>] - YYYY-MM-DD` section with entries for the version, and publishes that section as the release's notes instead of generated ones. The README says why Dependabot proposed no bump of the action to consumers, every release so far being marked as a pre-release, and how to bump them meanwhile ([#33](https://github.com/NCodeGroup/code-review/issues/33)).
 
 ### Fixed
 
