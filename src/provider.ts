@@ -18,9 +18,8 @@ export class NoProviderError extends Error {
   }
 }
 
-// A one-token call to Bedrock with the run's key; says why Bedrock refused it, or undefined. Only a 401 or 403 counts as
-// a refusal (a missing, expired or revoked key, or no model access): any other answer, or none, goes on with Bedrock,
-// as before there was a check.
+// A one-token call to Bedrock with the run's key; says why Bedrock refused it, or undefined. Only a 401 or 403 proves the
+// key is bad (missing, expired or revoked, or without model access), so any other answer, or none, goes on with Bedrock.
 async function bedrockRefusal(key: string, fetchFn: typeof fetch): Promise<string | undefined> {
   try {
     const response = await fetchFn(`https://bedrock-runtime.${bedrockRegion}.amazonaws.com/model/${encodeURIComponent(modelIds.bedrock.haiku)}/invoke`, {
