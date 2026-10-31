@@ -54,7 +54,7 @@ export interface Review {
   skipped: string[];
 }
 
-const findingProperties = {
+export const findingProperties = {
   severity: { type: 'string', enum: ['blocker', 'should-fix', 'nit'] },
   file: { type: 'string' },
   line: { type: 'integer', minimum: 1 },
@@ -65,7 +65,7 @@ const findingProperties = {
   evidence: { type: 'string' },
   confidence: { type: 'number', minimum: 0, maximum: 1 },
 };
-const findingRequired = Object.keys(findingProperties);
+export const findingRequired = Object.keys(findingProperties);
 
 const specialistSchema = {
   type: 'object',
@@ -113,6 +113,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  reReviewPrompt: string;
   verificationPrompt: string;
   reviewers: Map<string, string>;
 }
@@ -138,6 +139,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    reReviewPrompt: prompt('re-review'),
     verificationPrompt: prompt('verification'),
     reviewers,
   };
@@ -174,7 +176,7 @@ export const architectureMinLines = 60;
 // The rule checks report as one reviewer, outside the roster so selection never adds or skips them.
 export const ruleCheckName = 'rule-check';
 
-function pullRequestBlock(gathered: Gathered): string {
+export function pullRequestBlock(gathered: Gathered): string {
   const pr = gathered.pullRequest;
   const description = pr.body ? `\nDescription:\n${pr.body}` : '\n(No description, or its author lacks write access.)';
   const issues = (pr.issues ?? []).map((i) => `\nIssue #${i.number}, which it closes: ${i.title}\n${i.body}`).join('');
@@ -182,7 +184,7 @@ function pullRequestBlock(gathered: Gathered): string {
   return `<pull_request>\n#${pr.number}: ${pr.title}\nAuthor: ${pr.author}${description}${issues}${commits}\n</pull_request>`;
 }
 
-function fileList(gathered: Gathered): string {
+export function fileList(gathered: Gathered): string {
   return gathered.files
     .map((f) => `${f.path} (+${f.additions} -${f.deletions})${f.generated ? ' [generated]' : ''}${f.shown ? '' : ' [diff not shown: over the size budget]'}`)
     .join('\n');

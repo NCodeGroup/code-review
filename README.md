@@ -18,7 +18,7 @@ Besides the reviewers, **rule checks** go through the rules the context stage pi
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
-**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
 
 ## Using it
 
@@ -132,6 +132,32 @@ Each review, all from `ncode-review[bot]`:
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
 
+### Re-reviews
+
+A review of a pull request the bot has reviewed before, such as a `/review` after changes, is a re-review, so rounds
+of review converge:
+
+- it reviews only what changed since the last review: the hunks of the pull request's diff against its merge base
+  that differ from that diff at the last reviewed head, which the summary comment records, and what the author took
+  out since. Merging the default branch in or rebasing onto it changes nothing by itself, and nothing from the
+  default branch is reviewed;
+- only `correctness` reviews them, on Sonnet, with the earlier findings and the replies in their threads (from people
+  with write access). It checks each unresolved finding against the code now (fixed, still open, or answered), and it
+  doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+- it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
+- with [verification](#how-a-review-runs) on, those findings go through it as a first review's do: a refuted one is
+  dropped and listed in the check run, and one it can't settle is a question one severity lower, so a should-fix it
+  can't settle becomes a nit and isn't posted. A re-review whose findings verification refuted or made nits never
+  approves or says it's done, since the maintainer should look at what it dropped;
+- its summary lists the earlier findings it checked, and says "No further findings above nits" when nothing at or
+  above should-fix is left, new or unresolved, so the author knows they can merge. When the earlier review threads
+  can't be read, or what changed is only in generated files or files over the size budget, so no reviewer saw it, it
+  says so instead, and its verdict is never Approve.
+
+A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
+gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records
+the head reviewed before it, so the next re-review still covers what it missed.
+
 ## Opting a repository in
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:
@@ -167,6 +193,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+
+A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
 
 ## Checks
 
