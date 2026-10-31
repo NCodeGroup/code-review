@@ -162,7 +162,7 @@ async function main(): Promise<void> {
   if (githubToken) run.githubToken = githubToken;
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
-  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken));
+  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, console.log));
   const reviewedHead = async (number: number) => newestReviewedHead(await issueComments(number));
 
   // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
