@@ -18,7 +18,7 @@ inputs:
     required: false
     default: base
   github-token:
-    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on, to fetch the pull request's head and the head the last review read, and to read the earlier review threads for a re-review.
+    description: A read-only token (contents and pull requests), used to read the pull request a /review comment is on and the finding a /review explain or /review teach comment names, to fetch the pull request's head and the head the last review read, and to read the earlier review threads for a re-review.
     required: false
     default: ${{ github.token }}
   app-client-id:
@@ -49,7 +49,8 @@ runs:
     # wait. It runs with the runner's own node and no npm package, and continues on error: without it, the review runs
     # as before. This step holds only the read-only token and makes the review step's own decision, so a comment that
     # isn't a /review command from a writer, a fork, an automatic run on a commit already reviewed, or a closed pull
-    # request gets nothing.
+    # request gets nothing. Neither does /review explain or /review teach: they answer with a comment, not the "Code
+    # review" check run.
     - name: Decide whether to acknowledge
       id: ack-decide
       continue-on-error: true
@@ -99,8 +100,9 @@ runs:
 
     # The model credentials stay in this step's process; the agents it starts get a proxy address and a placeholder.
     # Neither the app's private key nor a token minted from it is in this step's environment.
-    # For a comment that isn't a /review command from someone with write access, it stops here and the later steps skip.
-    # For a closed pull request it records each finding's outcome by rules, with no model call, so it gets no model key.
+    # For a comment that isn't a /review, /review explain or /review teach command from someone with write access, it stops
+    # here and the later steps skip. For a closed pull request it records each finding's outcome by rules, with no model
+    # call, so it gets no model key.
     - name: Review
       id: review
       shell: bash
@@ -117,12 +119,13 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
-    # comments: to publish the review or a closed pull request's outcomes, or to complete the check run with why there's
-    # no review.
+    # comments: to publish the review, a closed pull request's outcomes, or a /review explain or /review teach reply, or
+    # to complete the check run with why there's no review.
     - name: Get the app's token
       id: app-token
       if: >-
         always() && (steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true' ||
           steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
@@ -132,13 +135,32 @@ runs:
         permission-checks: write
         permission-pull-requests: write
 
+    # For /review teach only: a second token, able to write only issues, in the one repository the guidance issue opens
+    # in (this one, or NCodeGroup/code-review for /review teach org). It is separate so a review never asks for issues
+    # write, and it may fail: when the app lacks issues write there, or isn't installed there, the publish step replies
+    # that it lacks the permission instead of opening the issue.
+    - name: Get the app's token for the guidance issue
+      id: issues-token
+      if: steps.review.outputs.taught == 'true'
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ steps.review.outputs.guidance-owner }}
+        repositories: ${{ steps.review.outputs.guidance-repository }}
+        permission-issues: write
+
     - name: Publish
       id: publish
-      if: steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true'
+      if: >-
+        steps.review.outputs.reviewed == 'true' || steps.review.outputs.outcomes == 'true' ||
+          steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true'
       shell: bash
       env:
         CODE_REVIEW_OUT: ${{ runner.temp }}/code-review
         CODE_REVIEW_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        CODE_REVIEW_ISSUES_TOKEN: ${{ steps.issues-token.outputs.token }}
         CODE_REVIEW_CHECK_RUN_ID: ${{ steps.ack.outputs.check-run-id }}
         CODE_REVIEW_CHECK_RUN_SHA: ${{ steps.ack.outputs.head-sha }}
       run: node "$GITHUB_ACTION_PATH/src/publish.ts"

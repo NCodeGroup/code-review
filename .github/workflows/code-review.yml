@@ -45,9 +45,10 @@ jobs:
     # Anthropic's federation rule trusts only jobs in this environment, which only the default branch can deploy to.
     environment: code-review
     timeout-minutes: 30
-    # A closed pull request's run waits for a review in progress, so its threads are counted, instead of cancelling it.
+    # Each /review explain or /review teach comment gets its own group, so it never cancels a review in progress. A closed
+    # pull request's run waits for a review in progress, so its threads are counted, instead of cancelling it.
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: ${{ github.event.action != 'closed' }}
     permissions:
       id-token: write

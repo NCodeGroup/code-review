@@ -14,17 +14,19 @@ and Glob, and a hook that refuses any path outside the pull request's checkout a
 environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
 reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses and
 revokes before the review step starts, and one after the agents exit. Each token can write check runs and pull request
-comments on the one repository under review, and neither is ever in the review step's environment. Results and the
-trace are scanned for secrets before they're written.
+comments on the one repository under review, and neither is ever in the review step's environment. A `/review teach`
+run also mints one after the agents exit that can write only issues, in the one repository its issue opens in. Results
+and the trace are scanned for secrets before they're written.
 
 Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
 takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
 `/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
-reviewed, and a closed pull request get nothing. The acknowledgement runs with the runner's own `node` and no npm
-package, and the review goes on without it if it fails. The publish step completes that same check run with the review,
-so there's never a second. When there's no review to publish, a last step completes it with why, so it never stays in
-progress:
+reviewed, and a closed pull request get nothing. `/review explain` and `/review teach` get nothing either: they aren't
+reviews, and they answer with a comment, not the check run. The acknowledgement runs with the runner's own `node` and
+no npm package, and the review goes on without it if it fails. The publish step completes that same check run with the
+review, so there's never a second. When there's no review to publish, a last step completes it with why, so it never
+stays in progress:
 
 - **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
   Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
@@ -39,9 +41,36 @@ Besides the reviewers, **rule checks** go through the rules the context stage pi
 
 A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.
 
-Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
+Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. Shadow calls count toward it too, but the shadow-prompt twins start after every live reviewer call, and a skipped shadow reviewer doesn't make the review incomplete. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
 **Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+
+### Shadow reviewers and prompts
+
+A new reviewer or prompt can run without posting until its precision holds. Mark a charter in shadow in its
+frontmatter:
+
+```markdown
+---
+shadow: true
+---
+# performance
+```
+
+A shadow reviewer is chosen and runs like any other, but its findings go only to the trace and to a collapsed
+"Shadow findings (not posted)" section of the check run. They aren't given to synthesis or verification, posted as threads, shown in
+the summary comment or the annotations, or counted in the verdict. For an experiment, set
+`CODE_REVIEW_SHADOW=performance,tests` in the review job's `env:` to put those reviewers in shadow too; `rule-check`
+works as a name.
+
+A shadow prompt, `prompts/<name>.shadow.md` beside `specialist`, `selection`, `synthesis` or `rule-check`, runs
+alongside the live prompt with the same input on a share of reviews set by `CODE_REVIEW_SHADOW_RATE`, from `0` (the
+default: never) to `1` (every review). The sample is picked from the pull request's number and head commit, so the
+same commit is always sampled the same way. Both outputs go to the trace (`trace.json`, under `shadow.prompts`); the
+shadow output is never posted, and the check run's shadow section only names the prompts that ran and their cost. A
+shadow specialist prompt runs every reviewer a second time, so a sampled review costs up to about twice as much.
+
+A [re-review](#re-reviews) runs only its own reviewer and prompt, so it runs no shadow reviewer or shadow prompt.
 
 ## Using it
 
@@ -55,9 +84,9 @@ on:
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, or a top-level `/review` comment on one from someone with write
-    # access. The engine checks the comment again and skips anything else. A closed pull request, whoever closed it,
-    # only records its findings' outcomes, with no model call.
+    # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A
+    # closed pull request, whoever closed it, only records its findings' outcomes, with no model call.
     if: >-
       (github.event_name == 'pull_request_target' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
@@ -70,7 +99,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: ${{ github.event.action != 'closed' }}
     permissions:
       id-token: write
@@ -149,6 +178,31 @@ Comment on a pull request, as a top-level comment, not a reply in a review threa
 | Comment | What happens |
 |---|---|
 | `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+| `/review explain F3 [question]` | Reads the code again and answers about the newest review's F3 in a comment: "Re F3 (link): …", ending with "Still holds because …" or "On reflection this doesn't hold: …". The question is optional and may go on over several lines. |
+| `/review explain <link> [question]` | The same for the inline finding comment the link points to, from any review of this pull request. Finding ids restart at F1 in every review, so use a link for an earlier review's finding. |
+| `/review teach <rule>` | Opens an issue labelled `review-guidance` in this repository with the rule, to add to its `.github/code-review/guidance.md`, and replies with a link to it. The rule may go on over several lines. |
+| `/review teach F3 <rule>` | The same for a rule that comes from the newest review's F3, such as "don't flag X because Y": the issue also quotes the finding with its file, line and link. A finding comment's link works in place of the id. |
+| `/review teach org <rule>` | Opens the issue in NCodeGroup/code-review instead, for a rule every NCodeGroup repository's review follows. |
+
+`/review explain` finds an id among the bot's inline finding comments of the newest review; a finding that went in a
+review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
+review's ids, with no model call. Otherwise one Sonnet agent with Read, Grep and Glob, locked down like the reviewers,
+reads the pull request's latest commit, within a budget of about $0.50. The `if:` above already lets the command through,
+since it checks only that the comment starts with `/review`. The `concurrency` group above gives each explain or teach
+comment a group of its own, so either command while a review is running doesn't cancel that review, and a review
+doesn't cancel an answer.
+
+`/review teach` makes no model call and writes no code. The review step words the issue: the rule quoted as data in a
+fenced block, with its mentions defused, who taught it and a link to the comment, and for `teach F3` the finding's file,
+line, text and link. The publish step, after everything else, opens it with a second app token that can write only
+issues, in only that repository, creating the `review-guidance` label when it's missing, and replies with a short
+comment linking it. An empty or overlong rule (over 2,000 characters), or a finding id or link it can't find, gets a
+reply instead. A `teach org` issue in the public NCodeGroup/code-review names neither a private repository nor its
+pull request. `/run-issues` or a person turns the issue into a pull request; for a `teach org` rule, closing the issue
+as completed is enough, because `npm run train` copies the rules of closed `review-guidance` issues into
+`training/feedback.md`, under "Taught with /review teach", before it generalizes. Closing one as not planned drops it.
+This needs the app's Issues: Read and write permission and, for `teach org`, its installation on NCodeGroup/code-review;
+without them the reply says the app lacks the permission and quotes the rule to add by hand.
 
 To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
 
@@ -220,6 +274,30 @@ gh workflow run monthly-report.yml -R NCodeGroup/code-review -f month=2026-10
 To see a month's report without publishing it, run `node tools/report.ts` with `GITHUB_TOKEN`,
 `GITHUB_REPOSITORY=NCodeGroup/code-review`, `REPORT_MONTH` and `REPORT_DRY_RUN=1`; it prints the issue's body.
 
+### Template-owned files
+
+A repository made from [NCodeGroup/project-template](https://github.com/NCodeGroup/project-template) records it in
+`.copier-answers.yml`. A template update replaces the template's files and discards any edit, so a defect in one can
+only be fixed in the template. The engine leaves those files to the template only in a pull request that adopts or
+updates the template, which changes the answers file, and only when its author has write access; anywhere else a change
+to one is an edit by hand, reviewed as the project's. It reads the answers file from the default branch, or, for the
+pull request that adopts the template, from its head. When `_src_path` names NCodeGroup/project-template, these files
+are template-owned, except any that `project_owned_files` lists: everything under `.template/`, the template's hooks
+(`.githooks/commit-msg` and `pre-push`), its generated commands, prompt files, skills and agents in `.claude/commands/`,
+`.claude/agents/`, `.github/prompts/`, `.github/skills/` and `.github/agents/`, `CLAUDE.md`, `.template-version`,
+`.github/instructions/project-template.instructions.md`, `.github/instructions/csharp.instructions.md`,
+`.claude/rules/csharp.md` and `build/ProjectTemplate.props`. Everything else is the project's, including a command,
+prompt, skill, agent or hook it adds under a name the template doesn't use, the files the template writes once
+(`AGENTS.md`, `README.md`, `code-review.yml`), the files it merges with the project's (`.gitignore`, `.gitattributes`, the
+settings, `ci.yml`, `dependabot.yml`) and the answers file.
+
+The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
+finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs
+upstream, in NCodeGroup/project-template", up to 20 places with a count of the rest, and the check run has the details.
+A blocker stays a thread, since it makes the change unsafe to merge. Findings that move upstream don't raise the
+review's verdict, and a [re-review](#re-reviews) moves them the same way. An adoption or template update is still reviewed
+for what the project chose: its answers, its merged files and its own files.
+
 ### Re-reviews
 
 A review of a pull request the bot has reviewed before, such as a `/review` after changes, is a re-review, so rounds
@@ -281,6 +359,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+
+Shadow reviewers ([Shadow reviewers and prompts](#shadow-reviewers-and-prompts)) are scored on their own: `--shadow performance` (or `CODE_REVIEW_SHADOW`) runs `performance` in shadow, and the report gives its catches, must-not violations and findings apart from the live reviewers', whose scores never include them. Precision counts only posted findings, so never theirs; the review's cost includes their calls.
 
 A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
 
