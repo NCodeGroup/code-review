@@ -24,8 +24,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agent.ts';
-import { verificationOn } from '../src/config.ts';
-import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather.ts';
+import { writerAssociations } from '../src/command.ts';
+import { errorText } from '../src/comments.ts';
+import { maxIssueChars, verificationOn } from '../src/config.ts';
+import { closedIssues, gather, readPullRequest, splitDiff, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
 import { changedLines, loadCharters, review, severityRank, type Finding } from '../src/review.ts';
@@ -201,6 +203,43 @@ export async function runCapped<T>(
   return { costUsd, ran, exceeded: false };
 }
 
+// The issues a case's description closes, as the review step reads them: pull requests are left out, and an issue that
+// can't be read is left out with a warning that says why. Their authors aren't checked, since the smoke eval's token
+// can't read another repository's permissions.
+export function caseIssues(
+  repository: string,
+  body: string | undefined,
+  readIssue: (number: number) => unknown,
+  log: (line: string) => void,
+): { number: number; title: string; body: string }[] {
+  return closedIssues(body).flatMap((number) => {
+    let issue: { title?: unknown; body?: unknown; pull_request?: unknown };
+    try {
+      issue = readIssue(number) as typeof issue;
+    } catch (error) {
+      log(`::warning::Couldn't read issue #${number} of ${repository} (${errorText(error)}); the case runs without it.`);
+      return [];
+    }
+    return issue.pull_request ? [] : [{ number, title: String(issue.title ?? ''), body: String(issue.body ?? '').slice(0, maxIssueChars) }];
+  });
+}
+
+// The pull request a case reviews, built as the review step builds it: the description, and so the issues it closes,
+// only from an author with write access, which the case's association decides. The issues' authors aren't checked, as
+// caseIssues says.
+export function casePullRequest(c: EvalCase, headSha: string, readIssue: (number: number) => unknown, log: (line: string) => void): PullRequest {
+  const association = c.authorAssociation ?? 'MEMBER';
+  const event = {
+    pull_request: {
+      number: c.pullRequest ?? 0, title: c.title, body: c.body, user: { login: c.author ?? 'polewskm' }, author_association: association,
+      draft: false, base: { ref: 'main', sha: c.base }, head: { sha: headSha },
+    },
+  };
+  const pullRequest = readPullRequest(event, c.repository, writerAssociations.has(association));
+  pullRequest.issues = caseIssues(c.repository, pullRequest.body, readIssue, log);
+  return pullRequest;
+}
+
 // How the output names a finding that raised a concern.
 const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
@@ -238,18 +277,12 @@ async function main(): Promise<void> {
       const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
       const head = worktree(repo, `${c.id}-head`, headSha);
       const base = worktree(repo, `${c.id}-base`, c.base);
-      const pullRequest: PullRequest = {
-        repository: c.repository, number: c.pullRequest ?? 0, title: c.title, body: c.body, author: 'polewskm',
-        authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: c.base, headSha,
-        issues: closedIssues(c.body).flatMap((number) => {
-          try {
-            const issue = JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' }));
-            return issue.pull_request ? [] : [{ number, title: String(issue.title ?? ''), body: String(issue.body ?? '').slice(0, 8_000) }];
-          } catch {
-            return [];
-          }
-        }),
-      };
+      const pullRequest = casePullRequest(
+        c,
+        headSha,
+        (number) => JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' })),
+        (line) => console.log(`  ${line}`),
+      );
       const gathered = gather(pullRequest, head, base, guidance);
       const log = (line: string) => console.log(`  ${line}`);
       let reReviewed: ReReview | undefined;

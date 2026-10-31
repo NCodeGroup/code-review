@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
 import type { RealityJudge } from '../evals/precision.ts';
-import { capOutcome, casePrecision, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
+import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -312,4 +312,42 @@ test('the smoke eval workflow runs only on main and by hand, in the code-review 
   const uses = workflow.match(/uses: .*/g) ?? [];
   assert.ok(uses.length > 0);
   for (const line of uses) assert.match(line, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, line);
+});
+
+const evalCase: EvalCase = {
+  id: 'x', repository: 'o/r', pullRequest: 5, title: 'T', body: 'Closes #3 and fixes #4', base: 'b'.repeat(40), head: 'h'.repeat(40),
+  expect: [], mustNotFlag: [], source: '',
+};
+
+test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', () => {
+  const lines: string[] = [];
+  const issues: Record<number, object> = { 3: { title: 'Bug', body: 'Steps' }, 4: { pull_request: {}, title: 'PR' } };
+  const pullRequest = casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
+  assert.equal(pullRequest.body, evalCase.body);
+  assert.equal(pullRequest.authorCanWrite, true);
+  assert.equal(pullRequest.author, 'polewskm');
+  assert.equal(pullRequest.authorAssociation, 'MEMBER');
+  assert.equal(pullRequest.number, 5);
+  assert.equal(pullRequest.headSha, 'c'.repeat(40));
+  assert.deepEqual(pullRequest.issues, [{ number: 3, title: 'Bug', body: 'Steps' }]);
+  assert.deepEqual(lines, []);
+});
+
+test('casePullRequest withholds a non-writer\'s description and reads none of its issues', () => {
+  const stranger = { ...evalCase, author: 'stranger', authorAssociation: 'CONTRIBUTOR' };
+  const pullRequest = casePullRequest(stranger, 'c'.repeat(40), () => assert.fail('read an issue'), () => {});
+  assert.equal(pullRequest.body, undefined);
+  assert.equal(pullRequest.bodyWithheld, true);
+  assert.equal(pullRequest.authorCanWrite, false);
+  assert.deepEqual(pullRequest.issues, []);
+});
+
+test('caseIssues warns with the reason when an issue cannot be read, and goes on', () => {
+  const lines: string[] = [];
+  const issues = caseIssues('o/r', 'Closes #3, closes #4', (number) => {
+    if (number === 3) throw new Error('HTTP 404: Not Found');
+    return { title: 'Ok', body: 'b' };
+  }, (line) => lines.push(line));
+  assert.deepEqual(issues, [{ number: 4, title: 'Ok', body: 'b' }]);
+  assert.deepEqual(lines, ["::warning::Couldn't read issue #3 of o/r (HTTP 404: Not Found); the case runs without it."]);
 });
