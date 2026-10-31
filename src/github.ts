@@ -38,18 +38,15 @@ export interface GitHubClient {
 }
 
 // Sends one request to GitHub, with the token when there is one. A url starting with / is under the REST address,
-// except /graphql, which is the GraphQL one. An absolute url must be on the REST or GraphQL address's origin, so the
+// except /graphql, which is the GraphQL one. The address must be on the REST or GraphQL address's origin, so the
 // token never leaves for another host.
 export async function githubFetch(client: GitHubClient, method: string, url: string, body?: unknown): Promise<Response> {
   const urls = client.urls ?? githubUrls();
-  const absolute = /^[a-z][a-z\d+.-]*:/i.test(url);
-  if (absolute) {
-    const origin = new URL(url).origin;
-    if (origin !== new URL(urls.api).origin && origin !== new URL(urls.graphql).origin) {
-      throw new Error(`Refusing to send a GitHub request to ${origin}: it isn't the GitHub API's address`);
-    }
+  const target = /^[a-z][a-z\d+.-]*:/i.test(url) ? url : url === '/graphql' ? urls.graphql : `${urls.api}${url}`;
+  const origin = new URL(target).origin;
+  if (origin !== new URL(urls.api).origin && origin !== new URL(urls.graphql).origin) {
+    throw new Error(`Refusing to send a GitHub request to ${origin}: it isn't the GitHub API's address`);
   }
-  const target = absolute ? url : url === '/graphql' ? urls.graphql : `${urls.api}${url}`;
   return (client.fetch ?? fetch)(target, {
     method,
     headers: {

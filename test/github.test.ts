@@ -47,11 +47,12 @@ test('githubFetch sends an absolute url on the configured origin, with the token
   assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
 });
 
-test('githubFetch refuses an absolute url on another origin and sends nothing', async () => {
+test('githubFetch refuses a url that resolves to another origin and sends nothing', async () => {
   const { requests, fn } = recording();
   const client = { fetch: fn, token: 't0ken', urls: { api: 'https://api.github.com', graphql: 'https://api.github.com/graphql' } };
   await assert.rejects(githubFetch(client, 'GET', 'https://attacker.example/repos/o/r'), /Refusing to send a GitHub request to https:\/\/attacker\.example/);
   await assert.rejects(githubFetch(client, 'GET', 'http://api.github.com/repos/o/r'), /Refusing/);
+  await assert.rejects(githubFetch(client, 'GET', '@attacker.example/x'), /Refusing to send a GitHub request to https:\/\/attacker\.example/);
   assert.equal(requests.length, 0);
 });
 
