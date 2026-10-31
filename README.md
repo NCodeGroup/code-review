@@ -84,7 +84,7 @@ same commit is always sampled the same way. Both outputs go to the trace (`trace
 shadow output is never posted, and the check run's shadow section only names the prompts that ran and their cost. A
 shadow specialist prompt runs every reviewer a second time, so a sampled review costs up to about twice as much.
 
-A [re-review](#re-reviews) runs only its own reviewer and prompt, so it runs no shadow reviewer or shadow prompt.
+A [re-review](#re-reviews) runs only its own reviewers and prompt, so it runs no shadow reviewer or shadow prompt.
 
 ## Using it
 
@@ -335,10 +335,15 @@ of review converge:
   that differ from that diff at the last reviewed head, which the summary comment records, and what the author took
   out since. Merging the default branch in or rebasing onto it changes nothing by itself, and nothing from the
   default branch is reviewed;
-- only `correctness` reviews them, on Sonnet unless [`tiers:`](#repository-settings) or `CODE_REVIEW_TIERS` names
-  another model, never deep or light, with the earlier findings and the replies in their threads (from people
-  with write access). It checks each unresolved finding against the code now (fixed, still open, or answered), and it
-  doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+- `correctness` reviews them, and `security` too when what changed since the last review touches a file
+  [`sensitive:`](#repository-settings) names or code the selection floor gives to `security` (a path with `auth`,
+  `token`, `crypt` and the like in it). Both run on Sonnet unless [`tiers:`](#repository-settings) or
+  `CODE_REVIEW_TIERS` names another model, except that a change to a `sensitive:` file makes the re-review deep: both
+  run on Opus, unless `CODE_REVIEW_TIERS` names them, and verification, when it's on, checks the findings in sensitive
+  files on Opus. A re-review is never light. Each reviewer gets the earlier findings and the replies in their threads
+  (from people with write access) and checks each unresolved finding against the code now (fixed, still open, or
+  answered); when they disagree, still open counts over answered, and answered over fixed. It doesn't raise again
+  what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
 - with [verification](#how-a-review-runs) on, those findings go through it as a first review's do: a refuted one is
   dropped and listed in the check run, and one it can't settle is a question one severity lower, so a should-fix it
@@ -354,8 +359,9 @@ of review converge:
   that asks the maintainer (`@<them>: needs you.`), and never a second time in that thread.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
-gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records
-the head reviewed before it, so the next re-review still covers what it missed.
+gets a full review instead. A review whose reviewers all failed doesn't count as the last review, nor does a re-review
+any of whose reviewers failed, which posts no findings: its summary records the head reviewed before it, so the next
+re-review still covers what it missed.
 
 ## Repository settings
 
