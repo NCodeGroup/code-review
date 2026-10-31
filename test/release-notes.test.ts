@@ -129,6 +129,16 @@ test('the script prints the section and exits 0', () => {
   assert.equal(result.stdout, '### Changed\n\n- Releases are immutable from this one on.\n');
 });
 
+test('the script runs when called by a relative path, as the workflow calls it', () => {
+  const dir = scratch();
+  const file = path.join(dir, 'CHANGELOG.md');
+  writeFileSync(file, changelog);
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const result = spawnSync(process.execPath, [path.join('tools', 'release-notes.ts'), '0.3.1', file], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '### Changed\n\n- Releases are immutable from this one on.\n');
+});
+
 test('the script prints an error annotation and exits 1 when the section is missing', () => {
   const result = run('0.4.0');
   assert.equal(result.status, 1);

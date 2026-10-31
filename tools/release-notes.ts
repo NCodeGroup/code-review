@@ -3,6 +3,8 @@
 //
 //   node tools/release-notes.ts <version> [<changelog>]
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // The same check as release.yml's "Check the version" step, which runs before checkout; keep the two in step.
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -51,7 +53,8 @@ export function releaseNotes(changelog: string, version: string): string {
   return `${notes}\n`;
 }
 
-if (import.meta.main) {
+// Not `import.meta.main`: it needs Node 24.2, and on an older 24.x the script would exit 0 with empty notes.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   try {
     const [version, file = 'CHANGELOG.md'] = process.argv.slice(2);
     if (version === undefined) throw new Error('Usage: node tools/release-notes.ts <version> [<changelog>]');
