@@ -776,6 +776,22 @@ test('a one-line suggestion posts on its line without a start line', async () =>
   assert.match(String(comment['body']), /```suggestion\nx\n```/);
 });
 
+test('postThreads posts a suggested finding as a multi-line comment with its suggestion block', async () => {
+  const { postThreads } = await import('../src/comments.ts');
+  const bodies: any[] = [];
+  const api = async (method: string, _url: string, body?: unknown): Promise<any> => {
+    if (method === 'GET') return [];
+    bodies.push(body);
+    return {};
+  };
+  const results = { ...summaryResults, findings: [suggested({ startLine: 10, endLine: 12, replacement: 'a' })], changedLines: { 'src/A.ts': [10, 11, 12] } };
+  await postThreads(api, results, ['secret-token'], () => {});
+  const [comment] = bodies[0].comments;
+  assert.equal(comment.start_line, 10);
+  assert.equal(comment.line, 12);
+  assert.match(comment.body, /```suggestion\na\n```/);
+});
+
 // Places one suggested finding on the given added lines and checks it posts on `line` with the prose fix and no suggestion.
 async function assertProseOnly(finding: ReturnType<typeof suggested>, added: number[], line: number): Promise<void> {
   const { placeFindings, reviewComment } = await import('../src/threads.ts');
