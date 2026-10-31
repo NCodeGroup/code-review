@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
-import { writerAssociations } from '../src/command.ts';
 import { postThreads } from '../src/comments.ts';
 import type { Gathered } from '../src/gather.ts';
 import { maxIssueAuthorLookups, maxOpenIssuePages, readOpenIssues } from '../src/issues.ts';
@@ -14,6 +13,7 @@ import { buildResults } from '../src/review-results.ts';
 import { placeFindings, reviewBody } from '../src/threads.ts';
 import type { WriterCheck } from '../src/writers.ts';
 import { pullRequestCheckout, reviewStep } from './steps.ts';
+import { byAssociation } from './writer-stub.ts';
 
 const made: string[] = [];
 after(() => {
@@ -21,8 +21,6 @@ after(() => {
 });
 
 const issue = (number: number, association = 'MEMBER', extra: Record<string, unknown> = {}) => ({ number, title: `Issue ${number}`, author_association: association, ...extra });
-// Writers by their association alone, with no permission lookup.
-const byAssociation: WriterCheck = async (_login, association) => writerAssociations.has(association ?? '');
 
 test('readOpenIssues keeps the open issues a writer opened, and leaves out pull requests and the issues this one closes', async () => {
   const urls: string[] = [];

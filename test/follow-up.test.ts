@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { writerAssociations } from '../src/command.ts';
 import { postThreads } from '../src/comments.ts';
 import { dismissedThreads, followUpThreads, planFollowUps, stillOpenMarker, stillOpenReply } from '../src/follow-up.ts';
 import type { EarlierState, ThreadNode } from '../src/rereview.ts';
 import type { Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
-import { writerCheck, type WriterCheck } from '../src/writers.ts';
+import { writerCheck } from '../src/writers.ts';
 import { runStep } from './steps.ts';
+import { byAssociation } from './writer-stub.ts';
 
 const made: string[] = [];
 after(() => {
@@ -56,8 +56,6 @@ function thread(o: ThreadOptions = {}): ThreadNode {
 }
 
 const url = (t: ThreadNode) => t.first.nodes[0]!.url;
-// Writers by their association alone, with no permission lookup.
-const byAssociation: WriterCheck = async (_login, association) => writerAssociations.has(association ?? '');
 const headSha = 'c'.repeat(40);
 
 // What a re-review hands the publish step about each earlier thread.

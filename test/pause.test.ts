@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { writerAssociations } from '../src/command.ts';
 import type { ListedComment } from '../src/comments.ts';
 import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
-import { writerCheck, type WriterCheck } from '../src/writers.ts';
+import { writerCheck } from '../src/writers.ts';
 import { pullRequestCheckout, reviewStep, runStep } from './steps.ts';
+import { byAssociation } from './writer-stub.ts';
 
 const made: string[] = [];
 after(() => {
@@ -26,8 +26,6 @@ const maintainer = { login: 'polewskm', type: 'User' };
 const at = (minute: number) => `2026-10-31T08:${String(minute).padStart(2, '0')}:00Z`;
 const reviewed = 'a'.repeat(40);
 let ids = 0;
-// Writers by their association alone, with no permission lookup.
-const byAssociation: WriterCheck = async (_login, association) => writerAssociations.has(association ?? '');
 
 function summary(minute: number, collapsed = false, head = reviewed): ListedComment {
   const body = collapsed ? supersededComment(head, 'https://github.com/o/r/pull/1#issuecomment-1') : `${summaryMarker}\n${headMarker(head)}\n### 🤖 Review complete`;
