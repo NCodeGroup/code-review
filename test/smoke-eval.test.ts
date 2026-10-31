@@ -193,6 +193,13 @@ test('smokeCheck passes with a notice and the run alone when there is no baselin
   assert.match(verdict.markdown, /Caught 1\/4; must-not violations 0; review cost \$2\.00, with judges \$2\.50\./);
 });
 
+test('smokeCheck fails when the baseline was committed once and is missing now', () => {
+  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4)]), undefined, 'abc1234');
+  assert.deepEqual(verdict.failures, ["evals/baseline-smoke.json is missing, but commit abc1234 deleted it: restore it, or adopt a new baseline from this run's proposed-baseline-smoke.json in a pull request."]);
+  assert.deepEqual(verdict.notices, []);
+  assert.match(verdict.markdown, /\*\*Failed\.\*\*/);
+});
+
 test('smokeCheck keeps model text inside its code block', () => {
   const run = smokeOutput([smokeCase('must-not', 0, 0, ['```\n# Injected']), smokeCase('large', 4, 4), smokeCase('small', 2, 2)]);
   const { markdown } = smokeCheck(run, baseline);
@@ -281,6 +288,20 @@ test('checkFiles with no baseline file records no failure and writes the propose
     assert.deepEqual(verdict.failures, []);
     assert.equal(verdict.notices.length, 1);
     assert.deepEqual(JSON.parse(readFileSync(path.join(dir, proposedName), 'utf8')), trimmed(regressed));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkFiles fails a run whose missing baseline a commit deleted, and still writes the proposed baseline', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-check-'));
+  try {
+    const runFile = path.join(dir, 'run.json');
+    writeFileSync(runFile, JSON.stringify(regressed));
+    const verdict = checkFiles(runFile, path.join(dir, 'missing-baseline.json'), 'abc1234');
+    assert.equal(verdict.failures.length, 1);
+    assert.match(verdict.failures[0] ?? '', /commit abc1234 deleted it/);
+    assert.ok(existsSync(path.join(dir, proposedName)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

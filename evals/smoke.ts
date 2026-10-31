@@ -3,8 +3,9 @@
 //   node evals/smoke.ts check <run.json> [--baseline <file>]
 //     Compares the run with evals/baseline-smoke.json in eval:compare's table and fails when caught drops by more than
 //     2, when a must-not-flag concern was raised, or when the two cover different cases. With no baseline yet it fails
-//     only on a must-not-flag concern, with a notice. Writes the table to $GITHUB_STEP_SUMMARY (stdout outside
-//     Actions), and the run, trimmed to what compare reads, to proposed-baseline-smoke.json beside it.
+//     only on a must-not-flag concern, with a notice. Once one was committed, a missing one fails, naming the commit
+//     that deleted it. Writes the table to $GITHUB_STEP_SUMMARY (stdout outside Actions), and the run, trimmed to what
+//     compare reads, to proposed-baseline-smoke.json beside it.
 //   node evals/smoke.ts scan <dir>
 //     Fails when a file under <dir> holds one of the job's secrets or anything shaped like a credential, before the
 //     workflow uploads the folder: artifacts on a public repository are public.
@@ -40,7 +41,7 @@ function runTable(run: EvalOutput): string {
 // Model output reaches the summary only inside a code block, which a run of backticks could otherwise close.
 const fenced = (text: string) => `\`\`\`text\n${text.replace(/`{3,}/g, (ticks) => "'".repeat(ticks.length)).trimEnd()}\n\`\`\`\n`;
 
-export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined): SmokeVerdict {
+export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined, deletedIn?: string): SmokeVerdict {
   const failures: string[] = [];
   const notices: string[] = [];
   for (const c of run.cases) {
@@ -56,6 +57,8 @@ export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined): S
       const drop = baseline.summary.caught - run.summary.caught;
       if (drop > noiseLimit) failures.push(`Caught dropped by ${drop}, from ${baseline.summary.caught}/${baseline.summary.expected} to ${run.summary.caught}/${run.summary.expected}: more than the ${noiseLimit} a run varies by.`);
     }
+  } else if (deletedIn) {
+    failures.push(`${baselineFile} is missing, but commit ${deletedIn} deleted it: restore it, or adopt a new baseline from this run's ${proposedName} in a pull request.`);
   } else {
     notices.push(`There is no ${baselineFile} yet, so caught wasn't compared. This run is the proposed baseline: ${proposedName} in the smoke-eval artifact. The README's Smoke eval section says how to adopt it.`);
   }
@@ -121,9 +124,9 @@ export function baselinePathFrom(argv: readonly string[], root: string): string 
 }
 
 // Reads the run and the baseline, a missing one as none, checks them, and writes the proposed baseline beside the run.
-export function checkFiles(runFile: string, baselinePath: string): SmokeVerdict {
+export function checkFiles(runFile: string, baselinePath: string, deletedIn?: string): SmokeVerdict {
   const run = readOutput(runFile);
-  const verdict = smokeCheck(run, readBaseline(baselinePath));
+  const verdict = smokeCheck(run, readBaseline(baselinePath), deletedIn);
   writeFileSync(path.join(path.dirname(runFile), proposedName), `${JSON.stringify(trimmed(run), null, 2)}\n`);
   return verdict;
 }
