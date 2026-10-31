@@ -260,8 +260,9 @@ test('the summary comment records the reviewed commit for the next run to read',
   assert.equal(reviewedHead('<!-- ncode-review:summary -->\n### 🤖 Review complete'), undefined);
 });
 
-test('summaryComments lists the bot summary comments oldest first, and the last holds the newest head', async () => {
-  const { summaryComments, supersededComment, summaryMarker, headMarker, newestReviewedHead } = await import('../src/results.ts');
+// Comments with two bot summaries, a summary from someone else, a collapsed summary and a bot comment without a body.
+async function summaryFixture() {
+  const { supersededComment, summaryMarker, headMarker } = await import('../src/results.ts');
   const a = 'a'.repeat(40);
   const b = 'b'.repeat(40);
   const x = 'c'.repeat(40);
@@ -274,7 +275,18 @@ test('summaryComments lists the bot summary comments oldest first, and the last 
     { id: 4, user: bot, body: `${summaryMarker}\n${headMarker(b)}\n### 🤖 Review complete` },
     { id: 5, user: bot },
   ];
+  return { comments, b };
+}
+
+test('summaryComments lists the bot summary comments oldest first', async () => {
+  const { summaryComments } = await import('../src/results.ts');
+  const { comments } = await summaryFixture();
   assert.deepEqual(summaryComments(comments).map((c) => c.id), [1, 4]);
+});
+
+test('newestReviewedHead takes the head of the newest bot summary', async () => {
+  const { newestReviewedHead } = await import('../src/results.ts');
+  const { comments, b } = await summaryFixture();
   assert.equal(newestReviewedHead(comments), b);
 });
 
@@ -321,8 +333,8 @@ function fakeApi(marker: string, failOn?: { call: string; error: Error }) {
         { id: 3, user: bot, body: `${marker}\nolder still` },
       ];
     }
-    if (method === 'POST') return { html_url: postedUrl };
     bodies.push(body);
+    if (method === 'POST') return { html_url: postedUrl };
     return undefined;
   };
   return { api, calls, bodies };
@@ -344,7 +356,7 @@ test('postSummary posts the new summary before collapsing only the earlier bot s
     'PATCH /repos/o/r/issues/comments/3',
   ]);
   const expected = { body: supersededComment('b'.repeat(40), postedUrl) };
-  assert.deepEqual(bodies, [expected, expected]);
+  assert.deepEqual(bodies, [{ body: 'new body' }, expected, expected]);
 });
 
 test('postSummary only warns when an earlier summary cannot be collapsed', async () => {
@@ -409,6 +421,30 @@ test('postSummary posts without collapsing anything on a first review', async ()
   const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
   assert.equal(url, postedUrl);
   assert.deepEqual(calls, ['GET /repos/o/r/issues/1/comments?per_page=100&page=1', 'POST /repos/o/r/issues/1/comments']);
+});
+
+test('postSummary collapses an earlier summary found on a later page', async () => {
+  const { postSummary, commentPageSize } = await import('../src/comments.ts');
+  const { summaryMarker } = await import('../src/results.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') {
+      if (url.endsWith('page=1')) return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+      return [{ id: 200, user: { login: 'ncode-review[bot]' }, body: `${summaryMarker}\nold` }];
+    }
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=2',
+    'POST /repos/o/r/issues/1/comments',
+    'PATCH /repos/o/r/issues/comments/200',
+  ]);
 });
 
 test('postSummary still posts, and warns, when a later page of comments cannot be read', async () => {
