@@ -881,6 +881,22 @@ test('the last reviewed head warns with the reason when the comments cannot be r
   assert.deepEqual(empty.lines, []);
 });
 
+test('the last reviewed head warns when there are more comments than it reads', async () => {
+  const { commentPageSize, maxCommentPages, readIssueComments } = await import('../src/comments.ts');
+  const page = JSON.stringify(Array.from({ length: commentPageSize }, () => ({ user: { login: 'someone' }, body: 'hi' })));
+  let pages = 0;
+  const fetchPage = (async () => {
+    pages++;
+    return new Response(page, { status: 200 });
+  }) as typeof fetch;
+  const lines: string[] = [];
+  assert.equal(await readIssueComments('o/r', 1, 't', fetchPage, (line) => lines.push(line)), undefined);
+  assert.equal(pages, maxCommentPages);
+  assert.deepEqual(lines, [
+    `::warning::Couldn't read /repos/o/r/issues/1/comments (more than ${commentPageSize * maxCommentPages} comments); the run goes on without those comments.`,
+  ]);
+});
+
 test('the last reviewed head gives undefined when a page body is not JSON', async () => {
   const fetchPage = (async () => new Response('not json', { status: 200 })) as typeof fetch;
   assert.equal(await lastReviewedHead('o/r', 1, 't', fetchPage), undefined);
