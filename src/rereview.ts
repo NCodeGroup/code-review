@@ -462,11 +462,12 @@ export function reReviewSummary(s: {
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
   if (s.earlierUnread) parts.push("The earlier review threads couldn't be read, so their findings weren't checked.");
-  else if (!s.posted.length && !waiting) parts.push('No further findings above nits.');
+  else if (!s.posted.length && !waiting && (s.reviewed || !what)) parts.push('No further findings above nits.');
   return parts.join(' ');
 }
 
-// `incomplete`: the reviewer failed or the earlier findings couldn't be read, so the re-review can't approve.
+// `incomplete`: the reviewer failed, didn't run on changes it couldn't see, or the earlier findings couldn't be read, so
+// the re-review can't approve.
 export function reReviewVerdict(posted: Pick<Finding, 'severity'>[], earlier: EarlierStatus[], incomplete: boolean): Verdict {
   const waiting = earlier.filter(pending);
   if (posted.some((f) => f.severity === 'blocker') || waiting.some((e) => e.finding.severity === 'blocker')) return 'request-changes';
@@ -492,7 +493,9 @@ export async function reReview(run: AgentRun, gathered: Gathered, charters: Char
       outside,
       earlier: statuses,
     });
-    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread), findings, calls, skipped: [], earlier: statuses };
+    // Changes since the last review that no reviewer saw, being only in generated files or files over the size budget.
+    const unseen = !outcomes.length && (plan.changed.hunks > 0 || Object.keys(plan.changed.removed).length > 0);
+    return { reviewers: outcomes, summary, verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen), findings, calls, skipped: [], earlier: statuses };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 

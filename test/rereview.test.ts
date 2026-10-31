@@ -313,9 +313,9 @@ test('reReviewVerdict approves only when nothing at or above should-fix is left'
   assert.equal(reReviewVerdict([], [], true), 'comment');
 });
 
-test('reReviewSummary says when what changed is only in files the reviewers do not see', () => {
+test('reReviewSummary says when what changed is only in files the reviewers do not see, and not that the pull request is done', () => {
   const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: false, posted: [], nits: 0, outside: 0, earlier: [] });
-  assert.equal(summary, 'What changed since the last review at aaaaaaa is only in generated files or files over the size budget, so nothing was reviewed again. No further findings above nits.');
+  assert.equal(summary, 'What changed since the last review at aaaaaaa is only in generated files or files over the size budget, so nothing was reviewed again.');
 });
 
 test('reReviewSummary never says there are no further findings when the earlier threads could not be read', () => {
@@ -384,6 +384,19 @@ test('readEarlierFindings reads every page of threads, and gives undefined witho
     throw new Error('network down');
   }) as unknown as typeof fetch;
   assert.equal(await readEarlierFindings('o/r', 1, 'token', rejecting), undefined);
+});
+
+test('readEarlierFindings gives undefined for a GraphQL body without threads, and after its page cap', async () => {
+  const errors = (async () => Response.json({ errors: [{ message: 'Something went wrong' }] })) as unknown as typeof fetch;
+  assert.equal(await readEarlierFindings('o/r', 1, 'token', errors), undefined);
+  const body = threadBody({ ...finding('nit', 'src/a.ts', 12), id: 'F1', reviewers: ['correctness'] });
+  let calls = 0;
+  const endless = (async () => {
+    calls++;
+    return Response.json({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true, endCursor: `c${calls}` }, nodes: [thread(body)] } } } } });
+  }) as unknown as typeof fetch;
+  assert.equal(await readEarlierFindings('o/r', 1, 'token', endless), undefined);
+  assert.equal(calls, 10);
 });
 
 test('earlierBlock stops at its size cap with whole entries, the unresolved ones first', () => {
@@ -477,6 +490,22 @@ test('reReview makes no model call when nothing in the pull request changed', as
   assert.deepEqual(outcome.reviewers, []);
   assert.equal(outcome.verdict, 'approve');
   assert.match(outcome.summary, /^Nothing in this pull request's own changes differs from the last review at [0-9a-f]{7}, so nothing was reviewed again\. No further findings above nits\.$/);
+});
+
+test('reReview makes no model call and never approves when what changed is only in a generated file', async () => {
+  const { repo, first } = pullRequestRepo();
+  const lastHead = commit(repo, { 'package-lock.json': ['{}'] }, 'lockfile');
+  const head = commit(repo, { 'package-lock.json': ['{ "changed": true }'] }, 'lockfile again');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  assert.deepEqual(Object.keys(plan.changed.lines), ['package-lock.json']);
+  assert.equal(plan.diff, '');
+  const requests: AgentRequest[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent({ findings: [], earlier: [] }, requests));
+  assert.equal(requests.length, 0);
+  assert.equal(outcome.verdict, 'comment');
+  assert.match(outcome.summary, /is only in generated files or files over the size budget, so nothing was reviewed again\.$/);
 });
 
 test('reReview reports a failed reviewer and claims nothing about the changes', async () => {
