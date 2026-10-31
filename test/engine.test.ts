@@ -270,6 +270,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
         { name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' },
         { name: 'correctness', status: 'ran', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0 },
         { name: 'security', status: 'failed', model: 'global.anthropic.claude-sonnet-5-5', findingCount: 0, error: 'x' },
+        { name: 'architecture', status: 'skipped', model: '', findingCount: 0, error: 'run budget' },
       ],
       skipped: ['performance', 'data-model'],
       synthesisModel: 'global.anthropic.claude-opus-5-5',
@@ -288,6 +289,7 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\| synthesis \| opus-5-5 \| 1 \| 🟠 \|/);
   assert.match(body, /\| correctness \| sonnet-5-5 \| 0 \| 🟢 \|/);
   assert.match(body, /\| security \| sonnet-5-5 \| failed \| ⚠️ \|/);
+  assert.match(body, /\| architecture \| — \| skipped \| ⏭️ \|/);
   assert.match(body, /\*Skipped: performance, data-model\*/);
   assert.match(body, /Leaks \\| a pipe/);
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
