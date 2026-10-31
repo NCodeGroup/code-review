@@ -8,6 +8,7 @@ import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
 import type { ReadApi } from './github.ts';
+import { plainText } from './markdown.ts';
 import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
 import { markerFields } from './threads.ts';
@@ -143,7 +144,7 @@ function text(value: string, max = maxAnswerChars): string {
 function reference(found: FoundFinding): string {
   const c = found.comment;
   const line = c.line ?? c.original_line;
-  const where = `${(c.path ?? '').replace(/[`\[\]\r\n]/g, '')}${line ? `:${line}` : ''}`;
+  const where = `${plainText(c.path ?? '')}${line ? `:${line}` : ''}`;
   return `Re ${found.id} (${c.html_url ? `[\`${where}\`](${c.html_url})` : `\`${where}\``})`;
 }
 

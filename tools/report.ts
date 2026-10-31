@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { errorText, readCommentPages } from '../src/comments.ts';
 import type { Provider } from '../src/config.ts';
 import { githubApi, type Api } from '../src/github.ts';
+import { neutralizeMentions } from '../src/markdown.ts';
 import { parseOutcomesMarker, type Outcome } from '../src/outcomes.ts';
 import { assertNoSecrets } from '../src/outputs.ts';
 import { botLogin, markerJson, reviewRecords, summaryMarker, supersededMarker } from '../src/results.ts';
@@ -379,7 +380,7 @@ export function parseReportMarker(body: string): ReportData | undefined {
 }
 
 function cell(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;').replace(/@/g, '@\u200b');
+  return neutralizeMentions(text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;'));
 }
 
 const dash = '—';
