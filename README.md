@@ -156,8 +156,10 @@ reaction, the reactor's permission on the repository. A reply starting `Autopilo
 finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
 severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
-model, for the monthly report. When there's no summary comment, a final one is posted. A finding with no changed line to
-sit on, posted in the review's body rather than as a thread, gets no outcome. The caller needs `closed` in its
+model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
+40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
+comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
+thread, gets no outcome. The caller needs `closed` in its
 `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
 treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
 that bump.

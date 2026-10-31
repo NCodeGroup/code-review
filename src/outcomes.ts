@@ -320,7 +320,8 @@ export async function collectOutcomes(
       try {
         const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string };
         permissions.set(login, writerPermissions.has(answer.permission ?? '') || writerPermissions.has(answer.role_name ?? ''));
-      } catch {
+      } catch (error) {
+        log(`::warning::Couldn't read ${login}'s permission (${errorText(error)}); their reactions count as a non-writer's.`);
         permissions.set(login, false);
       }
     }
@@ -375,15 +376,33 @@ export async function collectOutcomes(
 
 const severityLabel: Record<Severity, string> = { blocker: '🔴 Blocker', 'should-fix': '🟠 Should fix', nit: '🟡 Nit' };
 const outcomeLabel: Record<Outcome, string> = { fixed: '✅ fixed', dismissed: '👎 dismissed', acknowledged: '👍 acknowledged', ignored: '➖ ignored' };
-// Rows shown in the table at most; the marker holds every finding.
+// Rows shown in the table at most; the marker holds every finding that fits in maxMarkerLength.
 export const maxOutcomeRows = 100;
+// The marker's JSON at most, so the outcomes section, table and all, fits in a comment (GitHub takes 65,536 characters).
+export const maxMarkerLength = 40_000;
 
-// The machine-readable record, for the monthly report.
-export function outcomesMarker(report: Pick<OutcomesReport, 'state' | 'head' | 'findings'>): string {
-  return `${outcomesMarkerStart}${markerJson({ version: 1, state: report.state, head: report.head, findings: report.findings })} -->`;
+// How many of the findings, from the first, fit in the marker.
+export function markerFindingCount(report: Pick<OutcomesReport, 'state' | 'head' | 'findings'>): number {
+  let length = markerJson({ version: 1, state: report.state, head: report.head, findings: [], omitted: report.findings.length }).length;
+  let kept = 0;
+  for (const finding of report.findings) {
+    length += markerJson(finding).length + 1;
+    if (length > maxMarkerLength) break;
+    kept++;
+  }
+  return kept;
 }
 
-export function parseOutcomesMarker(body: string): { version: number; state: ClosedState; head: string; findings: FindingOutcome[] } | undefined {
+// The machine-readable record, for the monthly report. When the findings don't all fit, it holds the first ones and
+// counts the rest as omitted.
+export function outcomesMarker(report: Pick<OutcomesReport, 'state' | 'head' | 'findings'>): string {
+  const kept = markerFindingCount(report);
+  const omitted = report.findings.length - kept;
+  const record = { version: 1, state: report.state, head: report.head, findings: report.findings.slice(0, kept), ...(omitted ? { omitted } : {}) };
+  return `${outcomesMarkerStart}${markerJson(record)} -->`;
+}
+
+export function parseOutcomesMarker(body: string): { version: number; state: ClosedState; head: string; findings: FindingOutcome[]; omitted?: number } | undefined {
   const match = /<!-- ncode-review:outcomes (.+?) -->/.exec(body);
   if (!match) return undefined;
   try {
@@ -461,6 +480,8 @@ export async function recordOutcomes(
 // none or it can't be edited.
 export async function publishOutcomes(api: Api, report: OutcomesReport, secrets: Iterable<string>, log: (line: string) => void = console.log): Promise<void> {
   const section = outcomesSection(report);
+  const kept = markerFindingCount(report);
+  if (kept < report.findings.length) log(`::warning::The outcomes marker holds the first ${kept} of ${report.findings.length} findings, to fit in a comment.`);
   const known = [...secrets];
   if (report.summaryCommentId !== undefined) {
     const body = withOutcomes(report.summaryBody ?? summaryMarker, section);
