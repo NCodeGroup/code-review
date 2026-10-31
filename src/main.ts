@@ -13,7 +13,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { changedLines, loadCharters, review } from './review.ts';
-import { reviewedHead, summaryComments, topSeverity, type Results } from './results.ts';
+import { newestReviewedHead, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,8 +44,7 @@ async function lastReviewedHead(repository: string, number: number, token: strin
     });
     return response.ok ? ((await response.json()) as { body?: string; user?: { login?: string } }[]) : undefined;
   });
-  const newest = summaryComments(all ?? []).at(-1);
-  return newest ? reviewedHead(newest.body ?? '') : undefined;
+  return newestReviewedHead(all);
 }
 
 // The issues a pull request closes, as context for intent. An issue whose author lacks write access is left out: its

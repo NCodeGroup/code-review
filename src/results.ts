@@ -68,6 +68,13 @@ export function summaryComments<T extends { body?: string; user?: { login?: stri
   return comments.filter((c) => c.user?.login === botLogin && c.body?.startsWith(summaryMarker));
 }
 
+// The commit the bot's newest summary comment says it reviewed, from a pull request's comments listed oldest first;
+// undefined when there's no summary, or when the comments couldn't be read.
+export function newestReviewedHead(comments: { body?: string; user?: { login?: string } }[] | undefined): string | undefined {
+  const newest = summaryComments(comments ?? []).at(-1);
+  return newest ? reviewedHead(newest.body ?? '') : undefined;
+}
+
 // The body a superseded summary comment is edited to: its marker and one line linking to the summary that replaces it,
 // so only the newest summary stays expanded and counts as a summary comment.
 export function supersededComment(headSha: string, commentUrl: string): string {

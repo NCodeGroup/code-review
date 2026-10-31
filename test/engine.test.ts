@@ -261,7 +261,7 @@ test('the summary comment records the reviewed commit for the next run to read',
 });
 
 test('summaryComments lists the bot summary comments oldest first, and the last holds the newest head', async () => {
-  const { summaryComments, supersededComment, summaryMarker, headMarker, reviewedHead } = await import('../src/results.ts');
+  const { summaryComments, supersededComment, summaryMarker, headMarker, newestReviewedHead } = await import('../src/results.ts');
   const a = 'a'.repeat(40);
   const b = 'b'.repeat(40);
   const x = 'c'.repeat(40);
@@ -275,7 +275,17 @@ test('summaryComments lists the bot summary comments oldest first, and the last 
     { id: 5, user: bot },
   ];
   assert.deepEqual(summaryComments(comments).map((c) => c.id), [1, 4]);
-  assert.equal(reviewedHead(summaryComments(comments).at(-1)!.body!), b);
+  assert.equal(newestReviewedHead(comments), b);
+});
+
+test('newestReviewedHead ignores summaries from others, and gives undefined without a bot summary or a listing', async () => {
+  const { newestReviewedHead, supersededComment, summaryMarker, headMarker } = await import('../src/results.ts');
+  const x = 'c'.repeat(40);
+  const bot = { login: 'ncode-review[bot]' };
+  assert.equal(newestReviewedHead([{ user: { login: 'someone' }, body: `${summaryMarker}\n${headMarker(x)}` }]), undefined);
+  assert.equal(newestReviewedHead([{ user: bot, body: supersededComment(x, 'https://example.test/c/0') }]), undefined);
+  assert.equal(newestReviewedHead([]), undefined);
+  assert.equal(newestReviewedHead(undefined), undefined);
 });
 
 test('supersededComment collapses an older summary so only the newest is still a summary', async () => {
