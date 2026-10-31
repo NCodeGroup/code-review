@@ -4,7 +4,8 @@ AI pull request review for NCodeGroup repositories: a GitHub composite action on
 Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
 merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
 the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
-Bedrock key does.
+Bedrock key does. A review whose credits run out partway reruns the refused call on Bedrock and makes the rest of its
+calls there; its check run and summary say so and split the cost by provider.
 
 ## How a review runs
 
