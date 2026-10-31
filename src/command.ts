@@ -3,7 +3,8 @@
 
 export type Command = { kind: 'review' };
 
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+// The author associations that mean write access, for the /review command and for the replies outcomes count.
+export const writerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
 // /review doesn't start a run.
@@ -18,7 +19,7 @@ export interface CommentEvent {
 
 export function commandFromEvent(event: CommentEvent): { command: Command; number: number } | undefined {
   if (!event.issue?.pull_request || typeof event.issue.number !== 'number') return undefined;
-  if (!writers.has(event.comment?.author_association ?? '')) return undefined;
+  if (!writerAssociations.has(event.comment?.author_association ?? '')) return undefined;
   const command = parseCommand(event.comment?.body ?? '');
   return command ? { command, number: event.issue.number } : undefined;
 }

@@ -3,21 +3,30 @@
 // their replies and reactions, and the commits since each finding's review with the read-only token, and writes
 // outcomes.json; the publish step adds the outcomes to the newest summary comment, or posts a final one.
 
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { isFromFork } from './command.ts';
+import { isFromFork, writerAssociations } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { botLogin, markerJson, reviewRecords, summaryComments, summaryMarker, type ReviewRecord } from './results.ts';
+import {
+  botLogin,
+  headMarker,
+  markerJson,
+  outcomesMarkerStart,
+  reviewedHead,
+  reviewRecords,
+  summaryComments,
+  summaryMarker,
+  type ReviewRecord,
+} from './results.ts';
 import type { Severity } from './review.ts';
 
 export type Outcome = 'fixed' | 'dismissed' | 'acknowledged' | 'ignored';
 export type ClosedState = 'merged' | 'closed';
 
-// Writers, as the /review command counts them, for replies; reactions carry no association, so a reactor's permission
-// on the repository is looked up instead.
-const writerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+// Writers, as the /review command counts them (writerAssociations), for replies; reactions carry no association, so a
+// reactor's permission on the repository is looked up instead.
 const writerPermissions = new Set(['admin', 'maintain', 'write']);
 
 // GraphQL names the app's bot without the "[bot]" suffix the REST API adds.
@@ -38,16 +47,22 @@ export interface Evidence {
 // so on its own it is neither a fix nor an acknowledgment.
 const autopilotFixed = /^\s*Autopilot: fixed in\b/im;
 
-// A reply that declines the finding. Anything else a writer replies acknowledges it.
+// A reply that declines the finding. Anything else a writer replies acknowledges it, so the patterns stay narrow: a word
+// like "no", "ignore" or "unnecessary" declines only where it opens the reply or is said of the finding, not in "No
+// worries, fixing it" or "Good catch, the cast is unnecessary".
 const declinePatterns = [
   /\b(won'?t|wont|will not|not going to|shan'?t|don'?t|do not) (fix|change|address|do) (this|that|it)\b/i,
   /\bwon'?t ?fix\b/i,
   /\bfalse (positive|alarm)\b/i,
   /\bnot (a|an) (real )?(bug|issue|problem|concern)\b/i,
   /\b(by design|on purpose|is intended|is intentional|intended behaviou?r|deliberately)\b/i,
-  /\b(disagree|not relevant|irrelevant|not applicable|not needed|unnecessary|not necessary)\b/i,
-  /\b(ignore|ignoring|dismiss|dismissed|dismissing|decline|declined|declining)\b/i,
-  /^\s*(no|nope|nah)\b/i,
+  /^\s*(Autopilot:\s*)?(disagree|not relevant|irrelevant|not applicable|n\/a|not needed|unnecessary|not necessary)\b/i,
+  /\b(this|that|it)('s| is) (not relevant|irrelevant|not applicable)\b/i,
+  /\b(i|we) (strongly )?disagree\b/i,
+  /^\s*(Autopilot:\s*)?(ignore|ignored|ignoring|dismiss|dismissed|dismissing|decline|declined|declining)\b/i,
+  /\b(i'll|i will|we'll|we will|i'm going to|we're going to|let's) (ignore|dismiss|decline)\b/i,
+  /\b(ignoring|dismissing|declining) (this|that|it)\b/i,
+  /^\s*(no|nope|nah)\s*([,.!:;]|$)/i,
 ];
 
 export function isDeclining(reply: string): boolean {
@@ -140,7 +155,7 @@ export interface OutcomesReport {
 }
 
 // The finding a bot comment carries, from its marker; reviewers come from the visible line for a comment posted before
-// the marker named them.
+// the marker named them, or whose marker names them in a malformed encoding.
 export function parseFindingComment(body: string): { id: string; severity: Severity; reviewers: string[] } | undefined {
   const marker = /<!-- ncode-review:finding (.+?) -->/.exec(body);
   if (!marker) return undefined;
@@ -148,11 +163,20 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
   const id = fields.get('id');
   const severity = fields.get('severity') as Severity | undefined;
   if (!id || !severity) return undefined;
-  const listed = fields.get('reviewers');
-  const reviewers = listed
-    ? listed.split(',').map(decodeURIComponent)
+  const listed = decodeAll(fields.get('reviewers')?.split(',') ?? []).filter(Boolean);
+  const reviewers = listed.length
+    ? listed
     : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
   return { id, severity, reviewers: reviewers.filter(Boolean) };
+}
+
+// Every value decoded, or none when any is a malformed escape such as a stray `%`.
+function decodeAll(values: string[]): string[] {
+  try {
+    return values.map(decodeURIComponent);
+  } catch {
+    return [];
+  }
 }
 
 export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
@@ -171,7 +195,9 @@ export function tokenApi(token: string, fetchImpl: typeof fetch = fetch): Api {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!response.ok) throw new Error(`GitHub refused ${method} ${url}: HTTP ${response.status}`);
-    return response.status === 204 ? undefined : response.json();
+    // An empty body, as a 204 has, is no answer rather than malformed JSON.
+    const text = await response.text();
+    return text ? JSON.parse(text) : undefined;
   };
 }
 
@@ -191,10 +217,14 @@ export interface GraphThread {
   comments: { nodes: GraphComment[] };
 }
 
+// How many threads a page holds, and how many pages are read at most, to bound calls.
+export const threadPageSize = 50;
+export const maxThreadPages = 20;
+
 const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      reviewThreads(first: 50, after: $after) {
+      reviewThreads(first: ${threadPageSize}, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
           isResolved
@@ -216,11 +246,8 @@ const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $aft
   }
 }`;
 
-// How many pages of 50 threads are read at most, to bound calls.
-export const maxThreadPages = 20;
-
-// Every review thread on a pull request. Small and self-contained on purpose; re-review reads threads too (#77), and the
-// two readers could share one later.
+// Every review thread on a pull request. Small and self-contained on purpose; re-review reads threads too (issue #77),
+// and the two readers could share one later.
 export async function readReviewThreads(api: Api, repository: string, number: number, log: (line: string) => void): Promise<GraphThread[]> {
   const [owner, name] = repository.split('/');
   const threads: GraphThread[] = [];
@@ -237,7 +264,7 @@ export async function readReviewThreads(api: Api, repository: string, number: nu
     if (!connection.pageInfo.hasNextPage) return threads;
     after = connection.pageInfo.endCursor;
   }
-  log(`::warning::#${number} has more than ${maxThreadPages * 50} review threads; outcomes are recorded for the first ${threads.length}.`);
+  log(`::warning::#${number} has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${threads.length}.`);
   return threads;
 }
 
@@ -347,7 +374,6 @@ export async function collectOutcomes(
   };
 }
 
-const outcomesMarkerStart = '<!-- ncode-review:outcomes ';
 const severityLabel: Record<Severity, string> = { blocker: '🔴 Blocker', 'should-fix': '🟠 Should fix', nit: '🟡 Nit' };
 const outcomeLabel: Record<Outcome, string> = { fixed: '✅ fixed', dismissed: '👎 dismissed', acknowledged: '👍 acknowledged', ignored: '➖ ignored' };
 // Rows shown in the table at most; the marker holds every finding.
@@ -448,8 +474,17 @@ export async function publishOutcomes(api: Api, report: OutcomesReport, secrets:
       log(`::warning::Couldn't edit the summary comment ${report.summaryCommentId} (${errorText(error)}); posting the outcomes as a new comment.`);
     }
   }
-  const body = `${summaryMarker}\n${section}`;
+  // A final comment is shaped like a summary, so it names the commit the summary it couldn't edit reviewed: a reopened
+  // pull request still skips that commit instead of paying to review it again.
+  const reviewed = report.summaryBody ? reviewedHead(report.summaryBody) : undefined;
+  const body = [summaryMarker, ...(reviewed ? [headMarker(reviewed)] : []), section].join('\n');
   assertNoSecrets(body, known, 'The outcomes comment');
   const comment = (await api('POST', `/repos/${report.repository}/issues/${report.pullRequest}/comments`, { body })) as { html_url?: string };
   log(`Posted the outcomes: ${comment.html_url ?? ''}`);
+}
+
+// The outcomes the review step left for the publish step, or undefined when it reviewed instead.
+export function readOutcomes(outDir: string): OutcomesReport | undefined {
+  const file = path.join(outDir, 'outcomes.json');
+  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as OutcomesReport) : undefined;
 }

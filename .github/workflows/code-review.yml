@@ -5,8 +5,10 @@ name: Code review
 # reviews a pull request when it opens (drafts included, since that's when its author reviews it) and when it's marked
 # ready, unless that commit was already reviewed; pushes in between start nothing. A top-level `/review` comment from
 # someone with write access reviews the latest commit on demand. A `skip-review` label skips the automatic reviews.
-# When a pull request closes, merged or not, it records what became of each finding (fixed, dismissed, acknowledged or
-# ignored) in the summary comment, by rules alone: no review and no model call.
+# When a pull request closes, merged or not, a release after v0.3.1 records what became of each finding (fixed,
+# dismissed, acknowledged or ignored) in the summary comment, by rules alone: no review and no model call. Add `closed`
+# to the types below in the same change that bumps the pin to such a release: v0.3.1 treats a closed pull request like
+# an opened one and would pay to review it. The job's `if` and concurrency already handle `closed`.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
@@ -20,7 +22,7 @@ name: Code review
 
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, closed]
+    types: [opened, reopened, ready_for_review]
   issue_comment:
     types: [created]
 

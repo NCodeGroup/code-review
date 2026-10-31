@@ -3,11 +3,11 @@
 // it. It runs after the agents have exited, with the app's token, which is limited to the one repository under review
 // and to check runs and pull requests.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
 import { postSummary, postThreads } from './comments.ts';
-import { publishOutcomes, type OutcomesReport } from './outcomes.ts';
+import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { annotations, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
@@ -33,9 +33,8 @@ async function main(): Promise<void> {
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
 
   // A closed pull request's run records outcomes and has no review to publish.
-  const outcomesPath = path.join(outDir, 'outcomes.json');
-  if (existsSync(outcomesPath)) {
-    const report = JSON.parse(readFileSync(outcomesPath, 'utf8')) as OutcomesReport;
+  const report = readOutcomes(outDir);
+  if (report) {
     await publishOutcomes((method, url, payload) => github(token, method, url, payload), report, [token]);
     return;
   }

@@ -121,16 +121,20 @@ export function newestReviewedHead(comments: { body?: string; user?: { login?: s
   return newest ? reviewedHead(newest.body ?? '') : undefined;
 }
 
+// Starts the outcomes marker a summary comment gets when its pull request closes (outcomes.ts).
+export const outcomesMarkerStart = '<!-- ncode-review:outcomes ';
+
 // The body a superseded summary comment is edited to: its marker and one line linking to the summary that replaces it,
-// so only the newest summary stays expanded and counts as a summary comment. The earlier summary's review markers, given
-// as `kept`, stay so the outcomes can still name that review's cost and models.
+// so only the newest summary stays expanded and counts as a summary comment. The earlier summary's review and outcomes
+// markers, given as `kept`, stay so the outcomes can still name that review's cost and models, and the outcomes recorded
+// before a reopen aren't lost.
 export function supersededComment(headSha: string, commentUrl: string, kept: string[] = []): string {
   return [supersededMarker, ...kept, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
 }
 
-// The review marker lines of a summary comment, to keep when it's superseded.
-export function reviewMarkerLines(body: string): string[] {
-  return [...body.matchAll(reviewMarkerPattern)].map((match) => match[0]);
+// The review and outcomes marker lines of a summary comment, in order, to keep when it's superseded.
+export function keptMarkerLines(body: string): string[] {
+  return [...body.matchAll(/<!-- ncode-review:(?:review|outcomes) .+? -->/g)].map((match) => match[0]);
 }
 
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
