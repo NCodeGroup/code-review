@@ -68,8 +68,8 @@ export function summaryComments<T extends { body?: string; user?: { login?: stri
   return comments.filter((c) => c.user?.login === botLogin && c.body?.startsWith(summaryMarker));
 }
 
-// The body an earlier summary comment is edited to once a newer review posts its own, so only the newest stays
-// expanded and is still a summary comment.
+// The body a superseded summary comment is edited to: its marker and one line linking to the summary that replaces it,
+// so only the newest summary stays expanded and counts as a summary comment.
 export function supersededComment(headSha: string, commentUrl: string): string {
   return [supersededMarker, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
 }

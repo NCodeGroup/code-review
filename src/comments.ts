@@ -1,4 +1,5 @@
-// The GitHub calls behind the summary comment: reading a pull request's comments page by page, posting a new summary and collapsing the earlier ones.
+// The GitHub calls behind the summary comment: reading a pull request's comments page by page, posting a new summary
+// and collapsing the earlier ones.
 
 import { summaryComments, supersededComment, type Results } from './results.ts';
 
@@ -6,7 +7,8 @@ import { summaryComments, supersededComment, type Results } from './results.ts';
 export const commentPageSize = 100;
 export const maxCommentPages = 10;
 
-// Reads a pull request's comments, oldest first, up to maxCommentPages pages, stopping after a short page; undefined when a page can't be read.
+// Reads a pull request's comments, oldest first, up to maxCommentPages pages, stopping after a short page; undefined
+// when a page can't be read.
 export async function readCommentPages<T>(readPage: (page: number) => Promise<T[] | undefined>): Promise<T[] | undefined> {
   const all: T[] = [];
   for (let page = 1; page <= maxCommentPages; page++) {
@@ -19,8 +21,8 @@ export async function readCommentPages<T>(readPage: (page: number) => Promise<T[
 }
 
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
-// posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact; a failed
-// collapse only warns; when the earlier ones can't be listed, it still posts and warns.
+// posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
+// A failed collapse only warns, and so does a failed listing, which still posts the new summary.
 export async function postSummary(
   api: (method: string, url: string, body?: unknown) => Promise<any>,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,

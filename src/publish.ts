@@ -1,6 +1,7 @@
 // The publish step: reads results.json, posts the "Code review" check run and the findings as review threads, posts a
 // new summary comment on the pull request and collapses the bot's earlier summary comments to one line that links to
-// it. It runs after the agents have exited, with the app's token, which is limited to the one repository under review and to check runs and pull requests.
+// it. It runs after the agents have exited, with the app's token, which is limited to the one repository under review
+// and to check runs and pull requests.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
