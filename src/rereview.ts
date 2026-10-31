@@ -766,10 +766,11 @@ export async function reReview(
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged, gathered.files.map((f) => f.path));
   if (dropped.length) log(`  ${droppedLine(dropped)}`);
+  const { kept: distinct, merged, near } = mergeOverlapping(kept);
   // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
-  const placed = byOwner(kept, gathered.template);
+  const placed = byOwner(distinct, gathered.template);
   const upstream = upstreamFindings(placed.upstream);
-  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
+  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${merged} merged with another reviewer's, ${near} near another reviewer's, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
   const sensitive = roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined;
   const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, { ...verification, ...(sensitive ? { deep: sensitive } : {}) });
   return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);

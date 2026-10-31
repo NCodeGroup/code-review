@@ -711,6 +711,21 @@ test('reReview adds security on Sonnet when what changed since the last review i
   assert.equal(outcome.depth, 'standard');
 });
 
+test('reReview posts a problem correctness and security both report once, with both reviewers', async () => {
+  const { repo, reviewed, gathered } = securityChange();
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const outputs = {
+    'reviewer:correctness': { findings: [finding('should-fix', 'token.ts', 1, 'Token is exported')], earlier: [] },
+    'reviewer:security': { findings: [finding('blocker', 'token.ts', 1, 'Token is exported.')], earlier: [] },
+  };
+  const lines: string[] = [];
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, (line) => lines.push(line), roleAgent(outputs, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.severity, f.reviewers]), [['F1', 'Token is exported.', 'blocker', ['security', 'correctness']]]);
+  assert.deepEqual(outcome.reviewers.map((r) => r.findings.length), [1, 1]);
+  assert.ok(lines.some((line) => /1 merged with another reviewer's, 0 near another reviewer's/.test(line)));
+});
+
 test('reReview keeps an earlier finding open when either reviewer finds it open', async () => {
   const { repo, reviewed, gathered } = securityChange();
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 20 })], log: () => {} });

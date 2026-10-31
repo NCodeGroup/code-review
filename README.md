@@ -350,6 +350,9 @@ of review converge:
   answered); when they disagree, still open counts over answered, and answered over fixed. It doesn't raise again
   what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
+- when `correctness` and `security` report the same problem, in the same file within three lines and with the same title
+  words, it posts it once, at the higher severity, with both reviewers; the log counts these and the findings of the two
+  that sit that close without matching;
 - with [verification](#how-a-review-runs) on, those findings go through it as a first review's do: a refuted should-fix
   is dropped and listed in the check run, a refuted blocker stays as a should-fix question, and one it can't settle is
   a question one severity lower, so a should-fix it can't settle becomes a nit and isn't posted. A re-review whose
