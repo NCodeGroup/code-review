@@ -34,14 +34,19 @@ export interface PostedThread {
   reviewers: string[];
 }
 
+// The fields of an inline comment's finding marker (id, fp, severity, and reviewer on newer comments), or undefined
+// when it has none. The last marker is the one threadBody wrote: a suggestion's code comes before it and isn't escaped.
+export function markerFields(body: string | undefined): Map<string, string> | undefined {
+  const marker = [...(body ?? '').matchAll(markerPattern)].at(-1);
+  return marker ? new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string])) : undefined;
+}
+
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
 export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null }[]): PostedThread[] {
   const posted: PostedThread[] = [];
   for (const comment of comments) {
-    // The last marker is the one threadBody wrote: a suggestion's code comes before it and isn't escaped.
-    const marker = [...(comment.body ?? '').matchAll(markerPattern)].at(-1);
-    if (!marker || !comment.path) continue;
-    const fields = new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string]));
+    const fields = markerFields(comment.body);
+    if (!fields || !comment.path) continue;
     posted.push({
       id: fields.get('id') ?? '',
       path: comment.path,

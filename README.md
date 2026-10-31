@@ -14,16 +14,18 @@ and Glob, and a hook that refuses any path outside the pull request's checkout a
 environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
 reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses and
 revokes before the review step starts, and one after the agents exit. Each token can write check runs and pull request
-comments on the one repository under review, and neither is ever in the review step's environment. Results and the
-trace are scanned for secrets before they're written.
+comments on the one repository under review, and neither is ever in the review step's environment. A `/review teach`
+run also mints one after the agents exit that can write only issues, in the one repository its issue opens in. Results
+and the trace are scanned for secrets before they're written.
 
 Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
 takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
 `/review` command from someone with write access, a pull request from a fork, and an automatic run on a commit already
-reviewed get nothing. The acknowledgement runs with the runner's own `node` and no npm package, and the review goes on
-without it if it fails. The publish step completes that same check run with the review, so there's never a second. When
-there's no review to publish, a last step completes it with why, so it never stays in progress:
+reviewed get nothing. `/review explain` and `/review teach` get nothing either: they aren't reviews, and they answer
+with a comment, not the check run. The acknowledgement runs with the runner's own `node` and no npm package, and the
+review goes on without it if it fails. The publish step completes that same check run with the review, so there's never
+a second. When there's no review to publish, a last step completes it with why, so it never stays in progress:
 
 - **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
   Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
@@ -54,8 +56,8 @@ on:
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, or a top-level `/review` comment on one from someone with write
-    # access. The engine checks the comment again and skips anything else.
+    # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else.
     if: >-
       github.event.sender.type != 'Bot' && (
         (github.event_name == 'pull_request_target' &&
@@ -68,7 +70,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write
@@ -147,6 +149,31 @@ Comment on a pull request, as a top-level comment, not a reply in a review threa
 | Comment | What happens |
 |---|---|
 | `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+| `/review explain F3 [question]` | Reads the code again and answers about the newest review's F3 in a comment: "Re F3 (link): …", ending with "Still holds because …" or "On reflection this doesn't hold: …". The question is optional and may go on over several lines. |
+| `/review explain <link> [question]` | The same for the inline finding comment the link points to, from any review of this pull request. Finding ids restart at F1 in every review, so use a link for an earlier review's finding. |
+| `/review teach <rule>` | Opens an issue labelled `review-guidance` in this repository with the rule, to add to its `.github/code-review/guidance.md`, and replies with a link to it. The rule may go on over several lines. |
+| `/review teach F3 <rule>` | The same for a rule that comes from the newest review's F3, such as "don't flag X because Y": the issue also quotes the finding with its file, line and link. A finding comment's link works in place of the id. |
+| `/review teach org <rule>` | Opens the issue in NCodeGroup/code-review instead, for a rule every NCodeGroup repository's review follows. |
+
+`/review explain` finds an id among the bot's inline finding comments of the newest review; a finding that went in a
+review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
+review's ids, with no model call. Otherwise one Sonnet agent with Read, Grep and Glob, locked down like the reviewers,
+reads the pull request's latest commit, within a budget of about $0.50. The `if:` above already lets the command through,
+since it checks only that the comment starts with `/review`. The `concurrency` group above gives each explain or teach
+comment a group of its own, so either command while a review is running doesn't cancel that review, and a review
+doesn't cancel an answer.
+
+`/review teach` makes no model call and writes no code. The review step words the issue: the rule quoted as data in a
+fenced block, with its mentions defused, who taught it and a link to the comment, and for `teach F3` the finding's file,
+line, text and link. The publish step, after everything else, opens it with a second app token that can write only
+issues, in only that repository, creating the `review-guidance` label when it's missing, and replies with a short
+comment linking it. An empty or overlong rule (over 2,000 characters), or a finding id or link it can't find, gets a
+reply instead. A `teach org` issue in the public NCodeGroup/code-review names neither a private repository nor its
+pull request. `/run-issues` or a person turns the issue into a pull request; for a `teach org` rule, closing the issue
+as completed is enough, because `npm run train` copies the rules of closed `review-guidance` issues into
+`training/feedback.md`, under "Taught with /review teach", before it generalizes. Closing one as not planned drops it.
+This needs the app's Issues: Read and write permission and, for `teach org`, its installation on NCodeGroup/code-review;
+without them the reply says the app lacks the permission and quotes the rule to add by hand.
 
 To skip the automatic review on a pull request, label it `skip-review` before it opens or is marked ready.
 
