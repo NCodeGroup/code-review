@@ -3,7 +3,7 @@
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, withoutTools, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
@@ -13,6 +13,13 @@ import { verifyReview, type RefutedFinding, type VerificationCall } from './veri
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 // Most severe first.
 export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+
+// The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
+export interface Suggestion {
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
 
 export interface Finding {
   severity: Severity;
@@ -24,6 +31,7 @@ export interface Finding {
   fix: string;
   evidence: string;
   confidence: number;
+  suggestion?: Suggestion;
 }
 
 export interface ReviewedFinding extends Finding {
@@ -64,10 +72,21 @@ export const findingProperties = {
   fix: { type: 'string' },
   evidence: { type: 'string' },
   confidence: { type: 'number', minimum: 0, maximum: 1 },
+  // Optional: only for a fix of a few lines that needs no other change.
+  suggestion: {
+    type: 'object',
+    properties: {
+      startLine: { type: 'integer', minimum: 1 },
+      endLine: { type: 'integer', minimum: 1 },
+      replacement: { type: 'string' },
+    },
+    required: ['startLine', 'endLine', 'replacement'],
+    additionalProperties: false,
+  },
 };
-export const findingRequired = Object.keys(findingProperties);
+export const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
-const specialistSchema = {
+export const specialistSchema = {
   type: 'object',
   properties: {
     findings: {
@@ -79,7 +98,7 @@ const specialistSchema = {
   additionalProperties: false,
 };
 
-const synthesisSchema = {
+export const synthesisSchema = {
   type: 'object',
   properties: {
     summary: { type: 'string' },
@@ -283,7 +302,7 @@ export async function review(
   agent: typeof runAgent = runAgent,
 ): Promise<Review> {
   const calls: CallRecord[] = [];
-  const spent = () => calls.reduce((sum, c) => sum + c.costUsd, 0);
+  const spent = () => totalCost(calls);
   const roster = [...charters.reviewers.keys()];
 
   // Context: the rules and decisions that bear on this change.
@@ -296,7 +315,7 @@ export async function review(
     (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
     agent,
   );
-  if (contextResult) calls.push(contextResult.record);
+  if (contextResult) calls.push(...contextResult.records);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
   log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
 
@@ -305,7 +324,7 @@ export async function review(
   const floor = selectionFloor(gathered.files, Boolean(gathered.pullRequest.body), hasRules && charters.reviewers.has('conventions'));
   const selected = new Set(floor);
   const selection = await agent<{ add: { reviewer: string; reason: string }[] }>(
-    { provider: run.provider, proxyUrl: run.proxyUrl },
+    withoutTools(run),
     {
       role: 'selection',
       tier: 'sonnet',
@@ -317,7 +336,7 @@ export async function review(
       cache: false,
     },
   );
-  calls.push(selection.record);
+  calls.push(...selection.records);
   for (const addition of selection.output?.add ?? []) {
     if (charters.reviewers.has(addition.reviewer)) selected.add(addition.reviewer);
   }
@@ -367,10 +386,11 @@ export async function review(
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
     });
-    calls.push(result.record);
+    calls.push(...result.records);
+    const cost = totalCost(result.records);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
-    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${result.record.costUsd.toFixed(3)}`);
+    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
     return result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept };
   };
   const concurrency = 6;
@@ -410,7 +430,7 @@ export async function review(
   if (raw.length) {
     const diff = synthesisDiff(gathered, raw.map((f) => f.file), 120_000);
     const synthesis = await agent<{ summary: string; verdict: Verdict; findings: (Finding & { sources: string[] })[] }>(
-      { provider: run.provider, proxyUrl: run.proxyUrl },
+      withoutTools(run),
       {
         role: 'synthesis',
         tier: 'opus',
@@ -422,7 +442,7 @@ export async function review(
         cache: false,
       },
     );
-    calls.push(synthesis.record);
+    calls.push(...synthesis.records);
     if (synthesis.output) {
       summary = synthesis.output.summary;
       verdict = synthesis.output.verdict;
