@@ -13,7 +13,7 @@ import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Cont
 import { depthLabel, type ReviewDepth } from './depth.ts';
 import { closedIssues, globToRegExp, isDocumentation, publicApiPath, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
-import { isTemplateOwned, type Template } from './template.ts';
+import { isTemplateOwned, templateVersionFiles, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
@@ -327,13 +327,10 @@ export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] 
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
 }
 
-// A template update changes one of these, which hold only the template's version and the answers it was made with.
-const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
-
-// What a light review takes: documentation, by gather's allowlist (isDocumentation), and a template's version files.
-// Any other file is the standard review's, wherever it is.
+// What a light review takes: documentation, by gather's allowlist (isDocumentation), and the template's version files,
+// from src/template.ts. Any other file is the standard review's, wherever it is.
 function isLightReviewFile(file: string): boolean {
-  return templateVersion.test(file) || isDocumentation(file);
+  return templateVersionFiles.includes(file) || isDocumentation(file);
 }
 
 // A pull request that changes only documentation: every changed file is one isLightReviewFile allows, the changelog
