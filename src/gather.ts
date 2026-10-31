@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { writers } from './command.ts';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 export { maxIssueChars } from './config.ts';
@@ -51,8 +52,6 @@ export interface Gathered {
   // The repository's open issues opened by people with write access, for synthesis to mark a finding one already tracks.
   openIssues?: { number: number; title: string }[];
 }
-
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 const generatedPatterns = [
   /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|packages\.lock\.json|Cargo\.lock|poetry\.lock|uv\.lock)$/,

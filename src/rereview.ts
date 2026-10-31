@@ -10,6 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { writers } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
@@ -218,8 +219,7 @@ export interface ThreadComment {
 
 // GraphQL names an app by its login without the "[bot]" the REST API adds.
 export const botAuthor = botLogin.replace(/\[bot\]$/, '');
-// As for the description, only replies from people with write access reach the reviewer.
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+// As for the description, only replies from people with write access (`writers`) reach the reviewer.
 const maxFindingTextChars = 1_500;
 const maxReplyChars = 1_500;
 const maxRepliesPerThread = 50;

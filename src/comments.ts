@@ -2,7 +2,7 @@
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
 import { assertNoSecrets } from './outputs.ts';
-import { botLogin, newestReviewedHead, summaryComments, supersededComment, type Results } from './results.ts';
+import { botLogin, summaryComments, supersededComment, type Results } from './results.ts';
 import { parsePosted, placeFindings, reviewBody, threadBody, type PostedThread } from './threads.ts';
 
 // GitHub's largest page of comments, and how many pages a run reads at most (10,000 comments), to bound calls. Issue
@@ -128,14 +128,8 @@ export async function postSummary(
   return comment.html_url;
 }
 
-// The commit the bot's newest summary comment says it last reviewed, or undefined when there's none or it's unreadable:
-// a refused request, a fetch that rejects, such as on a DNS failure or a reset connection, or a body that isn't JSON.
-export async function lastReviewedHead(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<string | undefined> {
-  return newestReviewedHead(await readIssueComments(repository, number, token, fetchPage));
-}
-
 // A pull request's issue comments, oldest first, read with the review step's optional token; undefined when they can't
-// all be read, as for readComments.
+// all be read, as for readComments. `newestReviewedHead` of them is the commit the bot last reviewed.
 export function readIssueComments(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ListedComment[] | undefined> {
   return readComments(issueComments(repository, number), token, fetchPage);
 }

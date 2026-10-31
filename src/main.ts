@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReasonFor } from './command.ts';
+import { commandFromEvent, skipReasonFor, writers } from './command.ts';
 import { readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
@@ -49,7 +49,7 @@ async function readClosedIssues(repository: string, numbers: number[], token: st
     });
     if (!response.ok) continue;
     const issue = (await response.json()) as { title?: string; body?: string; author_association?: string; pull_request?: unknown };
-    if (issue.pull_request || !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(issue.author_association ?? '')) continue;
+    if (issue.pull_request || !writers.has(issue.author_association ?? '')) continue;
     issues.push({ number, title: issue.title ?? '', body: (issue.body ?? '').slice(0, maxIssueChars) });
   }
   return issues;

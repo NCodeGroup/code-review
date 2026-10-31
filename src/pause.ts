@@ -37,7 +37,7 @@ const time = (comment: ListedComment) => Date.parse(comment.created_at ?? '');
 
 // Counts from a pull request's issue comments and review comments together, in any order.
 export function unansweredReviews(comments: ListedComment[]): PauseState {
-  const since = Math.max(-Infinity, ...comments.filter(isMaintainerComment).map(time).filter(Number.isFinite));
+  const since = Math.max(...comments.filter(isMaintainerComment).map(time).filter(Number.isFinite));
   const later = comments.filter((c) => c.user?.login === botLogin && time(c) > since);
   const body = (c: ListedComment) => c.body ?? '';
   return {
