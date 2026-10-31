@@ -11,6 +11,8 @@ import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
+// Most severe first.
+export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 export interface Finding {
   severity: Severity;
@@ -227,8 +229,6 @@ function synthesisDiff(gathered: Gathered, files: string[], budget: number): str
   }
   return out || gathered.diff.slice(0, budget);
 }
-
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so

@@ -75,15 +75,41 @@ Pin the action to a release's full commit SHA, with the release's tag in a comme
 like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a release
 someone reviewed in a pull request in its own repository, and a SHA is the one pin nobody can move. CodeQL's `extended`
 suite reports any other pin as an unpinned tag, even an immutable release's. Dependabot's `github-actions` ecosystem
-opens a pull request in the consumer for each new release and updates the SHA and the comment together.
+updates the SHA and the comment together, in the consumer's weekly pull request of action updates, but only to a
+release that isn't marked as a pre-release (see [Dependabot and pre-releases](#dependabot-and-pre-releases)).
 
 Releases are immutable from v0.3.1 on, and the "Protect release tags" ruleset forbids moving or deleting a `v*` tag, so
 the tag in the comment always names the commit it sits beside.
 
-To release, run the Release workflow from `main` with the version, such as `0.2.0`. It checks that the version is
-`MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, runs the typecheck and tests on the commit, then creates
-the tag and a GitHub release with generated notes. Versions below 1.0.0 are marked as pre-releases. A tag can't be
-deleted afterwards, so a mistake is fixed by releasing the next version.
+To release, add the version's section to `CHANGELOG.md`, `## [0.2.0] - 2026-10-30` with its entries, in a pull request,
+then run the Release workflow from `main` with the version, such as `0.2.0`. It checks that the version is
+`MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, and that `CHANGELOG.md` has a dated section with entries
+for it (`tools/release-notes.ts`), runs the typecheck and tests on the commit, then creates the tag and a GitHub
+release whose notes are that section. Versions below 1.0.0 are marked as pre-releases. A tag can't be deleted
+afterwards, so a mistake is fixed by releasing the next version.
+
+### Dependabot and pre-releases
+
+No consumer got a Dependabot pull request for v0.2.0 to v0.3.1, because each is marked as a pre-release. Since
+[dependabot-core#13731](https://github.com/dependabot/dependabot-core/pull/13731) (December 2025), the
+`github-actions` updater drops a tag whose GitHub release is marked as a pre-release, and a tag whose name is a
+pre-release such as `v1.0.0-rc.1`, unless the pinned version is itself a pre-release
+([`allowed_versions`](https://github.com/dependabot/dependabot-core/blob/85379652e4ef784fdd38bf4598b0b347832f805b/common/lib/dependabot/git_commit_checker.rb#L418-L430),
+[`tag_is_prerelease?`](https://github.com/dependabot/dependabot-core/blob/85379652e4ef784fdd38bf4598b0b347832f805b/common/lib/dependabot/git_commit_checker.rb#L722-L757)).
+A version below 1.0.0, such as `v0.3.1`, isn't a pre-release by its name, so the tag alone wouldn't be skipped; the
+release's pre-release flag is what hides it. A SHA pin works the same way: Dependabot takes the current version from the
+tag on the pinned commit and looks for a newer allowed tag
+([`release_list_for_git_dependency`](https://github.com/dependabot/dependabot-core/blob/85379652e4ef784fdd38bf4598b0b347832f805b/github_actions/lib/dependabot/github_actions/package/package_details_fetcher.rb#L73-L97)),
+then rewrites the SHA and its `# vX.Y.Z` comment. This repository is public, so access isn't the cause, and grouping
+only puts the bump in the same pull request as the consumer's other action updates.
+
+Until releases stop being marked as pre-releases, bump each consumer by hand: in a pull request, change its
+`NCodeGroup/code-review@<sha> # v<old>` to the new release's commit, `gh api repos/NCodeGroup/code-review/commits/v<new>
+--jq .sha`, and tag. To let Dependabot propose a release instead, clear its flag,
+`gh release edit v<new> -R NCodeGroup/code-review --prerelease=false`, which an immutable release allows
+([Immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)),
+then run Insights > Dependency graph > Dependabot > Check for updates in a consumer. That second route follows from
+the source above but hasn't been tried on a consumer yet.
 
 ## Commands
 
@@ -134,11 +160,11 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 
 ## Evals
 
-`node evals/run.ts` replays the 16 cases in `evals/cases.json` (real pull requests from NCodeGroup/Identity with the findings a maintainer expected and one that must not appear) through the whole pipeline on Bedrock, and a Sonnet judge compares what the reviewers posted with what was expected. A full run of 16 costs about $30 without rule checks and $52 with them. It needs `AWS_BEARER_TOKEN_BEDROCK` and, for the checkout of each case, `gh`.
+`node evals/run.ts` replays the cases in `evals/cases.json` (real pull requests from NCodeGroup repositories with the findings a maintainer expected and the ones that must not appear) through the whole pipeline on Bedrock, and a Sonnet judge compares what the reviewers posted with what was expected. A concern with a `minSeverity` counts only when a finding raises it at that severity or above, so a case can expect a should-fix, or allow a concern as a nit but not as a should-fix. A full run of the first 16 cases cost about $30 without rule checks and $52 with them. It needs `AWS_BEARER_TOKEN_BEDROCK` and, for the checkout of each case, `gh`.
 
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
-`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: one run varies by about 2 of 55.
+`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
 
 ## Checks
 

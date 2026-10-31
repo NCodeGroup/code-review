@@ -6,7 +6,7 @@ import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type Call
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency } from './config.ts';
 import { splitDiff } from './gather.ts';
-import type { ReviewedFinding, Severity, Verdict } from './review.ts';
+import { severityRank, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
 
 export type VerificationVerdict = 'confirmed' | 'refuted' | 'uncertain';
 
@@ -86,7 +86,6 @@ const verificationSchema = {
   additionalProperties: false,
 };
 
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 const lowered: Record<Severity, Severity> = { blocker: 'should-fix', 'should-fix': 'nit', nit: 'nit' };
 const maxHunkChars = 6_000;
 
