@@ -102,6 +102,26 @@ Each review, all from `ncode-review[bot]`:
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
 
+### Re-reviews
+
+A review of a pull request the bot has reviewed before, such as a `/review` after changes, is a re-review, so rounds
+of review converge:
+
+- it reviews only what changed since the last review: the hunks of the pull request's diff against its merge base
+  that differ from that diff at the last reviewed head, which the summary comment records, and what the author took
+  out since. Merging the default branch in or rebasing onto it changes nothing by itself, and nothing from the
+  default branch is reviewed;
+- only `correctness` reviews them, on Sonnet, with the earlier findings and the replies in their threads (from people
+  with write access). It checks each unresolved finding against the code now (fixed, still open, or answered), and it
+  doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+- it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
+- its summary lists the earlier findings it checked, and says "No further findings above nits" when nothing at or
+  above should-fix is left, new or unresolved, so the author knows they can merge.
+
+A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
+gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records
+the head reviewed before it, so the next re-review still covers what it missed.
+
 ## Opting a repository in
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:
@@ -130,6 +150,8 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. Run each setup at least twice: one run varies by about 2 of 55.
+
+A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
 
 ## Checks
 
