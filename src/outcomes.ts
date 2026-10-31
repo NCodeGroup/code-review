@@ -369,7 +369,7 @@ export function parseOutcomesMarker(body: string): { version: number; state: Clo
 }
 
 function cell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;');
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;');
 }
 
 // The outcomes section: the marker, then a table of finding, reviewer, severity and outcome.

@@ -141,6 +141,8 @@ test('the outcomes section shows the state and a row per finding', () => {
   assert.match(section, /\| F1 \| security \| 🔴 Blocker \| ✅ fixed \|/);
   assert.match(section, /\| F2 \| tests \| 🟠 Should fix \| 👎 dismissed \|/);
   assert.match(outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [] }), /Merged at bbbbbbb\. No findings were posted as threads\./);
+  const odd = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [{ ...findings[0]!, reviewers: ['a\\|b <i>'] }] });
+  assert.ok(odd.includes('| a\\\\\\|b &lt;i> |'), odd);
 });
 
 test('withOutcomes appends the section and replaces an earlier one', () => {
