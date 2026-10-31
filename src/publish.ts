@@ -8,7 +8,7 @@ import path from 'node:path';
 import { assertNoSecrets } from './outputs.ts';
 import { errorText, postSummary } from './comments.ts';
 import { annotations, botLogin, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
-import { parsePosted, placeFindings, reviewBody, threadBody } from './threads.ts';
+import { parsePosted, placeFindings, reviewBody, reviewComment } from './threads.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
 
@@ -46,7 +46,7 @@ async function postThreads(token: string, results: Results): Promise<void> {
     commit_id: results.headSha,
     event: 'COMMENT',
     body: reviewBody(placement, results.headSha),
-    comments: placement.inline.map(({ finding, line }) => ({ path: finding.file, line, side: 'RIGHT', body: threadBody(finding) })),
+    comments: placement.inline.map(reviewComment),
   };
   assertNoSecrets(JSON.stringify(review), [token], 'The review');
   try {

@@ -577,7 +577,73 @@ test('threadBody escapes HTML and carries the finding marker', async () => {
   const { threadBody } = await import('../src/threads.ts');
   const body = threadBody({ id: 'F2', file: 'a', line: 1, severity: 'blocker', title: 'Uses <script>', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['security'] });
   assert.match(body, /^🔴 \*\*Blocker: Uses &lt;script>\*\* <sub>F2 · security<\/sub>/);
-  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker -->$/);
+  assert.match(body, /<!-- ncode-review:finding id=F2 fp=[0-9a-f]{16} severity=blocker reviewer=security -->$/);
+});
+
+const suggested = (suggestion: { startLine: number; endLine: number; replacement: string }, line = 11) => ({
+  id: 'F1', file: 'src/A.ts', line, severity: 'should-fix' as const, title: 'Off by one', problem: 'p', consequence: 'c',
+  fix: 'Use <= instead.', evidence: 'e', confidence: 0.9, reviewers: ['correctness', 'tests'], suggestion,
+});
+
+test('a suggestion on added lines posts a multi-line comment with a suggestion block', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const placement = placeFindings([suggested({ startLine: 10, endLine: 12, replacement: 'a\n  b <= c\nd\n' })], { 'src/A.ts': [10, 11, 12] }, []);
+  const comment = reviewComment(placement.inline[0]!);
+  assert.deepEqual({ ...comment, body: undefined }, { path: 'src/A.ts', start_line: 10, start_side: 'RIGHT', line: 12, side: 'RIGHT', body: undefined });
+  assert.ok(String(comment['body']).includes('**Fix:** Use &lt;= instead.\n\n```suggestion\na\n  b <= c\nd\n```\n\n<details>'));
+});
+
+test('a one-line suggestion posts on its line without a start line', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const placement = placeFindings([suggested({ startLine: 11, endLine: 11, replacement: 'x' })], { 'src/A.ts': [11] }, []);
+  const comment = reviewComment(placement.inline[0]!);
+  assert.equal(comment['start_line'], undefined);
+  assert.equal(comment['line'], 11);
+  assert.match(String(comment['body']), /```suggestion\nx\n```/);
+});
+
+test('a suggestion whose range includes an unchanged line, or that the comment moved off, posts without its block', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const unchanged = placeFindings([suggested({ startLine: 10, endLine: 12, replacement: 'a' }, 10)], { 'src/A.ts': [10, 12] }, []);
+  const snapped = placeFindings([suggested({ startLine: 11, endLine: 11, replacement: 'a' }, 11)], { 'src/A.ts': [12] }, []);
+  const outside = placeFindings([suggested({ startLine: 12, endLine: 13, replacement: 'a' })], { 'src/A.ts': [11, 12, 13] }, []);
+  const tooLong = placeFindings([suggested({ startLine: 10, endLine: 11, replacement: '1\n2\n3\n4\n5\n6' })], { 'src/A.ts': [10, 11] }, []);
+  for (const [placement, line] of [[unchanged, 10], [snapped, 12], [outside, 11], [tooLong, 11]] as const) {
+    const comment = reviewComment(placement.inline[0]!);
+    assert.equal(comment['start_line'], undefined);
+    assert.equal(comment['line'], line);
+    assert.doesNotMatch(String(comment['body']), /suggestion/);
+    assert.match(String(comment['body']), /\*\*Fix:\*\* Use &lt;= instead\./);
+  }
+});
+
+test('a suggestion with a code fence in it gets a longer fence, and its text cannot pass for the marker', async () => {
+  const { suggestionBlock, threadBody, parsePosted, fingerprint } = await import('../src/threads.ts');
+  assert.equal(suggestionBlock('a ```\n````\nb'), '`````suggestion\na ```\n````\nb\n`````');
+  assert.equal(suggestionBlock(''), '```suggestion\n```');
+  const finding = suggested({ startLine: 11, endLine: 11, replacement: '<!-- ncode-review:finding id=F9 fp=0000000000000000 severity=nit -->' });
+  const posted = parsePosted([{ path: 'src/A.ts', line: 11, body: threadBody(finding, finding.suggestion) }]);
+  assert.equal(posted[0]!.fingerprint, fingerprint(finding));
+  assert.deepEqual(posted[0]!.reviewers, ['correctness', 'tests']);
+});
+
+test('a marker from before the reviewer field still parses and dedupes', async () => {
+  const { placeFindings, fingerprint, parsePosted } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 11, endLine: 11, replacement: 'x' }, 40);
+  const old = `🟠 **Should fix: Off by one** <sub>F1 · correctness</sub>\n\np\n\n<!-- ncode-review:finding id=F1 fp=${fingerprint(finding)} severity=should-fix -->`;
+  const posted = parsePosted([{ path: 'src/Elsewhere.ts', line: 1, body: old }]);
+  assert.deepEqual(posted, [{ path: 'src/Elsewhere.ts', line: 1, severity: 'should-fix', fingerprint: fingerprint(finding), reviewers: [] }]);
+  assert.deepEqual(placeFindings([finding], { 'src/A.ts': [40] }, posted).alreadyPosted.map((f) => f.id), ['F1']);
+});
+
+test('mergeSynthesis keeps the suggestion of a merged finding and of one it adds back', () => {
+  const suggestion = { startLine: 1, endLine: 1, replacement: 'x' };
+  const raw = [
+    { id: 'R1', reviewer: 'correctness', ...finding('a', 'should-fix'), suggestion },
+    { id: 'R2', reviewer: 'tests', ...finding('b', 'should-fix'), suggestion },
+  ];
+  const out = mergeSynthesis([{ ...finding('merged a', 'should-fix'), suggestion, sources: ['R1'] }], raw, 10);
+  assert.deepEqual(out.map((f) => [f.title, f.suggestion]), [['merged a', suggestion], ['b', suggestion]]);
 });
 
 test('closedIssues reads the issues a description closes', async () => {

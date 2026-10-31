@@ -10,6 +10,13 @@ import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
+// The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
+export interface Suggestion {
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
+
 export interface Finding {
   severity: Severity;
   file: string;
@@ -20,6 +27,7 @@ export interface Finding {
   fix: string;
   evidence: string;
   confidence: number;
+  suggestion?: Suggestion;
 }
 
 export interface ReviewedFinding extends Finding {
@@ -56,8 +64,19 @@ const findingProperties = {
   fix: { type: 'string' },
   evidence: { type: 'string' },
   confidence: { type: 'number', minimum: 0, maximum: 1 },
+  // Optional: only for a fix of a few lines that needs no other change.
+  suggestion: {
+    type: 'object',
+    properties: {
+      startLine: { type: 'integer', minimum: 1 },
+      endLine: { type: 'integer', minimum: 1 },
+      replacement: { type: 'string' },
+    },
+    required: ['startLine', 'endLine', 'replacement'],
+    additionalProperties: false,
+  },
 };
-const findingRequired = Object.keys(findingProperties);
+const findingRequired = Object.keys(findingProperties).filter((name) => name !== 'suggestion');
 
 const specialistSchema = {
   type: 'object',

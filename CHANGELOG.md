@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A finding whose fix is a mechanical edit of up to five lines, all of them added by the pull request, carries a GitHub suggestion block on a comment that covers those lines, so it applies with one click; any other fix stays in prose. The hidden marker on each inline comment also names its reviewers, and comments posted before still count as already posted ([#54](https://github.com/NCodeGroup/code-review/issues/54)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.
