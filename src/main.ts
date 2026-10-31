@@ -231,7 +231,7 @@ async function main(): Promise<void> {
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
-  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, closedIssues(pullRequest.body));
+  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, isWriter, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);
