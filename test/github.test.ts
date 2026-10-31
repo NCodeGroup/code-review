@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { GitHubError, githubApi, githubFetch, githubUrls } from '../src/github.ts';
+import { GitHubError, githubApi, githubFetch, githubGraphql, githubUrls } from '../src/github.ts';
 
 // A fetch that records each request and answers every one with `answer`.
 function recording(answer: () => Response = () => new Response('{}')) {
@@ -59,4 +59,9 @@ test("githubApi keeps GitHub's answer in a refusal unless asked to be terse", as
     assert.equal(error.status, 403);
     return true;
   });
+});
+
+test('githubGraphql returns the data and throws on GraphQL errors, naming what was asked', async () => {
+  assert.deepEqual(await githubGraphql(async () => ({ data: { a: 1 } }), 'q', {}), { a: 1 });
+  await assert.rejects(githubGraphql(async () => ({ errors: [{ message: 'boom' }] }), 'q', {}, 'the review threads'), /^Error: GitHub refused the review threads: boom$/);
 });

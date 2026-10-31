@@ -15,7 +15,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { errorText, postSummary, postThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
-import { githubApi, type Api } from './github.ts';
+import { githubApi, githubGraphql, type Api } from './github.ts';
 import { writeErrorLog, writeLog } from './log.ts';
 import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
@@ -27,9 +27,7 @@ const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
 
 // A GraphQL request with the app's token; GitHub answers a refused one with 200 and `errors`, so that throws too.
 async function graphql(api: Api, query: string, variables: Record<string, unknown>): Promise<unknown> {
-  const json = (await api('POST', '/graphql', { query, variables })) as { data?: unknown; errors?: { message?: string }[] };
-  if (json.errors?.length) throw new Error(`GitHub refused a GraphQL request: ${json.errors.map((e) => e.message ?? '').join('; ')}`);
-  return json.data;
+  return githubGraphql(api, query, variables);
 }
 
 // Whether a login has write access to the repository: admin, maintain or write.

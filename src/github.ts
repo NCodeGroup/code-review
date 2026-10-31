@@ -70,6 +70,13 @@ export function githubApi(token: string, fetchFn: typeof fetch = fetch, options:
   };
 }
 
+// A GraphQL request through `api`. GitHub answers a refused one with 200 and `errors`, so that throws too.
+export async function githubGraphql(api: Api, query: string, variables: Record<string, unknown>, what = 'a GraphQL request'): Promise<unknown> {
+  const json = (await api('POST', '/graphql', { query, variables })) as { data?: unknown; errors?: { message?: string }[] } | undefined;
+  if (json?.errors?.length) throw new Error(`GitHub refused ${what}: ${json.errors.map((e) => e.message ?? '').join('; ')}`);
+  return json?.data;
+}
+
 export interface PullRequestRef {
   number?: number;
   head?: { sha?: string; repo?: { full_name?: string } | null };
