@@ -4,11 +4,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
+import { declaration, declarationSpans, type DeclarationSpan } from './csharp.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
 import { writeLog } from './log.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
-import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
+import { answersFile, isTemplateOwned, readTemplate, type Template, type TemplateCandidate } from './template.ts';
 
 export interface PullRequest {
   repository: string;
@@ -294,67 +295,37 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
   return answer(false);
 }
 
-type Declaration =
-  | { kind: 'namespace' }
-  | { kind: 'type'; visible: boolean; membersPublic: boolean }
-  | { kind: 'member'; visible: boolean };
-
-const modifierRun = /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
-const accessWords = new Set(['public', 'protected', 'private', 'internal']);
-
-// A C# line read as a declaration, from its leading modifiers. Members without an access modifier are private (or a
-// statement) and read as nothing.
-function declaration(line: string): Declaration | undefined {
-  if (/^\s*namespace\b/.test(line)) return { kind: 'namespace' };
-  const match = modifierRun.exec(line)!;
-  const modifiers = match[1]!.split(/\s+/).filter(Boolean);
-  const visible = modifiers.includes('public') || (modifiers.includes('protected') && !modifiers.includes('private'));
-  const type = /^(class|struct|interface|enum|record)\s+[A-Za-z_@]/.exec(line.slice(match[0].length));
-  if (type) return { kind: 'type', visible, membersPublic: type[1] === 'interface' || type[1] === 'enum' };
-  if (modifiers.some((m) => accessWords.has(m))) return { kind: 'member', visible };
-  return undefined;
-}
-
-const indentOf = (line: string) => /^\s*/.exec(line)![0].length;
 const notCode = /^\s*([{}()[\]#]|\/\/|\/\*|\*)/;
 
-interface Enclosing {
-  indent: number;
-  declaration: Declaration;
-}
-
 interface HeadScan {
-  // The declarations above line `index` that could enclose it, outermost first: each less indented than the next.
-  enclosing(index: number): Enclosing[];
+  // The declarations around head line `index` (0-based), innermost first; with `gap`, the ones around the gap a removed
+  // line left before it. Undefined when the head's braces don't balance.
+  around(index: number, gap: boolean): DeclarationSpan[] | undefined;
   // The first line at or below `index` that is code, not a blank, a brace, an attribute or a comment.
   codeFrom(index: number): string | undefined;
 }
 
-// Reads a file at the head for the changed lines of its diff. Asked about lines in order, as a diff's hunks come, it
-// reads each line once, so a large file costs its length and not its length times its changes.
-function scanHead(lines: string[]): HeadScan {
+// Reads a file at the head for the changed lines of its diff: its braces once, then the innermost declaration on each
+// line, so a large file costs its length and not its length times its changes.
+function scanHead(head: string): HeadScan {
+  const lines = head.split(/\r?\n/);
+  const spans = declarationSpans(head);
+  const innermost: (DeclarationSpan | undefined)[] = new Array(lines.length);
+  // A span opens after the one it sits in, so the inner one is written last.
+  for (const span of spans ?? []) for (let line = span.start; line <= span.end && line < lines.length; line++) innermost[line] = span;
   const isCode = (line: string) => line.trim() !== '' && !notCode.test(line);
-  const stack: Enclosing[] = [];
-  let position = 0;
   // Lines from codeStart up to codeEnd aren't code; codeEnd is, or is the end of the file.
   let codeStart = 0;
   let codeEnd = -1;
   return {
-    enclosing(index) {
-      if (index < position) {
-        stack.length = 0;
-        position = 0;
-      }
-      for (; position < Math.min(index, lines.length); position++) {
-        const line = lines[position]!;
-        // Not isCode: a declaration can follow an attribute on its line, and declaration() skips the attribute.
-        const found = line.trim() !== '' ? declaration(line) : undefined;
-        if (!found) continue;
-        const indent = indentOf(line);
-        while (stack.length && stack[stack.length - 1]!.indent >= indent) stack.pop();
-        stack.push({ indent, declaration: found });
-      }
-      return stack;
+    around(index, gap) {
+      if (!spans) return undefined;
+      let span = gap ? (index > 0 ? innermost[index - 1] : undefined) : innermost[index];
+      // Around a gap: the declarations that hold the lines on both sides of it.
+      while (span && gap && span.end < index) span = span.parent;
+      const chain: DeclarationSpan[] = [];
+      for (; span; span = span.parent) chain.push(span);
+      return chain;
     },
     codeFrom(index) {
       if (index < codeStart || index > codeEnd) {
@@ -368,36 +339,31 @@ function scanHead(lines: string[]): HeadScan {
 }
 
 // Whether a changed line declares, or sits inside, a public or protected member of a public type. `above` is the number
-// of the head's lines before it; the nearest declaration above with less indentation encloses it.
-function inVisibleMember(head: HeadScan, above: number, code: string): boolean {
+// of the head's lines before it; for a removed line, the gap it left is there. The line's own text decides first, then
+// the declarations the head's braces put around it.
+function inVisibleMember(head: HeadScan, above: number, code: string, removed: boolean): boolean {
   let own = declaration(code);
   // An attribute belongs to the declaration below it.
   if (!own && /^\s*\[/.test(code)) {
     const next = head.codeFrom(above);
     own = next === undefined ? undefined : declaration(next);
   }
-  if (own?.kind === 'namespace') return false;
-  let found = own?.visible;
-  if (found === false) return false;
-  let indent = indentOf(code);
-  const enclosing = head.enclosing(above);
-  for (let i = enclosing.length - 1; i >= 0; i--) {
-    const { indent: depth, declaration: outer } = enclosing[i]!;
-    if (depth >= indent) continue;
-    if (outer.kind === 'namespace') break;
-    indent = depth;
-    // Straight inside a class or struct, outside any member with an access modifier: a private field or a blank.
-    if (found === undefined && outer.kind === 'type' && !outer.membersPublic) return false;
-    if (!outer.visible) return false;
-    found = true;
-  }
-  return found === true;
+  if (own?.kind === 'namespace' || own?.visible === false) return false;
+  const chain = head.around(above, removed);
+  // A head whose braces don't balance can't place the line, so it counts as public: the floor fails closed.
+  if (!chain) return true;
+  if (own) return chain.every((s) => s.declaration.visible);
+  const inner = chain[0];
+  if (!inner) return false;
+  // Straight inside a class or struct's body, outside any member with an access modifier: a private field or a blank.
+  if (inner.declaration.kind === 'type' && !inner.declaration.membersPublic && above > inner.open) return false;
+  return chain.every((s) => s.declaration.visible);
 }
 
 // Whether a .cs file's diff adds or removes a line that declares, or sits inside, a public or protected member: a
 // change to the surface, or to the behavior behind it. head is the file at the pull request's head, '' when deleted.
 export function touchesPublicMember(section: string, head: string): boolean {
-  const scan = scanHead(head.split(/\r?\n/));
+  const scan = scanHead(head);
   let next = 0;
   let inHunk = false;
   for (const text of section.split('\n')) {
@@ -413,9 +379,10 @@ export function touchesPublicMember(section: string, head: string): boolean {
     const code = text.slice(1).replace(/\r$/, '');
     // An added line is head line `next`; a removed one sits before it.
     const above = next - 1;
-    if (text.startsWith('+')) next++;
+    const removed = text.startsWith('-');
+    if (!removed) next++;
     if (!code.trim() || /^\s*(\/\/|\/\*|\*)/.test(code)) continue;
-    if (inVisibleMember(scan, above, code)) return true;
+    if (inVisibleMember(scan, above, code, removed)) return true;
   }
   return false;
 }
@@ -667,8 +634,21 @@ export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPat
   return base && base.commit !== head.commit ? base : undefined;
 }
 
+// The template a pull request adopts or updates, the _commit its head's answers name, and the changed files the template
+// would own, for confirmTemplateFiles to compare with the template's own copies before gather leaves any to it.
+export function templateCandidate(pullRequest: PullRequest, prPath: string, basePath: string): TemplateCandidate | undefined {
+  const head = git(prPath, ['rev-parse', 'HEAD']).trim();
+  const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, head]).trim();
+  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, head]));
+  const template = templateOf(pullRequest, changed, prPath, basePath);
+  const commit = readTemplate(prPath)?.commit;
+  if (!template || !commit) return undefined;
+  return { template, commit, files: changed.map((f) => f.path).filter((p) => isTemplateOwned(p, template)) };
+}
+
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
-export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string): Gathered {
+// confirmedTemplateFiles are the changed files confirmTemplateFiles found to match the template's own copies.
+export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string, confirmedTemplateFiles: ReadonlySet<string> = new Set()): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
   // the checkout, and the check run belongs on the commit that was reviewed.
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
@@ -679,7 +659,11 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const skip = settings.config.skip.map(globToRegExp);
   const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
-  const template = templateOf(pullRequest, changed, prPath, basePath);
+  const candidate = templateOf(pullRequest, changed, prPath, basePath);
+  // A changed file the template would own that doesn't match the template's copy at the head's _commit is an edit by
+  // hand, so it joins projectOwned and is the project's everywhere isTemplateOwned is asked.
+  const unconfirmed = candidate ? changed.map((f) => f.path).filter((p) => isTemplateOwned(p, candidate) && !confirmedTemplateFiles.has(p)) : [];
+  const template = candidate && unconfirmed.length ? { ...candidate, projectOwned: [...candidate.projectOwned, ...unconfirmed] } : candidate;
   const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
   const files = changed.filter((f) => !skippedByConfig.includes(f.path));
   for (const file of files) if (isTemplateOwned(file.path, template)) file.templateOwned = true;

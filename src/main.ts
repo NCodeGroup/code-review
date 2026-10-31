@@ -15,7 +15,7 @@ import { AnthropicTokenSource, secretValues, type Credentials } from './credenti
 import { required, take } from './env.ts';
 import { answerFile, explainFinding, findFinding, githubReader, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
-import { closedIssues, gather, readPullRequest } from './gather.ts';
+import { closedIssues, gather, readPullRequest, templateCandidate } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { writeErrorLog, writeLog } from './log.ts';
@@ -29,6 +29,7 @@ import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
 import { newestReviewedHead, type Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
+import { confirmTemplateFiles } from './template-check.ts';
 import { readClosedIssues, writerCheck } from './writers.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -213,7 +214,10 @@ async function main(): Promise<void> {
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
   pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter, fetch, log);
-  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
+  // A template adoption or update leaves a file to the template only when it is the template's own copy.
+  const candidate = templateCandidate(pullRequest, prPath, basePath);
+  const confirmed = candidate ? await confirmTemplateFiles(candidate, prPath, githubReader(githubToken), log) : undefined;
+  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'), confirmed);
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);

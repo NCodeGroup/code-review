@@ -1329,6 +1329,43 @@ test('touchesPublicMember places each change of a many-hunk diff in a large file
   assert.ok(touchesPublicMember(...withAttributes(lines.length - 5)), 'attributes on the public method');
 });
 
+// Head line n of `lines` replaces an older line at the same place and indentation.
+const editIn = (lines: string[], n: number) => csSection(`@@ -${n},1 +${n},1 @@\n-${lines[n - 1]!.replace(/\S.*/, 'Old();')}\n+${lines[n - 1]}`);
+
+test('touchesPublicMember places a change by braces in a misindented file', () => {
+  const lines = [
+    'namespace NCode.Lib;', // 1
+    'public class Loose',
+    '{',
+    'public void Run()', // 4
+    '{',
+    'Go();', // 6
+    '}',
+    '        private void Helper()', // 8
+    '        {',
+    '            Go();', // 10
+    '        }',
+    '}',
+  ];
+  assert.ok(touchesPublicMember(editIn(lines, 6), lines.join('\n')), 'the public method at column 0');
+  assert.ok(!touchesPublicMember(editIn(lines, 10), lines.join('\n')), 'the private helper indented further');
+});
+
+test('touchesPublicMember reads a public method under an attribute with an array in it', () => {
+  const lines = ['public class A', '{', '    [Attr(new[] { 1 })] public void Run()', '    {', '        Go();', '    }', '}'];
+  assert.ok(touchesPublicMember(editIn(lines, 5), lines.join('\n')));
+});
+
+test("touchesPublicMember doesn't read a declaration inside a raw string", () => {
+  const lines = ['public class A', '{', '    private void Helper()', '    {', '        var s = """', 'public void Fake()', '""";', '        Go();', '    }', '}'];
+  assert.ok(!touchesPublicMember(editIn(lines, 8), lines.join('\n')));
+});
+
+test("touchesPublicMember counts a change as public when the head's braces don't balance", () => {
+  const lines = ['public class A', '{', '    private void Helper()', '    {', '        Go();', '    }', '}', '}'];
+  assert.ok(touchesPublicMember(editIn(lines, 5), lines.join('\n')));
+});
+
 test('touchesSerializedContract looks for contract markers in the hunks, not the file name', () => {
   assert.ok(touchesSerializedContract(csSection('@@ -1,2 +1,2 @@\n     [JsonPropertyName("id")]\n-    public string Id { get; set; }\n+    public string Key { get; set; }')));
   assert.ok(touchesSerializedContract(csSection('@@ -40,1 +40,1 @@ public class AppDbContext : DbContext\n-        Old();\n+        New();')));

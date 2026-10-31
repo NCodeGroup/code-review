@@ -110,3 +110,78 @@ export function isTemplateOwned(file: string, template: Template | undefined): b
   if (!template || template.projectOwned.includes(file)) return false;
   return templateFiles.has(file) || templateFolders.some((folder) => file.startsWith(folder));
 }
+
+// What a pull request that adopts or updates the template would leave to it: the template, the _commit its head's
+// answers name, and the changed files the template would own, before they're compared with the template's own copies.
+export interface TemplateCandidate {
+  template: Template;
+  commit: string;
+  files: string[];
+}
+
+// The ref to read the template at for a _commit. Copier writes `git describe` output, such as v0.41.1-3-gabc1234, for a
+// commit past a tag, so that one is read at its abbreviated SHA. Anything that isn't plainly a ref isn't read.
+export function templateRef(commit: string): string | undefined {
+  const described = /-g([0-9a-f]{7,40})$/i.exec(commit);
+  if (described) return described[1]!;
+  return /^[A-Za-z0-9._/-]+$/.test(commit) && !commit.includes('..') ? commit : undefined;
+}
+
+// The files the template renders, by the path they get in a project, from the template repository's file list. Copier
+// renders from the template/ folder; a `{% if … %}name{% endif %}` path part renders as the name when the project has
+// the file, and a .jinja source drops its suffix. A path still holding a Jinja expression, such as the answers file's,
+// is left out.
+export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?: string }[]): Map<string, { sha: string; jinja: boolean }> {
+  const rendered = new Map<string, { sha: string; jinja: boolean }>();
+  for (const entry of tree) {
+    if (entry.type !== 'blob' || !entry.sha || !entry.path?.startsWith('template/')) continue;
+    let file = entry.path.slice('template/'.length).replace(/\{%-?\s*if\b[^%]*-?%\}([^{}]*?)\{%-?\s*endif\s*-?%\}/g, '$1');
+    if (/\{\{|\{%/.test(file)) continue;
+    const jinja = file.endsWith('.jinja');
+    if (jinja) file = file.slice(0, -'.jinja'.length);
+    if (!rendered.has(file)) rendered.set(file, { sha: entry.sha, jinja });
+  }
+  return rendered;
+}
+
+const plainAnswer = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/;
+
+// The answers file's top-level keys whose values are plain scalars, as a Jinja expression naming them renders them. A
+// list, a mapping, a multi-line string, an alias, a tagged value or an empty one is left out, so an expression naming
+// it can't be rendered and its file isn't confirmed.
+export function answerValues(text: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const line of text.split(/\r?\n/)) {
+    const entry = /^([A-Za-z_]\w*):[ \t]+(.+)$/.exec(line);
+    if (!entry) continue;
+    const raw = entry[2]!.replace(/\s+#.*$/, '').trim();
+    if (!raw || /^[[{|>&*!]/.test(raw)) continue;
+    const value = unquote(raw);
+    // The pull request writes the answers file, so a value is its author's to choose: only a plain one can't carry code
+    // or instructions into a file left to the template.
+    if (!plainAnswer.test(value)) continue;
+    values.set(entry[1]!, value);
+  }
+  return values;
+}
+
+// Whether a file is the exact rendering of a Jinja source with the head's answers. Rendering Jinja in full would need
+// Jinja, and treating a tag as a stand-in for any text would confirm a file edited where the tag was, so only the plain
+// case is rendered: no blocks or comments, and every expression a bare answer name. Any other source matches nothing,
+// and its file is reviewed as the project's.
+export function matchesTemplateSource(source: string, text: string, answers: ReadonlyMap<string, string>): boolean {
+  if (source.includes('{%') || source.includes('{#')) return false;
+  let rendered = '';
+  let at = 0;
+  for (const tag of source.matchAll(/\{\{[\s\S]*?\}\}/g)) {
+    const name = /^\{\{[ \t]*([A-Za-z_]\w*)[ \t]*\}\}$/.exec(tag[0])?.[1];
+    const value = name === undefined ? undefined : answers.get(name);
+    if (value === undefined) return false;
+    rendered += source.slice(at, tag.index) + value;
+    at = tag.index + tag[0].length;
+  }
+  const rest = source.slice(at);
+  // An expression left open is an error in Jinja, so no file renders from it.
+  if (rest.includes('{{')) return false;
+  return rendered + rest === text;
+}
