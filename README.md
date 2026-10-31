@@ -14,6 +14,13 @@ environment holds no secret: model calls go through a localhost proxy that adds 
 reaches only the step that mints its token, after the agents exit, and that token can write check runs on the one
 repository under review. Results and the trace are scanned for secrets before they're written.
 
+The reviewers see a pull request's description, its commit subjects and the issues its description closes only when
+their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
+GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
+request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
+A `/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below
+checks before the engine starts, so a private organization member can't start a review that way.
+
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.

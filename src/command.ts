@@ -1,9 +1,13 @@
 // Pull request comment commands. Only a top-level comment from someone with write access counts: a reply inside a
 // review thread would start a workflow from the pull request's own code.
+//
+// The gate reads only the comment's author_association, so a private organization member's /review is ignored, unlike
+// their description (see writers.ts). That is on purpose: the workflow's `if:` checks the same association before the
+// engine starts, and a permission lookup there would let more people start a run that holds the model credentials.
+
+import { writerAssociations } from './writers.ts';
 
 export type Command = { kind: 'review' };
-
-const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 // The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
 // /review doesn't start a run.
@@ -18,7 +22,7 @@ export interface CommentEvent {
 
 export function commandFromEvent(event: CommentEvent): { command: Command; number: number } | undefined {
   if (!event.issue?.pull_request || typeof event.issue.number !== 'number') return undefined;
-  if (!writers.has(event.comment?.author_association ?? '')) return undefined;
+  if (!writerAssociations.has(event.comment?.author_association ?? '')) return undefined;
   const command = parseCommand(event.comment?.body ?? '');
   return command ? { command, number: event.issue.number } : undefined;
 }
