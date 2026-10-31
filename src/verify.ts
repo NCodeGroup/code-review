@@ -3,7 +3,7 @@
 // with a reason, and the drop is recorded; one it can neither prove nor refute stays, as a question one severity lower.
 // Nits aren't verified.
 
-import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency, type ModelTier } from './config.ts';
 import { splitDiff } from './gather.ts';
@@ -174,12 +174,14 @@ function chartersBlock(names: string[], charters: Map<string, string>): string {
   return `The charters of the reviewers who reported these findings:\n<charters>\n${text || '(none)'}\n</charters>`;
 }
 
-// The record of a call whose agent threw instead of returning an error: it cost nothing that was measured.
+// The record of a call whose agent threw instead of returning an error: it cost nothing that was measured. It names
+// Bedrock once the run has switched there.
 function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallRecord {
+  const provider = run.fallback?.switched ? 'bedrock' : run.provider;
   return {
     role: 'verification',
-    provider: run.provider,
-    model: modelIds[run.provider][tier],
+    provider,
+    model: modelIds[provider][tier],
     costUsd: 0,
     inputTokens: 0,
     outputTokens: 0,
@@ -201,7 +203,7 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const reviewers = [...new Set(batches.flat().flatMap((f) => f.reviewers))].sort();
   const shared = `${input.pullRequest}\n\nThe checkout is at: ${input.run.checkout}\n\n${chartersBlock(reviewers, input.charters)}`;
 
-  const verifyOne = async (batch: ReviewedFinding[]): Promise<{ record: CallRecord; call: VerificationCall }> => {
+  const verifyOne = async (batch: ReviewedFinding[]): Promise<{ records: CallRecord[]; call: VerificationCall }> => {
     const ids = new Set(batch.map((f) => f.id));
     const started = Date.now();
     const deep = input.deep?.(batch[0]!.file) ?? false;
@@ -219,16 +221,16 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
       });
     } catch (e) {
       // A call that throws fails like one that returns an error: its findings stay as they were.
-      result = { output: undefined, record: thrownRecord(input.run, tier, started), error: e instanceof Error ? e.message : String(e) };
+      result = { output: undefined, records: [thrownRecord(input.run, tier, started)], error: e instanceof Error ? e.message : String(e) };
     }
     const verifications = (result.output?.verifications ?? []).filter((v) => ids.has(v.id));
     return {
-      record: result.record,
+      records: result.records,
       call: {
         file: batch[0]!.file,
         findings: batch.map(({ id, severity, file, line, title }) => ({ id, severity, file, line, title })),
         verifications,
-        costUsd: result.record.costUsd,
+        costUsd: totalCost(result.records),
         ...(result.error ? { error: result.error } : {}),
       },
     };
@@ -247,13 +249,13 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const count = (verdict: VerificationVerdict) => [...verdicts.values()].filter((v) => v.verdict === verdict).length;
   const checked = batches.flat().length;
   const failed = done.filter((d) => d.call.error).length;
-  const cost = done.reduce((sum, d) => sum + d.record.costUsd, 0);
+  const cost = done.reduce((sum, d) => sum + d.call.costUsd, 0);
   input.log(`Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''} $${cost.toFixed(3)}`);
   const trace = done.map(({ call }) => ({
     ...call,
     findings: call.findings.map((f) => (postedAs.has(f.id) ? { ...f, postedAs: postedAs.get(f.id)! } : f)),
   }));
-  return { ...applied, calls: done.map((d) => d.record), trace };
+  return { ...applied, calls: done.flatMap((d) => d.records), trace };
 }
 
 // Synthesis gave its verdict before verification, and verification alone never makes a review approve: a request for
