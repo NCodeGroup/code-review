@@ -72,7 +72,7 @@ export function parseCommand(body: string): Command | undefined {
 
 export interface CommentEvent {
   issue?: { number?: number; pull_request?: unknown };
-  comment?: { body?: string; author_association?: string; html_url?: string; user?: { login?: string } };
+  comment?: { id?: number; body?: string; author_association?: string; html_url?: string; user?: { login?: string } };
   repository?: { private?: boolean };
 }
 
@@ -112,4 +112,56 @@ export function skipReasonFor(
   reviewedHead: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
   return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
+}
+
+type PullRequestLike = NonNullable<Parameters<typeof skipReason>[0]>;
+
+export type RunDecision<P extends PullRequestLike> =
+  | { run: true; command: Command; number: number; pullRequest: P; commentId?: number }
+  | { run: false; reason: string };
+
+// Whether this run does anything, and what: a command from a writer's comment, or an automatic review, on a pull request
+// that isn't from a fork. The review step decides with this. `readPullRequest` reads the pull request a comment is on,
+// and `reviewedHead` the head the bot last reviewed; a comment that isn't a command costs no API call.
+export async function decideRun<P extends PullRequestLike>(
+  event: CommentEvent & { pull_request?: P },
+  repository: string,
+  readPullRequest: (number: number) => Promise<P>,
+  reviewedHead: (number: number) => Promise<string | undefined>,
+): Promise<RunDecision<P>> {
+  if (event.comment) {
+    const request = commandFromEvent(event);
+    if (!request) return { run: false, reason: 'Not a /review command from someone with write access; nothing to do.' };
+    const pullRequest = await readPullRequest(request.number);
+    const reason = await skipReasonFor('comment', pullRequest, repository, () => reviewedHead(request.number));
+    if (reason) return { run: false, reason };
+    const commentId = event.comment.id;
+    return { run: true, command: request.command, number: request.number, pullRequest, ...(typeof commentId === 'number' ? { commentId } : {}) };
+  }
+  const pullRequest = event.pull_request;
+  if (!pullRequest) return { run: false, reason: 'The event has no pull request.' };
+  const reason = await skipReasonFor('automatic', pullRequest, repository, () => reviewedHead(Number(pullRequest.number)));
+  return reason ? { run: false, reason } : { run: true, command: { kind: 'review' }, number: Number(pullRequest.number), pullRequest };
+}
+
+export type ReviewDecision<P extends PullRequestLike> =
+  | { review: true; pullRequest: P; commentId?: number }
+  | { review: false; reason: string };
+
+// Whether this run reviews, and which pull request. The early acknowledgement decides with this, through the review
+// step's own decideRun, so a run acknowledges exactly what it goes on to review: a /review comment from a writer, or an
+// automatic run, on a pull request that isn't from a fork. `/review explain` and `/review teach` aren't reviews: they
+// answer with a comment, not the "Code review" check run, so they get no acknowledgement, and no API call decides that.
+export async function decideReview<P extends PullRequestLike>(
+  event: CommentEvent & { pull_request?: P },
+  repository: string,
+  readPullRequest: (number: number) => Promise<P>,
+  reviewedHead: (number: number) => Promise<string | undefined>,
+): Promise<ReviewDecision<P>> {
+  const kind = event.comment ? commandFromEvent(event)?.command.kind : undefined;
+  if (kind && kind !== 'review') return { review: false, reason: `/review ${kind} isn't a review; it gets no acknowledgement.` };
+  const decision = await decideRun(event, repository, readPullRequest, reviewedHead);
+  if (!decision.run) return { review: false, reason: decision.reason };
+  const { pullRequest, commentId } = decision;
+  return { review: true, pullRequest, ...(commentId === undefined ? {} : { commentId }) };
 }

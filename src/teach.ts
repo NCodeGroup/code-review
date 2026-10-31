@@ -7,21 +7,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxRuleChars, type Command, type FindingRef } from './command.ts';
 import { findFinding, type Answer, type GitHubApi, type ReadApi, type Resolution } from './explain.ts';
+import { GitHubError } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
+
+export { GitHubError };
 
 export const guidanceLabel = 'review-guidance';
 export const orgGuidanceRepository = 'NCodeGroup/code-review';
 export const teachingFile = 'teach.json';
-
-// A refusal from GitHub's API, with its status, so the publish step can tell a missing permission from an outage.
-export class GitHubError extends Error {
-  readonly status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
 
 // What the review step hands the publish step: the issue to open and where to reply.
 export interface Teaching {

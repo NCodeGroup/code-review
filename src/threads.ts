@@ -2,8 +2,11 @@
 // ncode-review[bot]. A finding already posted on the pull request isn't posted again.
 
 import { createHash } from 'node:crypto';
-import { maxSuggestionLines } from './config.ts';
 import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
+
+// The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
+// because the acknowledgement loads this module before npm ci.
+export const maxSuggestionLines = 5;
 
 const markerPattern = /<!-- ncode-review:finding (.+?) -->/g;
 const severityLabel: Record<Severity, string> = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' };
