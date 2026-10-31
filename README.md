@@ -108,14 +108,21 @@ Each review, all from `ncode-review[bot]`:
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:
 `NCODE_REVIEW_APP_PRIVATE_KEY` (the NCode Review app's private key) and `AWS_BEARER_TOKEN_BEDROCK` (the Bedrock API
-key). Anthropic needs no secret, because the workflow logs in through workload identity federation. Managing
-organization secrets needs gh's `admin:org` scope: `gh auth refresh -h github.com -s admin:org`.
+key). Anthropic needs no secret, because the workflow logs in through workload identity federation. Reading,
+setting and changing which repositories can read organization secrets needs gh's `admin:org` scope:
+`gh auth refresh -h github.com -s admin:org`.
 
 From a clone of this repository:
 
 ```powershell
 # Opt a repository in: its code-review environment (default branch only), and access to both keys.
 .\tools\Enable-CodeReview.ps1 -Repo identity-platform
+
+# Several at once. Through pwsh -File, pass them as one value: -Repo a,b or -Repo 'a, b', never -Repo a, b.
+pwsh -File .\tools\Enable-CodeReview.ps1 -Repo identity-platform,Identity
+
+# Opt in without prompting for or setting the Bedrock key; the repositories still get access to the existing one.
+.\tools\Enable-CodeReview.ps1 -Repo identity-platform -SkipBedrock
 
 # Set or replace the app key, or the Bedrock key (from AWS_BEARER_TOKEN_BEDROCK, or a hidden prompt).
 .\tools\Enable-CodeReview.ps1 -AppPrivateKeyPath <path to the NCode Review .pem>
