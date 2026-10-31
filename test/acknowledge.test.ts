@@ -405,6 +405,13 @@ test('decideAcknowledgement passes on the head of an automatic review of a new c
   assert.match(fetched.requests[0]?.url ?? '', new RegExp(`^https://api\\.github\\.com/repos/${repository}/issues/7/comments`));
 });
 
+test('decideAcknowledgement warns with the reason when it cannot read the comments, and still acknowledges', async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({ 'api.github.com': { status: 500 } });
+  assert.equal(await decideAcknowledgement({ event: { pull_request: own }, repository, token: 'read-only' }, fetched.fn, (line) => lines.push(line)), `acknowledge=true\nhead-sha=${sha}\n`);
+  assert.ok(lines.some((line) => line.startsWith(`::warning::Couldn't read /repos/${repository}/issues/7/comments (HTTP 500)`)), lines.join('\n'));
+});
+
 test('decideAcknowledgement passes on nothing, and says why, for a run that will not review', async () => {
   const lines: string[] = [];
   const fetched = fakeFetch({});

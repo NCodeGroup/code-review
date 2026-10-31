@@ -28,7 +28,7 @@ export async function decideAcknowledgement(
     event,
     repository,
     (number) => fetchPullRequest(repository, number, token, fetchFn),
-    async (number) => newestReviewedHead(await readIssueComments(repository, number, token, fetchFn)),
+    async (number) => newestReviewedHead(await readIssueComments(repository, number, token, fetchFn, log)),
   );
   if (!decision.review) {
     log(`No acknowledgement: ${decision.reason}`);
