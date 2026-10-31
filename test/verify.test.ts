@@ -11,7 +11,9 @@ import {
   hunkFor,
   verdictAfterVerification,
   verificationBatches,
+  verificationNote,
   verifyFindings,
+  verifyReview,
   type Verification,
   type VerificationAgent,
   type VerificationInput,
@@ -99,7 +101,7 @@ test('verifyFindings makes no call and changes nothing when verification is off'
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent, false));
   assert.equal(requests.length, 0);
-  assert.deepEqual(out, { findings, refuted: [], calls: [], trace: [] });
+  assert.deepEqual(out, { findings, refuted: [], questioned: 0, calls: [], trace: [] });
 });
 
 test('verifyFindings leaves nits unverified and makes no call when only nits remain', async () => {
@@ -211,11 +213,127 @@ test('hunkFor gives the hunk that holds the line, or the nearest one', () => {
   assert.match(hunkFor(undefined, 1), /no hunk/);
 });
 
-test('verdictAfterVerification eases the verdict when verification leaves nothing serious', () => {
-  assert.equal(verdictAfterVerification('request-changes', []), 'approve');
+test('verdictAfterVerification eases a request for changes when verification leaves nothing serious, and never approves', () => {
+  assert.equal(verdictAfterVerification('request-changes', []), 'comment');
   assert.equal(verdictAfterVerification('request-changes', [finding('F1', 'nit')]), 'comment');
   assert.equal(verdictAfterVerification('request-changes', [finding('F1', 'should-fix')]), 'request-changes');
   assert.equal(verdictAfterVerification('comment', [finding('F1', 'nit')]), 'comment');
+  assert.equal(verdictAfterVerification('comment', []), 'comment');
+});
+
+test('a verification agent that throws leaves its findings as they were and records the error', async () => {
+  const agent: VerificationAgent = async () => {
+    throw new Error('socket hang up');
+  };
+  const findings = [finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')];
+  const out = await verifyFindings(input(findings, agent));
+  assert.deepEqual(out.findings, findings);
+  assert.deepEqual(out.refuted, []);
+  assert.deepEqual(out.trace.map((c) => c.error), ['socket hang up', 'socket hang up']);
+  assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd, c.outcome]), [['verification', 0, 'error'], ['verification', 0, 'error']]);
+});
+
+test('a verdict for a finding outside the call\'s batch is ignored', async () => {
+  const agent: VerificationAgent = async (_run, request) => {
+    const text = (request.prompt as string[]).join('\n');
+    // Every call claims to refute F2, but only the call on src/b.ts was given it, and that one confirms it.
+    const own = text.includes('id="F2"') ? [verdict('F2', 'confirmed')] : [verdict('F2', 'refuted')];
+    return { output: { verifications: own }, record: record(0.1) };
+  };
+  const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')], agent));
+  assert.deepEqual(out.refuted, []);
+  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F1'], ['F2', 'title F2']]);
+  assert.match(out.findings[1]!.evidence, /Verified:/);
+  assert.deepEqual(out.trace.find((c) => c.file === 'src/a.ts')!.verifications, []);
+});
+
+test('when a call names a finding twice, its first verdict holds', async () => {
+  const agent: VerificationAgent = async () => ({
+    output: { verifications: [verdict('F1', 'confirmed'), verdict('F1', 'refuted')] },
+    record: record(0.1),
+  });
+  const out = await verifyFindings(input([finding('F1', 'blocker')], agent));
+  assert.deepEqual(out.refuted, []);
+  assert.equal(out.findings[0]!.severity, 'blocker');
+  assert.match(out.findings[0]!.evidence, /Verified:/);
+});
+
+test('the trace maps each verified finding to the id it was posted with', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')], ['F2', verdict('F2', 'uncertain')], ['F3', verdict('F3', 'confirmed')]]));
+  const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'blocker'), finding('F3', 'should-fix')], agent));
+  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F2'], ['F2', 'title F3']]);
+  assert.deepEqual(out.trace[0]!.findings.map((f) => [f.id, f.postedAs]), [['F1', undefined], ['F2', 'F1'], ['F3', 'F2']]);
+  assert.equal(out.questioned, 1);
+});
+
+test('a confirmed verdict without a path puts its reason in the evidence', () => {
+  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'confirmed', { path: ' ' })]]));
+  assert.equal(out.findings[0]!.evidence, 'e\n\nVerified: reason F1');
+});
+
+test('hunkFor gives the start of a section without hunk headers', () => {
+  const section = 'diff --git a/bin b/bin\nBinary files differ\n';
+  assert.equal(hunkFor(section, 1), section);
+  assert.equal(hunkFor('x'.repeat(7_000), 1).length, 6_000);
+});
+
+test('verificationNote names the refuted findings and counts the ones verification made questions', () => {
+  const refuted = (title: string) => ({ finding: { ...finding('F1', 'blocker'), title }, path: 'p', reason: 'r' });
+  assert.equal(verificationNote([], 0), '');
+  assert.equal(
+    verificationNote([refuted('Token leaks')], 0),
+    ' After this summary was written, verification refuted one finding, which the check run lists with its reason: "Token leaks".',
+  );
+  assert.equal(
+    verificationNote([refuted('A'), refuted('B')], 2),
+    ' After this summary was written, verification refuted 2 findings, which the check run lists with their reasons: "A"; "B", and couldn\'t settle 2 findings, now questions one severity lower.',
+  );
+  assert.equal(verificationNote([], 1), ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower.');
+});
+
+// What review() hands verification after synthesis, and what it takes back.
+function reviewInput(agent: VerificationAgent, enabled = true): Omit<VerificationInput, 'findings'> {
+  const { findings: _findings, ...rest } = input([], agent, enabled);
+  return rest;
+}
+
+test('verifyReview with verification off returns synthesis\'s review unchanged', async () => {
+  const { agent, requests } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
+  const synthesized = { summary: 'Risky.', verdict: 'request-changes' as const, findings: [finding('F1', 'blocker')] };
+  const out = await verifyReview(synthesized, reviewInput(agent, false));
+  assert.equal(requests.length, 0);
+  assert.deepEqual(out, { ...synthesized, refuted: [], calls: [], trace: [] });
+});
+
+test('verifyReview drops a refuted blocker, names it in the summary and eases request-changes to comment, not approve', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
+  const out = await verifyReview({ summary: 'Risky.', verdict: 'request-changes', findings: [finding('F1', 'blocker')] }, reviewInput(agent));
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(out.refuted.map((r) => r.finding.title), ['title F1']);
+  assert.equal(out.summary, 'Risky. After this summary was written, verification refuted one finding, which the check run lists with its reason: "title F1".');
+  assert.equal(out.verdict, 'comment');
+  assert.equal(out.calls.length, 1);
+  assert.equal(out.trace.length, 1);
+});
+
+test('verifyReview keeps a request for changes while a blocker or should-fix is left', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')], ['F2', verdict('F2', 'confirmed')]]));
+  const out = await verifyReview(
+    { summary: 'Risky.', verdict: 'request-changes', findings: [finding('F1', 'blocker'), finding('F2', 'should-fix')] },
+    reviewInput(agent),
+  );
+  assert.equal(out.verdict, 'request-changes');
+  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F2']]);
+});
+
+test('verifyReview without synthesis\'s verdict gives a comment, not an approval, when it refutes every finding', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
+  const out = await verifyReview({ summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'blocker')] }, reviewInput(agent));
+  assert.equal(out.verdict, 'comment');
+
+  const kept = await verifyReview({ summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'blocker')] }, reviewInput(fakeAgent(new Map()).agent));
+  assert.equal(kept.verdict, undefined);
+  assert.equal(kept.summary, 'Synthesis failed.');
 });
 
 test('the verification prompt is loaded and treats findings and code as data', () => {

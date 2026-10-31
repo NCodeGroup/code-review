@@ -52,6 +52,8 @@ export const maxTurns = { specialist: 30, verification: 20 };
 // file's findings at a time, up to findingsPerVerification per call. It stays off until an eval shows it gains more than
 // it costs; CODE_REVIEW_VERIFICATION=on turns it on.
 export const findingsPerVerification = 8;
+// Verification calls in flight at once, after the first call has cached the block they share.
+export const verificationConcurrency = 6;
 
 export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? ''): boolean {
   return value === 'on';

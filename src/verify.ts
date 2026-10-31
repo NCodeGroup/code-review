@@ -3,9 +3,10 @@
 // neither prove nor refute stays, as a question one severity lower. Nits aren't verified.
 
 import { runAgent, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerVerification, maxTurns } from './config.ts';
+import { mapWithConcurrency } from './concurrency.ts';
+import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency } from './config.ts';
 import { splitDiff } from './gather.ts';
-import { mapWithConcurrency, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
+import type { ReviewedFinding, Severity, Verdict } from './review.ts';
 
 export type VerificationVerdict = 'confirmed' | 'refuted' | 'uncertain';
 
@@ -28,7 +29,9 @@ export interface RefutedFinding {
 // One verification call, as the trace records it.
 export interface VerificationCall {
   file: string;
-  findings: Pick<ReviewedFinding, 'id' | 'severity' | 'file' | 'line' | 'title'>[];
+  // Each finding by the id synthesis gave it, which the verifications name, and postedAs, the id it was posted with
+  // once verification renumbered the findings; postedAs is absent for a refuted finding.
+  findings: (Pick<ReviewedFinding, 'id' | 'severity' | 'file' | 'line' | 'title'> & { postedAs?: string })[];
   verifications: Verification[];
   costUsd: number;
   error?: string;
@@ -37,6 +40,8 @@ export interface VerificationCall {
 export interface VerificationOutcome {
   findings: ReviewedFinding[];
   refuted: RefutedFinding[];
+  // How many findings verification couldn't settle and made questions one severity lower.
+  questioned: number;
   calls: CallRecord[];
   trace: VerificationCall[];
 }
@@ -122,9 +127,14 @@ export function verificationBatches(findings: ReviewedFinding[], size = findings
 // Applies the verdicts: confirmed keeps the finding with its code path in the evidence, refuted drops it into the
 // refuted list, uncertain makes it a question one severity lower. A finding without a verdict, or refuted without a
 // reason, isn't dropped: a nit, a failed call or a verdict without evidence leaves it as it is, or makes it a question.
-export function applyVerifications(findings: ReviewedFinding[], verifications: Map<string, Verification>): { findings: ReviewedFinding[]; refuted: RefutedFinding[] } {
+// The kept findings are ranked again and renumbered; postedAs maps each kept finding's old id to its new one.
+export function applyVerifications(
+  findings: ReviewedFinding[],
+  verifications: Map<string, Verification>,
+): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; postedAs: Map<string, string> } {
   const kept: ReviewedFinding[] = [];
   const refuted: RefutedFinding[] = [];
+  let questioned = 0;
   for (const f of findings) {
     const v = f.severity === 'nit' ? undefined : verifications.get(f.id);
     if (!v) {
@@ -134,6 +144,7 @@ export function applyVerifications(findings: ReviewedFinding[], verifications: M
     } else if (v.verdict === 'refuted' && v.reason.trim()) {
       refuted.push({ finding: f, path: v.path.trim(), reason: v.reason.trim() });
     } else {
+      questioned++;
       kept.push({
         ...f,
         severity: lowered[f.severity],
@@ -143,7 +154,8 @@ export function applyVerifications(findings: ReviewedFinding[], verifications: M
     }
   }
   const ranked = kept.map((f, i) => ({ f, i })).sort((a, b) => severityRank[a.f.severity] - severityRank[b.f.severity] || a.i - b.i);
-  return { findings: ranked.map(({ f }, i) => ({ ...f, id: `F${i + 1}` })), refuted };
+  const postedAs = new Map(ranked.map(({ f }, i) => [f.id, `F${i + 1}`]));
+  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, postedAs };
 }
 
 function appendEvidence(evidence: string, line: string): string {
@@ -160,9 +172,26 @@ function chartersBlock(names: string[], charters: Map<string, string>): string {
   return `The charters of the reviewers who reported these findings:\n<charters>\n${text || '(none)'}\n</charters>`;
 }
 
+// The record of a call whose agent threw instead of returning an error: it cost nothing that was measured.
+function thrownRecord(run: AgentRun, started: number): CallRecord {
+  return {
+    role: 'verification',
+    provider: run.provider,
+    model: modelIds[run.provider].sonnet,
+    costUsd: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    turns: 0,
+    durationMs: Date.now() - started,
+    outcome: 'error',
+  };
+}
+
 export async function verifyFindings(input: VerificationInput): Promise<VerificationOutcome> {
   const batches = input.enabled ? verificationBatches(input.findings) : [];
-  if (!batches.length) return { findings: input.findings, refuted: [], calls: [], trace: [] };
+  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, calls: [], trace: [] };
 
   const agent: VerificationAgent = input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
   const sections = splitDiff(input.diff);
@@ -172,15 +201,22 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
 
   const verifyOne = async (batch: ReviewedFinding[]): Promise<{ record: CallRecord; call: VerificationCall }> => {
     const ids = new Set(batch.map((f) => f.id));
-    const result = await agent(input.run, {
-      role: 'verification',
-      tier: 'sonnet',
-      systemPrompt: input.systemPrompt,
-      prompt: [shared, `Findings to verify, all in ${batch[0]!.file}:\n<findings>\n${batch.map((f) => findingBlock(f, sections)).join('\n\n')}\n</findings>`],
-      schema: verificationSchema,
-      maxTurns: maxTurns.verification,
-      budgetUsd: budgets.verification,
-    });
+    const started = Date.now();
+    let result: AgentResult<{ verifications: Verification[] }>;
+    try {
+      result = await agent(input.run, {
+        role: 'verification',
+        tier: 'sonnet',
+        systemPrompt: input.systemPrompt,
+        prompt: [shared, `Findings to verify, all in ${batch[0]!.file}:\n<findings>\n${batch.map((f) => findingBlock(f, sections)).join('\n\n')}\n</findings>`],
+        schema: verificationSchema,
+        maxTurns: maxTurns.verification,
+        budgetUsd: budgets.verification,
+      });
+    } catch (e) {
+      // A call that throws fails like one that returns an error: its findings stay as they were.
+      result = { output: undefined, record: thrownRecord(input.run, started), error: e instanceof Error ? e.message : String(e) };
+    }
     const verifications = (result.output?.verifications ?? []).filter((v) => ids.has(v.id));
     return {
       record: result.record,
@@ -195,26 +231,74 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   };
   const done = [
     ...(await mapWithConcurrency(batches.slice(0, 1), 1, verifyOne)),
-    ...(await mapWithConcurrency(batches.slice(1), 6, verifyOne)),
+    ...(await mapWithConcurrency(batches.slice(1), verificationConcurrency, verifyOne)),
   ];
 
+  // A call that names a finding twice is held to its first verdict.
   const verdicts = new Map<string, Verification>();
   for (const { call } of done) {
     for (const v of call.verifications) if (!verdicts.has(v.id)) verdicts.set(v.id, v);
   }
-  const applied = applyVerifications(input.findings, verdicts);
+  const { postedAs, ...applied } = applyVerifications(input.findings, verdicts);
   const count = (verdict: VerificationVerdict) => [...verdicts.values()].filter((v) => v.verdict === verdict).length;
   const checked = batches.flat().length;
   const failed = done.filter((d) => d.call.error).length;
   const cost = done.reduce((sum, d) => sum + d.record.costUsd, 0);
   input.log(`Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''} $${cost.toFixed(3)}`);
-  return { ...applied, calls: done.map((d) => d.record), trace: done.map((d) => d.call) };
+  const trace = done.map(({ call }) => ({
+    ...call,
+    findings: call.findings.map((f) => (postedAs.has(f.id) ? { ...f, postedAs: postedAs.get(f.id)! } : f)),
+  }));
+  return { ...applied, calls: done.map((d) => d.record), trace };
 }
 
-// Synthesis gave its verdict before verification: with no finding left it's approve, and a request for changes with no
-// blocker or should-fix left becomes a comment.
+// Synthesis gave its verdict before verification, and verification alone never makes a review approve: a request for
+// changes with no blocker or should-fix left becomes a comment, and any other verdict stays as synthesis gave it. A
+// verifier misled by the change's own code or comments can drop a real finding, so the maintainer still looks.
 export function verdictAfterVerification(verdict: Verdict, findings: ReviewedFinding[]): Verdict {
-  if (!findings.length) return 'approve';
   if (verdict === 'request-changes' && !findings.some((f) => f.severity !== 'nit')) return 'comment';
   return verdict;
 }
+
+// The sentence added to synthesis's summary, which was written before verification: what verification changed, and the
+// titles of the findings it refuted, since only the check run lists their reasons.
+export function verificationNote(refuted: RefutedFinding[], questioned: number): string {
+  const findings = (n: number) => (n === 1 ? 'one finding' : `${n} findings`);
+  const changes: string[] = [];
+  if (refuted.length) {
+    const titles = refuted.map((r) => `"${r.finding.title}"`).join('; ');
+    changes.push(`refuted ${findings(refuted.length)}, which the check run lists with ${refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}`);
+  }
+  if (questioned) changes.push(`couldn't settle ${findings(questioned)}, now ${questioned === 1 ? 'a question' : 'questions'} one severity lower`);
+  return changes.length ? ` After this summary was written, verification ${changes.join(', and ')}.` : '';
+}
+
+export interface SynthesizedReview {
+  summary: string;
+  // Undefined when synthesis gave none; review() then derives one from the findings.
+  verdict: Verdict | undefined;
+  findings: ReviewedFinding[];
+}
+
+// Verification of synthesis's review: the findings verified, the summary noting what verification changed, and the
+// verdict eased when nothing serious is left.
+export async function verifyReview(
+  review: SynthesizedReview,
+  input: Omit<VerificationInput, 'findings'>,
+): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned'>> {
+  const { findings, refuted, questioned, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
+  let verdict = review.verdict;
+  if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
+  // Without synthesis's verdict, review() derives one from the findings, and approve when none is left; verification
+  // refuted those, so it's a comment instead.
+  else if (trace.length && !findings.length) verdict = 'comment';
+  return {
+    summary: review.summary + verificationNote(refuted, questioned),
+    verdict,
+    findings,
+    refuted,
+    calls,
+    trace,
+  };
+}
+

@@ -23,7 +23,8 @@ export interface Results {
   summary: string;
   verdict: Verdict;
   findings: ReviewedFinding[];
-  // Findings verification dropped, each with the reason it gave; absent when verification is off.
+  // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
+  // is off or there was no blocker or should-fix to check.
   refuted?: RefutedFinding[];
   reviewers: ReviewerResult[];
   skipped: string[];

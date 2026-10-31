@@ -4,10 +4,11 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
-import { verdictAfterVerification, verifyFindings, type RefutedFinding, type VerificationCall } from './verify.ts';
+import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
 
@@ -250,19 +251,6 @@ export function mergeSynthesis(
   return out.slice(0, limit).map((f, i) => ({ ...f, id: `F${i + 1}` }));
 }
 
-export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
 export function changedLines(diff: string): Map<string, Set<number>> {
   const lines = new Map<string, Set<number>>();
@@ -414,9 +402,8 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   }
 
   // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
-  const verified = await verifyFindings({
+  const verified = await verifyReview({ summary, verdict, findings }, {
     run: reviewRun,
-    findings,
     diff: gathered.diff,
     pullRequest: pullRequestBlock(gathered),
     systemPrompt: charters.verificationPrompt,
@@ -425,12 +412,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
     enabled: verificationOn(),
   });
   calls.push(...verified.calls);
-  findings = verified.findings;
-  if (verified.refuted.length) {
-    const n = verified.refuted.length;
-    summary += ` Verification refuted ${n === 1 ? 'one finding; the check run lists it with the reason' : `${n} findings; the check run lists them with the reasons`}.`;
-  }
-  if (verified.trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
+  ({ summary, verdict, findings } = verified);
 
   const skipped = roster.filter((name) => !selected.has(name));
   verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';

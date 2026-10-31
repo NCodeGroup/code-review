@@ -22,8 +22,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { mapWithConcurrency } from '../src/concurrency.ts';
 import { startProxy } from '../src/proxy.ts';
-import { mapWithConcurrency } from '../src/review.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const topics = [
