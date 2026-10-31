@@ -60,6 +60,9 @@ export interface Results {
   skippedByConfig?: string[];
   // What in the repository's .github/code-review/ settings couldn't be used.
   warnings?: string[];
+  // Findings whose one-click suggestion was left out because the pull request's author can't write to the repository;
+  // absent when none was.
+  suggestionsWithheld?: number;
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
   // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.
@@ -325,6 +328,12 @@ export function checkSummary(results: Results): string {
   if (upstreamTotal) {
     const one = upstreamTotal === 1;
     lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
+  }
+  const withheld = results.suggestionsWithheld ?? 0;
+  if (withheld) {
+    lines.push('', withheld === 1
+      ? "1 finding's code change is in prose only: the pull request's author can't write to this repository, so no one-click suggestion is posted."
+      : `${withheld} findings' code changes are in prose only: the pull request's author can't write to this repository, so no one-click suggestions are posted.`);
   }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
