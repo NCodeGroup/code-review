@@ -4,6 +4,7 @@
 
 import { errorText } from './comments.ts';
 import type { Api } from './github.ts';
+import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 
 export const checkName = 'Code review';
@@ -153,7 +154,7 @@ export function finishStatus(
     assertNoSecrets(JSON.stringify(status), [context.token], 'The check run');
     return status;
   } catch (error) {
-    (context.log ?? console.log)(`::warning::${(error as Error).message} It is left out.`);
+    (context.log ?? writeLog)(`::warning::${(error as Error).message} It is left out.`);
   }
   const safe: RunStatus = {
     conclusion: status.conclusion,
@@ -170,7 +171,7 @@ export function finishStatus(
 export async function acknowledge(
   api: Api,
   target: { repository: string; headSha: string; commentId?: number; detailsUrl?: string },
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<number> {
   if (target.commentId !== undefined) {
     try {

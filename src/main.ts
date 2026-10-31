@@ -18,6 +18,7 @@ import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts
 import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
+import { writeErrorLog, writeLog } from './log.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
@@ -91,12 +92,12 @@ async function teach(
   };
   const plan = await planTeaching(command, context, githubReader(githubToken));
   if ('answer' in plan) {
-    console.log(`Not teaching: ${plan.answer.body}`);
+    writeLog(`Not teaching: ${plan.answer.body}`);
     writeForPublish(outDir, { [answerFile]: plan.answer }, secrets, 'answered');
     return;
   }
   const [owner, name] = plan.teaching.target.split('/') as [string, string];
-  console.log(`Teaching a ${command.scope === 'org' ? 'NCodeGroup-wide' : 'project'} rule: a ${guidanceLabel} issue in ${plan.teaching.target}`);
+  writeLog(`Teaching a ${command.scope === 'org' ? 'NCodeGroup-wide' : 'project'} rule: a ${guidanceLabel} issue in ${plan.teaching.target}`);
   writeForPublish(outDir, { [teachingFile]: plan.teaching }, secrets, 'taught', { 'guidance-owner': owner, 'guidance-repository': name });
 }
 
@@ -111,23 +112,23 @@ async function answer(
   const secrets = [...secretValues(credentials), ...(githubToken ? [githubToken] : [])];
   const host = new URL(process.env['GITHUB_SERVER_URL'] || 'https://github.com').host;
   const resolution = await findFinding(command.ref, { repository, number, host }, githubReader(githubToken));
-  if ('validIds' in resolution) console.log(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
+  if ('validIds' in resolution) writeLog(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
 
   const ask = async (found: FoundFinding) => {
-    console.log(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
+    writeLog(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
     fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number, headSha, token: githubToken }));
     const choice = await chooseProvider(credentials);
-    console.log(`Provider: ${choice.reason}`);
+    writeLog(`Provider: ${choice.reason}`);
     const proxy = await startProxy(credentials);
     const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
     try {
       const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
       const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
       const result = await explainFinding(run, systemPrompt, { found, question: command.question, headSha });
-      if (fallback?.reason) console.log(`Switched to Bedrock partway: ${fallback.reason}`);
-      if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
+      if (fallback?.reason) writeLog(`Switched to Bedrock partway: ${fallback.reason}`);
+      if (result.error) writeLog(`::warning::The explain call failed: ${errorText(result.error)}`);
       const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
-      console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
+      writeLog(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
       return result;
     } finally {
       await proxy.close();
@@ -144,7 +145,7 @@ async function main(): Promise<void> {
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
-  const log = (line: string) => console.log(line);
+  const log = writeLog;
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
   const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
@@ -167,7 +168,7 @@ async function main(): Promise<void> {
     reviewedHead,
   );
   if (!decision.run) {
-    console.log(decision.reason);
+    writeLog(decision.reason);
     writeStatus(skippedStatus(decision.reason));
     return;
   }
@@ -186,7 +187,7 @@ async function main(): Promise<void> {
     const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), log });
     if (pause !== 'review') writeStatus(pausedStatus());
     if (pause === 'paused') {
-      console.log('Paused, and the notice is posted already; comment /review to resume.');
+      writeLog('Paused, and the notice is posted already; comment /review to resume.');
       return;
     }
     if (pause === 'pause') {
@@ -298,12 +299,12 @@ main().catch((error) => {
   try {
     writeStatus(status);
   } catch (statusError) {
-    console.error(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
+    writeErrorLog(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
   }
   if (!failed) {
-    console.log(`::warning::${error.message} No review ran, and nothing was charged.`);
+    writeLog(`::warning::${error.message} No review ran, and nothing was charged.`);
     return;
   }
-  console.error(`::error::${(error as Error).message}`);
+  writeErrorLog(`::error::${(error as Error).message}`);
   process.exitCode = 1;
 });

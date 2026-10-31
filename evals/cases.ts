@@ -24,6 +24,10 @@ export interface EvalCase {
   // description and the issues it closes count only from an author with write access, as in the review step.
   author?: string;
   authorAssociation?: string;
+  // The author association of each issue the description closes, by issue number, when it isn't a member's. An issue
+  // whose association isn't a writer's (OWNER, MEMBER, COLLABORATOR) is left out, as the review step leaves out a
+  // non-writer's issue. It is recorded here because the smoke eval's token can't read other repositories' permissions.
+  issueAssociations?: Record<string, string>;
   expect: Concern[];
   mustNotFlag: Concern[];
   source: string;

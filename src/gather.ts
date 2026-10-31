@@ -6,6 +6,7 @@ import path from 'node:path';
 import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
 import { bulletGlobs } from './guidance.ts';
+import { writeLog } from './log.ts';
 import { globList, readProjectSettings, settingsFolder, splitFrontmatter, type ProjectCharter } from './settings.ts';
 import { answersFile, isTemplateOwned, readTemplate, type Template } from './template.ts';
 
@@ -688,7 +689,7 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
     const heads = readBlobs(prPath, pullRequest.headSha, paths);
     const unread = paths.filter((p) => !heads.has(p));
     // JSON quoting keeps a path with a line break from starting a workflow command of its own.
-    if (unread.length) console.log(`::warning::Couldn't read ${unread.length} changed C# file(s) at the head (${unread.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}), so they count as public API changes.`);
+    if (unread.length) writeLog(`::warning::Couldn't read ${unread.length} changed C# file(s) at the head (${unread.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}), so they count as public API changes.`);
     return heads;
   });
   const chunks = chunkDiff(files, sections, maxChunkChars, maxChunks);

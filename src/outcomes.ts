@@ -10,6 +10,7 @@ import { isFromFork, writerAssociations } from './command.ts';
 export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
+import { writeLog } from './log.ts';
 import { assertNoSecrets, printable } from './outputs.ts';
 import {
   botLogin,
@@ -270,7 +271,7 @@ export async function collectOutcomes(
   api: Api,
   repository: string,
   pullRequest: { number: number; merged?: boolean; head: { sha: string } },
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<OutcomesReport | undefined> {
   const number = pullRequest.number;
   const head = pullRequest.head.sha;
@@ -451,7 +452,7 @@ export async function recordOutcomes(
   event: { pull_request?: { number?: number; merged?: boolean; head?: { sha?: string; repo?: { full_name?: string } | null } } },
   repository: string,
   outDir: string,
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<void> {
   const pullRequest = event.pull_request;
   if (isFromFork(pullRequest, repository)) {
@@ -475,7 +476,7 @@ export async function recordOutcomes(
 
 // The publish step's half: edits the newest summary comment to add the outcomes, or posts a final comment when there's
 // none or it can't be edited.
-export async function publishOutcomes(api: Api, report: OutcomesReport, secrets: Iterable<string>, log: (line: string) => void = console.log): Promise<void> {
+export async function publishOutcomes(api: Api, report: OutcomesReport, secrets: Iterable<string>, log: (line: string) => void = writeLog): Promise<void> {
   const section = outcomesSection(report);
   const kept = markerFindingCount(report);
   if (kept < report.findings.length) log(`::warning::The outcomes marker holds the first ${kept} of ${report.findings.length} findings, to fit in a comment.`);

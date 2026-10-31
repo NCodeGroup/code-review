@@ -11,6 +11,7 @@ import { decideAcknowledgement, postAcknowledgement, revokeAcknowledgementToken 
 import { errorText } from './comments.ts';
 import { required, take } from './env.ts';
 import { githubApi } from './github.ts';
+import { writeLog } from './log.ts';
 
 async function decide(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
@@ -34,6 +35,6 @@ async function revoke(): Promise<void> {
 const mode = process.argv[2];
 (mode === 'decide' ? decide() : mode === 'post' ? post() : mode === 'revoke' ? revoke() : Promise.reject(new Error('Usage: acknowledge.ts decide|post|revoke'))).catch((error) => {
   // The review goes on without the acknowledgement: its steps continue on error.
-  console.log(`::warning::The review couldn't be acknowledged: ${errorText(error)}`);
+  writeLog(`::warning::The review couldn't be acknowledged: ${errorText(error)}`);
   process.exitCode = 1;
 });
