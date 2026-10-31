@@ -17,6 +17,7 @@ import {
   planReReview,
   postable,
   readEarlierFindings,
+  readReviewThreads,
   reReview,
   reReviewRoster,
   reReviewSummary,
@@ -453,6 +454,15 @@ test('readEarlierFindings reads every page of threads, and gives undefined witho
     throw new Error('network down');
   }) as unknown as typeof fetch;
   assert.equal(await readEarlierFindings('o/r', 1, 'token', rejecting), undefined);
+});
+
+test("readReviewThreads logs why it couldn't read the threads", async () => {
+  const lines: string[] = [];
+  const rejecting = (async () => {
+    throw new Error('boom');
+  }) as unknown as typeof fetch;
+  assert.equal(await readReviewThreads('o/r', 1, 'token', rejecting, (line) => lines.push(line)), undefined);
+  assert.deepEqual(lines, [`Couldn't read the review threads: "boom"`]);
 });
 
 test('readEarlierFindings gives undefined for a GraphQL body without threads, and after its page cap', async () => {

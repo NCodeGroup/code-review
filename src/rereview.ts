@@ -16,6 +16,7 @@ import { errorText } from './comments.ts';
 import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { githubApi } from './github.ts';
+import { writeLog } from './log.ts';
 import { botLogin, recordedHead } from './results.ts';
 import { readThreadPages } from './review-threads.ts';
 import {
@@ -293,12 +294,19 @@ export async function readEarlierFindings(repository: string, number: number, to
 // A pull request's review threads, or undefined when they can't all be read: a refused request, a GraphQL error, a
 // fetch that rejects, or a body that isn't JSON. The review step reads them with its read-only token, and the publish
 // step with the app's token, to resolve and answer the bot's own threads.
-export async function readReviewThreads(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ThreadNode[] | undefined> {
+export async function readReviewThreads(
+  repository: string,
+  number: number,
+  token: string | undefined,
+  fetchPage: typeof fetch = fetch,
+  log: (line: string) => void = writeLog,
+): Promise<ThreadNode[] | undefined> {
   if (!token) return undefined;
   try {
     const read = await readThreadPages<ThreadNode>(githubApi(token, fetchPage), repository, number, { fields: threadFields, pageSize: threadPageSize, maxPages: maxThreadPages });
     return read.complete ? read.threads : undefined;
-  } catch {
+  } catch (error) {
+    log(`Couldn't read the review threads: ${JSON.stringify(errorText(error))}`);
     return undefined;
   }
 }
