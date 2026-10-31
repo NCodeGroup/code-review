@@ -396,6 +396,44 @@ test('postSummary still posts, and warns, when the pull request has more comment
   assert.ok(lines.includes(`::warning::Couldn't list the earlier summary comments (more than ${commentPageSize * maxCommentPages} comments), so they stay expanded.`));
 });
 
+test('postSummary posts without collapsing anything on a first review', async () => {
+  const { postSummary } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') return [{ id: 7, user: { login: 'someone' }, body: 'hi' }];
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, ['GET /repos/o/r/issues/1/comments?per_page=100&page=1', 'POST /repos/o/r/issues/1/comments']);
+});
+
+test('postSummary still posts, and warns, when a later page of comments cannot be read', async () => {
+  const { postSummary, commentPageSize } = await import('../src/comments.ts');
+  const calls: string[] = [];
+  const api = async (method: string, url: string): Promise<any> => {
+    calls.push(`${method} ${url}`);
+    if (method === 'GET') {
+      if (!url.endsWith('page=1')) throw new Error('HTTP 502');
+      return Array.from({ length: commentPageSize }, (_, i) => ({ id: i, user: { login: 'someone' }, body: 'hi' }));
+    }
+    if (method === 'POST') return { html_url: postedUrl };
+    return undefined;
+  };
+  const lines: string[] = [];
+  const url = await postSummary(api, summaryResults, 'new body', (line) => lines.push(line));
+  assert.equal(url, postedUrl);
+  assert.deepEqual(calls, [
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=1',
+    'GET /repos/o/r/issues/1/comments?per_page=100&page=2',
+    'POST /repos/o/r/issues/1/comments',
+  ]);
+  assert.ok(lines.includes("::warning::Couldn't list the earlier summary comments (HTTP 502), so they stay expanded."));
+});
+
 test('readCommentPages reads every page until a short one', async () => {
   const { commentPageSize, readCommentPages } = await import('../src/comments.ts');
   const pages: number[] = [];
