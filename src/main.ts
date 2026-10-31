@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
 import { commandFromEvent, skipReasonFor, writers } from './command.ts';
 import { readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -156,9 +157,11 @@ async function main(): Promise<void> {
   log(`Provider: ${choice.reason}`);
 
   const proxy = await startProxy(credentials);
+  // A run that starts on the Claude API with a Bedrock key moves to Bedrock if the credits run out partway.
+  const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
-    const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath };
+    const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
     const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
       plan,
       headSha: pullRequest.headSha,
@@ -166,31 +169,34 @@ async function main(): Promise<void> {
       full: () => review(run, gathered, loadCharters(root), log),
       again: (p) => reReview(run, gathered, loadCharters(root), p, log),
     });
+    if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
+      ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
+      dropped: outcome.dropped,
       ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
       reviewers: outcome.reviewers.map(({ name, status, findings, error }) => {
         const top = topSeverity(findings);
         return {
           name,
           status,
-          model: outcome.calls.find((c) => c.role === `reviewer:${name}`)?.model ?? '',
+          model: lastModel(outcome.calls, `reviewer:${name}`),
           findingCount: findings.length,
           ...(top ? { topSeverity: top } : {}),
           ...(error ? { error } : {}),
         };
       }),
       skipped: outcome.skipped,
-      synthesisModel: outcome.calls.find((c) => c.role === 'synthesis')?.model ?? '',
+      synthesisModel: lastModel(outcome.calls, 'synthesis'),
       calls: outcome.calls,
-      costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
+      costUsd: totalCost(outcome.calls),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
+import type { AgentRequest, AgentResult, AgentRun, BedrockFallback } from '../src/agent.ts';
 import { fetchCommit, fetchPullRequestHead } from '../src/fetch-head.ts';
 import { gather, type PullRequest } from '../src/gather.ts';
 import {
@@ -441,7 +441,7 @@ function fakeAgent(output: unknown, requests: AgentRequest[]) {
     requests.push(request);
     return {
       output,
-      record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' },
+      records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' }],
     };
   }) as never;
 }
@@ -479,6 +479,42 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
   assert.deepEqual(outcome.skipped, []);
   assert.equal(outcome.verdict, 'comment');
   assert.match(outcome.summary, /1 nit and 1 finding away from the changed lines aren't posted on a re-review\. 1 new finding at should-fix or above\.$/);
+});
+
+test('reReview gives its correctness call the Bedrock fallback of the run, and keeps both calls of a rerun on Bedrock', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const fallback = { switched: false } as BedrockFallback;
+  const record = (provider: 'anthropic' | 'bedrock', outcome: string) => ({ role: 'reviewer:correctness', provider, model: 'sonnet', costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome });
+  const seen: (BedrockFallback | undefined)[] = [];
+  const switching = (async (run: AgentRun) => {
+    seen.push(run.fallback);
+    run.fallback!.switched = true;
+    run.fallback!.reason = 'credits ran out';
+    return { output: { findings: [], earlier: [] }, records: [record('anthropic', 'credits ran out'), record('bedrock', 'success')] };
+  }) as never;
+  const outcome = await reReview({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: repo, fallback }, gathered, charters, plan, () => {}, switching, { enabled: false });
+  assert.deepEqual(seen, [fallback]);
+  assert.equal(fallback.switched, true);
+  assert.deepEqual(outcome.calls.map((c) => [c.provider, c.outcome]), [['anthropic', 'credits ran out'], ['bedrock', 'success']]);
+});
+
+test('reReview leaves out a finding that says a file the pull request changes is not changed, as the first review does', async () => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const gathered = gather(pullRequest(first, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const requests: AgentRequest[] = [];
+  const output = { findings: [{ ...finding('blocker', 'a.ts', 62, 'False'), problem: 'The pull request makes no changes to `a.ts`.' }, finding('should-fix', 'a.ts', 62, 'Real')], earlier: [] };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests), { enabled: false });
+  assert.match((requests[0]!.prompt as string[]).join('\n'), /every file this pull request changes/);
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title]), [['F1', 'Real']]);
+  assert.deepEqual(outcome.dropped.map((d) => [d.finding.title, d.file]), [['False', 'a.ts']]);
+  assert.equal(outcome.verdict, 'comment');
 });
 
 test('reReview makes no model call when nothing in the pull request changed', async () => {
@@ -522,7 +558,7 @@ test('reReview reports a failed reviewer and claims nothing about the changes', 
   const failing = (async (_run: AgentRun, request: AgentRequest) => ({
     output: undefined,
     error: 'budget exceeded',
-    record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'error' },
+    records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'error' }],
   })) as never;
   const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, failing);
   assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status, r.error]), [['correctness', 'failed', 'budget exceeded']]);
@@ -555,7 +591,7 @@ test('a run whose reviewers all failed records the head reviewed before it, or n
   assert.equal(recordedHead([], head, reviewed), head);
   assert.equal(recordedHead([{ status: 'failed' }], head, reviewed), reviewed);
   assert.equal(recordedHead([{ status: 'failed' }], head, undefined), '');
-  const results = { summary: '', verdict: 'comment', findings: [], reviewers: [], skipped: [], synthesisModel: '', provider: 'bedrock', costUsd: 0, durationMs: 0, headSha: head };
+  const results = { summary: '', verdict: 'comment', findings: [], dropped: [], reviewers: [], skipped: [], synthesisModel: '', provider: 'bedrock', costUsd: 0, durationMs: 0, headSha: head };
   assert.match(summaryComment({ ...results, recordedHead: reviewed } as never, 'https://check', 'https://help'), new RegExp(headMarker(reviewed)));
   assert.doesNotMatch(summaryComment({ ...results, recordedHead: '' } as never, 'https://check', 'https://help'), /ncode-review:head=/);
   assert.match(summaryComment(results as never, 'https://check', 'https://help'), new RegExp(headMarker(head)));
@@ -584,7 +620,7 @@ function verifier(answers: Record<string, Omit<Verification, 'id'>>, requests: A
     });
     return {
       output: { verifications },
-      record: { role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.05, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' },
+      records: [{ role: request.role, provider: 'bedrock', model: 'sonnet', costUsd: 0.05, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' }],
     };
   };
 }
@@ -650,7 +686,7 @@ test('reReview with verification on never approves after refuting what it would 
 });
 
 function review(statuses: ('ran' | 'failed')[]): Review {
-  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], refuted: [], verification: [], calls: [], skipped: [] };
+  return { reviewers: statuses.map((status) => ({ name: 'correctness', status, findings: [] })), summary: 's', verdict: 'comment', findings: [], dropped: [], refuted: [], verification: [], calls: [], skipped: [] };
 }
 
 test('runReview does the full review without a plan, and records the head it read', async () => {

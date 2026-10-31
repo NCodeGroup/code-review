@@ -9,13 +9,15 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
+import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { writers } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { botLogin, recordedHead } from './results.ts';
 import {
+  completeList,
   fileList,
   findingLimit,
   findingProperties,
@@ -573,7 +575,7 @@ export async function reReview(
   verification: ReReviewVerificationOptions = { enabled: verificationOn() },
 ): Promise<ReReview> {
   const statuses: EarlierStatus[] = plan.earlier.map((finding) => ({ finding, status: 'unchecked', note: '' }));
-  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification): ReReview => {
+  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification, dropped: DroppedFinding[] = []): ReReview => {
     const summary = reReviewSummary({
       lastHead: plan.lastHead,
       changed: plan.changed,
@@ -596,6 +598,7 @@ export async function reReview(
       summary,
       verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
       findings,
+      dropped,
       refuted: verified?.refuted ?? [],
       verification: verified?.trace ?? [],
       calls,
@@ -610,7 +613,7 @@ export async function reReview(
   const context = [
     `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>`,
     pullRequestBlock(gathered),
-    `Changed files:\n${fileList(gathered)}`,
+    `${completeList}\n${fileList(gathered)}`,
     `The hunks of the pull request's diff against its merge base that changed since the last review at ${since}, with their context. The pull request's head is checked out at the path given below; use it to read whole files.\n<diff>\n${plan.diff || '(none)'}\n</diff>`,
     ...(plan.takenBack
       ? [`What the pull request changed at the last review and no longer does, per file: a + line it added and has since taken out, a - line it removed and has since put back. They aren't in the diff above and have no line to report on, but an earlier finding about them may be fixed.\n<taken_back>\n${plan.takenBack}\n</taken_back>`]
@@ -633,8 +636,8 @@ export async function reReview(
   );
   if (result.error || !result.output) {
     const error = result.error ?? 'no output';
-    log(`  ${reReviewer}: failed (${error}) $${result.record.costUsd.toFixed(3)}`);
-    return finish([{ name: reReviewer, status: 'failed', findings: [], error }], [], 0, 0, [result.record], error);
+    log(`  ${reReviewer}: failed (${error}) $${totalCost(result.records).toFixed(3)}`);
+    return finish([{ name: reReviewer, status: 'failed', findings: [], error }], [], 0, 0, result.records, error);
   }
   for (const reported of result.output.earlier) {
     const index = Number(/^E(\d+)$/.exec(reported.key)?.[1] ?? 0) - 1;
@@ -642,10 +645,13 @@ export async function reReview(
     if (status && !status.finding.resolved) Object.assign(status, { status: reported.status, note: reported.note });
   }
   const reported = result.output.findings.filter((f) => f.confidence >= minConfidence);
-  const { kept, nits, outside } = postable(reported, plan.changed.lines);
-  log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${result.record.costUsd.toFixed(3)}`);
+  const { kept: onChanged, nits, outside } = postable(reported, plan.changed.lines);
+  // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
+  const { kept, dropped } = dropContradicted(onChanged.map((f) => ({ ...f, reviewers: [reReviewer] })), gathered.files.map((f) => f.path));
+  if (dropped.length) log(`  Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => d.file))].join(', ')}`);
+  log(`  ${reReviewer}: ${kept.length} findings to post, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(result.records).toFixed(3)}`);
   const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(kept), log, verification);
-  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [result.record, ...calls], undefined, verified.trace.length ? verified : undefined);
+  return finish([{ name: reReviewer, status: 'ran', findings: reported }], findings, nits, outside, [...result.records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped);
 }
 
 // --- Choosing the review ---

@@ -4,7 +4,8 @@ AI pull request review for NCodeGroup repositories: a GitHub composite action on
 Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
 merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
 the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
-Bedrock key does.
+Bedrock key does. A review whose credits run out partway reruns the refused call on Bedrock and makes the rest of its
+calls there; its check run and summary say so and split the cost by provider.
 
 ## How a review runs
 
@@ -129,10 +130,11 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 Each review, all from `ncode-review[bot]`:
 
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
-  with the evidence and confidence collapsed. A finding with no changed line to sit on goes in that review's body.
-  A finding already posted on the pull request isn't posted again, so `/review` adds only what's new. Nor is one whose
-  thread someone with write access dismissed, by resolving it while it was still on the code it was posted on or with
-  a 👎, even at another severity;
+  with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
+  request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
+  that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's
+  new. Nor is one whose thread someone with write access dismissed, by resolving it while it was still on the code it
+  was posted on or with a 👎, even at another severity;
 - marks a finding "Tracked in #N" instead of raising it as new, when an open issue someone with write access opened
   already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding stays in the summary
   and the check run but gets no thread;
@@ -212,6 +214,12 @@ The cases come from review comments the learned guidance has read too, so the ev
 `CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
 
 A case with a `reviewed` head is a [re-review](#re-reviews): it carries the findings earlier reviews posted, with their replies, as `earlier`, and `mergeIntoHead` merges a base branch commit into the head first, as `/ship-plan` does. Besides its must-not-flag concerns, a re-review case counts a violation for each finding it posts below should-fix or off the lines changed since its reviewed head, such as code the merge brought in. `re-review-declined-trigger` (#29) and `re-review-merge-of-main` (#30, with main merged in) are the two; `--only re-review-declined-trigger,re-review-merge-of-main` runs just them.
+
+**Precision.** Every posted blocker and should-fix that matches no expected concern goes to an Opus judge, which reads the case's checkout, locked down like the reviewers, with the finding passed as data, and answers `real`, `not-real` or `unsure`: is it a real defect the maintainer would act on? A finding that raises a must-not-flag concern counts as not real without a call. Precision is (matched + real) ÷ all posted blockers and should-fixes, with `unsure` counted apart. Verdicts are cached by case and finding fingerprint (file, severity and the title's words) in `evals/verdicts.json`, so a rerun judges only findings it hasn't seen; commit it with `cases.json` so every run is judged the same way. Each `evals/out/<label>.json` has the precision counts per case and in `summary.precision`, findings per case (`summary.findingsPerCase`: mean, max) and the review's own cost, without the eval's judges (`reviewCostUsd`, and `summary.reviewCostPerCase`).
+
+**Comparing two setups.** `npm run eval:compare -- <a.json> <b.json>` (or bare labels from `evals/out/`) prints recall, precision, findings per pull request and cost for both runs, then each case's differences. A recall difference of 2 or less is marked `(noise)`, within one run's variance; the other differences aren't marked, since their variance hasn't been measured. Outputs from before precision show `—` for it.
+
+**Growing the set from verdicts.** `npm run eval:confirm` lists the `real` and `not-real` verdicts nobody has confirmed yet (`--verdict real`, `--verdict unsure` or `--sample 5` of each narrow it), each with the command that confirms it. `npm run eval:confirm -- --case <id> --fingerprint <fp>` adds a `real` finding to its case in `cases.json` as an expected concern, and a `not-real` one as a must-not-flag concern, and marks the verdict confirmed. `--as expect` or `--as must-not` overrides the judge, and is needed for an `unsure` one. Review the new concern's wording in `cases.json` before committing it. In PowerShell, quote the separator: `npm run eval:confirm '--' --case <id> --fingerprint <fp>`.
 
 ## Checks
 
