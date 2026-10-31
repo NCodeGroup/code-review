@@ -13,13 +13,13 @@ import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
-import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
+import { answerFile, explainFinding, findFinding, githubReader, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
-import { assertNoSecrets } from './outputs.ts';
+import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
@@ -70,16 +70,6 @@ function takeCredentials(): Credentials {
     );
   }
   return credentials;
-}
-
-// Writes what the publish step posts, scanned for secrets, and tells the action's later steps there's something to post.
-function writeForPublish(outDir: string, files: Record<string, unknown>, secrets: string[], flag: 'reviewed' | 'answered' | 'taught', outputs: Record<string, string> = {}): void {
-  const texts = Object.entries(files).map(([name, value]) => [name, JSON.stringify(value, null, 2)] as const);
-  for (const [name, text] of texts) assertNoSecrets(text, secrets, `The ${name.replace(/\.json$/, '')}`);
-  mkdirSync(outDir, { recursive: true });
-  for (const [name, text] of texts) writeFileSync(path.join(outDir, name), text);
-  const output = process.env['GITHUB_OUTPUT'];
-  if (output) appendFileSync(output, [`${flag}=true`, ...Object.entries(outputs).map(([key, value]) => `${key}=${value}`)].map((line) => `${line}\n`).join(''));
 }
 
 // `/review teach`: words the guidance issue, reading a finding it names with the read-only token, with no model call,
@@ -135,21 +125,15 @@ async function answer(
       const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
       const result = await explainFinding(run, systemPrompt, { found, question: command.question, headSha });
       if (fallback?.reason) console.log(`Switched to Bedrock partway: ${fallback.reason}`);
+      if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
+      const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
+      console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
       return result;
     } finally {
       await proxy.close();
     }
   };
-  const { body, explained } = await answerFor(command.ref, resolution, ask);
-  const files: Record<string, unknown> = { [answerFile]: { repository, pullRequest: number, body } satisfies Answer };
-  if (explained) {
-    const { found, result } = explained;
-    if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
-    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, calls: result.records } };
-    const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
-    console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
-  }
-  writeForPublish(outDir, files, secrets, 'answered');
+  await writeAnswer(outDir, { repository, number, question: command.question, secrets }, command.ref, resolution, ask);
 }
 
 async function main(): Promise<void> {
