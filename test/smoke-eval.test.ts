@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/compare.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
 import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, type CaseTally } from '../evals/run.ts';
-import { baselinePathFrom, checkFiles, commandData, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
 import type { CallRecord } from '../src/agent.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -302,6 +303,36 @@ test('checkFiles fails a run whose missing baseline a commit deleted, and still 
     assert.equal(verdict.failures.length, 1);
     assert.match(verdict.failures[0] ?? '', /commit abc1234 deleted it/);
     assert.ok(existsSync(path.join(dir, proposedName)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Runs git, since what the check reads is a real repository's history.
+test('lastBaselineCommit names the commit that deleted the baseline, none before one was committed, and fails on a shallow checkout', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'smoke-history-'));
+  // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], {
+    encoding: 'utf8',
+    env: { PATH: process.env['PATH'] ?? '', ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}), HOME: dir, USERPROFILE: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_NOSYSTEM: '1' },
+  });
+  try {
+    const repo = path.join(dir, 'repo');
+    mkdirSync(path.join(repo, 'evals'), { recursive: true });
+    git(repo, 'init', '-q');
+    writeFileSync(path.join(repo, 'README.md'), 'r\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'first');
+    assert.equal(lastBaselineCommit(repo), undefined);
+    writeFileSync(path.join(repo, 'evals', 'baseline-smoke.json'), '{}\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'adopt');
+    git(repo, 'rm', '-q', 'evals/baseline-smoke.json');
+    git(repo, 'commit', '-q', '-m', 'delete');
+    assert.equal(lastBaselineCommit(repo), git(repo, 'rev-parse', '--short', 'HEAD').trim());
+    const shallow = path.join(dir, 'shallow');
+    git(dir, 'clone', '-q', '--depth', '1', pathToFileURL(repo).href, shallow);
+    assert.throws(() => lastBaselineCommit(shallow), /The checkout is shallow/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

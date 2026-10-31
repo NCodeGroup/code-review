@@ -10,7 +10,8 @@
 //     Fails when a file under <dir> holds one of the job's secrets or anything shaped like a credential, before the
 //     workflow uploads the folder: artifacts on a public repository are public.
 
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoSecrets } from '../src/outputs.ts';
@@ -131,13 +132,24 @@ export function checkFiles(runFile: string, baselinePath: string, deletedIn?: st
   return verdict;
 }
 
+// The last commit that changed baselineFile in root's history, or undefined when none did. A shallow checkout can't
+// tell, so it throws rather than pass a deleted baseline.
+export function lastBaselineCommit(root: string): string | undefined {
+  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  if (git('rev-parse', '--is-shallow-repository') === 'true') throw new Error(`The checkout is shallow, so it can't tell whether ${baselineFile} was deleted; check out with fetch-depth: 0.`);
+  return git('log', '-1', '--format=%h', '--', baselineFile) || undefined;
+}
+
 function main(): void {
   const [command, target] = process.argv.slice(2);
   const annotate = (kind: 'notice' | 'error', message: string) =>
     console.log(process.env['GITHUB_ACTIONS'] === 'true' ? `::${kind} title=Smoke eval::${commandData(message)}` : `${kind}: ${message}`);
   if (command === 'check' && target) {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const verdict = checkFiles(path.resolve(target), baselinePathFrom(process.argv, root));
+    const baselinePath = baselinePathFrom(process.argv, root);
+    // Only the committed baseline has a history; a --baseline file is the caller's.
+    const deletedIn = baselinePath === path.join(root, baselineFile) && !existsSync(baselinePath) ? lastBaselineCommit(root) : undefined;
+    const verdict = checkFiles(path.resolve(target), baselinePath, deletedIn);
     const summaryFile = process.env['GITHUB_STEP_SUMMARY'];
     if (summaryFile) appendFileSync(summaryFile, verdict.markdown);
     else process.stdout.write(verdict.markdown);
