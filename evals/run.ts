@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { verificationOn } from '../src/config.ts';
 import { closedIssues, gather, splitDiff, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, severityRank, type Finding } from '../src/review.ts';
@@ -117,7 +118,7 @@ async function main(): Promise<void> {
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: unknown[] = [];
-  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, cost = 0;
+  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
   const verdictFile = path.join(root, 'evals', 'verdicts.json');
   const verdictCache = loadVerdicts(verdictFile);
   const precisions: CasePrecision[] = [];
@@ -183,13 +184,15 @@ async function main(): Promise<void> {
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
       violations += forbidden.filter((f) => f.raisedBy.length).length;
       findingCount += outcome.findings.length;
+      seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
+      refutedCount += outcome.refuted.length;
       cost += caseCost;
       const status = [
         ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
         ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
       ].join(', ');
       console.log(`${c.id}: ${status}; ${outcome.findings.length} findings, precision ${percent(precision.precision)} (${precision.unsure} unsure), $${caseCost.toFixed(2)}`);
-      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost });
+      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, refuted: outcome.refuted, raw, calls, reviewCostUsd: reviewCost, costUsd: caseCost });
     }
   } finally {
     await proxy.close();
@@ -197,11 +200,12 @@ async function main(): Promise<void> {
 
   const precision = totalPrecision(precisions);
   const summary = {
-    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', expected, caught, caughtRaw, violations, findings: findingCount,
+    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations,
+    findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount,
     precision, findingsPerCase: spread(findingsPerCase), reviewCostUsd: reviewCosts.reduce((a, b) => a + b, 0),
     reviewCostPerCase: spread(reviewCosts), costUsd: cost,
   };
-  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all; $${cost.toFixed(2)}`);
+  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
   console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
   console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
   mkdirSync(path.join(root, 'evals', 'out'), { recursive: true });
