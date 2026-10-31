@@ -95,12 +95,27 @@ export function isGenerated(file: string): boolean {
   return generatedPatterns.some((pattern) => pattern.test(file));
 }
 
-const docPattern = /(\.md|\.txt|\.rst)$|(^|\/)docs?\//i;
+export const publicApiPath = /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/;
+
+// Documentation, as an allowlist: a Markdown, reStructuredText or text file anywhere, and an image or a PDF in a doc/ or
+// docs/ folder. Any other file, one with no extension included, isn't, wherever it is: a script, a config file or a git
+// hook in docs/ or in a template's folders is code. A text file that is a build or dependency list, such as
+// CMakeLists.txt or a pip requirements file, isn't documentation, and neither is a public API listing: it is the API.
+// The light review and the review order both use this one definition.
+const documentationFile = /\.(md|rst|txt)$/i;
+const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|svg|webp|pdf)$/i;
+const listingFile = /(^|\/)(CMakeLists\.txt|(requirements|constraints)[^/]*\.txt)$/i;
+
+export function isDocumentation(file: string): boolean {
+  if (publicApiPath.test(file) || listingFile.test(file)) return false;
+  return documentationFile.test(file) || documentationAsset.test(file);
+}
+
 const testPattern = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec|tests)\.[a-z]+$|Tests?\.cs$/i;
 
 // Product code first, then tests, then everything else: when the diff is over budget, what's left out is the least risky.
 export function reviewOrder(file: string): number {
-  if (docPattern.test(file)) return 3;
+  if (isDocumentation(file)) return 3;
   if (testPattern.test(file)) return 1;
   if (/^(\.github|\.template|\.claude|build)\//.test(file)) return 2;
   return 0;

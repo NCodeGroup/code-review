@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentEnvironment, isInside } from '../src/agent.ts';
-import { chunkDiff, dropToolEnforced, globToRegExp, isGenerated, isPackableProject, markContracts, readBlobs, readReviewRules, splitDiff, touchesPublicMember, touchesSerializedContract, type ChangedFile, type Gathered } from '../src/gather.ts';
+import { chunkDiff, dropToolEnforced, globToRegExp, isDocumentation, isGenerated, isPackableProject, markContracts, readBlobs, readReviewRules, reviewOrder, splitDiff, touchesPublicMember, touchesSerializedContract, type ChangedFile, type Gathered } from '../src/gather.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
-import { changedLines, findingLimit, mergeSynthesis, selectionFloor, type Finding } from '../src/review.ts';
+import { changedLines, documentationOnly, findingLimit, mergeSynthesis, selectionFloor, type Finding } from '../src/review.ts';
 
 test('globToRegExp matches applyTo patterns the way Copilot does', () => {
   assert.ok(globToRegExp('src/**/*.cs').test('src/NCode.Identity.Jwk/JsonWebKey.cs'));
@@ -96,6 +96,19 @@ test('chunkDiff opens a new part when one is full', () => {
   assert.match(chunks[0]!, /added two/);
   assert.match(chunks[1]!, /line one/);
   assert.deepEqual(files.map((f) => f.shown), [true, true]);
+});
+
+test('reviewOrder ranks only what the light review calls documentation last, and code in docs/ with product code', () => {
+  for (const doc of ['README.md', 'docs/guide.rst', 'notes.txt', 'docs/img/a.png']) {
+    assert.ok(isDocumentation(doc), doc);
+    assert.equal(reviewOrder(doc), 3, doc);
+    assert.equal(documentationOnly([file(doc)]), true, doc);
+  }
+  for (const code of ['docs/build.ps1', 'docs/conf.py', 'CMakeLists.txt', 'requirements-dev.txt', 'src/PublicAPI.Shipped.txt']) {
+    assert.ok(!isDocumentation(code), code);
+    assert.equal(reviewOrder(code), 0, code);
+    assert.equal(documentationOnly([file(code)]), false, code);
+  }
 });
 
 const finding = (title: string, severity: Finding['severity'] = 'nit', confidence = 0.5): Finding =>

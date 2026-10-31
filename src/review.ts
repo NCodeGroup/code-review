@@ -11,7 +11,7 @@ import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
-import { closedIssues, globToRegExp, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
+import { closedIssues, globToRegExp, isDocumentation, publicApiPath, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -314,7 +314,6 @@ const securityPath = /(auth|crypt|jose|jwt|jwk|jws|jwe|token|secret|key|sign|pas
 const testPath = /(^|\/)tests?\/|Tests?\.cs$|\.(test|spec)\.[a-z]+$/i;
 const productCode = /\.(cs|fs|ts|tsx|js|py|go|rs|java|ps1|psm1|tf|tofu|hcl)$/i;
 const infrastructurePath = /\.(tf|tofu|tfvars|hcl)$/i;
-const publicApiPath = /(^|\/)PublicAPI\.[A-Za-z]+\.txt$/;
 
 // A file is sensitive when a glob from config.yml's sensitive: matches it.
 export function sensitiveMatcher(globs: string[]): (file: string) => boolean {
@@ -328,22 +327,13 @@ export function sensitiveFiles(files: ChangedFile[], globs: string[]): string[] 
   return files.filter((f) => !f.generated && sensitive(f.path)).map((f) => f.path);
 }
 
-// What a light review takes, as an allowlist: a Markdown, reStructuredText or text file anywhere, and an image or a PDF
-// in a doc/ or docs/ folder. Any other file, one with no extension included, is the standard review's, wherever it is:
-// a script, a config file or a git hook in docs/ or in a template's folders is code. A text file that is a build or
-// dependency list, such as CMakeLists.txt or a pip requirements file, isn't documentation, and neither is a public API
-// listing: it is the API.
-const documentationFile = /\.(md|rst|txt)$/i;
-const documentationAsset = /(^|\/)docs?\/.+\.(png|jpe?g|gif|svg|webp|pdf)$/i;
-const listingFile = /(^|\/)(CMakeLists\.txt|(requirements|constraints)[^/]*\.txt)$/i;
-
 // A template update changes one of these, which hold only the template's version and the answers it was made with.
 const templateVersion = /^(\.template-version|\.copier-answers\.yml)$/;
 
+// What a light review takes: documentation, by gather's allowlist (isDocumentation), and a template's version files.
+// Any other file is the standard review's, wherever it is.
 function isLightReviewFile(file: string): boolean {
-  if (templateVersion.test(file)) return true;
-  if (publicApiPath.test(file) || listingFile.test(file)) return false;
-  return documentationFile.test(file) || documentationAsset.test(file);
+  return templateVersion.test(file) || isDocumentation(file);
 }
 
 // A pull request that changes only documentation: every changed file is one isLightReviewFile allows, the changelog
