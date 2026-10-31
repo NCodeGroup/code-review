@@ -228,10 +228,12 @@ Each review, all from `ncode-review[bot]`:
 - reacts 👀 to a `/review` comment and shows the "Code review" check run in progress within seconds;
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
   with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
-  request, also comes as a suggestion you can apply with one click. A finding with no changed line to sit on goes in
-  that review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's
-  new. Nor is one whose thread someone with write access dismissed, by resolving it while it was still on the code it
-  was posted on or with a 👎, even at another severity;
+  request, also comes as a suggestion you can apply with one click, when the pull request's author can write to the
+  repository. On anyone else's pull request the fix is in prose only, and the check run says how many suggestions were
+  held back, so a model-written change prompted by an outsider's code is never one click from being committed. A
+  finding with no changed line to sit on goes in that review's body. A finding already posted on the pull request
+  isn't posted again, so `/review` adds only what's new. Nor is one whose thread someone with write access dismissed,
+  by resolving it while it was still on the code it was posted on or with a 👎, even at another severity;
 - marks a finding "Tracked in #N" instead of raising it as new, when an open issue someone with write access opened
   already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding stays in the summary
   and the check run but gets no thread;

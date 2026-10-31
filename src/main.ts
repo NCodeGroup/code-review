@@ -270,6 +270,7 @@ async function main(): Promise<void> {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
+      authorCanWrite: pullRequest.authorCanWrite,
       provider: choice.provider,
       providerReason: choice.reason,
       ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
