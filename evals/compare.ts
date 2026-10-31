@@ -19,7 +19,7 @@ export interface EvalOutput {
   cases: {
     id: string;
     verdicts: { caught: boolean; caughtRaw: boolean }[];
-    forbidden: { raisedBy: string[] }[];
+    forbidden: { concern?: string; raisedBy: string[] }[];
     findings: unknown[];
     precision?: PrecisionCounts;
     reviewCostUsd?: number;
@@ -113,7 +113,8 @@ export function compare(a: EvalOutput, b: EvalOutput, names: [string, string]): 
   const notes = [`A recall difference of ${noiseLimit} or less is within one run's variance: (noise). Other differences aren't flagged; their variance hasn't been measured.`];
   const onlyIn = (from: Map<string, unknown>, other: Map<string, unknown>) => [...from.keys()].filter((id) => !other.has(id));
   if (onlyIn(ca, cb).length || onlyIn(cb, ca).length) notes.push(`The runs cover different cases; totals aren't comparable. Only in ${names[0]}: ${onlyIn(ca, cb).join(', ') || 'none'}. Only in ${names[1]}: ${onlyIn(cb, ca).join(', ') || 'none'}.`);
-  if (ta.precision === undefined || tb.precision === undefined) notes.push('A run without precision fields predates the precision judge: — marks what it lacks, and its review cost includes the eval\'s judges.');
+  if (ta.precision === undefined || tb.precision === undefined) notes.push('— marks the precision a run lacks: it predates the precision judge or ran with --precision off.');
+  if (a.summary.reviewCostUsd === undefined || b.summary.reviewCostUsd === undefined) notes.push('A run without reviewCostUsd predates it: its review cost includes the eval\'s judges.');
   return `${overall}\n\n${perCase}\n\n${notes.join('\n')}\n`;
 }
 

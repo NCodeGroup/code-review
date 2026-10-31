@@ -1,0 +1,76 @@
+# A small, cost-capped eval on main whenever a prompt, a charter, a model or the guidance changes, so a regression shows
+# before a release reaches the repositories that use the action. The full eval stays on demand (README, Evals).
+#
+# It runs the smoke subset in evals/cases.ts with the production guidance, stops and fails past $8, and compares the run
+# with evals/baseline-smoke.json in the job summary: it fails when caught drops by more than 2 or the must-not case is
+# flagged. With no baseline yet, the run is uploaded as the proposed one and the job passes with a notice.
+#
+# It uses the organization's Bedrock key in the code-review environment, which only the default branch can use. Never
+# add a pull_request trigger: the key would then run code from any pull request.
+name: Smoke eval
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'prompts/**'
+      - 'reviewers/**'
+      - 'src/config.ts'
+      - 'guidance/**'
+  workflow_dispatch:
+
+permissions: {}
+
+# A run costs money, so a newer push waits for the running one instead of cancelling it.
+concurrency:
+  group: smoke-eval
+  cancel-in-progress: false
+
+jobs:
+  smoke-eval:
+    name: Smoke eval
+    runs-on: ubuntu-latest
+    environment: code-review
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      # The eval reads the issues a case's pull request closes.
+      issues: read
+    env:
+      LABEL: smoke-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # The precision judge's Opus calls are left out: the gate reads caught and the must-not case only.
+      - name: Run the smoke subset
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
+        run: node evals/run.ts --subset smoke --guidance full --precision off --max-cost 8 --label "$LABEL"
+
+      - name: Compare with the baseline
+        run: node evals/smoke.ts check "evals/out/$LABEL.json"
+
+      # Artifacts on a public repository are public: nothing is uploaded unless the scan passes.
+      - name: Scan the outputs for secrets
+        id: scan
+        if: ${{ !cancelled() }}
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
+        run: node evals/smoke.ts scan evals/out
+
+      - name: Upload the outputs
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-eval
+          path: evals/out/
+          retention-days: 30
+          if-no-files-found: ignore
