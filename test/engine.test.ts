@@ -197,6 +197,15 @@ test('selectionFloor adds reviewers from paths', () => {
   assert.ok(!selectionFloor([file('src/A.cs'), file('tests/A.Tests/ATests.cs')], false).includes('tests'));
 });
 
+test('selectionFloor adds data-model for a migration or a .sql file anywhere in the change', () => {
+  // Each path is matched on its own: a .sql file that isn't last, or a Migrations folder at the root that isn't first,
+  // still counts.
+  assert.ok(selectionFloor([file('db/schema.sql'), file('src/A.cs')], false).includes('data-model'));
+  assert.ok(selectionFloor([file('src/A.cs'), file('Migrations/0001_Init.cs')], false).includes('data-model'));
+  assert.ok(selectionFloor([file('src/Data/Migrations/0002_Add.cs')], false).includes('data-model'));
+  assert.ok(!selectionFloor([file('src/A.cs'), file('docs/sql.md')], false).includes('data-model'));
+});
+
 test('isInside follows symlinks out of the checkout', (t) => {
   const root = mkdtempSync(path.join(tmpdir(), 'guard-'));
   const checkout = path.join(root, 'checkout');
