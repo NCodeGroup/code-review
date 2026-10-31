@@ -10,11 +10,10 @@ import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, 
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { globToRegExp, isDocumentation, splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
+import { severityRank, type Severity } from './severity.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
-export type Severity = 'blocker' | 'should-fix' | 'nit';
-// Most severe first.
-export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
+export { severityRank, type Severity };
 
 // The exact code for a mechanical fix of a few lines: it replaces lines startLine to endLine of the new file, whole.
 export interface Suggestion {

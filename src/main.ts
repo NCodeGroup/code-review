@@ -1,17 +1,21 @@
-// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step.
-// It holds the model credentials but never the app's private key, which only the publish step sees.
+// The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step, or
+// status.json with why there's no review, for the finish step. It holds the model credentials but never the app's
+// private key or a token minted from it: those reach only the steps that write to the pull request.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
-import { commandFromEvent, skipReasonFor } from './command.ts';
+import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
+import { decideReview } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
+import { required, take } from './env.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
+import { fetchPullRequest, runUrl } from './github.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { chooseProvider } from './provider.ts';
+import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { changedLines, loadCharters, review } from './review.ts';
@@ -19,17 +23,21 @@ import { callModels, topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} isn't set.`);
-  return value;
-}
+// What the finish step needs when the review stops early: the commit, once the run has decided to review one, and the
+// secrets to keep out of the reason.
+const run: { headSha?: string | undefined; credentials: Credentials; githubToken?: string } = { credentials: {} };
 
-// Reads a variable and removes it from this process's environment, so nothing started later inherits it.
-function take(name: string): string | undefined {
-  const value = process.env[name];
-  delete process.env[name];
-  return value || undefined;
+// Writes status.json for the finish step, and, once the run has decided to review a commit, tells the action's later
+// steps there's a check run to complete even without an acknowledgement.
+function writeStatus(status: RunStatus): void {
+  const outDir = process.env['CODE_REVIEW_OUT'];
+  if (!outDir) return;
+  const secrets = [...secretValues(run.credentials), ...(run.githubToken ? [run.githubToken] : [])];
+  const record = stoppedRecord(status, run.headSha, secrets);
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(path.join(outDir, 'status.json'), record.json);
+  const output = process.env['GITHUB_OUTPUT'];
+  if (output && record.output) appendFileSync(output, record.output);
 }
 
 // The added lines of each file a finding is in, so the publish step can tell which findings can be inline comments.
@@ -61,40 +69,28 @@ async function main(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
+  if (githubToken) run.githubToken = githubToken;
   // The head the bot last reviewed, looked up once: the skip rule and the re-review both need it.
   let lastHead: Promise<string | undefined> | undefined;
-  const reviewedHead = (number: number) => () => (lastHead ??= lastReviewedHead(repository, number, githubToken));
+  const reviewedHead = (number: number) => (lastHead ??= lastReviewedHead(repository, number, githubToken));
 
-  // A /review comment carries the issue, not the pull request, so read the pull request from the API.
-  if (event.comment) {
-    const request = commandFromEvent(event);
-    if (!request) {
-      console.log('Not a /review command from someone with write access; nothing to do.');
-      return;
-    }
-    const response = await fetch(`https://api.github.com/repos/${repository}/pulls/${request.number}`, {
-      headers: { accept: 'application/vnd.github+json', ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}) },
-    });
-    if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
-    const pullRequest = (await response.json()) as { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } };
-    const reason = await skipReasonFor('comment', pullRequest, repository, reviewedHead(request.number));
-    if (reason) {
-      console.log(reason);
-      return;
-    }
-    event = { pull_request: pullRequest };
-  } else {
-    // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
-    // the same review. /review still reviews it.
-    const pullRequest = event.pull_request;
-    const reason = await skipReasonFor('automatic', pullRequest, repository, reviewedHead(pullRequest.number));
-    if (reason) {
-      console.log(reason);
-      return;
-    }
+  // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
+  // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
+  // the same review; /review still reviews it.
+  const decision = await decideReview(
+    event,
+    repository,
+    (number) => fetchPullRequest(repository, number, githubToken),
+    reviewedHead,
+  );
+  if (!decision.review) {
+    console.log(decision.reason);
+    writeStatus(skippedStatus(decision.reason));
+    return;
   }
+  if (event.comment) event = { pull_request: decision.pullRequest };
 
-  const credentials: Credentials = {};
+  const credentials = run.credentials;
   const bedrockKey = take('CODE_REVIEW_BEDROCK_KEY');
   if (bedrockKey) credentials.bedrockKey = bedrockKey;
   const requestUrl = take('ACTIONS_ID_TOKEN_REQUEST_URL');
@@ -115,17 +111,19 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(line);
   const started = Date.now();
   const pullRequest = readPullRequest(event, repository);
+  run.headSha = pullRequest.headSha || undefined;
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   pullRequest.issues = await readClosedIssues(repository, closedIssues(pullRequest.body), githubToken);
   const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'));
+  run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
   log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
   // A pull request the bot reviewed before gets a re-review of what changed since then.
-  const last = await reviewedHead(pullRequest.number)();
+  const last = await reviewedHead(pullRequest.number);
   const plan = await planReReview({
     gathered,
     checkout: prPath,
@@ -143,13 +141,13 @@ async function main(): Promise<void> {
   const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
-    const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
+    const agentRun: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
     const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
       plan,
       headSha: pullRequest.headSha,
       lastHead: last,
-      full: () => review(run, gathered, loadCharters(root), log),
-      again: (p) => reReview(run, gathered, loadCharters(root), p, log),
+      full: () => review(agentRun, gathered, loadCharters(root), log),
+      again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
     for (const warning of outcome.warnings) log(`::warning::${warning}`);
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
@@ -215,6 +213,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
+  const { status, failed } = stoppedBy(error, runUrl());
+  try {
+    writeStatus(status);
+  } catch (statusError) {
+    console.error(`::warning::Couldn't record why the review stopped: ${(statusError as Error).message}`);
+  }
+  if (!failed) {
+    console.log(`::warning::${error.message} No review ran, and nothing was charged.`);
+    return;
+  }
   console.error(`::error::${(error as Error).message}`);
   process.exitCode = 1;
 });
