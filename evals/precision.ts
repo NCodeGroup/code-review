@@ -179,7 +179,7 @@ export function realityJudge(
       budgetUsd: judgeBudgetUsd,
       cache: false,
     });
-    calls.push(result.record);
+    calls.push(...result.records);
     return result.output;
   };
 }
