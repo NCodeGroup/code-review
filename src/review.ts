@@ -1,15 +1,19 @@
-// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis.
+// Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, type AgentRun, type CallRecord } from './agent.ts';
-import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
+import { mapWithConcurrency } from './concurrency.ts';
+import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
 import { isTemplateOwned, type Template } from './template.ts';
+import { verifyReview, type RefutedFinding, type VerificationCall } from './verify.ts';
 
 export type Severity = 'blocker' | 'should-fix' | 'nit';
+// Most severe first.
+export const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 
 export interface Finding {
   severity: Severity;
@@ -46,6 +50,9 @@ export interface Review {
   upstream: ReviewedFinding[];
   // Places on the template's files past the upstream list's limit.
   upstreamOmitted: number;
+  // Findings verification refuted and dropped, with its reasons, and every verification call.
+  refuted: RefutedFinding[];
+  verification: VerificationCall[];
   calls: CallRecord[];
   // Roster reviewers the path rules and selection didn't choose.
   skipped: string[];
@@ -110,6 +117,7 @@ export interface Charters {
   selectionPrompt: string;
   synthesisPrompt: string;
   ruleCheckPrompt: string;
+  verificationPrompt: string;
   reviewers: Map<string, string>;
 }
 
@@ -134,6 +142,7 @@ export function loadCharters(root: string): Charters {
     selectionPrompt: prompt('selection'),
     synthesisPrompt: prompt('synthesis'),
     ruleCheckPrompt: prompt('rule-check'),
+    verificationPrompt: prompt('verification'),
     reviewers,
   };
 }
@@ -235,8 +244,6 @@ function synthesisDiff(gathered: Gathered, files: string[], budget: number): str
   return out || gathered.diff.slice(0, budget);
 }
 
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
-
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
 // after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
 // naming it doesn't count.
@@ -312,19 +319,6 @@ export function settledVerdict(synthesized: Verdict | undefined, movedUpstream: 
   const called: Verdict = findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
   if (!synthesized) return called;
   return movedUpstream && verdictRank[called] < verdictRank[synthesized] ? called : synthesized;
-}
-
-export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 // Lines a finding can sit on: lines the diff adds, per file. A finding elsewhere goes in the summary instead.
@@ -479,10 +473,37 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
   } else {
     summary = 'No findings.';
   }
-  // Synthesis may still place a finding in a template's file.
+  // Synthesis may still place a finding in a template's file. Its verdict is capped when that moved some of its findings
+  // upstream; without one, the verdict comes from the findings verification leaves.
   const settled = settleUpstream(findings, upstreamRaw, gathered.template, summary);
+  let verdict = synthesized ? settledVerdict(synthesized, settled.findings.length < findings.length, settled.findings) : undefined;
+  ({ summary, findings } = settled);
+
+  // Verification of the merged blockers and should-fixes, with the checkout. Off unless CODE_REVIEW_VERIFICATION=on.
+  const verified = await verifyReview({ summary, verdict, findings }, {
+    run: reviewRun,
+    diff: gathered.diff,
+    pullRequest: pullRequestBlock(gathered),
+    systemPrompt: charters.verificationPrompt,
+    charters: new Map([...charters.reviewers, [ruleCheckName, charters.ruleCheckPrompt]]),
+    log,
+    enabled: verificationOn(),
+  });
+  calls.push(...verified.calls);
+  ({ summary, verdict, findings } = verified);
 
   const skipped = roster.filter((name) => !selected.has(name));
-  const verdict = settledVerdict(synthesized, settled.findings.length < findings.length, settled.findings);
-  return { reviewers: outcomes, summary: settled.summary, verdict, findings: settled.findings, upstream: settled.upstream, upstreamOmitted: settled.upstreamOmitted, calls, skipped };
+  verdict ??= findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
+  return {
+    reviewers: outcomes,
+    summary,
+    verdict,
+    findings,
+    upstream: settled.upstream,
+    upstreamOmitted: settled.upstreamOmitted,
+    refuted: verified.refuted,
+    verification: verified.trace,
+    calls,
+    skipped,
+  };
 }

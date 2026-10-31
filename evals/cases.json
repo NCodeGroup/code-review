@@ -541,5 +541,93 @@
       }
     ],
     "source": "code-review#23, the adoption of project-template v0.41.1 (first review round). The bot posted threads on the template's .template/*.ps1, .githooks/* and .claude/commands/*, which a template update overwrites; their real fixes went to project-template#125. The draft finding on AGENTS.md was fixed in the pull request. Issue code-review#31: findings on template-owned files belong upstream, listed in the summary, not posted as threads."
+  },
+  {
+    "id": "test-gap-newest-summary-selection",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, and one `summaryComments()` helper, so both take the same newest bot summary. The pager reads up to 100 pages (10,000 comments). When every page up to that cap is full, it counts the listing as unreadable rather than complete, so the review step reviews again instead of trusting a stale head.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "1c8c1bd1122830ecfc3289221973bb4e617c56dd",
+    "expect": [
+      {
+        "file": "src/main.ts",
+        "line": 47,
+        "minSeverity": "should-fix",
+        "concern": "lastReviewedHead picks the newest bot summary itself, with summaryComments(all ?? []).at(-1), and reads that summary's head marker. The pull request adds this choice, and no test runs it: the engine test repeats the .at(-1) expression instead of calling the code, and nothing below lastReviewedHead makes the choice. A regression to the oldest summary would make the already-reviewed check review a commit again or skip one it should review."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430009747, raised as should-fix on the review at 1c8c1bd and fixed in 45e1b7f by moving the choice into a tested newestReviewedHead(). New behavior with a failure the user sees and no test below it: should-fix."
+  },
+  {
+    "id": "test-gap-posted-summary-body",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, which reads up to 100 pages. When every page up to that cap is full, it counts the listing as unreadable rather than complete. Both steps take the newest bot summary through the shared, tested `summaryComments()` and `newestReviewedHead()`.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "9f052edc584cb80e8afba2f0fdbf9eea5dc2cda8",
+    "expect": [
+      {
+        "minSeverity": "should-fix",
+        "concern": "No postSummary test checks the body of the POST that creates the new summary comment: the tests' fakeApi returns from its POST branch before it records the body, so only the PATCH bodies are asserted. A regression that posted an empty or wrong summary would pass every test, and no test below postSummary sends that body."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430063360, raised as should-fix on the review at 9f052ed and fixed in 650b284 by recording and asserting the POST body. New behavior with a failure the user sees and no test below it: should-fix."
+  },
+  {
+    "id": "test-gap-first-review",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, which reads up to 100 pages. When every page up to that cap is full, it counts the listing as unreadable rather than complete. Both steps take the newest bot summary through the shared, tested `summaryComments()` and `newestReviewedHead()`.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "3e75998277983d28b90598f254b751d9aecf1c45",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "minSeverity": "should-fix",
+        "concern": "No postSummary test covers a first review, where the listing holds no earlier bot summary, because the tests' fakeApi always lists two. The test where the listing fails already runs that path (the GET, then the POST, and no PATCH), and summaryComments has its own tests, so another test is a nit at most."
+      }
+    ],
+    "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430030422, raised as should-fix on the review at 3e75998. A second test for a path another test already runs: a nit, not a should-fix."
+  },
+  {
+    "id": "test-gap-wrapper-last-reviewed-head",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, which reads up to 100 pages. When every page up to that cap is full, it counts the listing as unreadable rather than complete. Both steps take the newest bot summary through the shared, tested `summaryComments()` and `newestReviewedHead()`.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "650b28424c9e4ab920699e70433b04f3612e9050",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "src/main.ts",
+        "minSeverity": "should-fix",
+        "concern": "lastReviewedHead has no test of its own, neither for its choice of the newest summary nor for a comment page that cannot be read. It only composes readCommentPages() and newestReviewedHead(), which each have tests for those cases, so a test of the wrapper is a nit at most."
+      }
+    ],
+    "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430087730, raised as should-fix on the review at 650b284. A wrapper over pieces with their own tests: a nit, not a should-fix."
+  },
+  {
+    "id": "test-gap-head-marker-pin",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 30,
+    "title": "Post a new summary comment for each review",
+    "body": "Each review now posts its own summary comment at the bottom of the conversation, and the bot's earlier summary comments are edited down to a one-line \"Superseded by the review at <sha>\" link, so only the newest summary is expanded.\n`postSummary()` in the new `src/comments.ts` posts the new comment before collapsing older ones, so a failed post leaves the old summary intact. A failed collapse, or a failed listing of the earlier summaries, only logs a warning and still posts. Tests cover the order and each failure path.\nThe publish step and the already-reviewed check share one comment pager, `readCommentPages()`, which reads up to 100 pages. When every page up to that cap is full, it counts the listing as unreadable rather than complete. Both steps take the newest bot summary through the shared, tested `summaryComments()` and `newestReviewedHead()`.\nChosen over editing the review body (which posts nothing when a re-review has no new findings) and over `minimizeComment` (no new API or permission needed).\n\nCloses #21\n",
+    "base": "f1281912b4c1447a839f5d0a73e75c95fe7ca53d",
+    "head": "11a8defeb23ccfdb799c2d2f3187ae5a558c1a9c",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "minSeverity": "should-fix",
+        "concern": "No test covers a newest bot summary without a head marker, where newestReviewedHead returns undefined rather than an older summary's head. That is the safe behavior, since an automatic run only reviews again, and the finding names no defect, only that no test pins it, so it is a nit at most."
+      }
+    ],
+    "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430150795, raised as should-fix on the review at 11a8def. A test that would only pin behavior nothing shows is wrong: a nit, not a should-fix."
   }
 ]
