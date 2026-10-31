@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A per-review cost ceiling guards against a runaway review: $8 plus $4 for each part of the diff, overridable with `CODE_REVIEW_MAX_RUN_USD`. Reviewer calls not started once it is reached are skipped and shown as `skipped: run budget` in the check run, synthesis still runs on what was found, and the summary warns that the review is incomplete ([#50](https://github.com/NCodeGroup/code-review/issues/50)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.

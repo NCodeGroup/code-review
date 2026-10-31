@@ -16,6 +16,8 @@ repository under review. Results and the trace are scanned for secrets before th
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
+Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis still runs on what was found, and the summary warns that the review is incomplete and doesn't approve. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
+
 ## Using it
 
 ```yaml
