@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Settings checks: `tiers:` can't put `security` below Sonnet (a lower tier is raised to Sonnet, with a warning), and a `skip:` glob that matches nearly every path, such as `**`, and a `CODE_REVIEW_SHADOW` name that matches no reviewer are warnings in the check run ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
+- An eval case can record the author association of each issue its description closes, as `issueAssociations` (a member by default), and the evals leave out a non-writer's issue as the review step does ([#109](https://github.com/NCodeGroup/code-review/issues/109)).
 
 ### Changed
 
@@ -20,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `api-compat` floor also reads `IsPackable` from `Directory.Build.props` and `Directory.Build.targets`, in MSBuild's order: the props from the root down, then the `.csproj`, then the targets, the last that sets it winning ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
 - Verification no longer drops a refuted blocker or `security` finding: it stays as a question one severity lower, with the refutation in its evidence. Any refutation must cite a line of the checkout outside the lines the pull request adds; one that rests only on the change's own lines keeps the finding as a question ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
 - Verification stops at the run's cost ceiling like the reviewer calls: its calls that haven't started are skipped, their findings stay unverified, and the summary says how many were skipped ([#87](https://github.com/NCodeGroup/code-review/issues/87)).
+- The evals read the issues a case's pull request closes with the review step's own reader, so the two can't drift apart ([#111](https://github.com/NCodeGroup/code-review/issues/111)).
 
 ### Fixed
 
@@ -34,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A step that always runs revokes the acknowledgement's app token before the review step starts, even when the acknowledgement script never ran or stopped before revoking it ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - Changed file names are logged without control characters, so a file name can't break a log line or start a workflow command ([#92](https://github.com/NCodeGroup/code-review/issues/92)).
 - One-click suggestion blocks are posted only on pull requests whose author can write to the repository. On anyone else's, the fix is in prose only and the check run says how many suggestions were held back, so a model-written change prompted by an outsider's code is never one click from being committed ([#88](https://github.com/NCodeGroup/code-review/issues/88)).
+- Every line the engine writes to the workflow log is made one printable line in one place: a line break becomes a space and other control characters are dropped, so a file name or other pull request text in any log line can't break it, start a workflow command or forge another line ([#110](https://github.com/NCodeGroup/code-review/issues/110)).
 
 ## [0.4.0] - 2026-10-31
 
