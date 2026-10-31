@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFromEvent, skipReason } from './command.ts';
+import { commandFromEvent, skipReasonFor } from './command.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, maxIssueChars, readPullRequest } from './gather.ts';
@@ -86,8 +86,7 @@ async function main(): Promise<void> {
     });
     if (!response.ok) throw new Error(`Couldn't read pull request #${request.number}: HTTP ${response.status}`);
     const pullRequest = (await response.json()) as { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } };
-    // A /review comment reviews a commit already reviewed again, so only the fork rule applies.
-    const reason = await skipReason(pullRequest, repository);
+    const reason = await skipReasonFor('comment', pullRequest, repository, () => lastReviewedHead(repository, request.number, githubToken));
     if (reason) {
       console.log(reason);
       return;
@@ -97,7 +96,7 @@ async function main(): Promise<void> {
     // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
     // the same review. /review still reviews it.
     const pullRequest = event.pull_request;
-    const reason = await skipReason(pullRequest, repository, () => lastReviewedHead(repository, pullRequest.number, githubToken));
+    const reason = await skipReasonFor('automatic', pullRequest, repository, () => lastReviewedHead(repository, pullRequest.number, githubToken));
     if (reason) {
       console.log(reason);
       return;

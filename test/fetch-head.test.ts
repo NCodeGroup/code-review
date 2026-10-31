@@ -85,6 +85,15 @@ test('fetchPullRequestHead says the head moved, and leaves nothing behind, when 
   assert.ok(existsSync(path.join(dir, '.git')));
 });
 
+test('fetchPullRequestHead keeps the fetch\'s own error, and logs why, when the cleanup after it fails', (t) => {
+  const { remote } = fixture();
+  const logged = t.mock.method(console, 'error', () => {});
+  const remove = () => { throw new Error('folder in use'); };
+  assert.throws(() => fetchPullRequestHead({ path: target(), remoteUrl: pathToFileURL(remote).href, number: 1, sha: 'a'.repeat(40), remove }), /Couldn't fetch commit aaaaaaa/);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0]!.arguments[0]), /Couldn't remove .* after the failed fetch: folder in use/);
+});
+
 test('fetchPullRequestHead accepts a folder already checked out at the commit and refuses one at another', () => {
   const { remote, head, main } = fixture();
   const url = pathToFileURL(remote).href;
@@ -184,13 +193,18 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
     const port = /^P (\d+)$/m.exec(output)![1];
     const dir = target();
     const started = Date.now();
-    // The time limit, and nothing else, ends it: the error says git was timed out, and it came soon after the limit.
+    // The time limit, and nothing else, ends it: the error says git was timed out, and not before the limit. There is no
+    // upper bound on the time, which a loaded runner could break; ETIMEDOUT already shows the limit ended it.
     assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc.*ETIMEDOUT/s);
     const elapsed = Date.now() - started;
     assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
-    assert.ok(elapsed < 10_000, `it ended after ${elapsed} ms, far past its 1500 ms limit`);
-    // The folder's cleanup after a failed fetch is the 'leaves nothing behind' test's. Here, on Windows, the killed git's
-    // own child (git-remote-http) can keep the folder for a while; the error above still comes through.
+    // The killed fetch's folder is removed too. On Windows the killed git's own child (git-remote-http) can hold it past
+    // the cleanup's retries, so this is checked where the review runs: Linux, and macOS.
+    if (process.platform !== 'win32') {
+      const deadline = Date.now() + 5_000;
+      while (existsSync(dir) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.ok(!existsSync(dir), 'the timed-out fetch left its folder behind');
+    }
   } finally {
     server.kill();
   }

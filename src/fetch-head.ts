@@ -21,6 +21,11 @@ export const fetchTimeoutMs = 180_000;
 const cleanupRetries = 10;
 const cleanupRetryDelayMs = 200;
 
+// Removes the folder a failed fetch made. A test passes its own to make the removal fail.
+export function removeFolder(folder: string): void {
+  rmSync(folder, { recursive: true, force: true, maxRetries: cleanupRetries, retryDelay: cleanupRetryDelayMs });
+}
+
 export interface FetchHead {
   // The folder to fill. A folder that is already a repository at the named commit is left alone, as a workflow that
   // checks the head out itself expects.
@@ -33,6 +38,8 @@ export interface FetchHead {
   token?: string;
   // Replaces the default limit on each fetch, in milliseconds. It must be positive: there is no way to turn the limit off.
   timeoutMs?: number;
+  // Replaces `removeFolder`, the cleanup after a failed fetch.
+  remove?: (folder: string) => void;
 }
 
 // The fetch's inputs from the parsed pull request: the commit is the one the event or the API named.
@@ -131,7 +138,7 @@ export function fetchPullRequestHead(options: FetchHead): void {
       // git killed at its time limit can leave a child holding the folder for a moment, so retry, and never let a failed
       // cleanup hide the fetch's own error.
       try {
-        rmSync(options.path, { recursive: true, force: true, maxRetries: cleanupRetries, retryDelay: cleanupRetryDelayMs });
+        (options.remove ?? removeFolder)(options.path);
       } catch (cleanupError) {
         // The fetch's error below stays the one thrown; this says why the next attempt will find the folder.
         console.error(`Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);

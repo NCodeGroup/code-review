@@ -42,3 +42,14 @@ export async function skipReason(
   if (head && reviewedHead && (await reviewedHead()) === head) return `${head.slice(0, 7)} was already reviewed; comment /review to review it again.`;
   return undefined;
 }
+
+// The skip rules for one run. A /review comment reviews a commit again on purpose, so only the fork rule applies and the
+// reviewed head is never looked up; an automatic run also skips a head already reviewed.
+export function skipReasonFor(
+  trigger: 'comment' | 'automatic',
+  pullRequest: Parameters<typeof skipReason>[0],
+  repository: string,
+  reviewedHead: () => Promise<string | undefined>,
+): Promise<string | undefined> {
+  return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
+}

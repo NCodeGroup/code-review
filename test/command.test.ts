@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { commandFromEvent, isFromFork, skipReason } from '../src/command.ts';
+import { commandFromEvent, isFromFork, skipReason, skipReasonFor } from '../src/command.ts';
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
   const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
@@ -43,10 +43,35 @@ test('skipReason skips an automatic review of a head already reviewed', async ()
   assert.match((await skipReason(own, 'NCodeGroup/code-review', lookup('a'.repeat(40)).fn)) ?? '', /aaaaaaa was already reviewed; comment \/review/);
 });
 
-test('skipReason reviews a head not yet reviewed, a /review that passes no lookup, and a pull request with no head commit', async () => {
+test('skipReason reviews a head not yet reviewed', async () => {
   assert.equal(await skipReason(own, 'NCodeGroup/code-review', lookup('b'.repeat(40)).fn), undefined);
+});
+
+test('skipReason reviews when no lookup is passed', async () => {
   assert.equal(await skipReason(own, 'NCodeGroup/code-review'), undefined);
+});
+
+test('skipReason reviews a pull request with no head commit, without looking up the reviewed head', async () => {
   const looked = lookup('a'.repeat(40));
   assert.equal(await skipReason({ number: 7, head: { repo: { full_name: 'NCodeGroup/code-review' } } }, 'NCodeGroup/code-review', looked.fn), undefined);
   assert.equal(looked.calls, 0);
+});
+
+test('skipReasonFor reviews a head already reviewed again for a /review comment, without looking it up', async () => {
+  const looked = lookup('a'.repeat(40));
+  assert.equal(await skipReasonFor('comment', own, 'NCodeGroup/code-review', looked.fn), undefined);
+  assert.equal(looked.calls, 0);
+});
+
+test('skipReasonFor skips a head already reviewed for an automatic run', async () => {
+  const looked = lookup('a'.repeat(40));
+  assert.match((await skipReasonFor('automatic', own, 'NCodeGroup/code-review', looked.fn)) ?? '', /already reviewed/);
+  assert.equal(looked.calls, 1);
+});
+
+test('skipReasonFor skips a fork for either trigger', async () => {
+  const fork = { ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } };
+  for (const trigger of ['comment', 'automatic'] as const) {
+    assert.match((await skipReasonFor(trigger, fork, 'NCodeGroup/code-review', lookup(undefined).fn)) ?? '', /comes from a fork/);
+  }
 });
