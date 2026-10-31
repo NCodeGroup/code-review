@@ -2,7 +2,7 @@
 
 import type { CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import type { Finding, ReviewedFinding, Severity, Verdict } from './review.ts';
+import { severityRank, type Finding, type ReviewedFinding, type Severity, type Verdict } from './review.ts';
 
 export interface ReviewerResult {
   name: string;
@@ -34,7 +34,6 @@ export interface Results {
 }
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
-const severityRank: Record<Severity, number> = { blocker: 0, 'should-fix': 1, nit: 2 };
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
 export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', 'request-changes': '⛔ Request changes', comment: '💬 Comment' };
 
