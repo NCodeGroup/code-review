@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
-import { commentPageSize, errorText, readCommentPages } from './comments.ts';
+import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin } from './results.ts';
@@ -89,7 +89,7 @@ export async function findFinding(ref: FindingRef, where: { repository: string; 
     const onThis = comment?.pull_request_url?.toLowerCase().endsWith(`/repos/${where.repository.toLowerCase()}/pulls/${where.number}`);
     if (comment && id && onThis) return { found: { id, comment } };
   }
-  const all = await readCommentPages((page) => read(`/repos/${where.repository}/pulls/${where.number}/comments?per_page=${commentPageSize}&page=${page}`) as Promise<ReviewComment[] | undefined>);
+  const all = await readCommentPages(`/repos/${where.repository}/pulls/${where.number}/comments`, (url) => read(url) as Promise<ReviewComment[] | undefined>);
   if (!all) throw new Error(`Couldn't list the review comments on #${where.number}.`);
   const newest = newestReviewFindings(all);
   const found = ref.kind === 'id' ? newest.find((f) => f.id === ref.id) : undefined;
