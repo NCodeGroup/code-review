@@ -4,6 +4,7 @@ import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { budgets } from '../src/config.ts';
 import type { Decision } from '../src/context.ts';
 import type { ChangedFile, Gathered, RuleFile } from '../src/gather.ts';
+import { creditsRanOutReason } from '../src/provider.ts';
 import { callModels, checkSummary, checkText, shortModel, type Results } from '../src/results.ts';
 import { documentationOnly, partTiers, review, reviewDepth, sensitiveFiles, sensitiveParts, type Charters, type Finding } from '../src/review.ts';
 
@@ -149,14 +150,14 @@ async function run(input: Gathered, options: { env?: Record<string, string>; fin
     calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd });
     const record = { role: request.role, provider: agentRun.provider, model: request.tier, costUsd: 0.01, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
     const failure = options.error?.(request.role);
-    if (failure) return { output: undefined, record, error: failure };
+    if (failure) return { output: undefined, records: [record], error: failure };
     const output =
       request.role === 'context' ? { rules: [], decisions: [] }
       : request.role === 'selection' ? { add: [] }
       : request.role === 'synthesis' ? { summary: 'Merged.', verdict: 'comment', findings: [] }
       : request.role === 'verification' ? { verifications: [] }
       : { findings: options.findings?.(request.role) ?? [] };
-    return { output: output as T, record };
+    return { output: output as T, records: [record] };
   };
   const saved = depthEnv.map((name) => [name, process.env[name]] as const);
   for (const name of depthEnv) delete process.env[name];
@@ -287,4 +288,15 @@ test('the check run says when a review was deep or light, and shows each reviewe
   });
   assert.match(text, /\| Reviewer \| Model \| Status \| Findings \| Cost \|/);
   assert.match(text, /\| security \| opus-5-5 \| ran \| 0 \| \$0\.000 \|/);
+});
+
+test('a reviewer\'s models leave out a call the Claude API refused for credits, and name a model once across providers', () => {
+  const calls = [
+    { role: 'reviewer:correctness', model: 'claude-opus-5-5', outcome: 'success' },
+    { role: 'reviewer:correctness', model: 'claude-sonnet-5-5', outcome: creditsRanOutReason },
+    { role: 'reviewer:correctness', model: 'global.anthropic.claude-sonnet-5-5', outcome: 'success' },
+    { role: 'reviewer:correctness', model: 'global.anthropic.claude-opus-5-5', outcome: 'success' },
+  ];
+  assert.equal(callModels(calls, 'reviewer:correctness'), 'claude-opus-5-5, global.anthropic.claude-sonnet-5-5, global.anthropic.claude-opus-5-5');
+  assert.equal(shortModel(callModels(calls, 'reviewer:correctness')), 'opus-5-5, sonnet-5-5');
 });
