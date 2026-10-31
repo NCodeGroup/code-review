@@ -10,6 +10,7 @@ import {
   lastModel,
   runAgent,
   totalCost,
+  withoutTools,
   type AgentRequest,
   type AgentRun,
   type BedrockFallback,
@@ -225,6 +226,19 @@ test('a credit error on the context call reruns it on Bedrock, and the reviewers
   assert.deepEqual(byRole('selection'), [['bedrock', modelIds.bedrock.sonnet, 'success']]);
   // The picked rule puts conventions on the floor and runs a rule check.
   assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['conventions', 'ran'], ['tests', 'ran'], ['rule-check', 'ran']]);
+});
+
+test('withoutTools keeps the run\'s provider, proxy, fallback and query, and drops its checkout and working folder', () => {
+  const fallback: BedrockFallback = { switched: false };
+  const query = fakeQuery([], () => false);
+  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work', fallback, query };
+  const bare = withoutTools(run);
+
+  assert.deepEqual(Object.keys(bare).sort(), ['fallback', 'provider', 'proxyUrl', 'query']);
+  assert.equal(bare.provider, 'anthropic');
+  assert.equal(bare.proxyUrl, 'http://127.0.0.1:1');
+  assert.equal(bare.fallback, fallback);
+  assert.equal(bare.query, query);
 });
 
 test('the Bedrock rerun gets the placeholder and the proxy, never a credential or a job variable', async () => {
