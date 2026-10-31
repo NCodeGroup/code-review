@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, type DroppedFinding } from './claims.ts';
-import { writers } from './command.ts';
+import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, defaultReviewerTiers, maxTurns, minConfidence, reviewerTiers, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
@@ -240,7 +240,7 @@ function findingText(body: string): string {
 }
 
 // The bot's findings in a pull request's review threads, with the newest replies from people with write access
-// (`writers`): as for the description, no one else's reply reaches the reviewer.
+// (`writerAssociations`): as for the description, no one else's reply reaches the reviewer.
 export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
   const found: EarlierFinding[] = [];
   for (const thread of threads) {
@@ -259,7 +259,7 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
       resolved: thread.isResolved,
       url: first.url,
       replies: rest
-        .filter((c) => c.author && c.author.login !== botAuthor && writers.has(c.authorAssociation))
+        .filter((c) => c.author && c.author.login !== botAuthor && writerAssociations.has(c.authorAssociation))
         .map((c) => ({ author: c.author!.login, body: c.body.slice(0, maxReplyChars) })),
     });
   }
@@ -611,12 +611,16 @@ export async function reReview(
       verification: verified?.trace ?? [],
       calls,
       skipped: [],
+      // A re-review has one reviewer and no settings of its own to warn about, and never goes deep or light.
+      warnings: [],
+      depth: 'standard',
+      sensitiveFiles: [],
       earlier: statuses,
     };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
 
-  const tier: ModelTier = reviewerTiers()[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
+  const tier: ModelTier = reviewerTiers(undefined, gathered.tiers)[reReviewer] ?? defaultReviewerTiers[reReviewer]!;
   const since = plan.lastHead.slice(0, 7);
   const context = [
     `Conventions of this repository, from its default branch:\n<conventions>\n${gathered.conventions || '(none)'}\n</conventions>${templateBlock(gathered)}`,

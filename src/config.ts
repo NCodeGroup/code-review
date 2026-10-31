@@ -16,7 +16,8 @@ export const modelIds: Record<Provider, Record<ModelTier, string>> = {
 export const bedrockRegion = 'us-west-2';
 
 // Each reviewer's model. Haiku by default; Sonnet where the job needs deeper reasoning or reads a lot of rules, since
-// Sonnet 5.5 has no long-prompt premium. CODE_REVIEW_TIERS overrides it, for example "conventions=haiku,tests=sonnet".
+// Sonnet 5.5 has no long-prompt premium. The repository's tiers: setting overrides it, a deep or light review's tiers
+// override that, and CODE_REVIEW_TIERS overrides them all, for example "conventions=haiku,tests=sonnet".
 export const defaultReviewerTiers: Record<string, ModelTier> = {
   correctness: 'sonnet',
   security: 'sonnet',
@@ -25,8 +26,18 @@ export const defaultReviewerTiers: Record<string, ModelTier> = {
   completeness: 'sonnet',
 };
 
-export function reviewerTiers(override = process.env['CODE_REVIEW_TIERS'] ?? ''): Record<string, ModelTier> {
-  const tiers = { ...defaultReviewerTiers };
+// A deep review's reviewers, for the parts of the diff with a file config.yml's sensitive: names. In the evals Opus
+// caught four times what the all-Haiku baseline did, at about twice Sonnet's cost, so it's kept to sensitive code.
+export const deepReviewerTiers: Record<string, ModelTier> = { correctness: 'opus', security: 'opus' };
+// A light review's one reviewer, for a pull request that changes only documentation.
+export const lightReviewerTiers: Record<string, ModelTier> = { hygiene: 'haiku' };
+
+export function reviewerTiers(
+  override = process.env['CODE_REVIEW_TIERS'] ?? '',
+  repository: Record<string, ModelTier> = {},
+  depth: Record<string, ModelTier> = {},
+): Record<string, ModelTier> {
+  const tiers = { ...defaultReviewerTiers, ...repository, ...depth };
   for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
     const [name, tier] = pair.split('=').map((s) => s.trim());
     if (name && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) tiers[name] = tier;
@@ -43,8 +54,9 @@ export const budgets = {
   synthesis: 0.75,
   // One Sonnet call that answers `/review explain` about one finding.
   explain: 0.5,
-  // Per verification call, on Sonnet.
+  // Per verification call, on Sonnet, and on Opus for a deep review's findings in sensitive files.
   verification: 0.5,
+  deepVerification: 1,
 };
 
 // The ceiling on one review's total cost: a guard against a runaway review only, far above normal spend (about $0.60 to
@@ -70,8 +82,8 @@ export function runCeiling(
 export const maxTurns = { specialist: 30, explain: 20, verification: 20 };
 
 // Verification: after synthesis, Sonnet calls with the checkout try to prove or refute each blocker and should-fix, a
-// file's findings at a time, up to findingsPerVerification per call. It stays off until an eval shows it gains more than
-// it costs; CODE_REVIEW_VERIFICATION=on turns it on.
+// file's findings at a time, up to findingsPerVerification per call, and Opus calls for a deep review's sensitive files.
+// It stays off until an eval shows it gains more than it costs; CODE_REVIEW_VERIFICATION=on turns it on.
 export const findingsPerVerification = 8;
 // Verification calls in flight at once, after the first call has cached the block they share.
 export const verificationConcurrency = 6;
@@ -108,6 +120,11 @@ export function shadowPromptRate(value = process.env['CODE_REVIEW_SHADOW_RATE'] 
 export const maxChunkChars = 160_000;
 export const maxChunks = 6;
 export const maxConventionChars = 40_000;
+// The repository's own settings (.github/code-review/): the policies config.yml names have a budget of their own, after
+// the conventions from AGENTS.md; each settings file is read up to maxSettingsFileChars.
+export const maxPolicyChars = 40_000;
+export const maxSettingsFileChars = 100_000;
+export const maxProjectReviewers = 10;
 export const maxPullRequestTextChars = 8_000;
 export const maxIssueChars = 8_000;
 

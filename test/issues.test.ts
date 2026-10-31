@@ -66,7 +66,7 @@ test('mergeSynthesis keeps the issue synthesis says tracks a finding only when i
 
 const diff = ['diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1,1 +1,2 @@', ' a', '+b', ''].join('\n');
 const gathered: Gathered = {
-  pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+  pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
   mergeBase: 'b',
   files: [{ path: 'src/a.ts', additions: 1, deletions: 0, generated: false, shown: true }],
   diff,
@@ -76,6 +76,12 @@ const gathered: Gathered = {
   guidance: [],
   decisions: [],
   commits: [],
+  sensitive: [],
+  skippedByConfig: [],
+  policies: [],
+  tiers: {},
+  projectReviewers: [],
+  warnings: [],
 };
 const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, { text: n, shadow: false }])), shadowPrompts: {} };
 

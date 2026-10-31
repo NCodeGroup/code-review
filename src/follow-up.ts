@@ -4,7 +4,7 @@
 // resolves or answers anyone else's thread. A thread someone with write access dismissed, by resolving it without a code
 // change or with a 👎, counts as already posted, so its finding isn't posted again.
 
-import { writers } from './command.ts';
+import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { autopilotPrefix } from './pause.ts';
@@ -99,7 +99,7 @@ export function planFollowUps(
     if (status.status !== 'open' || dismissed.has(thread.id)) continue;
     const last = thread.comments.nodes.at(-1);
     const login = last?.author?.login;
-    if (!last || !login || login === botAuthor || !writers.has(last.authorAssociation) || !last.body.trimStart().startsWith(autopilotPrefix)) continue;
+    if (!last || !login || login === botAuthor || !writerAssociations.has(last.authorAssociation) || !last.body.trimStart().startsWith(autopilotPrefix)) continue;
     if (alreadyAnswered(thread)) continue;
     actions.push({ kind: 'reply', thread, id: posted.id, body: stillOpenReply(results.headSha, status.note, login) });
   }

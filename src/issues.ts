@@ -1,7 +1,7 @@
 // The repository's open issues, for synthesis to mark a finding one of them already tracks. Only issues opened by
 // someone with write access are read, so a stranger can't file an issue whose title waves a finding away.
 
-import { writers } from './command.ts';
+import { writerAssociations } from './command.ts';
 
 // Pages of 100 open issues read at most, the most recently updated first.
 export const maxOpenIssuePages = 2;
@@ -29,6 +29,6 @@ export async function readOpenIssues(repository: string, token: string | undefin
   }
   const skip = new Set(exclude);
   return read
-    .filter((i) => typeof i.number === 'number' && !i.pull_request && writers.has(i.author_association ?? '') && !skip.has(i.number))
+    .filter((i) => typeof i.number === 'number' && !i.pull_request && writerAssociations.has(i.author_association ?? '') && !skip.has(i.number))
     .map((i) => ({ number: i.number!, title: i.title ?? '' }));
 }

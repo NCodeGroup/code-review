@@ -3,7 +3,7 @@
 
 import { lastModel, totalCost, type CallRecord } from './agent.ts';
 import type { Provider } from './config.ts';
-import { topSeverity, type Results, type ReviewerResult, type ShadowResults } from './results.ts';
+import { callModels, topSeverity, type Results, type ReviewerResult, type ShadowResults } from './results.ts';
 import { changedLines, type Review, type ReviewerOutcome } from './review.ts';
 
 export interface ReviewContext {
@@ -15,6 +15,10 @@ export interface ReviewContext {
   switchedToBedrock?: string;
   durationMs: number;
   notShown: string[];
+  // Changed files the repository's config.yml skip: leaves out of the review.
+  skippedByConfig?: string[];
+  // What in the repository's .github/code-review/ settings gather couldn't use; the review's own come after them.
+  warnings?: string[];
   diff: string;
   // The project template's repository, when the pull request adopts or updates it: where upstream findings belong.
   template?: string;
@@ -30,7 +34,7 @@ function reviewerResults(outcomes: ReviewerOutcome[], calls: CallRecord[]): Revi
     return {
       name,
       status,
-      model: lastModel(calls, `reviewer:${name}`),
+      model: callModels(calls, `reviewer:${name}`),
       findingCount: findings.length,
       ...(top ? { topSeverity: top } : {}),
       ...(error ? { error } : {}),
@@ -75,7 +79,11 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     costUsd: totalCost(outcome.calls),
     durationMs: context.durationMs,
     notShown: context.notShown,
+    ...(context.skippedByConfig ? { skippedByConfig: context.skippedByConfig } : {}),
+    warnings: [...(context.warnings ?? []), ...outcome.warnings],
     changedLines: changedLinesFor(context.diff, outcome.findings.map((f) => f.file)),
+    depth: outcome.depth,
+    sensitiveFiles: outcome.sensitiveFiles,
     ...(context.recordedHead !== undefined ? { recordedHead: context.recordedHead } : {}),
     ...(context.reReview ? { reReview: context.reReview } : {}),
     ...(shadow ? { shadow } : {}),

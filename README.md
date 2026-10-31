@@ -36,13 +36,27 @@ a second. When there's no review to publish, a last step completes it with why, 
 A failed review posts this check run even when the acknowledgement didn't happen, once the run has decided which commit
 to review.
 
+The reviewers see a pull request's description, its commit subjects and the issues its description closes only when
+their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
+GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
+request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
+A `/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below
+checks before the engine starts, so a private organization member can't start a review that way.
+
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
 A rule in the learned guidance (`guidance/`) that came only from instruction files, such as C# conventions, carries their files as a tag, `` *Applies to:* `**/*.cs` ``, and reaches a review only when the pull request changes such a file, and in a diff reviewed in parts only the parts that change one. Rules without a tag apply to every file. `npm run train` writes the tags, and `npm run train -- --retag` rewrites them in the committed guidance from each rule's sources without calling a model.
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis, and verification when it's on, still run on what was found, and the summary warns that the review is incomplete and doesn't approve. Shadow calls count toward it too, but the shadow-prompt twins start after every live reviewer call, and a skipped shadow reviewer doesn't make the review incomplete. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
-**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each. The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call, or an Opus call for a deep review's sensitive files, with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each ($1 on Opus). The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence naming the findings verification refuted and counting the ones it made questions. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+
+Most pull requests get the **standard** review above. Two kinds get another ([#42](https://github.com/NCodeGroup/code-review/issues/42)), named at the start of the summary and in the check run:
+
+- **Deep review (sensitive paths).** When a changed file that isn't generated matches a `sensitive:` glob in the repository's [settings](#repository-settings), the parts of the diff with such a file get `correctness` and `security`, added if selection didn't choose them, on Opus instead of Sonnet, and verification, when it's on, checks the findings in those files on Opus. The other parts of a large diff keep their usual models. In the evals, Opus reviewers caught four times what the all-Haiku baseline did, at about twice Sonnet's cost, so Opus is kept to the code a repository marks sensitive. The check run's Model column shows each reviewer's models, both when its parts differ. Documentation in a sensitive folder makes the review deep too, not light.
+- **Light review (documentation only).** When every changed file is documentation (a `.md`, `.txt` or `.rst` file, or anything in a `doc/` or `docs/` folder, `CHANGELOG.md` among them, but not a `PublicAPI.*.txt` listing), or the pull request is a template update, changing `.template-version` or `.copier-answers.yml` and otherwise only files the project template owns or documentation, and no changed file is code, a script or a git hook (a `.ps1` or `.sh` file in `docs/` or in the template's `.template/` folder included), `hygiene` alone reviews it, on Haiku, and its findings are posted as it reported them, except one that says a changed file isn't changed, which no review posts: no context, selection, rule-check, synthesis or verification call. It costs a few cents instead of $0.60 to $2.10. A small code change still gets the standard review. Agent instructions such as `CLAUDE.md` and `.github/skills/` are Markdown, so they count as documentation; a repository that wants them reviewed closely lists them in `sensitive:`.
+
+`CODE_REVIEW_TIERS` overrides any reviewer's model in both, as it does in a standard review: `correctness=sonnet` keeps a deep review's `correctness` on Sonnet.
 
 ### Shadow reviewers and prompts
 
@@ -262,7 +276,8 @@ of review converge:
   that differ from that diff at the last reviewed head, which the summary comment records, and what the author took
   out since. Merging the default branch in or rebasing onto it changes nothing by itself, and nothing from the
   default branch is reviewed;
-- only `correctness` reviews them, on Sonnet, with the earlier findings and the replies in their threads (from people
+- only `correctness` reviews them, on Sonnet unless [`tiers:`](#repository-settings) or `CODE_REVIEW_TIERS` names
+  another model, never deep or light, with the earlier findings and the replies in their threads (from people
   with write access). It checks each unresolved finding against the code now (fixed, still open, or answered), and it
   doesn't raise again what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
@@ -282,6 +297,75 @@ of review converge:
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
 gets a full review instead. A review whose reviewers all failed doesn't count as the last review: its summary records
 the head reviewed before it, so the next re-review still covers what it missed.
+
+## Repository settings
+
+A repository keeps its own review settings in `.github/code-review/`, which the project template never renders, so a
+template update never touches it. The engine reads the folder from the `base` checkout of the default branch only,
+never from the pull request, so a pull request can't soften its own review: one that edits these files is reviewed
+with the copy already on the default branch, and the edit itself is reviewed like any other change.
+
+- `config.yml`, every key optional:
+  - `sensitive:` path globs for a [deep review](#how-a-review-runs): a pull request that changes a file they match
+    gets `correctness` and `security` on Opus for the parts of the diff with it, and verification on Opus for the
+    findings in it. None by default.
+  - `skip:` path globs that are never reviewed, such as vendored code. The check run lists each changed file they
+    skip as "skipped by config", so nothing is dropped silently. When they skip every changed file, no model runs and
+    the summary says nothing was reviewed.
+  - `policies:` files, by their path from the repository root, that every reviewer gets as conventions, after the
+    conventions from `AGENTS.md`, with their path and within a budget of 40,000 characters of their own. A path that
+    is absolute, contains `..` or a backslash, or resolves outside the checkout through a symlink is left out.
+  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults. A project reviewer runs
+    on `haiku`, like the engine's `hygiene` and `tests`, unless `tiers:` names it. A name that matches no reviewer on
+    the roster, engine or project, is a warning in the check run.
+- `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
+  the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
+- `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase
+  letters, digits and hyphens. Each joins the roster as `project:<name>`, beside the engine's reviewers, never
+  replacing one; selection may add it, and a `paths:` frontmatter, a list of globs or one comma-separated string,
+  adds it to every pull request that changes a matching file. `shadow: true` in its frontmatter runs it in shadow, as
+  for the engine's charters ([Shadow reviewers and prompts](#shadow-reviewers-and-prompts)). Frontmatter with any
+  other key, a bad glob or a `shadow:` that isn't `true` or `false` is a warning, and the reviewer loads without its
+  paths. At most 10 are loaded.
+
+`config.yml` is a small subset of YAML: top-level keys whose values are lists or, for `tiers:`, a mapping, in block or
+`[a, b]` style, with comments and quoted strings. Quote a glob that starts with `*`, since YAML reads an unquoted one as
+an alias. A setting the engine can't use, such as an unknown key, a missing policy or anything outside the subset,
+gives a warning in the check run, and the review runs with the defaults for that file; it never fails the run. Globs
+work like `applyTo:`: `**` spans folders, `*` and `?` stay within one.
+
+For example, NCodeGroup/Identity could mark its JOSE, JWT, JWK and secrets projects sensitive, which about 1 in 6 of
+its pull requests touch; adding its authentication, client and server projects would make about 1 in 3 deep, at about
+$1.80 to $2.80 a review. Which set Identity uses is the maintainer's decision, and no repository is configured yet:
+
+```yaml
+# .github/code-review/config.yml
+sensitive:
+  - "src/NCode.Jose/**"
+  - "src/NCode.Identity.Jwt/**"
+  - "src/NCode.Identity.Jwk/**"
+  - "src/NCode.Identity.Secrets/**"
+skip:
+  - "src/**/Vendored/**"
+policies:
+  - docs/api-compatibility.md
+tiers:
+  api-compat: sonnet
+  project:oauth-conformance: sonnet
+```
+
+```markdown
+<!-- .github/code-review/reviewers/oauth-conformance.md -->
+---
+paths: ["src/**/OAuth/**", "src/**/Oidc/**", "src/**/Jose/**"]
+---
+# oauth-conformance
+
+Does this change still conform to the OAuth 2.0, OpenID Connect and JOSE specifications it implements?
+```
+
+Every reviewer, `api-compat` among them, then gets `docs/api-compatibility.md` in its conventions, and the trace's
+`settings` lists the policies, project reviewers, sensitive globs and tiers the review used.
 
 ## Opting a repository in
 

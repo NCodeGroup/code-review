@@ -4,7 +4,7 @@
 // maintainer's. A /review comment from a writer is the maintainer's, so it always reviews and resumes.
 
 import type { RunStatus } from './checks.ts';
-import { writers } from './command.ts';
+import { writerAssociations } from './command.ts';
 import { readComments, type ListedComment } from './comments.ts';
 import { botLogin, summaryMarker, supersededMarker } from './results.ts';
 
@@ -33,7 +33,7 @@ export function pausedStatus(): RunStatus {
 // A comment from someone with write access in their own words: not a bot's, and not one the autopilot posted.
 export function isMaintainerComment(comment: ListedComment): boolean {
   if (comment.user?.type === 'Bot' || comment.user?.login === botLogin) return false;
-  return writers.has(comment.author_association ?? '') && !(comment.body ?? '').trimStart().startsWith(autopilotPrefix);
+  return writerAssociations.has(comment.author_association ?? '') && !(comment.body ?? '').trimStart().startsWith(autopilotPrefix);
 }
 
 export interface PauseState {
