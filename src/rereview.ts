@@ -19,6 +19,7 @@ import { botLogin, recordedHead } from './results.ts';
 import {
   byOwner,
   completeList,
+  depthLabel,
   fileList,
   findingLimit,
   findingProperties,
@@ -27,6 +28,7 @@ import {
   pullRequestBlock,
   selectionFloor,
   sensitiveFiles,
+  sensitiveMatcher,
   severityRank,
   templateBlock,
   upstreamFindings,
@@ -564,6 +566,8 @@ async function verifyPosted(
   findings: ReviewedFinding[],
   log: (line: string) => void,
   options: ReReviewVerificationOptions,
+  // A deep re-review's sensitive files, whose findings are verified on Opus.
+  deep: ((file: string) => boolean) | undefined,
 ): Promise<{ findings: ReviewedFinding[]; calls: CallRecord[]; verified: ReReviewVerification }> {
   const outcome = await verifyFindings({
     run,
@@ -575,6 +579,7 @@ async function verifyPosted(
     log,
     enabled: options.enabled,
     ...(options.agent ? { agent: options.agent } : {}),
+    ...(deep ? { deep } : {}),
   });
   const posted = outcome.findings.filter((f) => f.severity !== 'nit');
   const ids = new Set(posted.map((f) => f.id));
@@ -627,12 +632,14 @@ export async function reReview(
     // As for a first review, verification never makes a re-review an approval: it only runs when there was something to
     // post, and a verifier misled by the change's own code can refute a real finding.
     const verifiedAway = Boolean(verified?.trace.length);
+    // Deep only when a reviewer ran on the changes to a sensitive file.
+    const deep = outcomes.length > 0 && roster.sensitiveFiles.length > 0;
     return {
       reviewers: outcomes,
       shadow: [],
       shadowSkipped: [],
       shadowPrompts: [],
-      summary,
+      summary: deep ? `${depthLabel.deep}: ${summary}` : summary,
       verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
       findings,
       upstream: upstream.upstream,
@@ -642,10 +649,10 @@ export async function reReview(
       verification: verified?.trace ?? [],
       calls,
       skipped: [],
-      // A re-review has one reviewer and no settings of its own to warn about, and never goes deep or light.
+      // A re-review has no settings of its own to warn about; it goes deep on a sensitive change, never light.
       warnings: [],
-      depth: 'standard',
-      sensitiveFiles: [],
+      depth: deep ? 'deep' : 'standard',
+      sensitiveFiles: deep ? roster.sensitiveFiles : [],
       earlier: statuses,
     };
   };
@@ -718,7 +725,7 @@ export async function reReview(
   const placed = byOwner(kept, gathered.template);
   const upstream = upstreamFindings(placed.upstream);
   log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
-  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, verification);
+  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, verification, roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined);
   return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);
 }
 
