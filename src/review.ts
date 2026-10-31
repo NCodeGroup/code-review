@@ -3,7 +3,7 @@
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runAgent, withoutTools, type AgentRun, type CallRecord } from './agent.ts';
+import { runAgent, totalCost, withoutTools, type AgentRun, type CallRecord } from './agent.ts';
 import { budgets, findingsPerExtraChunk, maxFindings, maxFindingsCap, maxTurns, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, selectContext, type Decision, type IndexedRule } from './context.ts';
 import { splitDiff, type ChangedFile, type Gathered } from './gather.ts';
@@ -349,7 +349,7 @@ export async function review(run: AgentRun, gathered: Gathered, charters: Charte
       budgetUsd: budgets.specialist[tier],
     });
     calls.push(...result.records);
-    const cost = result.records.reduce((sum, r) => sum + r.costUsd, 0);
+    const cost = totalCost(result.records);
     const reported = result.output?.findings ?? [];
     const kept = reported.filter((f) => f.confidence >= minConfidence);
     const where = [parts.length > 1 ? `part ${part + 1}` : '', label].filter(Boolean).join(', ');

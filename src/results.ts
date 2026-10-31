@@ -44,8 +44,9 @@ export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | u
   return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
 }
 
-const providerName: Record<Provider, string> = { anthropic: 'the Claude API', bedrock: 'Amazon Bedrock' };
+// The summary comment names a provider as a label ("$0.12 on Claude API"); the check run's sentence takes the article.
 const providerLabel: Record<Provider, string> = { anthropic: 'Claude API', bedrock: 'Amazon Bedrock' };
+const providerName: Record<Provider, string> = { anthropic: `the ${providerLabel.anthropic}`, bedrock: providerLabel.bedrock };
 
 // The calls and cost on each provider the run used, in the order it used them.
 export function costsByProvider(calls: CallRecord[]): { provider: Provider; calls: number; costUsd: number }[] {

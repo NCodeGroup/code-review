@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runAgent, type AgentRun, type CallRecord } from '../src/agent.ts';
+import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { closedIssues, gather, type PullRequest } from '../src/gather.ts';
 import { startProxy } from '../src/proxy.ts';
 import { loadCharters, review, type Finding } from '../src/review.ts';
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
       const forbidden = [];
       for (const concern of c.mustNotFlag) forbidden.push({ concern: concern.concern, raisedBy: await raised(run, concern, outcome.findings, calls) });
 
-      const caseCost = calls.reduce((sum, call) => sum + call.costUsd, 0);
+      const caseCost = totalCost(calls);
       expected += verdicts.length;
       caught += verdicts.filter((v) => v.caught).length;
       caughtRaw += verdicts.filter((v) => v.caughtRaw).length;

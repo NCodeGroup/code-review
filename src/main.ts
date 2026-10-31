@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgentRun, BedrockFallback } from './agent.ts';
+import { bedrockFallbackFor, lastModel, totalCost, type AgentRun } from './agent.ts';
 import { commandFromEvent, skipReasonFor } from './command.ts';
 import { lastReviewedHead } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -17,7 +17,6 @@ import { changedLines, loadCharters, review } from './review.ts';
 import { topSeverity, type Results } from './results.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const creditsSwitchReason = 'credits ran out';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -126,19 +125,19 @@ async function main(): Promise<void> {
 
   const proxy = await startProxy(credentials);
   // A run that starts on the Claude API with a Bedrock key moves to Bedrock if the credits run out partway.
-  const fallback: BedrockFallback | undefined = choice.provider === 'anthropic' && credentials.bedrockKey ? { switched: false } : undefined;
+  const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
     const run: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
     const outcome = await review(run, gathered, loadCharters(root), log);
-    if (fallback?.switched) log(`Switched to Bedrock partway: ${creditsSwitchReason}`);
+    if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = {
       repository,
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       provider: choice.provider,
       providerReason: choice.reason,
-      ...(fallback?.switched ? { switchedToBedrock: creditsSwitchReason } : {}),
+      ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
       summary: outcome.summary,
       verdict: outcome.verdict,
       findings: outcome.findings,
@@ -147,16 +146,16 @@ async function main(): Promise<void> {
         return {
           name,
           status,
-          model: outcome.calls.findLast((c) => c.role === `reviewer:${name}`)?.model ?? '',
+          model: lastModel(outcome.calls, `reviewer:${name}`),
           findingCount: findings.length,
           ...(top ? { topSeverity: top } : {}),
           ...(error ? { error } : {}),
         };
       }),
       skipped: outcome.skipped,
-      synthesisModel: outcome.calls.findLast((c) => c.role === 'synthesis')?.model ?? '',
+      synthesisModel: lastModel(outcome.calls, 'synthesis'),
       calls: outcome.calls,
-      costUsd: outcome.calls.reduce((sum, c) => sum + c.costUsd, 0),
+      costUsd: totalCost(outcome.calls),
       durationMs: Date.now() - started,
       notShown: gathered.files.filter((f) => !f.shown).map((f) => f.path),
       changedLines: changedLinesFor(gathered.diff, outcome.findings.map((f) => f.file)),
