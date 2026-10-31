@@ -12,8 +12,9 @@ calls there; its check run and summary say so and split the cost by provider.
 The agents run on the Claude Agent SDK with no settings, hooks, MCP servers or CLAUDE.md from anywhere, only Read, Grep
 and Glob, and a hook that refuses any path outside the pull request's checkout after resolving symlinks. Their
 environment holds no secret: model calls go through a localhost proxy that adds the credentials. The app's private key
-reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses and
-revokes before the review step starts, and one after the agents exit. Each token can write check runs and pull request
+reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses, revoked
+by the acknowledgement and again by a step that always runs, both before the review step starts, and one after the
+agents exit. Each token can write check runs and pull request
 comments on the one repository under review, and neither is ever in the review step's environment. A `/review teach`
 run also mints one after the agents exit that can write only issues, in the one repository its issue opens in. Results
 and the trace are scanned for secrets before they're written.

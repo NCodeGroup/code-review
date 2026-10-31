@@ -579,17 +579,21 @@ test('action.yml gives the app key only to the token steps, and each token only 
     assert.equal(step.with['private-key'], '${{ inputs.app-private-key }}');
   }
   const users = (output: string) => steps.filter((s) => s.text.includes(output)).map((s) => s.id || s.name);
-  assert.deepEqual(users('steps.ack-token.outputs.token'), ['ack']);
+  assert.deepEqual(users('steps.ack-token.outputs.token'), ['ack', 'ack-revoke']);
   assert.deepEqual(users('steps.app-token.outputs.token'), ['publish', 'Finish the check run']);
 });
 
 test('action.yml acknowledges before setup-node and npm ci, and never lets the acknowledgement stop the review', () => {
   const steps = actionSteps();
   const index = (id: string) => steps.findIndex((s) => s.id === id);
-  assert.deepEqual(['ack-decide', 'ack-token', 'ack', 'setup-node', 'install', 'review'].map(index), [0, 1, 2, 3, 4, 5]);
-  for (const id of ['ack-decide', 'ack-token', 'ack']) assert.equal(steps[index(id)]?.continueOnError, true, id);
-  // The acknowledgement revokes its own token before the review step starts.
+  assert.deepEqual(['ack-decide', 'ack-token', 'ack', 'ack-revoke', 'setup-node', 'install', 'review'].map(index), [0, 1, 2, 3, 4, 5, 6]);
+  for (const id of ['ack-decide', 'ack-token', 'ack', 'ack-revoke']) assert.equal(steps[index(id)]?.continueOnError, true, id);
+  // The acknowledgement revokes its own token, and a step that always runs revokes it again, before the review step.
   assert.equal(steps[index('ack-token')]?.with['skip-token-revoke'], 'true');
+  const revoke = steps[index('ack-revoke')];
+  assert.equal(revoke?.if, "always() && steps.ack-token.outcome == 'success'");
+  assert.deepEqual(Object.keys(revoke?.env ?? {}), ['CODE_REVIEW_APP_TOKEN']);
+  assert.ok(revoke?.text.includes('acknowledge.ts" revoke'));
   assert.equal(steps[index('ack-decide')]?.env['CODE_REVIEW_GITHUB_TOKEN'], '${{ inputs.github-token }}');
   assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
 });
