@@ -53,6 +53,7 @@ const charters: Charters = {
   selectionPrompt: 'sel',
   synthesisPrompt: 'syn',
   ruleCheckPrompt: 'r',
+  verificationPrompt: 'v',
   reviewers: new Map(['architecture', 'completeness', 'correctness', 'hygiene', 'security', 'tests'].map((n) => [n, n])),
 };
 
