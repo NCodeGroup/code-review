@@ -3,21 +3,27 @@
 
 import { summaryComments, supersededComment, type Results } from './results.ts';
 
-// GitHub's largest page of issue comments, and how many pages a run reads at most, which bounds its API calls.
+// GitHub's largest page of issue comments, and how many pages a run reads at most (10,000 comments), to bound calls.
 export const commentPageSize = 100;
-export const maxCommentPages = 10;
+export const maxCommentPages = 100;
 
-// Reads a pull request's comments, oldest first, up to maxCommentPages pages, stopping after a short page; undefined
-// when a page can't be read.
+// Error text short enough for a warning line.
+const maxErrorChars = 200;
+function errorText(error: unknown): string {
+  return (error as Error).message.slice(0, maxErrorChars);
+}
+
+// Reads a pull request's comments, oldest first, until a short page; undefined when a page can't be read, or when
+// every page up to maxCommentPages is full, since the newest comments, which hold the newest summary, would be missing.
 export async function readCommentPages<T>(readPage: (page: number) => Promise<T[] | undefined>): Promise<T[] | undefined> {
   const all: T[] = [];
   for (let page = 1; page <= maxCommentPages; page++) {
     const comments = await readPage(page);
     if (!comments) return undefined;
     all.push(...comments);
-    if (comments.length < commentPageSize) break;
+    if (comments.length < commentPageSize) return all;
   }
-  return all;
+  return undefined;
 }
 
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
@@ -30,12 +36,12 @@ export async function postSummary(
   log: (line: string) => void = console.log,
 ): Promise<string> {
   const comments = `/repos/${results.repository}/issues/${results.pullRequest}/comments`;
-  let listError = '';
+  let listError = `more than ${commentPageSize * maxCommentPages} comments`;
   const listed = await readCommentPages(async (page) => {
     try {
       return (await api('GET', `${comments}?per_page=${commentPageSize}&page=${page}`)) as { id: number; body?: string; user?: { login?: string } }[];
     } catch (error) {
-      listError = (error as Error).message.slice(0, 200);
+      listError = errorText(error);
       return undefined;
     }
   });
@@ -49,7 +55,7 @@ export async function postSummary(
       await api('PATCH', `/repos/${results.repository}/issues/comments/${id}`, { body: superseded });
       log(`Collapsed the earlier summary comment ${id}`);
     } catch (error) {
-      log(`::warning::Couldn't collapse the earlier summary comment ${id} (${(error as Error).message.slice(0, 200)}).`);
+      log(`::warning::Couldn't collapse the earlier summary comment ${id} (${errorText(error)}).`);
     }
   }
   return comment.html_url;
