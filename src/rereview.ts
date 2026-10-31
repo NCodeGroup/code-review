@@ -13,7 +13,7 @@ import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts'
 import { dropContradicted, type DroppedFinding } from './claims.ts';
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
-import { budgets, defaultReviewerTiers, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
+import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { botLogin, recordedHead } from './results.ts';
 import {
@@ -565,9 +565,8 @@ async function verifyPosted(
   charters: Charters,
   findings: ReviewedFinding[],
   log: (line: string) => void,
-  options: ReReviewVerificationOptions,
-  // A deep re-review's sensitive files, whose findings are verified on Opus.
-  deep: ((file: string) => boolean) | undefined,
+  // `deep` matches a deep re-review's sensitive files, whose findings are verified on Opus.
+  options: ReReviewVerificationOptions & { deep?: (file: string) => boolean },
 ): Promise<{ findings: ReviewedFinding[]; calls: CallRecord[]; verified: ReReviewVerification }> {
   const outcome = await verifyFindings({
     run,
@@ -579,7 +578,7 @@ async function verifyPosted(
     log,
     enabled: options.enabled,
     ...(options.agent ? { agent: options.agent } : {}),
-    ...(deep ? { deep } : {}),
+    ...(options.deep ? { deep: options.deep } : {}),
   });
   const posted = outcome.findings.filter((f) => f.severity !== 'nit');
   const ids = new Set(posted.map((f) => f.id));
@@ -672,7 +671,8 @@ export async function reReview(
   ].join('\n\n');
   const runs = await Promise.all(
     roster.reviewers.map(async (name) => {
-      const tier: ModelTier = roster.tiers[name] ?? defaultReviewerTiers[name] ?? 'sonnet';
+      // partTiers names every reviewer the roster runs.
+      const tier = roster.tiers[name]!;
       const result = await agent<{ findings: Finding[]; earlier: { key: string; status: Exclude<EarlierState, 'unchecked'>; note: string }[] }>(
         { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) },
         {
@@ -725,7 +725,8 @@ export async function reReview(
   const placed = byOwner(kept, gathered.template);
   const upstream = upstreamFindings(placed.upstream);
   log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
-  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, verification, roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined);
+  const sensitive = roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined;
+  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, { ...verification, ...(sensitive ? { deep: sensitive } : {}) });
   return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);
 }
 
