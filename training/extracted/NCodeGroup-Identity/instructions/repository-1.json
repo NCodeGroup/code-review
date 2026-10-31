@@ -2,6 +2,9 @@
   "hash": "437c4352b1ed2497",
   "promptHash": "358791b74fd66fcf",
   "label": "Identity repository.instructions.md",
+  "applyTo": [
+    "**"
+  ],
   "rules": [
     {
       "statement": "In pre-release code with no shipped consumers, make the change as a clean cutover (rename, move, remove or change signatures directly) instead of adding compatibility shims, obsolete aliases or duplicate settings that keep the old shape.",
