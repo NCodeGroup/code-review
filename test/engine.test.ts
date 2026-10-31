@@ -681,6 +681,9 @@ test('isPackableProject reads PublicAPI.Shipped.txt or IsPackable from the neare
   assert.deepEqual([...cache], [['src/NewProject/Deep', false], ['src/NewProject', false], ['src', false], ['', false]]);
   assert.ok(isPackableProject(base, 'src/Shipped/Sub/A.cs', cache));
   assert.deepEqual([...cache].slice(4), [['src/Shipped/Sub', true], ['src/Shipped', true]]);
+  // A project that can't be read (here a folder named like one) counts as packed.
+  mkdirSync(path.join(base, 'src', 'Odd', 'Odd.csproj'), { recursive: true });
+  assert.ok(isPackableProject(base, 'src/Odd/A.cs'));
 });
 
 // A file at the pull request's head, one line per entry; line numbers below are 1-based.
@@ -763,6 +766,10 @@ test('touchesSerializedContract looks for contract markers in the hunks, not the
     assert.ok(touchesSerializedContract(csSection(`@@ -1,1 +1,1 @@\n-x\n+class C : ${marker}`)), marker);
   }
   assert.ok(!touchesSerializedContract(`diff --git a/src/DbContext.cs b/src/DbContext.cs\n--- a/src/DbContext.cs\n+++ b/src/DbContext.cs\n@@ -1,1 +1,1 @@\n-Old();\n+New();\n`));
+  // A long word with no marker in it is read in linear time.
+  const started = performance.now();
+  assert.ok(!touchesSerializedContract(csSection(`@@ -1,1 +1,1 @@\n-x\n+var s = "${'a'.repeat(200_000)}";`)));
+  assert.ok(performance.now() - started < 1000);
 });
 
 test('markContracts takes packability from the base and reads the head only for a packable file', () => {

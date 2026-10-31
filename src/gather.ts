@@ -192,7 +192,8 @@ export function isPackableProject(basePath: string, file: string, cache = new Ma
       try {
         return /<IsPackable>\s*true\s*<\/IsPackable>/i.test(readFileSync(path.join(basePath, folder, p), 'utf8'));
       } catch {
-        return false;
+        // A project that can't be read counts as packed, so the floor fails closed.
+        return true;
       }
     }));
   }
@@ -324,7 +325,8 @@ export function touchesPublicMember(section: string, head: string): boolean {
   return false;
 }
 
-const contractMarker = /\b(?:JsonPropertyName|DataMember|JsonSerializerContext|IEntityTypeConfiguration)\b|\w*DbContext\b/;
+// DbContext has no leading \w*: it matches the same names, AppDbContext too, without backtracking through long words.
+const contractMarker = /\b(?:JsonPropertyName|DataMember|JsonSerializerContext|IEntityTypeConfiguration)\b|DbContext\b/;
 
 // Whether a file's diff, in its hunks with their context, touches a serialized or persisted contract.
 export function touchesSerializedContract(section: string): boolean {
