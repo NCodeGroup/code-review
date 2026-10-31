@@ -102,7 +102,7 @@ test('verifyFindings makes no call and changes nothing when verification is off'
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent, false));
   assert.equal(requests.length, 0);
-  assert.deepEqual(out, { findings, refuted: [], questioned: 0, demoted: 0, calls: [], trace: [] });
+  assert.deepEqual(out, { findings, refuted: [], questioned: 0, demoted: 0, skipped: 0, calls: [], trace: [] });
 });
 
 test('verifyFindings leaves nits unverified and makes no call when only nits remain', async () => {
@@ -410,6 +410,38 @@ test('verifyReview without synthesis\'s verdict gives a comment, not an approval
   const kept = await verifyReview({ summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'blocker')] }, reviewInput(fakeAgent(new Map()).agent));
   assert.equal(kept.verdict, undefined);
   assert.equal(kept.summary, 'Synthesis failed.');
+});
+
+test('verification skips the calls not yet started once the run\'s cost ceiling is reached', async () => {
+  const { agent, requests } = fakeAgent(new Map([['F2', verdict('F2', 'refuted')]]), 0.1);
+  const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2)];
+  const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 0.15, spent: () => 0.1 } });
+  assert.equal(requests.length, 1);
+  assert.equal(out.skipped, 1);
+  assert.deepEqual(out.trace.map((c) => [c.file, c.skipped, c.costUsd]), [['src/a.ts', undefined, 0.1], ['src/b.ts', true, 0]]);
+  assert.deepEqual(out.refuted, []);
+  assert.deepEqual(out.findings.map((f) => [f.title, f.severity, f.evidence]), [['title F1', 'should-fix', 'e'], ['title F2', 'should-fix', 'e']]);
+  assert.equal(out.calls.length, 1);
+});
+
+test('verification makes no call when the run reached its cost ceiling before it', async () => {
+  const { agent, requests } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
+  const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2)];
+  const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 1, spent: () => 1 } });
+  assert.equal(requests.length, 0);
+  assert.equal(out.skipped, 2);
+  assert.deepEqual(out.findings, findings);
+  assert.deepEqual(out.calls, []);
+});
+
+test('verifyReview says when the cost ceiling skipped verification calls', async () => {
+  const { agent } = fakeAgent(new Map());
+  const out = await verifyReview(
+    { summary: 'Risky.', verdict: 'comment', findings: [finding('F1', 'should-fix')] },
+    { ...reviewInput(agent), ceiling: { limit: 1, spent: () => 2 } },
+  );
+  assert.equal(out.summary, 'Risky. Verification reached the run\'s cost ceiling and skipped 1 of 1 calls, so their findings weren\'t verified.');
+  assert.deepEqual(out.findings.map((f) => f.severity), ['should-fix']);
 });
 
 test('the verification prompt is loaded and treats findings and code as data', () => {

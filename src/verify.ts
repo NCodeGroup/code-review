@@ -38,6 +38,8 @@ export interface VerificationCall {
   verifications: Verification[];
   costUsd: number;
   error?: string;
+  // The run's cost ceiling skipped the call: it made no model call.
+  skipped?: true;
 }
 
 export interface VerificationOutcome {
@@ -48,6 +50,8 @@ export interface VerificationOutcome {
   questioned: number;
   // Of those, the refuted blockers and security findings, which a refutation never drops.
   demoted: number;
+  // Verification calls the run's cost ceiling skipped.
+  skipped: number;
   calls: CallRecord[];
   trace: VerificationCall[];
 }
@@ -68,6 +72,9 @@ export interface VerificationInput {
   enabled: boolean;
   // A deep review's sensitive files: their findings are verified on Opus instead of Sonnet.
   deep?: (file: string) => boolean;
+  // The run's cost ceiling: once what the run spent before verification, plus the verification calls that finished,
+  // reaches limit, the calls not yet started are skipped and their findings stay unverified.
+  ceiling?: { limit: number; spent: () => number };
   agent?: VerificationAgent;
 }
 
@@ -232,7 +239,7 @@ function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallReco
 
 export async function verifyFindings(input: VerificationInput): Promise<VerificationOutcome> {
   const batches = input.enabled ? verificationBatches(input.findings) : [];
-  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, calls: [], trace: [] };
+  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, skipped: 0, calls: [], trace: [] };
 
   const agent: VerificationAgent = input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
   const sections = splitDiff(input.diff);
@@ -240,7 +247,13 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const reviewers = [...new Set(batches.flat().flatMap((f) => f.reviewers))].sort();
   const shared = `${input.pullRequest}\n\nThe checkout is at: ${input.run.checkout}\n\n${chartersBlock(reviewers, input.charters)}`;
 
+  // What the verification calls that finished cost, toward the run's cost ceiling.
+  let spentHere = 0;
   const verifyOne = async (batch: ReviewedFinding[]): Promise<{ records: CallRecord[]; call: VerificationCall }> => {
+    const findings = batch.map(({ id, severity, file, line, title }) => ({ id, severity, file, line, title }));
+    if (input.ceiling && input.ceiling.spent() + spentHere >= input.ceiling.limit) {
+      return { records: [], call: { file: batch[0]!.file, findings, verifications: [], costUsd: 0, skipped: true } };
+    }
     const ids = new Set(batch.map((f) => f.id));
     const started = Date.now();
     const deep = input.deep?.(batch[0]!.file) ?? false;
@@ -260,12 +273,13 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
       // A call that throws fails like one that returns an error: its findings stay as they were.
       result = { output: undefined, records: [thrownRecord(input.run, tier, started)], error: e instanceof Error ? e.message : String(e) };
     }
+    spentHere += totalCost(result.records);
     const verifications = (result.output?.verifications ?? []).filter((v) => ids.has(v.id));
     return {
       records: result.records,
       call: {
         file: batch[0]!.file,
-        findings: batch.map(({ id, severity, file, line, title }) => ({ id, severity, file, line, title })),
+        findings,
         verifications,
         costUsd: totalCost(result.records),
         ...(result.error ? { error: result.error } : {}),
@@ -286,13 +300,14 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const count = (verdict: VerificationVerdict) => [...verdicts.values()].filter((v) => v.verdict === verdict).length;
   const checked = batches.flat().length;
   const failed = done.filter((d) => d.call.error).length;
+  const skipped = done.filter((d) => d.call.skipped).length;
   const cost = done.reduce((sum, d) => sum + d.call.costUsd, 0);
-  input.log(`Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''} $${cost.toFixed(3)}`);
+  input.log(`Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''}${skipped ? ` (${skipped} calls skipped at the run's cost ceiling)` : ''} $${cost.toFixed(3)}`);
   const trace = done.map(({ call }) => ({
     ...call,
     findings: call.findings.map((f) => (postedAs.has(f.id) ? { ...f, postedAs: postedAs.get(f.id)! } : f)),
   }));
-  return { ...applied, calls: done.flatMap((d) => d.records), trace };
+  return { ...applied, skipped, calls: done.flatMap((d) => d.records), trace };
 }
 
 // Synthesis gave its verdict before verification, and verification alone never makes a review approve: a request for
@@ -335,15 +350,16 @@ export interface SynthesizedReview {
 export async function verifyReview(
   review: SynthesizedReview,
   input: Omit<VerificationInput, 'findings'>,
-): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted'>> {
-  const { findings, refuted, questioned, demoted, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
+): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted' | 'skipped'>> {
+  const { findings, refuted, questioned, demoted, skipped, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
   let verdict = review.verdict;
   if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
   // Without synthesis's verdict, review() derives one from the findings, and approve when none is left; verification
   // refuted those, so it's a comment instead.
   else if (trace.length && !findings.length) verdict = 'comment';
+  const cut = skipped ? ` Verification reached the run's cost ceiling and skipped ${skipped} of ${trace.length} calls, so their findings weren't verified.` : '';
   return {
-    summary: review.summary + verificationNote(refuted, questioned, demoted),
+    summary: review.summary + verificationNote(refuted, questioned, demoted) + cut,
     verdict,
     findings,
     refuted,
