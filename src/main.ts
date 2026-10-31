@@ -13,7 +13,7 @@ import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
-import { answerFile, answerFor, explainFinding, findFinding, githubReader, type Answer, type FoundFinding } from './explain.ts';
+import { answerFile, explainFinding, findFinding, githubReader, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
@@ -125,21 +125,15 @@ async function answer(
       const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
       const result = await explainFinding(run, systemPrompt, { found, question: command.question, headSha });
       if (fallback?.reason) console.log(`Switched to Bedrock partway: ${fallback.reason}`);
+      if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
+      const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
+      console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
       return result;
     } finally {
       await proxy.close();
     }
   };
-  const { body, explained } = await answerFor(command.ref, resolution, ask);
-  const files: Record<string, unknown> = { [answerFile]: { repository, pullRequest: number, body } satisfies Answer };
-  if (explained) {
-    const { found, result } = explained;
-    if (result.error) console.log(`::warning::The explain call failed: ${errorText(result.error)}`);
-    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: command.question, output: result.output, calls: result.records } };
-    const outcome = !result.output ? 'No answer' : result.output.holds ? 'Holds' : "Doesn't hold";
-    console.log(`${outcome}, $${totalCost(result.records).toFixed(2)}`);
-  }
-  writeForPublish(outDir, files, secrets, 'answered');
+  await writeAnswer(outDir, { repository, number, question: command.question, secrets }, command.ref, resolution, ask);
 }
 
 async function main(): Promise<void> {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -19,8 +19,10 @@ import {
   postAnswer,
   publishAnswer,
   unknownRefBody,
+  writeAnswer,
   type Explanation,
   type FoundFinding,
+  type Resolution,
   type ReviewComment,
 } from '../src/explain.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -218,6 +220,54 @@ test('answerFor says the answer could not be finished when the call fails', asyn
   const outcome = await answerFor({ kind: 'id', id: 'F3' }, { found }, async () => result);
   assert.deepEqual(outcome, { body: failedBody(found, 'budget exceeded'), explained: { found, result } });
   assert.equal((await answerFor({ kind: 'id', id: 'F3' }, { found }, async () => agentResult(undefined))).body, failedBody(found, 'no answer'));
+});
+
+// Runs writeAnswer for the ref F3 into a scratch folder with its own GITHUB_OUTPUT file, restored afterwards, and returns
+// the files it wrote, the outputs it set and the findings it asked the agent about.
+async function answerRun(resolution: Resolution, result: AgentResult<Explanation>): Promise<{ outDir: string; files: string[]; outputs: string; asked: FoundFinding[] }> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'answer-'));
+  const outDir = path.join(dir, 'out');
+  const outputFile = path.join(dir, 'github-output');
+  const asked: FoundFinding[] = [];
+  const saved = process.env['GITHUB_OUTPUT'];
+  process.env['GITHUB_OUTPUT'] = outputFile;
+  try {
+    const where = { repository: 'NCodeGroup/code-review', number: 7, question: 'why?', secrets: ['s'.repeat(20)] };
+    await writeAnswer(outDir, where, { kind: 'id', id: 'F3' }, resolution, async (f) => { asked.push(f); return result; });
+    return { outDir, files: readdirSync(outDir).sort(), outputs: readFileSync(outputFile, 'utf8'), asked };
+  } finally {
+    if (saved === undefined) delete process.env['GITHUB_OUTPUT'];
+    else process.env['GITHUB_OUTPUT'] = saved;
+  }
+}
+
+const readJson = (file: string): unknown => JSON.parse(readFileSync(file, 'utf8'));
+
+test('writeAnswer answers an unknown ref with answer.json alone, without asking the agent', async () => {
+  const run = await answerRun({ validIds: ['F1'] }, agentResult(undefined));
+  assert.deepEqual(run.asked, []);
+  assert.deepEqual(run.files, ['answer.json']);
+  assert.deepEqual(readJson(path.join(run.outDir, 'answer.json')), { repository: 'NCodeGroup/code-review', pullRequest: 7, body: unknownRefBody({ kind: 'id', id: 'F3' }, ['F1']) });
+});
+
+test('writeAnswer writes the trace of a call that ran beside the answer', async () => {
+  const result = agentResult({ answer: 'a', holds: true, reason: 'r' });
+  const run = await answerRun({ found }, result);
+  assert.deepEqual(run.asked, [found]);
+  assert.deepEqual(run.files, ['answer.json', 'trace.json']);
+  assert.deepEqual(readJson(path.join(run.outDir, 'trace.json')), {
+    explain: { id: 'F3', comment: found.comment.html_url ?? found.comment.id, question: 'why?', output: result.output, calls: result.records },
+  });
+});
+
+test('writeAnswer sets the answered output for the publish step', async () => {
+  assert.equal((await answerRun({ validIds: ['F1'] }, agentResult(undefined))).outputs, 'answered=true\n');
+  assert.equal((await answerRun({ found }, agentResult({ answer: 'a', holds: true, reason: 'r' }))).outputs, 'answered=true\n');
+});
+
+test('writeAnswer never writes results.json, so the publish step posts no review', async () => {
+  assert.ok(!(await answerRun({ validIds: ['F1'] }, agentResult(undefined))).files.includes('results.json'));
+  assert.ok(!(await answerRun({ found }, agentResult({ answer: 'a', holds: true, reason: 'r' }))).files.includes('results.json'));
 });
 
 function response(status: number, body: unknown = {}): Response {
