@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +11,13 @@ import {
   applyVerifications,
   citesUnchangedCode,
   hunkFor,
+  lineCounter,
   verdictAfterVerification,
   verificationBatches,
   verificationNote,
   verifyFindings,
   verifyReview,
+  type CheckoutLines,
   type Verification,
   type VerificationAgent,
   type VerificationInput,
@@ -76,6 +79,9 @@ function fakeAgent(answers: Map<string, Verification>, cost = 0.1) {
   return { agent, requests };
 }
 
+// The checkout's files and how many lines each has, so a refutation's cites are confirmed without a real checkout.
+const lines: CheckoutLines = (file) => ({ 'src/a.ts': 30, 'src/b.ts': 2, 'src/c.ts': 20 } as Record<string, number>)[file];
+
 function input(findings: ReviewedFinding[], agent: VerificationAgent, enabled = true): VerificationInput {
   return {
     run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work' },
@@ -87,6 +93,7 @@ function input(findings: ReviewedFinding[], agent: VerificationAgent, enabled = 
     log: () => {},
     enabled,
     agent,
+    checkoutLines: lines,
   };
 }
 
@@ -173,7 +180,7 @@ test('a refutation without a reason drops nothing and makes the finding a questi
 });
 
 test('a refuted blocker is kept as a question one severity lower, with the refutation in its evidence', () => {
-  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'refuted', { path: 'src/c.ts:9' })]]));
+  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'refuted', { path: 'src/c.ts:9' })]]), new Map(), lines);
   assert.deepEqual(out.refuted, []);
   assert.deepEqual(out.findings.map((f) => [f.severity, f.problem]), [['should-fix', 'Is this intended? problem F1']]);
   assert.match(out.findings[0]!.evidence, /Verification refuted it, but a refuted blocker stays as a question: reason F1 \(src\/c\.ts:9\)$/);
@@ -183,7 +190,7 @@ test('a refuted blocker is kept as a question one severity lower, with the refut
 
 test('a refuted security finding is kept as a question one severity lower', () => {
   const security = { ...finding('F1', 'should-fix'), reviewers: ['security'] };
-  const out = applyVerifications([security], new Map([['F1', verdict('F1', 'refuted')]]));
+  const out = applyVerifications([security], new Map([['F1', verdict('F1', 'refuted')]]), new Map(), lines);
   assert.deepEqual(out.refuted, []);
   assert.equal(out.findings[0]!.severity, 'nit');
   assert.match(out.findings[0]!.evidence, /a refuted security finding stays as a question/);
@@ -195,23 +202,47 @@ test('a refutation citing only the lines the pull request adds keeps the finding
   const out = await verifyFindings(input([finding('F1', 'should-fix', 'src/a.ts', 2)], agent));
   assert.deepEqual(out.refuted, []);
   assert.equal(out.findings[0]!.severity, 'nit');
-  assert.match(out.findings[0]!.evidence, /Verification refuted it citing only lines this pull request adds, so it stays as a question: reason F1$/);
+  assert.match(out.findings[0]!.evidence, /Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: reason F1$/);
   assert.equal(out.questioned, 1);
   assert.equal(out.demoted, 0);
 
-  const pathless = applyVerifications([finding('F1', 'should-fix')], new Map([['F1', verdict('F1', 'refuted', { path: '' })]]));
+  const pathless = applyVerifications([finding('F1', 'should-fix')], new Map([['F1', verdict('F1', 'refuted', { path: '' })]]), new Map(), lines);
   assert.deepEqual(pathless.refuted, []);
   assert.equal(pathless.findings[0]!.severity, 'nit');
 });
 
-test('citesUnchangedCode needs a file:line outside the lines the diff adds', () => {
+test('a refutation citing a file the checkout doesn\'t have keeps the finding as a question', async () => {
+  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { path: 'x.ts:1' })]]));
+  const out = await verifyFindings(input([finding('F1', 'should-fix')], agent));
+  assert.deepEqual(out.refuted, []);
+  assert.equal(out.findings[0]!.severity, 'nit');
+  assert.match(out.findings[0]!.evidence, /without citing code in the checkout outside the lines this pull request adds/);
+  assert.equal(out.questioned, 1);
+  assert.equal(out.demoted, 0);
+});
+
+test('citesUnchangedCode needs a file:line of the checkout outside the lines the diff adds', () => {
   const added = new Map([['src/a.ts', new Set([2, 22])]]);
-  assert.equal(citesUnchangedCode('src/a.ts:3 → src/c.ts:9', added), true);
-  assert.equal(citesUnchangedCode('/checkout/src/a.ts:23', added), true);
-  assert.equal(citesUnchangedCode('src/a.ts:2', added), false);
-  assert.equal(citesUnchangedCode('/checkout/src/a.ts:22', added), false);
-  assert.equal(citesUnchangedCode('', added), false);
-  assert.equal(citesUnchangedCode('the guard above', added), false);
+  assert.equal(citesUnchangedCode('src/a.ts:3 → src/c.ts:9', added, lines), true);
+  assert.equal(citesUnchangedCode('/checkout/src/a.ts:23', added, lines), true);
+  assert.equal(citesUnchangedCode('src/c.ts:9', added, lines), true);
+  assert.equal(citesUnchangedCode('src/a.ts:2', added, lines), false);
+  assert.equal(citesUnchangedCode('/checkout/src/a.ts:22', added, lines), false);
+  assert.equal(citesUnchangedCode('', added, lines), false);
+  assert.equal(citesUnchangedCode('the guard above', added, lines), false);
+  assert.equal(citesUnchangedCode('x.ts:1', added, lines), false);
+  assert.equal(citesUnchangedCode('src/c.ts:21', added, lines), false);
+  assert.equal(citesUnchangedCode('src/c.ts:0', added, lines), false);
+  assert.equal(citesUnchangedCode('src/a.ts:2 → x.ts:1', added, lines), false);
+});
+
+test('lineCounter counts a checkout file\'s lines and has none for a file outside it, missing or a directory', () => {
+  const count = lineCounter(root);
+  assert.equal(count('package.json'), readFileSync(path.join(root, 'package.json'), 'utf8').trimEnd().split('\n').length);
+  assert.equal(count(path.join(root, 'package.json')), count('package.json'));
+  assert.equal(count('no-such-file.ts'), undefined);
+  assert.equal(count('src'), undefined);
+  assert.equal(lineCounter(path.join(root, 'src'))('../package.json'), undefined);
 });
 
 test('an uncertain finding becomes a question one severity lower', async () => {

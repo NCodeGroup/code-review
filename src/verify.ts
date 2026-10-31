@@ -1,10 +1,12 @@
 // Verification, after synthesis: Sonnet calls with the checkout, Opus ones for a deep review's sensitive files, try to
 // prove or refute each blocker and should-fix with a concrete code path. A finding is dropped only when a call refutes it
-// with a reason and a path that cites code outside the lines the pull request adds, and it is neither a blocker nor a
-// security finding; the drop is recorded. Any other refuted finding, and one a call can neither prove nor refute, stays
-// as a question one severity lower. Nits aren't verified.
+// with a reason and a path that cites a line of the checkout outside the lines the pull request adds, and it is neither a
+// blocker nor a security finding; the drop is recorded. Any other refuted finding, and one a call can neither prove nor
+// refute, stays as a question one severity lower. Nits aren't verified.
 
-import { runAgent, totalCost, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { isInside, runAgent, totalCost, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
 import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency, type ModelTier } from './config.ts';
 import { changedLines, splitDiff } from './gather.ts';
@@ -76,6 +78,34 @@ export interface VerificationInput {
   // reaches limit, the calls not yet started are skipped and their findings stay unverified.
   ceiling?: { limit: number; spent: () => number };
   agent?: VerificationAgent;
+  // How many lines each checkout file has, to confirm a refutation's cites; read from run.checkout by default, and none
+  // without one.
+  checkoutLines?: CheckoutLines;
+}
+
+// How many lines a file of the checkout has, by its path relative to the checkout or absolute inside it, or undefined
+// when the checkout has no such file.
+export type CheckoutLines = (file: string) => number | undefined;
+
+// Counts a checkout file's lines, once per path, behind the reviewers' path guard: a file outside the checkout, or a
+// symlink out of it, is one the checkout doesn't have.
+export function lineCounter(checkout: string): CheckoutLines {
+  const counts = new Map<string, number | undefined>();
+  return (file) => {
+    if (!counts.has(file)) {
+      let count: number | undefined;
+      try {
+        if (isInside(checkout, file)) {
+          const text = readFileSync(resolve(checkout, file), 'utf8');
+          count = text === '' ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+        }
+      } catch {
+        count = undefined;
+      }
+      counts.set(file, count);
+    }
+    return counts.get(file);
+  };
 }
 
 const verificationSchema = {
@@ -138,29 +168,35 @@ export function verificationBatches(findings: ReviewedFinding[], size = findings
   return batches;
 }
 
-// Whether a refutation's path cites code the pull request doesn't add: a file:line in a file the diff doesn't change,
-// or on a line of a changed file the diff doesn't add. A refutation that rests only on the change's own lines may have
-// been misled by them. A path ending in a changed file's path, such as the checkout's absolute path, is that file.
-export function citesUnchangedCode(path: string, added: ReadonlyMap<string, ReadonlySet<number>>): boolean {
+// Whether a refutation's path cites code the pull request doesn't add: a file:line the checkout has, in a file the diff
+// doesn't change or on a line of a changed file the diff doesn't add. A refutation that rests only on the change's own
+// lines may have been misled by them, and a cite the checkout can't confirm, such as a file it doesn't have, may have been
+// planted by them. A path ending in a changed file's path, such as the checkout's absolute path, is that file.
+export function citesUnchangedCode(path: string, added: ReadonlyMap<string, ReadonlySet<number>>, lines: CheckoutLines): boolean {
   for (const match of path.matchAll(/([\w./@-]*\w):(\d+)/g)) {
     const file = match[1]!;
+    const line = Number(match[2]);
     const changed = [...added.keys()].find((f) => file === f || file.endsWith(`/${f}`));
-    if (!changed || !added.get(changed)!.has(Number(match[2]))) return true;
+    if (changed && added.get(changed)!.has(line)) continue;
+    const count = lines(changed ?? file);
+    if (count !== undefined && line >= 1 && line <= count) return true;
   }
   return false;
 }
 
 // Applies the verdicts: confirmed keeps the finding with its code path in the evidence, and refuted drops it into the
-// refuted list when its path cites code outside the lines the pull request adds (`added`, per file) and the finding is
-// neither a blocker nor a security finding. Uncertain makes it a question one severity lower, and so does any other
-// refutation, with the refutation in the evidence: a verifier misled by the change's own code can refute a real
-// finding, and a blocker or security finding is too costly to lose. A finding without a verdict, or refuted without a
-// reason, isn't dropped: a nit, a failed call or a verdict without evidence leaves it as it is, or makes it a question.
-// The kept findings are ranked again and renumbered; postedAs maps each kept finding's old id to its new one.
+// refuted list when its path cites a line of the checkout (`lines`) outside the lines the pull request adds (`added`,
+// per file) and the finding is neither a blocker nor a security finding. Uncertain makes it a question one severity
+// lower, and so does any other refutation, with the refutation in the evidence: a verifier misled by the change's own
+// code can refute a real finding, and a blocker or security finding is too costly to lose. A finding without a verdict,
+// or refuted without a reason, isn't dropped: a nit, a failed call or a verdict without evidence leaves it as it is, or
+// makes it a question. The kept findings are ranked again and renumbered; postedAs maps each kept finding's old id to
+// its new one.
 export function applyVerifications(
   findings: ReviewedFinding[],
   verifications: Map<string, Verification>,
   added: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
+  lines: CheckoutLines = () => undefined,
 ): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; demoted: number; postedAs: Map<string, string> } {
   const kept: ReviewedFinding[] = [];
   const refuted: RefutedFinding[] = [];
@@ -172,11 +208,11 @@ export function applyVerifications(
       kept.push(f);
     } else if (v.verdict === 'confirmed') {
       kept.push({ ...f, evidence: appendEvidence(f.evidence, `Verified: ${v.path.trim() || v.reason.trim()}`) });
-    } else if (v.verdict === 'refuted' && v.reason.trim() && citesUnchangedCode(v.path, added) && f.severity !== 'blocker' && !f.reviewers.includes('security')) {
+    } else if (v.verdict === 'refuted' && v.reason.trim() && citesUnchangedCode(v.path, added, lines) && f.severity !== 'blocker' && !f.reviewers.includes('security')) {
       refuted.push({ finding: f, path: v.path.trim(), reason: v.reason.trim() });
     } else if (v.verdict === 'refuted' && v.reason.trim()) {
       questioned++;
-      const outside = citesUnchangedCode(v.path, added);
+      const outside = citesUnchangedCode(v.path, added, lines);
       if (outside) demoted++;
       kept.push({
         ...f,
@@ -186,7 +222,7 @@ export function applyVerifications(
           f.evidence,
           outside
             ? `Verification refuted it, but a refuted ${f.severity === 'blocker' ? 'blocker' : 'security finding'} stays as a question: ${v.reason.trim()} (${v.path.trim()})`
-            : `Verification refuted it citing only lines this pull request adds, so it stays as a question: ${v.reason.trim()}`,
+            : `Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: ${v.reason.trim()}`,
         ),
       });
     } else {
@@ -296,7 +332,8 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   for (const { call } of done) {
     for (const v of call.verifications) if (!verdicts.has(v.id)) verdicts.set(v.id, v);
   }
-  const { postedAs, ...applied } = applyVerifications(input.findings, verdicts, changedLines(input.diff));
+  const lines = input.checkoutLines ?? (input.run.checkout ? lineCounter(input.run.checkout) : () => undefined);
+  const { postedAs, ...applied } = applyVerifications(input.findings, verdicts, changedLines(input.diff), lines);
   const count = (verdict: VerificationVerdict) => [...verdicts.values()].filter((v) => v.verdict === verdict).length;
   const checked = batches.flat().length;
   const failed = done.filter((d) => d.call.error).length;
