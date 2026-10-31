@@ -113,7 +113,7 @@ const charters: Charters = {
 function gathered(paths: string[], options: { sensitive?: string[]; chunks?: string[]; tiers?: Gathered['tiers']; reviewRules?: RuleFile[]; decisions?: Decision[] } = {}): Gathered {
   const diff = paths.map(section).join('');
   return {
-    pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+    pullRequest: { repository: 'o/r', number: 1, title: 'T', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
     mergeBase: 'b',
     files: paths.map((p) => file(p)),
     diff: options.chunks?.join('') ?? diff,

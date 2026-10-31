@@ -410,7 +410,7 @@ test('gather reviews a pull request that edits .github/code-review with the defa
   git(head, 'add', '.');
   git(head, 'commit', '-q', '-m', 'soften the review');
 
-  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha, headSha: '' };
+  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha: '' };
   const gathered = gather(pullRequest, head, base);
 
   // skip: from the base leaves vendor/ out and keeps src/ in; the head's skip: of src/** has no effect.
@@ -448,7 +448,7 @@ test('a pull request whose every changed file is skipped by config runs no model
   write(head, 'vendor/lib.js', 'var a = 2;\n');
   git(head, 'commit', '-q', '-am', 'update the vendored code');
 
-  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', draft: false, baseRef: 'main', baseSha, headSha: '' };
+  const pullRequest: PullRequest = { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha: '' };
   const gathered = gather(pullRequest, head, base);
   assert.deepEqual(gathered.files, []);
   assert.deepEqual(gathered.skippedByConfig, ['vendor/lib.js']);
