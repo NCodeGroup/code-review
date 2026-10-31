@@ -292,9 +292,14 @@ export async function review(
 
   // Context: the rules and decisions that bear on this change.
   const catalog = [...guidanceRules(gathered.guidance), ...repositoryRules(gathered.reviewRules)];
-  const { context, result: contextResult } = await selectContext(run, gathered, catalog, gathered.decisions, (g) =>
-    `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
-  agent);
+  const { context, result: contextResult } = await selectContext(
+    run,
+    gathered,
+    catalog,
+    gathered.decisions,
+    (g) => `${pullRequestBlock(g)}\n\nChanged files:\n${fileList(g)}\n\n<diff>\n${g.diff.slice(0, 80_000)}\n</diff>`,
+    agent,
+  );
   if (contextResult) calls.push(contextResult.record);
   const picked = [...new Set([...context.rulesFor.values()].flat())].length;
   log(`Context: ${picked} of ${catalog.length} rules, ${context.decisions.length} of ${gathered.decisions.length} decisions${contextResult?.error ? ` (failed: ${contextResult.error})` : ''}`);
