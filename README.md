@@ -21,11 +21,12 @@ and the trace are scanned for secrets before they're written.
 Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
 takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
-`/review` command from someone with write access, a pull request from a fork, and an automatic run on a commit already
-reviewed get nothing. `/review explain` and `/review teach` get nothing either: they aren't reviews, and they answer
-with a comment, not the check run. The acknowledgement runs with the runner's own `node` and no npm package, and the
-review goes on without it if it fails. The publish step completes that same check run with the review, so there's never
-a second. When there's no review to publish, a last step completes it with why, so it never stays in progress:
+`/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
+reviewed, and a closed pull request get nothing. `/review explain` and `/review teach` get nothing either: they aren't
+reviews, and they answer with a comment, not the check run. The acknowledgement runs with the runner's own `node` and
+no npm package, and the review goes on without it if it fails. The publish step completes that same check run with the
+review, so there's never a second. When there's no review to publish, a last step completes it with why, so it never
+stays in progress:
 
 - **Review budget used up**, neutral, when no provider is available: the plan's API credits are used up or the
   Anthropic login failed, and the Bedrock key is missing or Bedrock refused it. No review ran, nothing was charged,
@@ -91,28 +92,29 @@ A [re-review](#re-reviews) runs only its own reviewer and prompt, so it runs no 
 name: Code review
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, closed]
   issue_comment:
     types: [created]
 permissions: {}
 jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else.
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A
+    # closed pull request, whoever closed it, only records its findings' outcomes, with no model call.
     if: >-
-      github.event.sender.type != 'Bot' && (
-        (github.event_name == 'pull_request_target' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
-        (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-          startsWith(github.event.comment.body, '/review') &&
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)))
+      (github.event_name == 'pull_request_target' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.action == 'closed' ||
+          (github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')))) ||
+      (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/review') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     environment: code-review
     timeout-minutes: 30
     concurrency:
       group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event.action != 'closed' }}
     permissions:
       id-token: write
       contents: read
@@ -228,6 +230,63 @@ Each review, all from `ncode-review[bot]`:
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - completes that "Code review" check run, neutral, with all the findings and annotations.
+
+### Outcomes
+
+When a pull request closes, merged or not, the bot records what became of each finding it posted as a thread, by rules
+alone: no model call, so the run needs no model key and costs nothing. It reads each thread, its replies and the
+reactions on the finding, and compares the commit the finding was posted on with the closing head. The first rule that
+holds decides:
+
+| Outcome | When |
+|---|---|
+| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. |
+| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". |
+| acknowledged | A 👍 or a reply from a writer, without a change. |
+| ignored | None of these. |
+
+Writers are people with write access: for a reply, its author's association (owner, member or collaborator); for a
+reaction, the reactor's permission on the repository. A reply starting `Autopilot: fixed in` counts only when the
+finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
+severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
+for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
+model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
+40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
+comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
+thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
+its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
+treat a closed pull request like an opened one and would pay to review it. This repository's own workflow adds it with
+that bump.
+
+### Monthly report
+
+At 06:00 UTC on the 1st of each month, the `Monthly report` workflow (`tools/report.ts`) opens an issue in this
+repository, "Review report YYYY-MM", labelled `review-report`, for the month just ended. It reads every pull request
+closed that month, merged or not, in each NCodeGroup public repository with `.github/workflows/code-review.yml`, and
+counts those the bot reviewed:
+
+- precision per reviewer and per repository: fixed ÷ (fixed + dismissed), with acknowledged and ignored findings shown
+  apart. A finding several reviewers raised counts for each of them;
+- findings per pull request, among those with outcomes recorded;
+- the total cost, split between the Claude API and Amazon Bedrock, and the cost per fixed finding: the cost of the pull
+  requests with outcomes recorded ÷ their fixed findings;
+- the change in each from the previous month's report, read from the hidden `<!-- ncode-review:report {...} -->` marker
+  in its issue.
+
+Findings come from each pull request's outcomes marker and cost from every review's summary comment, including collapsed
+ones; a summary posted before summaries recorded their cost gives it from its visible line, or is counted as unknown.
+Only the bot's comments and the workflow's own report issues are read, so a marker someone else writes changes nothing.
+A pull request whose comments can't be read is left out and named under "Notes". Running it again for the same month
+updates that month's issue instead of opening another. The workflow uses only its `GITHUB_TOKEN`, since every reviewed
+repository is public, and its manual run takes a `month` (YYYY-MM, the current month included) and a `repositories`
+list (owner/name, separated by commas) to read instead of scanning:
+
+```powershell
+gh workflow run monthly-report.yml -R NCodeGroup/code-review -f month=2026-10
+```
+
+To see a month's report without publishing it, run `node tools/report.ts` with `GITHUB_TOKEN`,
+`GITHUB_REPOSITORY=NCodeGroup/code-review`, `REPORT_MONTH` and `REPORT_DRY_RUN=1`; it prints the issue's body.
 
 ### Template-owned files
 

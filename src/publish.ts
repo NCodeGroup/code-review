@@ -2,7 +2,8 @@
 // one, when there was no acknowledgement), posts the findings as review threads, posts a new summary comment on the
 // pull request and collapses the bot's earlier summary comments to one line that links to it. For `/review explain` it
 // posts answer.json's comment instead, and for `/review teach` it opens teach.json's `review-guidance` issue and
-// replies; neither has a check run. It runs after the agents have exited, with the app's token, which is limited to the
+// replies; neither has a check run. For a closed pull request it posts outcomes.json's table on the summary comment,
+// with no check run either. It runs after the agents have exited, with the app's token, which is limited to the
 // one repository under review and to check runs and pull requests, and for a teach run an issues token as well.
 
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import { assertNoSecrets } from './outputs.ts';
 import { postSummary, postThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { githubApi } from './github.ts';
+import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { annotations, checkSummary, checkText, checkTitle, summaryComment, type Results } from './results.ts';
 import { publishTeaching } from './teach.ts';
 
@@ -22,6 +24,12 @@ async function main(): Promise<void> {
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
   const api = githubApi(token);
+  // A closed pull request's run records outcomes and has no review to publish, nor a check run to complete.
+  const report = readOutcomes(outDir);
+  if (report) {
+    await publishOutcomes(api, report, [token]);
+    return;
+  }
   // A `/review teach` run opens a guidance issue with the issues token, which is empty when the app couldn't get issues
   // write on the issue's repository, and replies with the app's token.
   const issuesToken = process.env['CODE_REVIEW_ISSUES_TOKEN'];

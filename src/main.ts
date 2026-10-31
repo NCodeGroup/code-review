@@ -1,7 +1,8 @@
 // The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step, or
 // status.json with why there's no review, for the finish step. For a `/review explain` comment it writes answer.json
-// instead, and for `/review teach` teach.json. It holds the model credentials but never the app's private key or a token
-// minted from it: those reach only the steps that write to the pull request.
+// instead, and for `/review teach` teach.json. On a closed pull request it writes outcomes.json, without a model call
+// (outcomes.ts). It holds the model credentials but never the app's private key or a token minted from it: those reach
+// only the steps that write to the pull request.
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,6 +17,7 @@ import { answerFile, answerFor, explainFinding, findFinding, githubReader, type 
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, readPullRequest } from './gather.ts';
 import { fetchPullRequest, runUrl } from './github.ts';
+import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
 import { startProxy } from './proxy.ts';
@@ -160,6 +162,13 @@ async function main(): Promise<void> {
   let lastHead: Promise<string | undefined> | undefined;
   const reviewedHead = (number: number) => (lastHead ??= lastReviewedHead(repository, number, githubToken));
 
+  // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
+  // no credentials. It never reviews.
+  if (isClosedEvent(event)) {
+    if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
+    await recordOutcomes(tokenApi(githubToken), event, repository, outDir);
+    return;
+  }
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
   // An automatic run on a commit already reviewed, such as marking a draft ready without pushing, would pay again for
   // the same review; /review still reviews it.
