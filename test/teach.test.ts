@@ -167,12 +167,13 @@ test('planTeaching quotes the rule as data: a long enough fence, and mentions th
   assert.equal(issueTitle(`${'x'.repeat(100)}\nsecond line`), `Review guidance: ${'x'.repeat(71)}…`);
 });
 
-test('planTeaching answers an empty, an overlong or an unknown-finding command with a reply and no issue', async () => {
+test('planTeaching answers an empty, an overlong or an unknown-finding command with a reply and no issue, and teaches a rule at the limit', async () => {
   const empty = await planTeaching({ kind: 'teach', scope: 'org', rule: '' }, context, reader({}).read);
   assert.deepEqual(empty, { answer: { repository: 'NCodeGroup/code-review', pullRequest: 7, body: usageBody() } });
   const long = await planTeaching({ kind: 'teach', scope: 'repository', rule: 'x'.repeat(maxRuleChars + 1) }, context, reader({}).read);
   assert.ok('answer' in long);
   assert.match(long.answer.body, /2,001 characters long; teach one of at most 2,000/);
+  assert.ok('teaching' in (await planTeaching({ kind: 'teach', scope: 'repository', rule: 'x'.repeat(maxRuleChars) }, context, reader({}).read)), 'a rule at the limit is taught');
   const { reads, read } = reader({ [listPath]: [finding()] });
   const unknown = await planTeaching(parseCommand('/review teach F9 a rule') as Teach, context, read);
   assert.ok('answer' in unknown);
