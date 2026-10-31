@@ -60,8 +60,8 @@ export const budgets = {
 };
 
 // The ceiling on one review's total cost: a guard against a runaway review only, far above normal spend (about $0.60 to
-// $2.10 for a normal pull request, $6 to $7 for a 2 MB one in six parts). Once the calls so far reach it, the reviewer and
-// rule-check calls not yet started are skipped, and synthesis still runs on what was found.
+// $2.10 for a normal pull request, $6 to $7 for a 2 MB one in six parts). Once the calls so far reach it, the reviewer,
+// rule-check and verification calls not yet started are skipped, and synthesis still runs on what was found.
 // CODE_REVIEW_MAX_RUN_USD overrides it with a positive number of dollars; anything else warns and keeps the default.
 export const runCeilingBase = 8;
 export const runCeilingPerPart = 4;
