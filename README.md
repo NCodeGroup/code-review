@@ -234,10 +234,10 @@ Each review, all from `ncode-review[bot]`:
   finding with no changed line to sit on goes in that review's body. A finding already posted on the pull request
   isn't posted again, so `/review` adds only what's new. Nor is one whose thread someone with write access dismissed,
   by resolving it while it was still on the code it was posted on or with a 👎, even at another severity;
-- marks a finding "Tracked in #N" instead of raising it as new, when an open issue someone with write access opened
-  already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding gets no thread and isn't
-  verified; the summary comment and the check run list it apart, under "Tracked in open issues", and
-  leave it out of the verdict and the finding counts;
+- lists a finding apart, under "Tracked in open issues", instead of raising it as new, when an open issue someone with
+  write access opened already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding gets
+  no thread and isn't verified; the summary comment and the check run leave it out of the verdict and the finding
+  counts;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - completes that "Code review" check run, neutral, with all the findings and annotations.
