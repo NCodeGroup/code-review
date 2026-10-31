@@ -637,6 +637,15 @@ test('a suggestion whose replacement is longer than the limit posts without its 
   await assertProseOnly(suggested({ startLine: 10, endLine: 11, replacement: '1\n2\n3\n4\n5\n6' }), [10, 11], 11);
 });
 
+test('a suggestion exactly at the limit posts with its block', async () => {
+  const { placeFindings, reviewComment } = await import('../src/threads.ts');
+  const finding = suggested({ startLine: 10, endLine: 14, replacement: '1\n2\n3\n4\n5' });
+  const comment = reviewComment(placeFindings([finding], { 'src/A.ts': [10, 11, 12, 13, 14] }, []).inline[0]!);
+  assert.equal(comment['start_line'], 10);
+  assert.equal(comment['line'], 14);
+  assert.ok(String(comment['body']).includes('\n```suggestion\n1\n2\n3\n4\n5\n```\n'));
+});
+
 test('a suggestion whose range is longer than the limit posts without its block', async () => {
   await assertProseOnly(suggested({ startLine: 10, endLine: 15, replacement: 'a' }), [10, 11, 12, 13, 14, 15], 11);
 });
@@ -650,7 +659,7 @@ test('a suggestion whose range ends before it starts posts without its block', a
 });
 
 test('a suggestion with a line that is not an integer posts without its block', async () => {
-  await assertProseOnly(suggested({ startLine: 10.5, endLine: 11, replacement: 'a' }), [10, 11], 11);
+  await assertProseOnly(suggested({ startLine: 10, endLine: 10.5, replacement: 'a' }, 10), [10, 11], 10);
 });
 
 test('a suggestion whose replacement is not text posts without its block', async () => {
