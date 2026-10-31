@@ -15,13 +15,14 @@ import { decideReview, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments } from './comments.ts';
 import { required } from './env.ts';
 import { fetchPullRequest, GitHubError, runUrl, type Api, type PullRequestRef } from './github.ts';
+import { writeLog } from './log.ts';
 import { newestReviewedHead } from './results.ts';
 
 // The step outputs for a run that will review, or undefined when there's nothing to acknowledge.
 export async function decideAcknowledgement(
   input: { event: CommentEvent & { pull_request?: PullRequestRef }; repository: string; token: string | undefined },
   fetchFn: typeof fetch = fetch,
-  log: (line: string) => void = console.log,
+  log: (line: string) => void = writeLog,
 ): Promise<string | undefined> {
   const { event, repository, token } = input;
   const decision = await decideReview(
@@ -46,7 +47,7 @@ export async function postAcknowledgement(
   env: NodeJS.ProcessEnv,
   io: { output: (text: string) => void; log?: (line: string) => void },
 ): Promise<void> {
-  const log = io.log ?? console.log;
+  const log = io.log ?? writeLog;
   try {
     const headSha = env['CODE_REVIEW_HEAD_SHA'];
     if (!isSha(headSha)) throw new Error('CODE_REVIEW_HEAD_SHA is not a commit SHA.');
@@ -70,7 +71,7 @@ export async function postAcknowledgement(
 
 // Revokes the app token `api` holds. A 401 means it's revoked already, as after postAcknowledgement; any other failure
 // only warns, since the token expires within the hour.
-export async function revokeAcknowledgementToken(api: Api, log: (line: string) => void = console.log): Promise<void> {
+export async function revokeAcknowledgementToken(api: Api, log: (line: string) => void = writeLog): Promise<void> {
   try {
     await api('DELETE', '/installation/token');
   } catch (error) {
