@@ -63,6 +63,36 @@ test('githubFetch still sends a path under the REST address, with the token', as
   assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
 });
 
+const dotCom = { api: 'https://api.github.com', graphql: 'https://api.github.com/graphql' };
+
+// A fetch that answers its requests with `answers` in turn, the last one again once they run out.
+function answering(...answers: (() => Response)[]) {
+  return recording(() => (answers.length > 1 ? answers.shift()! : answers[0]!)());
+}
+
+const redirect = (location: string, status = 301) => () => new Response(null, { status, headers: { location } });
+
+test('githubFetch follows a redirect on the configured origin, with the token', async () => {
+  const { requests, fn } = answering(redirect('/repositories/1/pulls/2'), () => new Response('{"ok":true}'));
+  const response = await githubFetch({ fetch: fn, token: 't0ken', urls: dotCom }, 'GET', '/repos/o/r/pulls/2');
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.deepEqual(requests.map((r) => r.url), ['https://api.github.com/repos/o/r/pulls/2', 'https://api.github.com/repositories/1/pulls/2']);
+  assert.equal(requests[0]?.init?.redirect, 'manual');
+  assert.ok((requests[1]?.init?.headers as Record<string, string>)['authorization']?.endsWith(' t0ken'));
+});
+
+test('githubFetch refuses a redirect to another origin and sends nothing there', async () => {
+  const { requests, fn } = answering(redirect('https://attacker.example/x', 302));
+  await assert.rejects(githubFetch({ fetch: fn, token: 't0ken', urls: dotCom }, 'GET', '/repos/o/r'), /Refusing to send a GitHub request to https:\/\/attacker\.example/);
+  assert.deepEqual(requests.map((r) => r.url), ['https://api.github.com/repos/o/r']);
+});
+
+test('githubFetch refuses a fourth redirect', async () => {
+  const { requests, fn } = answering(redirect('/loop'));
+  await assert.rejects(githubFetch({ fetch: fn, token: 't0ken', urls: dotCom }, 'GET', '/repos/o/r'), /Refusing to follow more than 3 redirects/);
+  assert.equal(requests.length, 4);
+});
+
 test("githubFetch gives up when GitHub doesn't answer in time", async () => {
   const silent = ((_url: string | URL | Request, init?: RequestInit) =>
     new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))) as typeof fetch;

@@ -37,16 +37,35 @@ export interface GitHubClient {
   terseErrors?: boolean;
 }
 
+// How many redirects one request follows, such as a renamed repository's, before it fails.
+export const maxGitHubRedirects = 3;
+
 // Sends one request to GitHub, with the token when there is one. A url starting with / is under the REST address,
 // except /graphql, which is the GraphQL one. The address must be on the REST or GraphQL address's origin, so the
-// token never leaves for another host.
+// token never leaves for another host; a redirect is followed only to that origin too, at most maxGitHubRedirects times.
 export async function githubFetch(client: GitHubClient, method: string, url: string, body?: unknown): Promise<Response> {
   const urls = client.urls ?? githubUrls();
-  const target = /^[a-z][a-z\d+.-]*:/i.test(url) ? url : url === '/graphql' ? urls.graphql : `${urls.api}${url}`;
-  const origin = new URL(target).origin;
-  if (origin !== new URL(urls.api).origin && origin !== new URL(urls.graphql).origin) {
-    throw new Error(`Refusing to send a GitHub request to ${origin}: it isn't the GitHub API's address`);
+  const origins = [new URL(urls.api).origin, new URL(urls.graphql).origin];
+  let target = /^[a-z][a-z\d+.-]*:/i.test(url) ? url : url === '/graphql' ? urls.graphql : `${urls.api}${url}`;
+  const signal = AbortSignal.timeout(client.timeoutMs ?? githubTimeoutMs);
+  for (let redirects = 0; ; redirects++) {
+    const origin = new URL(target).origin;
+    if (!origins.includes(origin)) throw new Error(`Refusing to send a GitHub request to ${origin}: it isn't the GitHub API's address`);
+    const response = await send(client, method, target, body, signal);
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+    if (location === null) return response;
+    await response.body?.cancel();
+    if (redirects >= maxGitHubRedirects) throw new Error(`Refusing to follow more than ${maxGitHubRedirects} redirects from ${method} ${url}`);
+    target = new URL(location, target).href;
+    // As fetch does: a 303, or a 301 or 302 after a POST, is followed with a GET and no body.
+    if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === 'POST')) {
+      method = 'GET';
+      body = undefined;
+    }
   }
+}
+
+function send(client: GitHubClient, method: string, target: string, body: unknown, signal: AbortSignal): Promise<Response> {
   return (client.fetch ?? fetch)(target, {
     method,
     headers: {
@@ -56,7 +75,8 @@ export async function githubFetch(client: GitHubClient, method: string, url: str
       ...(body ? { 'content-type': 'application/json' } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(client.timeoutMs ?? githubTimeoutMs),
+    redirect: 'manual',
+    signal,
   });
 }
 
