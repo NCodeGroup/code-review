@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
-import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
@@ -42,6 +41,7 @@ import {
 } from './review.ts';
 import { nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
+import { maxReplyAuthorLookups, withLookupLimit, type WriterCheck } from './writers.ts';
 
 // The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
 export const reReviewer = 'correctness';
@@ -245,8 +245,10 @@ function findingText(body: string): string {
 }
 
 // The bot's findings in a pull request's review threads, with the newest replies from people with write access
-// (`writerAssociations`): as for the description, no one else's reply reaches the reviewer.
-export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
+// (the engine's writer check, at most maxReplyAuthorLookups repliers looked up): as for the description, no one else's
+// reply reaches the reviewer.
+export async function earlierFindings(threads: ThreadNode[], isWriter: WriterCheck): Promise<EarlierFinding[]> {
+  const isReplyWriter = withLookupLimit(isWriter, maxReplyAuthorLookups);
   const found: EarlierFinding[] = [];
   for (const thread of threads) {
     const first = thread.first.nodes[0];
@@ -254,6 +256,12 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
     const rest = thread.comments.nodes.filter((c) => c.url !== first.url);
     const posted = parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine }])[0];
     if (!posted) continue;
+    const replies: Reply[] = [];
+    for (const c of rest) {
+      if (c.author && c.author.login !== botAuthor && (await isReplyWriter(c.author.login, c.authorAssociation))) {
+        replies.push({ author: c.author.login, body: c.body.slice(0, maxReplyChars) });
+      }
+    }
     found.push({
       id: posted.id,
       file: posted.path,
@@ -263,9 +271,7 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
       text: findingText(first.body),
       resolved: thread.isResolved,
       url: first.url,
-      replies: rest
-        .filter((c) => c.author && c.author.login !== botAuthor && writerAssociations.has(c.authorAssociation))
-        .map((c) => ({ author: c.author!.login, body: c.body.slice(0, maxReplyChars) })),
+      replies,
     });
   }
   return found;
@@ -293,9 +299,9 @@ const maxThreadPages = 10;
 
 // The earlier findings on a pull request, or undefined when its review threads can't be read: GraphQL needs a token, and
 // only it says which threads are resolved.
-export async function readEarlierFindings(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<EarlierFinding[] | undefined> {
+export async function readEarlierFindings(repository: string, number: number, token: string | undefined, isWriter: WriterCheck, fetchPage: typeof fetch = fetch): Promise<EarlierFinding[] | undefined> {
   const threads = await readReviewThreads(repository, number, token, fetchPage);
-  return threads && earlierFindings(threads);
+  return threads && earlierFindings(threads, isWriter);
 }
 
 type ThreadsAnswer = { data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] } } } } };

@@ -231,7 +231,7 @@ async function main(): Promise<void> {
     checkout: prPath,
     lastHead: last,
     fetchCommit: (sha) => fetchCommit({ ...headFetch, sha }),
-    readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken),
+    readEarlier: () => readEarlierFindings(repository, pullRequest.number, githubToken, isWriter),
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
