@@ -3,8 +3,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars } from './config.ts';
+import { maxChunkChars, maxChunks, maxConventionChars, maxPullRequestTextChars, type ModelTier } from './config.ts';
 import { readDecisions, readProposedDecisions, type Decision } from './context.ts';
+import { readProjectSettings, settingsFolder, type ProjectCharter } from './settings.ts';
 export { maxIssueChars } from './config.ts';
 
 export interface PullRequest {
@@ -48,6 +49,19 @@ export interface Gathered {
   decisions: Decision[];
   // Commit subjects, present only when the author has write access.
   commits: string[];
+  // From the repository's .github/code-review/ on the default branch, never the pull request's copy:
+  // path globs config.yml marks sensitive, for deeper review (#42);
+  sensitive: string[];
+  // changed files config.yml's skip: leaves out of the review, listed in the check run;
+  skippedByConfig: string[];
+  // the policies config.yml names that reached the conventions, by path;
+  policies: string[];
+  // each reviewer's model, from config.yml's tiers:;
+  tiers: Record<string, ModelTier>;
+  // the project's own reviewers, which join the roster as project:<name>;
+  projectReviewers: ProjectCharter[];
+  // and what in those settings couldn't be used, for the check run.
+  warnings: string[];
 }
 
 const writers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -237,14 +251,33 @@ function readRuleFolder(folder: string, suffix: string, changed: string[], label
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
   for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
-    const { fields, body } = frontmatter(readFileSync(path.join(folder, name), 'utf8'));
-    const globs = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
-    const patterns = globs.map(globToRegExp);
-    if (!changed.some((file) => patterns.some((p) => p.test(file)))) continue;
-    files.push({ name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` });
+    const file = ruleFile(name, label, readFileSync(path.join(folder, name), 'utf8'), changed);
+    if (file) files.push(file);
   }
   const general = (f: RuleFile) => (f.globs.every((g) => g === '**') ? 1 : 0);
   return files.sort((a, b) => general(a) - general(b));
+}
+
+// A rule file when its applyTo (or, without one, defaultGlobs) matches a changed file.
+function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = []): RuleFile | undefined {
+  const { fields, body } = frontmatter(text);
+  const applyTo = (fields.get('applyTo') ?? '').split(',').map((g) => g.trim()).filter(Boolean);
+  const globs = applyTo.length ? applyTo : defaultGlobs;
+  const patterns = globs.map(globToRegExp);
+  if (!changed.some((file) => patterns.some((p) => p.test(file)))) return undefined;
+  return { name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${dropToolEnforced(body).trim()}` };
+}
+
+// The project's rules in .github/code-review/guidance.md, which join the catalog like the instruction files. Without
+// an applyTo, they apply to every file.
+export function projectGuidanceRules(text: string | undefined, changed: string[]): RuleFile[] {
+  const file = text === undefined ? undefined : ruleFile('guidance.md', settingsFolder, text, changed, ['**']);
+  return file ? [file] : [];
+}
+
+// The conventions with the policies config.yml names after them, each with its path.
+export function withPolicies(conventions: string, policies: { path: string; text: string }[]): string {
+  return [conventions, ...policies.map((p) => `From ${p.path} (a policy named in ${settingsFolder}/config.yml):\n${p.text}`)].filter(Boolean).join('\n\n');
 }
 
 // The issue numbers a description closes ("Closes #12", "fixes #3", "Resolves #7").
@@ -279,7 +312,12 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
   const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, pullRequest.headSha]).trim();
   const range = [mergeBase, pullRequest.headSha];
-  const files = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
+  // The repository's settings come from the default branch only, so a pull request can't soften its own review.
+  const settings = readProjectSettings(basePath);
+  const skip = settings.config.skip.map(globToRegExp);
+  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
+  const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
+  const files = changed.filter((f) => !skippedByConfig.includes(f.path));
   const fullDiff = git(prPath, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=5', ...range]);
   const chunks = chunkDiff(files, splitDiff(fullDiff), maxChunkChars, maxChunks);
   const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
@@ -289,5 +327,22 @@ export function gather(pullRequest: PullRequest, prPath: string, basePath: strin
   const commits = writers.has(pullRequest.authorAssociation)
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
     : [];
-  return { pullRequest, mergeBase, files, diff: chunks.join(''), chunks, conventions: readConventions(basePath), reviewRules: readReviewRules(basePath, reviewed), guidance: guidanceDir ? readGuidance(guidanceDir, reviewed) : [], decisions, commits };
+  return {
+    pullRequest,
+    mergeBase,
+    files,
+    diff: chunks.join(''),
+    chunks,
+    conventions: withPolicies(readConventions(basePath), settings.policies),
+    reviewRules: [...readReviewRules(basePath, reviewed), ...projectGuidanceRules(settings.guidance, reviewed)],
+    guidance: guidanceDir ? readGuidance(guidanceDir, reviewed) : [],
+    decisions,
+    commits,
+    sensitive: settings.config.sensitive,
+    skippedByConfig,
+    policies: settings.policies.map((p) => p.path),
+    tiers: settings.config.tiers,
+    projectReviewers: settings.reviewers,
+    warnings: settings.warnings,
+  };
 }

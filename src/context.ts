@@ -70,12 +70,12 @@ export function guidanceRules(files: RuleFile[]): IndexedRule[] {
   return rules;
 }
 
-// One rule per top-level review-only bullet in the repository's conventions, with its continuation lines. They go to
-// the conventions reviewer.
+// One rule per top-level review-only bullet in the repository's conventions (its instruction files and
+// .github/code-review/guidance.md), with its continuation lines. They go to the conventions reviewer.
 export function repositoryRules(files: RuleFile[]): IndexedRule[] {
   const rules: IndexedRule[] = [];
   for (const file of files) {
-    const name = file.name.replace(/\.instructions\.md$/, '');
+    const name = file.name.replace(/(\.instructions)?\.md$/, '');
     let current: string[] | undefined;
     const flush = () => {
       if (current) rules.push({ id: `R-${name}-${rules.filter((r) => r.id.startsWith(`R-${name}-`)).length + 1}`, reviewers: ['conventions'], summary: summarize(current.join(' ')), text: `${current.join('\n')} (${file.name})` });

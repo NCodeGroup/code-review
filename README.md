@@ -102,6 +102,64 @@ Each review, all from `ncode-review[bot]`:
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - posts a neutral "Code review" check run with all the findings and annotations.
 
+## Repository settings
+
+A repository keeps its own review settings in `.github/code-review/`, which the project template never renders, so a
+template update never touches it. The engine reads the folder from the `base` checkout of the default branch only,
+never from the pull request, so a pull request can't soften its own review: one that edits these files is reviewed
+with the copy already on the default branch, and the edit itself is reviewed like any other change.
+
+- `config.yml`, every key optional:
+  - `sensitive:` path globs for a deeper review. The engine reads and validates them, but doesn't review them
+    differently yet ([#42](https://github.com/NCodeGroup/code-review/issues/42)).
+  - `skip:` path globs that are never reviewed, such as vendored code. The check run lists each changed file they
+    skip as "skipped by config", so nothing is dropped silently.
+  - `policies:` files, by their path from the repository root, that every reviewer gets as conventions, after the
+    conventions from `AGENTS.md`, with their path and within a budget of 40,000 characters of their own. A path that
+    is absolute, contains `..` or a backslash, or resolves outside the checkout through a symlink is left out.
+  - `tiers:` each reviewer's model, `haiku`, `sonnet` or `opus`, over the engine's defaults.
+- `guidance.md`: the project's own review rules, in the format of `.github/instructions/*.instructions.md`. They join
+  the rules the context stage picks from, for every file unless an `applyTo:` frontmatter narrows them.
+- `reviewers/*.md`: the project's own reviewers, in the format of [`reviewers/*.md`](reviewers), named with lowercase
+  letters, digits and hyphens. Each joins the roster as `project:<name>`, beside the engine's reviewers, never
+  replacing one; selection may add it, and a `paths:` frontmatter adds it to every pull request that changes a
+  matching file. At most 10 are loaded.
+
+`config.yml` is a small subset of YAML: top-level keys whose values are lists or, for `tiers:`, a mapping, in block or
+`[a, b]` style, with comments and quoted strings. Quote a glob that starts with `*`, since YAML reads an unquoted one as
+an alias. A setting the engine can't use, such as an unknown key, a missing policy or anything outside the subset,
+gives a warning in the check run, and the review runs with the defaults for that file; it never fails the run. Globs
+work like `applyTo:`: `**` spans folders, `*` and `?` stay within one.
+
+For example, NCodeGroup/Identity:
+
+```yaml
+# .github/code-review/config.yml
+sensitive:
+  - "src/**/Jose/**"
+  - "src/**/Jwk/**"
+skip:
+  - "src/**/Vendored/**"
+policies:
+  - docs/api-compatibility.md
+tiers:
+  api-compat: sonnet
+  project:oauth-conformance: sonnet
+```
+
+```markdown
+<!-- .github/code-review/reviewers/oauth-conformance.md -->
+---
+paths: ["src/**/OAuth/**", "src/**/Oidc/**", "src/**/Jose/**"]
+---
+# oauth-conformance
+
+Does this change still conform to the OAuth 2.0, OpenID Connect and JOSE specifications it implements?
+```
+
+Every reviewer, `api-compat` among them, then gets `docs/api-compatibility.md` in its conventions, and the trace's
+`settings` lists the policies, project reviewers, sensitive globs and tiers the review used.
+
 ## Opting a repository in
 
 The review's two keys are organization secrets, stored once and visible only to the repositories that opted in:

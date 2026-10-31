@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Per-repository settings in `.github/code-review/`, read from the default branch's checkout only, so a pull request that edits them is reviewed with the default branch's copy: `config.yml` (`sensitive:`, `skip:`, `policies:`, `tiers:`), `guidance.md` rules for the context stage, and `reviewers/*.md` project reviewers that join the roster as `project:<name>`. Files `skip:` leaves out are listed in the check run as skipped by config, policies reach every reviewer's conventions within a budget of their own, and a setting the engine can't use is a warning in the check run, never a failed review ([#43](https://github.com/NCodeGroup/code-review/issues/43)).
+
 ### Changed
 
 - `npm run typecheck` fails on what a linter would warn about: unused locals and parameters, implicit returns, switch fall-through, missing `override`, `undefined` written into an optional property, dotted access to an index signature, unreachable code and unused labels. CI also runs the template's commit attribution check, on pull requests, merge queue entries and pushes to `main`.
