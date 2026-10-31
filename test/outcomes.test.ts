@@ -397,6 +397,22 @@ test('collectOutcomes lets an outdated thread decide, and warns, when the compar
   assert.deepEqual(lines.filter((line) => line.includes("doesn't show whether")).map((line) => / (F\d)'s /.exec(line)?.[1]), ['F1', 'F2']);
 });
 
+test("collectOutcomes makes the thread's path printable in the comparison warning", async () => {
+  const { api: base } = fakeGitHub();
+  const unsafe = 'src/A\r\n::error::x.cs';
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url.includes('/compare/')) return { files: [{ filename: unsafe, status: 'modified' }] };
+    const answer = await base(method, url, body);
+    if (url === '/graphql') for (const thread of answer.data.repository.pullRequest.reviewThreads.nodes) if (thread.path === 'src/A.cs') thread.path = unsafe;
+    return answer;
+  };
+  const lines: string[] = [];
+  await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
+  assert.deepEqual(lines.filter((line) => line.includes("doesn't show whether")), [
+    "::warning::Comparing aaaaaaa with bbbbbbb doesn't show whether F1's line in src/A::error::x.cs changed; its thread being outdated decides.",
+  ]);
+});
+
 test('collectOutcomes records nothing on a pull request the bot never reviewed', async () => {
   const { api } = fakeGitHub({ summary: false, threads: false });
   assert.equal(await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {}), undefined);

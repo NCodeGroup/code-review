@@ -18,6 +18,10 @@ export interface EvalCase {
   earlier?: EarlierFinding[];
   // A commit of the base branch merged into the head before the review, as /ship-plan merges the default branch in.
   mergeIntoHead?: string;
+  // The pull request's author and their association, when they differ from the default, polewskm as a MEMBER. The
+  // description and the issues it closes count only from an author with write access, as in the review step.
+  author?: string;
+  authorAssociation?: string;
   expect: Concern[];
   mustNotFlag: Concern[];
   source: string;

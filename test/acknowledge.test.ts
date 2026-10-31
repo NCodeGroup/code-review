@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -19,7 +20,7 @@ import {
   stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
-import { decideAcknowledgement, postAcknowledgement } from '../src/acknowledgement.ts';
+import { decideAcknowledgement, postAcknowledgement, revokeAcknowledgementToken } from '../src/acknowledgement.ts';
 import { decideReview, decideRun } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
@@ -362,13 +363,13 @@ test('parseStatus reads status.json as data', () => {
 });
 
 // A fetch that records each request and answers with the status and body given for its host, or throws for 'throw'.
-function fakeFetch(answers: Record<string, { status: number; body?: unknown } | 'throw'>) {
+function fakeFetch(answers: Record<string, { status: number; body?: unknown; headers?: Record<string, string> } | 'throw'>) {
   const requests: { url: string; init: RequestInit | undefined }[] = [];
   const fn = (async (url: string | URL | Request, init?: RequestInit) => {
     requests.push({ url: String(url), init });
     const answer = answers[new URL(String(url)).host];
     if (!answer || answer === 'throw') throw new Error('network down');
-    return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? {}), { status: answer.status });
+    return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? {}), { status: answer.status, ...(answer.headers ? { headers: answer.headers } : {}) });
   }) as typeof fetch;
   return { requests, fn };
 }
@@ -403,6 +404,13 @@ test('decideAcknowledgement passes on the head of an automatic review of a new c
   const fetched = fakeFetch({ 'api.github.com': { status: 200, body: [] } });
   assert.equal(await decideAcknowledgement({ event: { pull_request: own }, repository, token: 'read-only' }, fetched.fn, () => {}), `acknowledge=true\nhead-sha=${sha}\n`);
   assert.match(fetched.requests[0]?.url ?? '', new RegExp(`^https://api\\.github\\.com/repos/${repository}/issues/7/comments`));
+});
+
+test('decideAcknowledgement warns with the reason when it cannot read the comments, and still acknowledges', async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({ 'api.github.com': { status: 500 } });
+  assert.equal(await decideAcknowledgement({ event: { pull_request: own }, repository, token: 'read-only' }, fetched.fn, (line) => lines.push(line)), `acknowledge=true\nhead-sha=${sha}\n`);
+  assert.ok(lines.some((line) => line.startsWith(`::warning::Couldn't read /repos/${repository}/issues/7/comments (HTTP 500)`)), lines.join('\n'));
 });
 
 test('decideAcknowledgement passes on nothing, and says why, for a run that will not review', async () => {
@@ -458,6 +466,46 @@ test('postAcknowledgement only warns when the token cannot be revoked', async ()
   assert.match(lines.at(-1) ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
 });
 
+test('revokeAcknowledgementToken counts a 401 as revoked already, and only warns on another failure', async () => {
+  const revoked = fakeFetch({ 'api.github.com': { status: 204 } });
+  const lines: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', revoked.fn), (line) => lines.push(line));
+  assert.deepEqual(lines, []);
+  assert.deepEqual(revoked.requests.map((r) => `${r.init?.method} ${r.url}`), ['DELETE https://api.github.com/installation/token']);
+  const already: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', fakeFetch({ 'api.github.com': { status: 401 } }).fn), (line) => already.push(line));
+  assert.deepEqual(already, ["The acknowledgement's token was revoked already."]);
+  const failed: string[] = [];
+  await revokeAcknowledgementToken(githubApi('t', fakeFetch({ 'api.github.com': { status: 502 } }).fn), (line) => failed.push(line));
+  assert.equal(failed.length, 1);
+  assert.match(failed[0] ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
+});
+
+// src/acknowledge.ts picks its step when it's loaded, so these run it as action.yml does, in a node process of its own.
+// The process's fetch is a stub that prints each request and answers 204, so nothing reaches the network.
+const fetchStub = `data:text/javascript,${encodeURIComponent(
+  'globalThis.fetch = async (url, init) => { console.log(`fetch ${init.method} ${url} ${init.headers.authorization}`); return new Response(null, { status: 204 }); };',
+)}`;
+function runAcknowledge(mode: string, token?: string): { status: number | null; lines: string[] } {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'CODE_REVIEW_APP_TOKEN' && !name.startsWith('NODE_TEST')));
+  if (token) env['CODE_REVIEW_APP_TOKEN'] = token;
+  const run = spawnSync(process.execPath, ['--import', fetchStub, path.join(root, 'src', 'acknowledge.ts'), mode], { env, encoding: 'utf8' });
+  return { status: run.status, lines: run.stdout.split('\n').filter(Boolean) };
+}
+
+test('acknowledge.ts revoke revokes the token in CODE_REVIEW_APP_TOKEN', () => {
+  const { status, lines } = runAcknowledge('revoke', 'placeholder-token');
+  assert.equal(status, 0);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0] ?? '', /^fetch DELETE https:\/\/api\.github\.com\/installation\/token \S+ placeholder-token$/);
+});
+
+test('acknowledge.ts revoke warns and fails without CODE_REVIEW_APP_TOKEN', () => {
+  const { status, lines } = runAcknowledge('revoke');
+  assert.equal(status, 1);
+  assert.deepEqual(lines, ["::warning::The review couldn't be acknowledged: CODE_REVIEW_APP_TOKEN isn't set."]);
+});
+
 test('required throws for a missing variable, and take removes the variable it reads', () => {
   const env: NodeJS.ProcessEnv = { A: 'a', EMPTY: '' };
   assert.equal(required('A', env), 'a');
@@ -492,8 +540,30 @@ test('chooseProvider gives no provider when the Anthropic login fails and there 
   assert.match(error.reason, /^Anthropic login failed: .*HTTP 401.*, and the run has no Bedrock key$/);
 });
 
+test('chooseProvider gives no provider when Bedrock throttles the key or its quota is used up', async () => {
+  const answers = [
+    [{ status: 429, headers: { 'x-amzn-errortype': 'ThrottlingException:http://internal.amazon.com/coral/com.amazon.bedrock/' } }, /, and Bedrock is throttling the key or over its quota: HTTP 429 ThrottlingException$/],
+    [{ status: 429 }, /, and Bedrock is throttling the key or over its quota: HTTP 429$/],
+    [{ status: 400, headers: { 'x-amzn-errortype': 'ServiceQuotaExceededException' } }, /, and Bedrock is throttling the key or over its quota: HTTP 400 ServiceQuotaExceededException$/],
+  ] as const;
+  for (const [bedrock, reason] of answers) {
+    const fetched = fakeFetch({ 'api.anthropic.com': noCredits, 'bedrock-runtime.us-west-2.amazonaws.com': bedrock });
+    const error = await chooseProvider({ anthropic, bedrockKey: 'k' }, fetched.fn).catch((e: unknown) => e);
+    assert.ok(error instanceof NoProviderError);
+    assert.match(error.reason, reason);
+  }
+});
+
 test('chooseProvider goes on with Bedrock unless Bedrock refuses the key outright', async () => {
-  for (const bedrock of [{ status: 200 }, { status: 400 }, { status: 500 }, 'throw'] as const) {
+  const answers = [
+    { status: 200 },
+    { status: 400 },
+    { status: 500 },
+    { status: 429, headers: { 'x-amzn-errortype': 'ModelNotReadyException' } },
+    { status: 400, headers: { 'x-amzn-errortype': 'ValidationException' } },
+    'throw',
+  ] as const;
+  for (const bedrock of answers) {
     const fetched = fakeFetch({ 'api.anthropic.com': noCredits, 'bedrock-runtime.us-west-2.amazonaws.com': bedrock });
     assert.equal((await chooseProvider({ anthropic, bedrockKey: 'k' }, fetched.fn)).provider, 'bedrock');
   }
@@ -564,17 +634,21 @@ test('action.yml gives the app key only to the token steps, and each token only 
     assert.equal(step.with['private-key'], '${{ inputs.app-private-key }}');
   }
   const users = (output: string) => steps.filter((s) => s.text.includes(output)).map((s) => s.id || s.name);
-  assert.deepEqual(users('steps.ack-token.outputs.token'), ['ack']);
+  assert.deepEqual(users('steps.ack-token.outputs.token'), ['ack', 'ack-revoke']);
   assert.deepEqual(users('steps.app-token.outputs.token'), ['publish', 'Finish the check run']);
 });
 
 test('action.yml acknowledges before setup-node and npm ci, and never lets the acknowledgement stop the review', () => {
   const steps = actionSteps();
   const index = (id: string) => steps.findIndex((s) => s.id === id);
-  assert.deepEqual(['ack-decide', 'ack-token', 'ack', 'setup-node', 'install', 'review'].map(index), [0, 1, 2, 3, 4, 5]);
-  for (const id of ['ack-decide', 'ack-token', 'ack']) assert.equal(steps[index(id)]?.continueOnError, true, id);
-  // The acknowledgement revokes its own token before the review step starts.
+  assert.deepEqual(['ack-decide', 'ack-token', 'ack', 'ack-revoke', 'setup-node', 'install', 'review'].map(index), [0, 1, 2, 3, 4, 5, 6]);
+  for (const id of ['ack-decide', 'ack-token', 'ack', 'ack-revoke']) assert.equal(steps[index(id)]?.continueOnError, true, id);
+  // The acknowledgement revokes its own token, and a step that always runs revokes it again, before the review step.
   assert.equal(steps[index('ack-token')]?.with['skip-token-revoke'], 'true');
+  const revoke = steps[index('ack-revoke')];
+  assert.equal(revoke?.if, "always() && steps.ack-token.outcome == 'success'");
+  assert.deepEqual(Object.keys(revoke?.env ?? {}), ['CODE_REVIEW_APP_TOKEN']);
+  assert.ok(revoke?.text.includes('acknowledge.ts" revoke'));
   assert.equal(steps[index('ack-decide')]?.env['CODE_REVIEW_GITHUB_TOKEN'], '${{ inputs.github-token }}');
   assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
 });

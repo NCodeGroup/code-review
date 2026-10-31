@@ -125,9 +125,39 @@ test('the permission lookup runs once per author, and only write or admin counts
   assert.deepEqual(urls, ['writer', 'admin', 'reader', 'stranger'].map((login) => `https://api.github.com/repos/o/r/collaborators/${login}/permission`));
 });
 
-test('a failed permission lookup counts as no write access', async () => {
-  const isWriter = writerCheck('o/r', 't', (async () => { throw new Error('offline'); }) as typeof fetch);
-  assert.equal(await isWriter('polewskm', 'CONTRIBUTOR'), false);
+test('a failed permission lookup counts as no write access, and warns with the reason', async () => {
+  const lines: string[] = [];
+  const offline = writerCheck('o/r', 't', (async () => { throw new Error('offline'); }) as typeof fetch, (line) => lines.push(line));
+  assert.equal(await offline('polewskm', 'CONTRIBUTOR'), false);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0] ?? '', /^::warning::Couldn't read polewskm's permission \(offline\); their text counts as a non-writer's/);
+  const refused: string[] = [];
+  const outage = writerCheck('o/r', 't', (async () => new Response('', { status: 502 })) as typeof fetch, (line) => refused.push(line));
+  assert.equal(await outage('polewskm', 'CONTRIBUTOR'), false);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0] ?? '', /\(HTTP 502\)/);
+  const garbled: string[] = [];
+  const notJson = writerCheck('o/r', 't', (async () => new Response('not json', { status: 200 })) as typeof fetch, (line) => garbled.push(line));
+  assert.equal(await notJson('polewskm', 'CONTRIBUTOR'), false);
+  assert.equal(garbled.length, 1);
+  const quiet: string[] = [];
+  const unknown = writerCheck('o/r', 't', api({}).fetchJson, (line) => quiet.push(line));
+  assert.equal(await unknown('stranger', 'NONE'), false);
+  assert.deepEqual(quiet, []);
+});
+
+test('a closed issue that cannot be read is left out with a warning, and the others are read', async () => {
+  const fetchJson = (async (url: string | URL | Request) => {
+    if (String(url).endsWith('/issues/21')) return new Response(JSON.stringify({ ...issue21, author_association: 'MEMBER' }), { status: 200 });
+    if (String(url).endsWith('/issues/22')) throw new Error('offline');
+    return new Response('', { status: 500 });
+  }) as typeof fetch;
+  const lines: string[] = [];
+  const issues = await readClosedIssues('o/r', [21, 22, 23], 't', writerCheck('o/r', 't', fetchJson), fetchJson, (line) => lines.push(line));
+  assert.deepEqual(issues, [{ number: 21, title: issue21.title, body: issue21.body }]);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0] ?? '', /^::warning::Couldn't read issue #22, which the description closes \(offline\)/);
+  assert.match(lines[1] ?? '', /#23, .*\(HTTP 500\)/);
 });
 
 test('a description from an author without write access stays out, and the context says it was left out', async () => {
