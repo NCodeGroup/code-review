@@ -96,12 +96,17 @@ test('releaseNotes keeps a heading inside a fenced block as part of the section'
 });
 
 test('releaseNotes closes a fence only with its own marker, at least as long', () => {
-  const block = '```\n~~~\n## [0.3.0] - 2026-10-31\n``\n````\n';
+  const block = '```\n~~~\n```markdown\n## [0.3.0] - 2026-10-31\n``\n````\n';
   const fenced = changelog.replace('- Releases are immutable from this one on.\n', `- Releases are immutable from this one on.\n\n${block}`);
   assert.equal(releaseNotes(fenced, '0.3.1'), `### Changed\n\n- Releases are immutable from this one on.\n\n${block.trimEnd()}\n`);
   const tilde = changelog.replace('- Releases are immutable from this one on.\n', '- Releases are immutable from this one on.\n\n~~~~\n```\n## [0.1.0] - 2026-10-30\n~~~~\n');
   assert.match(releaseNotes(tilde, '0.3.1'), /~~~~\n```\n## \[0\.1\.0\] - 2026-10-30\n~~~~\n$/);
   assert.equal(releaseNotes(tilde, '0.1.0'), '### Added\n\n- The first release.\n');
+});
+
+test('releaseNotes reads a backtick line whose info string holds a backtick as inline code, not a fence', () => {
+  const inline = changelog.replace('- Something not released yet.\n', '- Something not released yet.\n\n```a`b```\n');
+  assert.equal(releaseNotes(inline, '0.3.1'), releaseNotes(changelog, '0.3.1'));
 });
 
 test('releaseNotes says when a fence that is never closed hides the version\'s heading', () => {

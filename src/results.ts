@@ -319,7 +319,7 @@ export function checkSummary(results: Results): string {
   if (results.depth === 'deep') {
     lines.push('', `**${depthLabel.deep}**: ${files(results.sensitiveFiles ?? [])} ${(results.sensitiveFiles ?? []).length === 1 ? 'matches' : 'match'} \`sensitive:\` in \`.github/code-review/config.yml\`, so \`correctness\` and \`security\` reviewed the parts of the diff with them on Opus, unless \`CODE_REVIEW_TIERS\` names them, and verification, when it's on, checked the findings in them on Opus.`);
   } else if (results.depth === 'light') {
-    lines.push('', `**${depthLabel.light}**: every changed file is documentation, a changelog or part of a template update, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
+    lines.push('', `**${depthLabel.light}**: every changed file is documentation, the changelog among it, or a template version file, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
   }
   const upstreamTotal = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
   if (upstreamTotal) {
