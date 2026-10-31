@@ -1195,6 +1195,93 @@
     "source": "Re-review of #71 (issue #32), round 3, at a7a885e since the review at 0c9103c: what changed is src/claims.ts, which the selection floor gives to security (its path has claim in it), and one line of src/review.ts, so security joins correctness, both on Sonnet; no sensitive: applies. The earlier findings are round 2's as posted, with the replies before round 3, left unresolved as a re-review checks them; round 1's, all resolved, are left out. The must-not concern is the half of round 2's F1 the author declined."
   },
   {
+    "id": "re-review-sensitive-path",
+    "repository": "NCodeGroup/code-review",
+    "pullRequest": 19,
+    "title": "Fetch the pull request's head in the engine, so a calling workflow needs no checkout of untrusted code",
+    "body": "Every repository that adopts the bot gets the same two CodeQL alerts on `code-review.yml`: *checkout of untrusted code in a privileged context* and its TOCTOU variant. They are accepted risks (the checkout is only read), but they repeat for each repository, mark the adoption PR's `CodeQL` check red, and need a dismissal each time. This removes the cause.\n\n## What changes\n\n- **The workflow no longer checks the head out.** The engine fetches the commit itself (`src/fetch-head.ts`) after it has decided to review: a `/review` comment from a writer, a pull request that isn't from a fork, a commit not already reviewed. A caller then needs only the checkout of its default branch.\n- **The exact commit.** It checks out the SHA from the event, or from the API for a comment, instead of `refs/pull/N/head`. A push between a `/review` comment and the checkout can no longer change what is reviewed, which the TOCTOU alert was about.\n- **git runs bare.** No system or user configuration (an empty folder stands in for the home directory), no hooks, no fsmonitor, no credential helper, no prompts. The token goes through `GIT_CONFIG_*` environment variables scoped to the remote's origin, never a command line or the remote's URL, and the test checks it isn't left in `.git/config`. A SHA that isn't 40 hex characters, a bad number and a non-empty folder are refused.\n- **Backward compatible.** A folder that is already a repository is left alone, so v0.2 workflows that still check the head out keep working.\n\n## What does not change\n\nThe risk is the same as before and is mitigated the same way: the head is data on disk, read by an agent with no settings, hooks, MCP servers or `CLAUDE.md` from it, read-only tools and a path guard. This moves the fetch into the audited engine, where those mitigations live, and out of every caller's workflow file. It does not make reading an untrusted checkout safer by itself, and I am not claiming it does.\n\n## Rollout\n\n1. Merge, then release v0.3.0.\n2. Update the template's `code-review.yml` and the repositories' workflows to v0.3.0 and delete their second checkout.\n3. The alerts already open on `main` are dismissed once; no repository gets new ones.\n\n`npm test` (33 tests, 4 new, against a local repository standing in for the remote) and `npm run typecheck` pass. The fetch against github.com itself is untested until the first run of v0.3.0, which I'll watch.\n",
+    "base": "28d50ad3ab13849fa54bf0801334071ccd38011c",
+    "head": "1516681d4b09ff78c6fedd50f2652a5390e12422",
+    "reviewed": "08481768d836784ef32ebfa9a39d5beb6031c847",
+    "sensitive": [
+      "src/fetch-head.ts"
+    ],
+    "earlier": [
+      {
+        "id": "F2",
+        "file": "src/fetch-head.ts",
+        "line": 72,
+        "severity": "nit",
+        "title": "`has()` treats every git failure as 'commit missing'",
+        "text": "`has` catches any exception from `git cat-file -e`, including a broken repository or a failed spawn, and returns false.\n\n**Consequence:** The real cause stays hidden until the second fetch fails with a generic message. The run still fails, but the failure is harder to diagnose.\n\n**Fix:** Only treat the not-found case as false (check the exit status or stderr), or add a comment saying that any failure is meant to mean 'fetch it'.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/19#discussion_r4429497458",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Deliberate, now said in a comment above `has` (1516681): any failure counts as 'not there', and the fetch by name that follows reports a broken repository with git's own message, so the cause is not hidden for long. I did not narrow it to one exit code, because `cat-file -e` on a missing object and on a broken repository both exit 128 and can't be told apart without parsing stderr."
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "file": "src/fetch-head.ts",
+        "line": 91,
+        "severity": "nit",
+        "title": "`rev-parse` failure drops git's error detail",
+        "text": "The catch around `git rev-parse HEAD` throws a fixed message and throws away the original error.\n\n**Consequence:** A corrupt or unreadable `.git` gets reported as 'without a commit checked out', which can send the user looking in the wrong place.\n\n**Fix:** Append the original error message to the thrown text, the way the fetch failure below appends `(${detail})`.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/19#discussion_r4429497462",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Fixed in 1516681. The error now ends with the original message: \"<path> is a repository without a commit checked out. (<git's message>)\". New test: a repository made with `git init` and no commit."
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "file": "README.md",
+        "line": 56,
+        "severity": "nit",
+        "title": "Example pins `v0.3.0` before that release exists",
+        "text": "The README points consumers at `NCodeGroup/code-review@v0.3.0`, but this PR creates no tag, and no CHANGELOG or release note records the behavior change.\n\n**Consequence:** Anyone who copies the example before v0.3.0 is published gets a failing workflow, and nothing in the repository says that the checkout step was removed.\n\n**Fix:** Bump the pin in the release PR, or confirm v0.3.0 ships this change. Record the change in the release notes: the engine now fetches the head, and the workflow's checkout step was removed.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/19#discussion_r4429497468",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Intended. The example names the release this change ships in, and the release follows the merge (I cut v0.3.0 from main after it lands). The repository has no CHANGELOG; its release notes are generated from the merged pull request titles, and this one's title says the engine now fetches the head. I did not want to leave the README naming v0.2.1 with an example that no longer matches the engine."
+          }
+        ]
+      },
+      {
+        "id": "F7",
+        "file": "src/fetch-head.ts",
+        "line": 54,
+        "severity": "nit",
+        "title": "`git` helper takes four data parameters",
+        "text": "`git(cwd, empty, args, extra)` goes past the 2–3 parameter limit, and `cwd` and `empty` are passed as a pair at every call site.\n\n**Consequence:** Every call repeats the same two arguments, which makes the calls noisy and easy to get in the wrong order.\n\n**Fix:** Bind `cwd` and `empty` in a small context object or closure, so each call passes only `args` and `extra`.",
+        "resolved": false,
+        "url": "https://github.com/NCodeGroup/code-review/pull/19#discussion_r4429497469",
+        "replies": [
+          {
+            "author": "polewskm",
+            "body": "Fixed in 1516681. `git` now takes `(where, args, extra)`, with `where = { cwd, empty }` built once per call to `fetchPullRequestHead`, so no call site repeats the pair."
+          }
+        ]
+      }
+    ],
+    "expect": [
+      {
+        "file": "src/fetch-head.ts",
+        "concern": "The git fetches of the pull request's head run with no time limit, so a remote that accepts the connection and never answers holds the review until the job's own timeout."
+      }
+    ],
+    "mustNotFlag": [],
+    "source": "Re-review of #19, round 3, at 1516681 since the review at 0848176: what changed is src/fetch-head.ts, which fetches the pull request's head with the app's token, and src/command.ts and src/main.ts. No path the selection floor gives to security changed, and the repository has no sensitive: setting, so the case's sensitive names src/fetch-head.ts as a repository guarding that fetch would: security joins correctness and the re-review goes deep, both on Opus. The expected concern is round 3's F1 (correctness, should-fix), which #22 fixed with a fetch time limit. The earlier findings are round 2's as posted, with the replies before round 3, left unresolved as a re-review checks them; round 1's, all resolved, are left out."
+  },
+  {
     "id": "test-gap-newest-summary-selection",
     "repository": "NCodeGroup/code-review",
     "pullRequest": 30,
