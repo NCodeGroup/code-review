@@ -3,6 +3,7 @@
 // tracks.
 
 import { createHash } from 'node:crypto';
+import { neutralizeProse } from './markdown.ts';
 import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
 
 // The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
@@ -40,6 +41,21 @@ export interface PostedThread {
 export function markerFields(body: string | undefined): Map<string, string> | undefined {
   const marker = [...(body ?? '').matchAll(markerPattern)].at(-1);
   return marker ? new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string])) : undefined;
+}
+
+// The finding a bot comment carries, from its marker; reviewers come from the visible line for a comment posted before
+// the marker named them, or whose marker names them as blank. It reads the last marker, as markerFields does: the one
+// threadBody wrote, after any suggestion.
+export function parseFindingComment(body: string): { id: string; severity: Severity; reviewers: string[] } | undefined {
+  const fields = markerFields(body);
+  const id = fields?.get('id');
+  const severity = fields?.get('severity') as Severity | undefined;
+  if (!id || !severity) return undefined;
+  const listed = (fields?.get('reviewer') ?? '').split(',').filter(Boolean);
+  const reviewers = listed.length
+    ? listed
+    : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
+  return { id, severity, reviewers: reviewers.filter(Boolean) };
 }
 
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
@@ -156,20 +172,25 @@ function text(value: string): string {
   return value.replace(/</g, '&lt;');
 }
 
+// Model-written text: escaped as text() does, then neutralized, so it can't mention anyone or post a link.
+function prose(value: string): string {
+  return neutralizeProse(text(value));
+}
+
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {
   const reviewers = finding.reviewers.map((name) => name.replace(/[^A-Za-z0-9._-]/g, '-')).join(',');
   const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity}${reviewers ? ` reviewer=${reviewers}` : ''} -->`;
   return [
-    `${severityDot[finding.severity]} **${severityLabel[finding.severity]}: ${text(finding.title)}** <sub>${finding.id} · ${text(finding.reviewers.join(', '))}</sub>`,
+    `${severityDot[finding.severity]} **${severityLabel[finding.severity]}: ${prose(finding.title)}** <sub>${finding.id} · ${text(finding.reviewers.join(', '))}</sub>`,
     '',
-    text(finding.problem),
+    prose(finding.problem),
     '',
-    `**Consequence:** ${text(finding.consequence)}`,
+    `**Consequence:** ${prose(finding.consequence)}`,
     '',
-    `**Fix:** ${text(finding.fix)}`,
+    `**Fix:** ${prose(finding.fix)}`,
     '',
     ...(suggestion ? [suggestionBlock(suggestion.replacement), ''] : []),
-    `<details><summary>Evidence</summary>\n\n${text(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
+    `<details><summary>Evidence</summary>\n\n${prose(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
     '',
     marker,
   ].join('\n');
@@ -212,7 +233,7 @@ export function reviewBody(placement: Placement, headSha: string): string {
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${text(f.title)}** \`${text(f.file)}:${f.line}\`. ${text(f.problem)} **Fix:** ${text(f.fix)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}`);
     }
   }
   return lines.join('\n');

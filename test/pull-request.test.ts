@@ -5,8 +5,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { closedIssues, gather, readPullRequest, type Gathered } from '../src/gather.ts';
+import { githubApi } from '../src/github.ts';
 import { pullRequestBlock, selectionFloor, sharedContext } from '../src/review.ts';
 import { readClosedIssues, readWritersIssues, writerCheck } from '../src/writers.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 const made: string[] = [];
 after(() => {
@@ -80,12 +84,12 @@ function api(permissions: Record<string, string>, issues: Record<number, object>
 async function gatherFor(body: string | null, permissions: Record<string, string>, issues: Record<number, object> = {}, association = 'CONTRIBUTOR'): Promise<Gathered> {
   const { repo, event } = fixture(body, association);
   const { fetchJson } = api(permissions, issues);
-  const isWriter = writerCheck('o/r', 't', fetchJson);
+  const isWriter = writerCheck('o/r', githubApi('t', fetchJson));
   const pullRequestEvent = event.pull_request;
   const authorCanWrite = await isWriter(pullRequestEvent.user.login, pullRequestEvent.author_association);
   const pullRequest = readPullRequest(event, 'o/r', authorCanWrite);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues('o/r', closedNumbers, 't', isWriter, fetchJson);
+  pullRequest.issues = await readClosedIssues('o/r', closedNumbers, githubApi('t', fetchJson), isWriter);
   return gather(pullRequest, repo, repo);
 }
 
@@ -108,14 +112,14 @@ test('a description given to gather reaches the intent and hygiene reviewers, wi
 
 test('an author with write access in the event is trusted without an API call', async () => {
   const { fetchJson, urls } = api({});
-  const isWriter = writerCheck('o/r', 't', fetchJson);
+  const isWriter = writerCheck('o/r', githubApi('t', fetchJson));
   assert.equal(await isWriter('polewskm', 'MEMBER'), true);
   assert.deepEqual(urls, []);
 });
 
 test('the permission lookup runs once per author, and only write or admin counts', async () => {
   const { fetchJson, urls } = api({ writer: 'write', reader: 'read', admin: 'admin' });
-  const isWriter = writerCheck('o/r', 't', fetchJson);
+  const isWriter = writerCheck('o/r', githubApi('t', fetchJson));
   assert.equal(await isWriter('writer', 'CONTRIBUTOR'), true);
   assert.equal(await isWriter('writer', 'NONE'), true);
   assert.equal(await isWriter('admin', 'CONTRIBUTOR'), true);
@@ -127,21 +131,21 @@ test('the permission lookup runs once per author, and only write or admin counts
 
 test('a failed permission lookup counts as no write access, and warns with the reason', async () => {
   const lines: string[] = [];
-  const offline = writerCheck('o/r', 't', (async () => { throw new Error('offline'); }) as typeof fetch, (line) => lines.push(line));
+  const offline = writerCheck('o/r', githubApi('t', (async () => { throw new Error('offline'); }) as typeof fetch), (line) => lines.push(line));
   assert.equal(await offline('polewskm', 'CONTRIBUTOR'), false);
   assert.equal(lines.length, 1);
   assert.match(lines[0] ?? '', /^::warning::Couldn't read polewskm's permission \(offline\); their text counts as a non-writer's/);
   const refused: string[] = [];
-  const outage = writerCheck('o/r', 't', (async () => new Response('', { status: 502 })) as typeof fetch, (line) => refused.push(line));
+  const outage = writerCheck('o/r', githubApi('t', (async () => new Response('', { status: 502 })) as typeof fetch), (line) => refused.push(line));
   assert.equal(await outage('polewskm', 'CONTRIBUTOR'), false);
   assert.equal(refused.length, 1);
   assert.match(refused[0] ?? '', /\(HTTP 502\)/);
   const garbled: string[] = [];
-  const notJson = writerCheck('o/r', 't', (async () => new Response('not json', { status: 200 })) as typeof fetch, (line) => garbled.push(line));
+  const notJson = writerCheck('o/r', githubApi('t', (async () => new Response('not json', { status: 200 })) as typeof fetch), (line) => garbled.push(line));
   assert.equal(await notJson('polewskm', 'CONTRIBUTOR'), false);
   assert.equal(garbled.length, 1);
   const quiet: string[] = [];
-  const unknown = writerCheck('o/r', 't', api({}).fetchJson, (line) => quiet.push(line));
+  const unknown = writerCheck('o/r', githubApi('t', api({}).fetchJson), (line) => quiet.push(line));
   assert.equal(await unknown('stranger', 'NONE'), false);
   assert.deepEqual(quiet, []);
 });
@@ -153,7 +157,7 @@ test('a closed issue that cannot be read is left out with a warning, and the oth
     return new Response('', { status: 500 });
   }) as typeof fetch;
   const lines: string[] = [];
-  const issues = await readClosedIssues('o/r', [21, 22, 23], 't', writerCheck('o/r', 't', fetchJson), fetchJson, (line) => lines.push(line));
+  const issues = await readClosedIssues('o/r', [21, 22, 23], githubApi('t', fetchJson), writerCheck('o/r', githubApi('t', fetchJson)), (line) => lines.push(line));
   assert.deepEqual(issues, [{ number: 21, title: issue21.title, body: issue21.body }]);
   assert.equal(lines.length, 2);
   assert.match(lines[0] ?? '', /^::warning::Couldn't read issue #22, which the description closes \(offline\)/);

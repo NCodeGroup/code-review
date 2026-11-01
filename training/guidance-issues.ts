@@ -2,6 +2,7 @@
 // training/feedback.md, so the next generalization follows the rules the maintainer accepted. Only an issue the bot
 // opened, for an NCodeGroup-wide rule, and closed as completed counts; one closed as not planned is dropped.
 
+import { githubApi } from '../src/github.ts';
 import { botLogin } from '../src/results.ts';
 import { guidanceLabel, guidanceMarker, orgGuidanceRepository } from '../src/teach.ts';
 
@@ -35,15 +36,10 @@ const pageSize = 100;
 
 // Reads every closed issue with the label, a page at a time. Tests pass their own fetch.
 export async function fetchGuidanceIssues(repository: string, token: string | undefined, fetchApi: typeof fetch = fetch): Promise<GuidanceIssue[]> {
+  const api = githubApi(token, fetchApi);
   const issues: GuidanceIssue[] = [];
   for (let page = 1; ; page++) {
-    const url = `https://api.github.com/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=${pageSize}&page=${page}`;
-    const response = await fetchApi(url, {
-      headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) throw new Error(`GitHub refused GET ${url}: HTTP ${response.status}`);
-    const batch = (await response.json()) as GuidanceIssue[];
+    const batch = (await api('GET', `/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=${pageSize}&page=${page}`)) as GuidanceIssue[];
     issues.push(...batch);
     if (batch.length < pageSize) return issues;
   }

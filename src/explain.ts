@@ -8,7 +8,7 @@ import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
 import type { ReadApi } from './github.ts';
-import { plainText } from './markdown.ts';
+import { neutralizeProse, plainText } from './markdown.ts';
 import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
 import { markerFields } from './threads.ts';
@@ -148,9 +148,9 @@ function reference(found: FoundFinding): string {
 }
 
 export function answerBody(found: FoundFinding, explanation: Explanation): string {
-  const reason = text(explanation.reason).replace(/^because\b[\s,:]*/i, '');
+  const reason = neutralizeProse(text(explanation.reason).replace(/^because\b[\s,:]*/i, ''));
   const verdict = explanation.holds ? `Still holds because ${reason}` : `On reflection this doesn't hold: ${reason}`;
-  return `${reference(found)}: ${text(explanation.answer)}\n\n${verdict}`;
+  return `${reference(found)}: ${neutralizeProse(text(explanation.answer))}\n\n${verdict}`;
 }
 
 export function failedBody(found: FoundFinding, error: string): string {

@@ -431,11 +431,12 @@ with the copy already on the default branch, and the edit itself is reviewed lik
   other key, a bad glob or a `shadow:` that isn't `true` or `false` is a warning, and the reviewer loads without its
   paths. At most 10 are loaded.
 
-`config.yml` is a small subset of YAML: top-level keys whose values are lists or, for `tiers:`, a mapping, in block or
-`[a, b]` style, with comments and quoted strings. Quote a glob that starts with `*`, since YAML reads an unquoted one as
-an alias. A setting the engine can't use, such as an unknown key, a missing policy or anything outside the subset,
-gives a warning in the check run, and the review runs with the defaults for that file; it never fails the run. Globs
-work like `applyTo:`: `**` spans folders, `*` and `?` stay within one.
+`config.yml` is read with the [yaml](https://eemeli.org/yaml/) library, and only a small subset is accepted: top-level
+keys whose values are lists or, for `tiers:`, a mapping, in block or `[a, b]` style, with comments and quoted strings;
+anchors, aliases, tags, multi-line values and deeper nesting are refused. Quote a glob that starts with `*`, since
+YAML reads an unquoted one as an alias. A setting the engine can't use, such as an unknown key, a missing policy or
+anything outside the subset, gives a warning in the check run, and the review runs with the defaults for that file; it
+never fails the run. Globs work like `applyTo:`: `**` spans folders, `*` and `?` stay within one.
 
 For example, NCodeGroup/Identity could mark its JOSE, JWT, JWK and secrets projects sensitive, which about 1 in 6 of
 its pull requests touch; adding its authentication, client and server projects would make about 1 in 3 deep, at about

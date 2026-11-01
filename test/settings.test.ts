@@ -77,11 +77,23 @@ test('parseYaml refuses what the subset does not support', () => {
     'skip: [a, [b]]',
     'skip: "unterminated',
     'skip: [a]\nskip: [b]',
-    '  indented: first',
     '- a',
+    'skip: !!str a',
+    '---\na: b\n---\nc: d',
+    'skip: "a\n  b"',
+    '{a: b}',
   ]) {
     assert.throws(() => parseYaml(text), /line \d+:/, JSON.stringify(text));
   }
+});
+
+test('parseYaml keeps every value a string or null', () => {
+  assert.deepEqual(parseYaml('a: 1\nb: true\nc: ~\nd: null\ne: "null"\nf:'), { a: '1', b: 'true', c: null, d: null, e: 'null', f: null });
+});
+
+test('parseYaml reads what the yaml library allows beyond the old parser: indented keys and every escape', () => {
+  assert.deepEqual(parseYaml('  skip: [a]'), { skip: ['a'] });
+  assert.deepEqual(parseYaml('skip: ["\\u0041"]'), { skip: ['A'] });
 });
 
 test('validateConfig accepts the documented settings and falls back to the defaults on any error', () => {

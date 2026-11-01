@@ -4,6 +4,7 @@
 
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
+import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from 'yaml';
 import { parseCharter } from './charter.ts';
 import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecurityTier, tierRank, type ModelTier } from './config.ts';
 
@@ -17,148 +18,52 @@ export type YamlValue = YamlScalar | YamlScalar[] | Record<string, YamlScalar>;
 
 export class YamlError extends Error {}
 
-// The subset of YAML the settings use: top-level keys whose values are a scalar, a list or a mapping of scalars, as
-// block or flow collections, with comments and quoted strings. Anchors, tags, multi-line strings and deeper nesting are
-// refused, so a file never means something other than what it appears to.
+// YAML read with the yaml library's failsafe schema, so every value is a string or null, and only the subset the
+// settings use: top-level keys whose values are a single value, a list or a mapping of single values, as block or flow
+// collections, with comments and quoted strings. Anchors, aliases, tags, multi-line values, more than one document and
+// deeper nesting are refused, so a file never means something other than what it appears to. An error names its line.
 export function parseYaml(text: string): Record<string, YamlValue> {
+  const lines = new LineCounter();
+  const doc = parseDocument(text, { schema: 'failsafe', lineCounter: lines, prettyErrors: false, uniqueKeys: true });
+  const at = (offset: number | undefined, message: string) => new YamlError(`line ${lines.linePos(offset ?? 0).line}: ${message}`);
+  const problem = doc.errors[0] ?? doc.warnings[0];
+  if (problem) throw at(problem.pos[0], problem.message);
+  const plain = (node: unknown): string => {
+    const where = (node as { range?: [number, number, number] } | null)?.range;
+    if (isAlias(node) || (node as { anchor?: string } | null)?.anchor || (node as { tag?: string } | null)?.tag) throw at(where?.[0], 'unsupported YAML: anchors, aliases and tags');
+    if (!isScalar(node)) throw at(where?.[0], 'nested lists and mappings are not supported');
+    const range = node.range!;
+    if (node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED' || text.slice(range[0], range[1]).includes('\n')) throw at(range[0], 'multi-line values are not supported');
+    return String(node.value);
+  };
+  const scalar = (node: unknown): YamlScalar => {
+    const value = plain(node);
+    return isScalar(node) && node.type === 'PLAIN' && (value === '' || value === '~' || value === 'null') ? null : value;
+  };
+  // "__proto__" would set the parsed object's prototype instead of adding a key.
+  const key = (node: unknown): string => {
+    const name = plain(node);
+    if (name === '__proto__') throw at((node as { range?: [number, number, number] }).range?.[0], `"${name}" is not allowed as a key`);
+    return name;
+  };
   const out: Record<string, YamlValue> = {};
-  let open: { key: string; kind?: 'list' | 'map'; indent?: number } | undefined;
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const at = (message: string) => new YamlError(`line ${i + 1}: ${message}`);
-    const line = stripComment(lines[i]!);
-    if (!line.trim()) continue;
-    if (line === '---' && !Object.keys(out).length) continue;
-    const indent = /^[ \t]*/.exec(line)![0];
-    if (indent.includes('\t')) throw at('indent with spaces, not tabs');
-    const content = line.slice(indent.length);
-    const item = /^-(?:\s+(.*))?$/.exec(content);
-    if (item && open && open.kind !== 'map' && (open.indent === undefined || open.indent === indent.length)) {
-      const value = item[1]?.trim();
-      if (!value) throw at('a list item needs a value');
-      if (/^[-[{]/.test(value) || splitKey(value)) throw at('a list item must be a single value');
-      open.kind = 'list';
-      open.indent = indent.length;
-      const list = (out[open.key] ??= []) as YamlScalar[];
-      list.push(parseScalar(value, at));
-      continue;
+  const root = doc.contents;
+  if (root === null) return out;
+  if (!isMap(root) || root.flow || root.anchor || root.tag) throw at(root.range?.[0], 'expected "key: value"');
+  for (const pair of root.items) {
+    const name = key(pair.key);
+    const value = pair.value;
+    if (isSeq(value) && !value.anchor && !value.tag) {
+      out[name] = value.items.map(scalar);
+    } else if (isMap(value) && !value.anchor && !value.tag) {
+      const map: Record<string, YamlScalar> = {};
+      for (const entry of value.items) map[key(entry.key)] = scalar(entry.value);
+      out[name] = map;
+    } else {
+      out[name] = value === null ? null : scalar(value);
     }
-    if (indent.length > 0) {
-      const entry = splitKey(content);
-      if (!open || item || !entry || open.kind === 'list' || (open.indent !== undefined && open.indent !== indent.length)) throw at('unexpected indentation or nesting');
-      if (!entry.rest) throw at(`"${entry.key}" needs a value`);
-      if (/^[[{]/.test(entry.rest)) throw at('a nested value must be a single value');
-      open.kind = 'map';
-      open.indent = indent.length;
-      const map = (out[open.key] ??= {}) as Record<string, YamlScalar>;
-      checkKey(map, entry.key, at);
-      map[entry.key] = parseScalar(entry.rest, at);
-      continue;
-    }
-    const entry = splitKey(content);
-    if (!entry) throw at('expected "key: value"');
-    checkKey(out, entry.key, at);
-    out[entry.key] = entry.rest ? parseInline(entry.rest, at) : null;
-    open = entry.rest ? undefined : { key: entry.key };
   }
   return out;
-}
-
-// "__proto__" would set the parsed object's prototype instead of adding a key, so it is refused like a duplicate.
-function checkKey(map: object, key: string, at: (message: string) => YamlError): void {
-  if (key === '__proto__') throw at(`"${key}" is not allowed as a key`);
-  if (Object.hasOwn(map, key)) throw at(`"${key}" appears twice`);
-}
-
-function stripComment(line: string): string {
-  let quote = '';
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]!;
-    if (quote) {
-      if (c === '\\' && quote === '"') i++;
-      else if (c === quote) quote = '';
-    } else if (c === '"' || c === "'") {
-      quote = c;
-    } else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]!))) {
-      return line.slice(0, i).trimEnd();
-    }
-  }
-  return line.trimEnd();
-}
-
-// "key: rest" or "key:", where the key may be quoted. "project:oauth: sonnet" has the key "project:oauth".
-function splitKey(content: string): { key: string; rest: string } | undefined {
-  const quoted = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:(?:\s+(.*))?$/.exec(content);
-  if (quoted) return { key: parseScalar(quoted[1]!, (m) => new YamlError(m)) ?? '', rest: quoted[2]?.trim() ?? '' };
-  if (/^["']/.test(content)) return undefined;
-  const colon = /:(?:\s|$)/.exec(content);
-  if (!colon) return undefined;
-  const key = content.slice(0, colon.index).trim();
-  if (!key || /^[-[\]{}&*!|>%@`#]/.test(key)) return undefined;
-  return { key, rest: content.slice(colon.index + 1).trim() };
-}
-
-function parseInline(text: string, at: (message: string) => YamlError): YamlValue {
-  if (text.startsWith('[')) {
-    if (!text.endsWith(']')) throw at('a list in brackets must end with "]"');
-    return splitFlow(text.slice(1, -1), at).map((item) => parseScalar(item, at));
-  }
-  if (text.startsWith('{')) {
-    if (!text.endsWith('}')) throw at('a mapping in braces must end with "}"');
-    const map: Record<string, YamlScalar> = {};
-    for (const pair of splitFlow(text.slice(1, -1), at)) {
-      const entry = splitKey(pair);
-      if (!entry?.rest) throw at(`expected "key: value" in braces, not "${pair}"`);
-      checkKey(map, entry.key, at);
-      map[entry.key] = parseScalar(entry.rest, at);
-    }
-    return map;
-  }
-  return parseScalar(text, at);
-}
-
-function splitFlow(inner: string, at: (message: string) => YamlError): string[] {
-  if (!inner.trim()) return [];
-  const items: string[] = [];
-  let quote = '';
-  let start = 0;
-  for (let i = 0; i < inner.length; i++) {
-    const c = inner[i]!;
-    if (quote) {
-      if (c === '\\' && quote === '"') i++;
-      else if (c === quote) quote = '';
-    } else if (c === '"' || c === "'") {
-      quote = c;
-    } else if (c === '[' || c === ']' || c === '{' || c === '}') {
-      throw at('nested collections are not supported');
-    } else if (c === ',') {
-      items.push(inner.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  items.push(inner.slice(start).trim());
-  if (items.some((item) => !item)) throw at('an empty item in a list or mapping');
-  return items;
-}
-
-function parseScalar(text: string, at: (message: string) => YamlError): YamlScalar {
-  if (text.startsWith('"')) {
-    const match = /^"((?:[^"\\]|\\.)*)"$/.exec(text);
-    if (!match) throw at(`unterminated or trailing text after a quoted string: ${text}`);
-    return match[1]!.replace(/\\(.)/g, (_, c: string) => {
-      const escape = ({ '"': '"', '\\': '\\', '/': '/', n: '\n', t: '\t' } as Record<string, string>)[c];
-      if (escape === undefined) throw at(`unsupported escape \\${c}`);
-      return escape;
-    });
-  }
-  if (text.startsWith("'")) {
-    const match = /^'((?:[^']|'')*)'$/.exec(text);
-    if (!match) throw at(`unterminated or trailing text after a quoted string: ${text}`);
-    return match[1]!.replace(/''/g, "'");
-  }
-  if (/^[&*!|>%@`[\]{}]/.test(text)) throw at(`unsupported YAML: ${text}`);
-  if (text === '~' || text === 'null') return null;
-  return text;
 }
 
 export interface RepoConfig {
@@ -177,6 +82,13 @@ export const defaultConfig = (): RepoConfig => ({ sensitive: [], skip: [], polic
 const maxPathChars = 256;
 const reviewerName = /^[A-Za-z0-9][A-Za-z0-9:_-]*$/;
 
+// Why one item of a list of paths or globs can't be used, or undefined when it can.
+function pathItemProblem(key: string, item: unknown): string | undefined {
+  if (typeof item !== 'string' || !item.trim()) return `"${key}" has an empty item`;
+  if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) return `"${key}" has an item that is too long or has control characters`;
+  return undefined;
+}
+
 // The schema: every key optional; the three path lists are lists of strings; tiers maps a reviewer to a model tier.
 // Any error drops the whole file for the defaults. A security tier below minimumSecurityTier isn't an error, which would
 // drop every other setting too: it is raised to the minimum, with a warning.
@@ -191,9 +103,9 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
         continue;
       }
       for (const item of raw) {
-        if (typeof item !== 'string' || !item.trim()) errors.push(`"${key}" has an empty item`);
-        else if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) errors.push(`"${key}" has an item that is too long or has control characters`);
-        else config[key].push(item.trim());
+        const problem = pathItemProblem(key, item);
+        if (problem) errors.push(problem);
+        else if (typeof item === 'string') config[key].push(item.trim());
       }
     } else if (key === 'tiers') {
       if (raw === null) continue;
@@ -384,9 +296,9 @@ export function charterPaths(frontmatter: string): { paths: string[]; problems: 
       problems.push('"paths" must be a list of globs');
     } else {
       for (const item of typeof raw === 'string' ? globList(raw) : (raw ?? [])) {
-        if (typeof item !== 'string' || !item.trim()) problems.push('"paths" has an empty item');
-        else if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) problems.push('"paths" has an item that is too long or has control characters');
-        else paths.push(item.trim());
+        const problem = pathItemProblem('paths', item);
+        if (problem) problems.push(problem);
+        else if (typeof item === 'string') paths.push(item.trim());
       }
     }
   }
