@@ -805,7 +805,7 @@ export async function review(options: ReviewOptions): Promise<Review> {
 
   const batches = !light && ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
   const ran = await runReviewers(setup, selected, context, batches);
-  const { reviewRun, reviewers, live, shadowOutcomes, liveJobs, ceiling, ceilingWarning, limit, raw, changedFiles, upstream: guardedUpstream } = ran;
+  const { live, liveJobs, limit, raw, changedFiles, upstream: guardedUpstream } = ran;
 
   // Synthesis. A light review posts hygiene's findings as it reported them, most severe first.
   let summary = '';
@@ -858,6 +858,20 @@ export async function review(options: ReviewOptions): Promise<Review> {
   } else {
     summary = 'No findings.';
   }
+  return finishReview(setup, ran, { summary, verdict, findings, dropped });
+}
+
+// What every review does after its findings are settled: the template's findings move upstream, tracked ones apart,
+// verification checks the rest, and the summary says how deep the review went and whether it was cut short.
+async function finishReview(
+  setup: ReviewSetup,
+  ran: ReviewersRun,
+  synthesized: { summary: string; verdict: Verdict | undefined; findings: ReviewedFinding[]; dropped: DroppedFinding[] },
+): Promise<Review> {
+  const { gathered, log, agent, charters, roster, warnings, sensitive, depth, shadow, shadowPrompts, calls, spent } = setup;
+  const { reviewRun, reviewers, live, shadowOutcomes, ceiling, ceilingWarning, upstream: guardedUpstream } = ran;
+  let { summary, verdict, findings } = synthesized;
+  const { dropped } = synthesized;
   if (dropped.length) log(droppedLine(dropped));
   // Synthesis may still place a finding in a template's file. Its verdict is capped when that moved some of its findings
   // upstream; without one, the verdict comes from the findings verification leaves.
@@ -880,7 +894,7 @@ export async function review(options: ReviewOptions): Promise<Review> {
     systemPrompt: charters.verificationPrompt,
     charters: new Map([...liveCharters, ...(shadow.has(ruleCheckName) ? [] : [[ruleCheckName, charters.ruleCheckPrompt] as const])]),
     log,
-    enabled: verificationOn() && !light,
+    enabled: verificationOn() && depth !== 'light',
     ...(depth === 'deep' ? { deep: sensitiveMatcher(gathered.sensitive) } : {}),
     ceiling: { limit: ceiling, spent },
     agent,
