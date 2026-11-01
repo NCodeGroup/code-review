@@ -98,10 +98,13 @@ runs:
         CODE_REVIEW_APP_TOKEN: ${{ steps.ack-token.outputs.token }}
       run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" revoke
 
+    # No cache: setup-node would restore npm's cache by itself when a package.json in the workspace names npm as its package
+    # manager, and a restored cache is written as-is into the job that holds the model credentials (README, Timings).
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       id: setup-node
       with:
         node-version: 24
+        package-manager-cache: false
 
     # A closed pull request's run records outcomes with no model call and loads no npm package, so it skips the install.
     - name: Install the engine

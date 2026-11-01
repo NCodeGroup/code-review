@@ -658,6 +658,15 @@ test('action.yml acknowledges before setup-node and npm ci, and never lets the a
   assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
 });
 
+test('action.yml restores no cache into the job that holds the model credentials', () => {
+  const steps = actionSteps();
+  const setup = steps.find((s) => s.id === 'setup-node');
+  assert.ok(setup);
+  assert.equal(setup.with['package-manager-cache'], 'false');
+  assert.equal('cache' in setup.with, false);
+  for (const step of steps) assert.ok(!step.uses.startsWith('actions/cache'), step.name || step.id);
+});
+
 test('action.yml passes the check run on to the publish and finish steps, and finishes it whatever happened to the review', () => {
   const steps = actionSteps();
   const publish = steps.find((s) => s.id === 'publish');

@@ -105,13 +105,11 @@ permissions: {}
 jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A
-    # closed pull request, whoever closed it, only records its findings' outcomes, with no model call.
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else.
     if: >-
-      (github.event_name == 'pull_request_target' &&
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        (github.event.action == 'closed' ||
-          (github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')))) ||
+        github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
@@ -120,7 +118,7 @@ jobs:
     timeout-minutes: 30
     concurrency:
       group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: ${{ github.event.action != 'closed' }}
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
@@ -133,10 +131,32 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1
+      - uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+  outcomes:
+    # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
+    # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
+    # environment, without id-token: write, the Bedrock key or a checkout.
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The review's group: it waits for a review in progress, so that review's threads are counted, instead of cancelling it.
+    concurrency:
+      group: code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Record the outcomes
+        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
+        with:
+          app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
 ```
 
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
@@ -151,10 +171,47 @@ receives, so the job's own permissions stay read-only. It needs a `node` with Ty
 later) on the runner before setup-node, as `ubuntu-latest` has; on a runner without one, the review runs without the
 acknowledgement.
 
+The `outcomes` job runs only when a pull request closes. It makes no model call, so it runs outside the `code-review`
+environment, without `id-token: write`, the Bedrock key or a checkout, and only the app's key reaches it, to post the
+outcomes. It shares the review's concurrency group, so it waits for a review in progress.
+
+## Interface
+
+This is the contract between a caller's workflow and the engine, which v1.0.0 will freeze. From v1.0.0 on, removing or
+renaming an input, changing what an input's default means, or needing another trigger type, permission, secret,
+environment or checkout is a breaking change and a new major version; a new optional input or output isn't. Before
+1.0.0 a minor release may still change it, and its changelog section says how.
+
+| Input | Required | Default | What it is |
+|---|---|---|---|
+| `app-private-key` | yes | none | The NCode Review app's private key (the `NCODE_REVIEW_APP_PRIVATE_KEY` organization secret). |
+| `bedrock-api-key` | no | `''` | The Bedrock API key used once the plan's API credits run out (`AWS_BEARER_TOKEN_BEDROCK`). |
+| `pr-path` | no | `pr` | Where the pull request's head is read, relative to the workspace. |
+| `base-path` | no | `base` | Where the default branch is checked out, relative to the workspace. |
+| `github-token` | no | `${{ github.token }}` | A read-only token the engine reads the pull request, its issues and its comments with. |
+| `app-client-id` | no | `Iv23liAbZt44tgephpLC` | The NCode Review app's client ID. |
+| `federation-rule-id` | no | `fdrl_019dXaBRa2Zo1UazugiQwWZ3` | The Anthropic federation rule the job logs in through. |
+| `organization-id` | no | `e9301a37-092f-47c8-9b24-188808b1d576` | The Anthropic organization. |
+| `service-account-id` | no | `svac_012yav3w3rfhH5i9bAgoWLHe` | The Anthropic service account the federation rule maps to. |
+| `workspace-id` | no | `wrkspc_019f5RLk5SG4XWE8XKwWFHZh` | The Anthropic workspace that pays for the review. |
+
+The action has no outputs. A caller needs:
+
+- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, and `issue_comment`,
+  with the type `created`;
+- a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
+  and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
+  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`;
+- an `outcomes` job with no environment, the permissions `contents: read` and `pull-requests: read`, no checkout, and
+  the secret `NCODE_REVIEW_APP_PRIVATE_KEY`;
+- a Linux runner for both, such as `ubuntu-latest`.
+
+[Using it](#using-it) shows a caller that meets it.
+
 ## Versions
 
 Pin the action to a release's full commit SHA, with the release's tag in a comment:
-`NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1`. Never a tag, a branch or a floating major
+`NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0`. Never a tag, a branch or a floating major
 like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a release
 someone reviewed in a pull request in its own repository, and a SHA is the one pin nobody can move. CodeQL's `extended`
 suite reports any other pin as an unpinned tag, even an immutable release's. Dependabot's `github-actions` ecosystem
@@ -274,9 +331,10 @@ for each finding, its reviewers, severity and outcome, the commit it was reviewe
 model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
 40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
 comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
-thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
-its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
-treat a closed pull request like an opened one and would pay to review it.
+thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run.
+The caller records them in a job of its own, `outcomes` in [Using it](#using-it), and needs `closed` in its
+`pull_request_target` types, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier treat a
+closed pull request like an opened one and would pay to review it.
 
 ### Monthly report
 
@@ -531,6 +589,8 @@ Copy-Item evals/out/smoke/proposed-baseline-smoke.json evals/baseline-smoke.json
 ## Timings
 
 Each model call's record in the trace has `startedAt` and `firstResponseMs`, and the trace's `timings` has the engine's stage times. `node tools/timings.ts <folders>` summarizes downloaded `code-review-trace` artifacts (`gh run download <run id> -n code-review-trace -D traces/<run id>`): each review's phases, then each role's median and p90. In October 2026 a full review's job took a median of 99 s (engine 79 s, of which reviewer calls 40 s and synthesis 24 s), a re-review's 32 s, and a closed pull request's 16 s.
+
+`npm ci` takes 5.5–7.3 s of each review, and the action doesn't cache it. The review's triggers, `pull_request_target` and `issue_comment`, get read-only access to the default branch's cache, so the review can't save one; a cache would need a workflow on a trusted trigger (`push`, `schedule` or `workflow_dispatch`) in each consumer to save it, and any such run there, including its CI's own dependencies, could then save the entry first. A cache is restored as-is, and its archive can hold files outside the cached folder, into the job that holds the model credentials, and npm's integrity check covers only the packages npm reads. So a cache would let any trusted-trigger run in any opted-in repository reach those credentials, to save a few seconds. For the same reason the action turns off setup-node's automatic cache (`package-manager-cache: false`). See GitHub's rule, [cache access for low-trust workflow triggers](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#cache-access-for-low-trust-workflow-triggers).
 
 `npm run bench:review` runs a review on a fake agent whose calls take each role's production median (1 s = 10 ms) and prints the median of 7 runs. Use it to compare the engine's scheduling before and after a change; `--max-ms` fails the run above a limit.
 
