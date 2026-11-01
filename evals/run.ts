@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agent.ts';
 import { writerAssociations } from '../src/command.ts';
 import { verificationOn } from '../src/config.ts';
-import { closedIssues, gather, readPullRequest, splitDiff, templateCandidate, type PullRequest } from '../src/gather.ts';
+import { closedIssues, gather, readChanges, readPullRequest, splitDiff, type PullRequest } from '../src/gather.ts';
 import { githubReader } from '../src/github.ts';
 import { startProxy } from '../src/proxy.ts';
 import { planReReview, postable, reReview, type ReReview } from '../src/rereview.ts';
@@ -315,9 +315,9 @@ async function main(): Promise<void> {
       );
       const log = (line: string) => console.log(`  ${line}`);
       // As the review step does: a template file counts as the template's only when it is the template's own copy.
-      const candidate = templateCandidate(pullRequest, head, base);
-      const confirmed = candidate ? await confirmTemplateFiles(candidate, head, githubReader(process.env['GITHUB_TOKEN']), log) : undefined;
-      const gathered = gather(pullRequest, head, base, guidance, confirmed);
+      const changes = readChanges(pullRequest, head, base);
+      const confirmed = changes.candidate ? await confirmTemplateFiles(changes.candidate, head, githubReader(process.env['GITHUB_TOKEN']), log) : undefined;
+      const gathered = gather(pullRequest, head, base, guidance, confirmed, changes);
       let reReviewed: ReReview | undefined;
       let offChanged: string[] = [];
       // A case's sensitive: stands in for the one gather read from the base branch.

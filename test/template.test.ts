@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
-import { gather, templateCandidate, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
+import { gather, readChanges, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
@@ -278,11 +278,11 @@ test('gather reviews an unconfirmed template file as the project\'s', () => {
   assert.equal(gathered.reviewRules.length, 1);
 });
 
-test('templateCandidate names the head\'s _commit and the changed files the template would own', () => {
+test('readChanges names the head\'s _commit and the changed files the template would own', () => {
   const { repo, base, baseSha } = adoption();
-  assert.deepEqual(templateCandidate({ ...pullRequest(), baseSha }, repo, base), { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
+  assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
   // From the default branch's own commit, nothing changes, the answers file included.
-  assert.equal(templateCandidate({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base), undefined);
+  assert.equal(readChanges({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base).candidate, undefined);
 });
 
 test('selectionFloor leaves the template\'s scripts out of the reviewers they would call', () => {

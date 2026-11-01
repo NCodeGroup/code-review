@@ -15,7 +15,7 @@ import { AnthropicTokenSource, secretValues, type Credentials } from './credenti
 import { required, take } from './env.ts';
 import { answerFile, explainFinding, findFinding, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
-import { closedIssues, gather, readPullRequest, templateCandidate } from './gather.ts';
+import { closedIssues, gather, readChanges, readPullRequest } from './gather.ts';
 import { fetchPullRequest, githubApi, githubReader, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { writeErrorLog, writeLog } from './log.ts';
@@ -217,9 +217,9 @@ async function main(): Promise<void> {
   const closedNumbers = closedIssues(pullRequest.body);
   pullRequest.issues = await readClosedIssues(repository, closedNumbers, github, isWriter, log);
   // A template adoption or update leaves a file to the template only when it is the template's own copy.
-  const candidate = templateCandidate(pullRequest, prPath, basePath);
-  const confirmed = candidate ? await confirmTemplateFiles(candidate, prPath, githubReader(githubToken), log) : undefined;
-  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'), confirmed);
+  const changes = readChanges(pullRequest, prPath, basePath);
+  const confirmed = changes.candidate ? await confirmTemplateFiles(changes.candidate, prPath, githubReader(githubToken), log) : undefined;
+  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'), confirmed, changes);
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
