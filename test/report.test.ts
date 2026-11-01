@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { commentPageSize, maxCommentPages } from '../src/comments.ts';
-import { outcomesMarker, tokenApi, type FindingOutcome } from '../src/outcomes.ts';
+import { githubApi } from '../src/github.ts';
+import { outcomesMarker, type FindingOutcome } from '../src/outcomes.ts';
 import { botLogin, headMarker, reviewMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import {
   aggregate,
@@ -24,6 +25,9 @@ import {
   unattributed,
   type PullRecord,
 } from '../tools/report.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 const sha = (c: string) => c.repeat(40);
 
@@ -154,7 +158,7 @@ test("discovery keeps the owner's public repositories that have the caller workf
   github.failingContents.add('NCodeGroup/broken');
   const notes: string[] = [];
   const logged: string[] = [];
-  const found = await discoverRepositories(tokenApi('t', github.fetch), 'NCodeGroup', notes, (l) => logged.push(l));
+  const found = await discoverRepositories(githubApi('t', github.fetch), 'NCodeGroup', notes, (l) => logged.push(l));
   assert.deepEqual(found, ['NCodeGroup/a', 'NCodeGroup/b']);
   assert.equal(notes.length, 1);
   assert.match(notes[0]!, /NCodeGroup\/broken/);
@@ -168,7 +172,7 @@ test('discovery skips private repositories and notes when there are more reposit
   github.orgRepos.push({ full_name: 'NCodeGroup/late' });
   github.callers = new Set(['NCodeGroup/a', 'NCodeGroup/secret', 'NCodeGroup/late']);
   const notes: string[] = [];
-  const found = await discoverRepositories(tokenApi('t', github.fetch), 'NCodeGroup', notes, () => {});
+  const found = await discoverRepositories(githubApi('t', github.fetch), 'NCodeGroup', notes, () => {});
   assert.deepEqual(found, ['NCodeGroup/a']);
   assert.deepEqual(notes, [`Only the first ${maxRepositoryPages * pageSize} of NCodeGroup's repositories were checked.`]);
   assert.equal(github.calls.filter((c) => c.includes('/orgs/')).length, maxRepositoryPages);
@@ -187,7 +191,7 @@ test('only pull requests closed inside the month count, and the listing stops on
   // A full page of older pull requests after them: the first page ends before the month, so the second isn't read.
   for (let n = 100; n < 300; n++) pulls.push({ number: n, closed_at: '2026-08-01T00:00:00Z', updated_at: `2026-08-${String(1 + (n % 28)).padStart(2, '0')}T00:00:00Z` });
   github.pulls.set('NCodeGroup/a', pulls);
-  const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', month, []);
+  const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', month, []);
   assert.deepEqual(closed.map((p) => p.number).sort((a, b) => a - b), [1, 2]);
   assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 1);
 });
@@ -203,7 +207,7 @@ test('the listing goes on to the next page while updates are still inside the mo
   const github = new FakeGitHub();
   github.pulls.set('NCodeGroup/a', inMonthPulls(150));
   const notes: string[] = [];
-  const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
   assert.equal(closed.length, 150);
   assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 2);
   assert.deepEqual(notes, []);
@@ -213,7 +217,7 @@ test('the listing stops at its page cap and says the rest are left out', async (
   const github = new FakeGitHub();
   github.pulls.set('NCodeGroup/a', inMonthPulls(maxPullPages * pageSize + 1));
   const notes: string[] = [];
-  const closed = await listClosedPulls(tokenApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
   assert.equal(closed.length, maxPullPages * pageSize);
   assert.deepEqual(notes, [`NCodeGroup/a has more closed pull requests updated since 2026-10 began than the ${maxPullPages * pageSize} read; the rest are left out.`]);
 });
@@ -231,7 +235,7 @@ test("a pull request's findings come from the newest outcomes marker, and its co
     { body: `${first}\n${outcomesMarker({ state: 'merged', head: sha('a'), findings: [finding('F1', 'fixed', ['x'])] })}`, user: { login: 'mallory' } },
     bot(summary(sha('b'), 'bedrock', 2.25, [finding('F1', 'fixed', ['correctness']), finding('F2', 'dismissed', ['security', 'correctness'])])),
   ]);
-  const record = await readPull(tokenApi('t', github.fetch), 'NCodeGroup/a', 7);
+  const record = await readPull(githubApi('t', github.fetch), 'NCodeGroup/a', 7);
   assert.deepEqual(record, {
     repository: 'NCodeGroup/a',
     number: 7,
@@ -260,7 +264,7 @@ test("a summary from before the review marker gives its cost from its visible li
       ].join('\n'),
     ),
   ]);
-  const record = await readPull(tokenApi('t', github.fetch), 'NCodeGroup/a', 8);
+  const record = await readPull(githubApi('t', github.fetch), 'NCodeGroup/a', 8);
   assert.deepEqual(record?.reviews, [{ provider: 'bedrock', costUsd: 0.8 }]);
   assert.equal(record?.unknownCost, 1);
   assert.equal(record?.findings, undefined);
@@ -269,7 +273,7 @@ test("a summary from before the review marker gives its cost from its visible li
 test('a pull request the bot never commented on is not a reviewed one, and a damaged marker is skipped', async () => {
   const github = new FakeGitHub();
   github.comments.set('NCodeGroup/a#9', [{ body: summary(sha('a'), 'anthropic', 5), user: { login: 'someone' } }]);
-  const api = tokenApi('t', github.fetch);
+  const api = githubApi('t', github.fetch);
   assert.equal(await readPull(api, 'NCodeGroup/a', 9), undefined);
   github.comments.set('NCodeGroup/a#10', [
     bot(`${summaryMarker}\n<!-- ncode-review:review {"head":"x","provider":"openai","costUsd":3} -->\n<!-- ncode-review:outcomes {"findings":[{"outcome":"great","reviewers":[]},{"outcome":"ignored","reviewers":[1,"r"]}]} -->`),
@@ -283,7 +287,7 @@ test('a pull request the bot never commented on is not a reviewed one, and a dam
 test("a pull request with more comments than are read can't be recorded", async () => {
   const github = new FakeGitHub();
   github.comments.set('NCodeGroup/a#11', Array.from({ length: maxCommentPages * commentPageSize }, () => bot(summary(sha('a'), 'anthropic', 1))));
-  await assert.rejects(readPull(tokenApi('t', github.fetch), 'NCodeGroup/a', 11), /more comments than are read/);
+  await assert.rejects(readPull(githubApi('t', github.fetch), 'NCodeGroup/a', 11), /more comments than are read/);
 });
 
 const pullA: PullRecord = {

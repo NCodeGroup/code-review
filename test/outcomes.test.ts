@@ -23,7 +23,6 @@ import {
   readReviewThreads,
   recordOutcomes,
   threadPageSize,
-  tokenApi,
   withOutcomes,
   type Evidence,
   type FindingOutcome,
@@ -32,6 +31,7 @@ import {
 import { headMarker, newestReviewedHead, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
+import { maxReplyAuthorLookups } from '../src/writers.ts';
 
 const none: Evidence = { linesChanged: false, isResolved: false, isOutdated: false, reactions: [], replies: [] };
 
@@ -326,8 +326,8 @@ function fakeGitHub(options: { summary?: boolean; threads?: boolean } = {}) {
   const api = async (method: string, url: string, body?: any): Promise<any> => {
     calls.push(`${method} ${url}`);
     if (url === '/graphql') {
-      const page = body.variables.after === null ? threads.slice(0, 2) : threads.slice(2);
-      const hasNextPage = body.variables.after === null && threads.length > 2;
+      const page = body.variables.cursor === null ? threads.slice(0, 2) : threads.slice(2);
+      const hasNextPage = body.variables.cursor === null && threads.length > 2;
       return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage, endCursor: hasNextPage ? 'c1' : null }, nodes: page } } } } };
     }
     if (url.startsWith('/repos/o/r/issues/5/comments')) {
@@ -452,6 +452,50 @@ test("collectOutcomes leaves out the bot's own reactions and replies", async () 
   assert.ok(!calls.some((call) => call.includes('/permission')), calls.join('\n'));
 });
 
+// One finding thread with these replies, and the rest of fakeGitHub's answers.
+function repliedThread(replies: { login: string; association: string; body: string }[], answer: (url: string) => unknown) {
+  const { api: base } = fakeGitHub();
+  const thread = botThread(reviewed({ id: 'F9', file: 'src/Z.cs', line: 99, severity: 'nit' }), { replies });
+  return async (method: string, url: string, body?: unknown) => {
+    if (url === '/graphql') return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [thread] } } } } };
+    if (url.endsWith('/permission')) return answer(url);
+    return base(method, url, body);
+  };
+}
+
+test('collectOutcomes counts a reply from a writer whose association does not say so', async () => {
+  const api = repliedThread([{ login: 'private-member', association: 'CONTRIBUTOR', body: "Won't fix this." }], (url) => {
+    if (url === '/repos/o/r/collaborators/private-member/permission') return { permission: 'write' };
+    throw new Error(`Unexpected ${url}`);
+  });
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'dismissed']]);
+});
+
+test('collectOutcomes counts a replier whose permission cannot be read as a non-writer, and warns', async () => {
+  const api = repliedThread([{ login: 'private-member', association: 'CONTRIBUTOR', body: "Won't fix this." }], () => {
+    throw new Error('HTTP 502');
+  });
+  const lines: string[] = [];
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
+  assert.ok(
+    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their reactions and replies count as a non-writer's\.$/.test(line)),
+    lines.join('\n'),
+  );
+});
+
+test('collectOutcomes looks up at most maxReplyAuthorLookups repliers', async () => {
+  const looked: string[] = [];
+  const replies = Array.from({ length: maxReplyAuthorLookups + 1 }, (_, i) => ({ login: `user${i}`, association: 'CONTRIBUTOR', body: 'Thanks.' }));
+  const api = repliedThread(replies, (url) => {
+    looked.push(url);
+    return { permission: 'read' };
+  });
+  await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.equal(looked.length, maxReplyAuthorLookups);
+});
+
 test('collectOutcomes takes the newest review marker of a commit reviewed twice', async () => {
   const { api: base, summaryBody } = fakeGitHub();
   const earlier = supersededComment(reviewedAt, 'https://example.test/c/42', [reviewMarker({ ...reviewResults, costUsd: 0.1, provider: 'anthropic' } as unknown as Results)]);
@@ -480,19 +524,6 @@ test('readReviewThreads stops after maxThreadPages pages and warns', async () =>
   assert.equal(pages, maxThreadPages);
   assert.equal(threads.length, maxThreadPages);
   assert.deepEqual(lines, [`::warning::#5 has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${maxThreadPages}.`]);
-});
-
-test('tokenApi calls GitHub with the token, throws on a refusal and reads an empty answer as none', async () => {
-  const seen: { url: string; authorization: string }[] = [];
-  const answer = (response: Response) => tokenApi('t0ken', async (url, init) => {
-    seen.push({ url: String(url), authorization: (init?.headers as Record<string, string>)['authorization']! });
-    return response;
-  });
-  assert.deepEqual(await answer(new Response('{"a":1}'))('GET', '/repos/o/r'), { a: 1 });
-  assert.deepEqual(seen, [{ url: 'https://api.github.com/repos/o/r', authorization: 'Bearer t0ken' }]);
-  assert.equal(await answer(new Response(null, { status: 204 }))('DELETE', '/x'), undefined);
-  assert.equal(await answer(new Response('', { status: 200 }))('GET', '/x'), undefined);
-  await assert.rejects(answer(new Response('nope', { status: 403 }))('GET', '/x'), /GitHub refused GET \/x: HTTP 403/);
 });
 
 const report: OutcomesReport = { repository: 'o/r', pullRequest: 5, state: 'merged', head: closedHead, findings, summaryCommentId: 42, summaryBody: `${summaryMarker}\n${headMarker(reviewedAt)}\nbody` };

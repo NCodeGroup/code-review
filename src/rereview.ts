@@ -11,11 +11,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
-import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
 import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
+import { githubApi } from './github.ts';
+import { writeLog } from './log.ts';
 import { botLogin, recordedHead } from './results.ts';
+import { readThreadPages } from './review-threads.ts';
 import {
   byOwner,
   completeList,
@@ -42,6 +44,7 @@ import {
 } from './review.ts';
 import { findingBody, findingTitle, nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
+import { maxReplyAuthorLookups, withLookupLimit, type WriterCheck } from './writers.ts';
 
 // The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
 export const reReviewer = 'correctness';
@@ -238,8 +241,10 @@ function findingText(body: string): string {
 }
 
 // The bot's findings in a pull request's review threads, with the newest replies from people with write access
-// (`writerAssociations`): as for the description, no one else's reply reaches the reviewer.
-export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
+// (the engine's writer check, at most maxReplyAuthorLookups repliers looked up): as for the description, no one else's
+// reply reaches the reviewer.
+export async function earlierFindings(threads: ThreadNode[], isWriter: WriterCheck): Promise<EarlierFinding[]> {
+  const isReplyWriter = withLookupLimit(isWriter, maxReplyAuthorLookups);
   const found: EarlierFinding[] = [];
   for (const thread of threads) {
     const first = thread.first.nodes[0];
@@ -247,6 +252,12 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
     const rest = thread.comments.nodes.filter((c) => c.url !== first.url);
     const posted = parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine }])[0];
     if (!posted) continue;
+    const replies: Reply[] = [];
+    for (const c of rest) {
+      if (c.author && c.author.login !== botAuthor && (await isReplyWriter(c.author.login, c.authorAssociation))) {
+        replies.push({ author: c.author.login, body: c.body.slice(0, maxReplyChars) });
+      }
+    }
     found.push({
       id: posted.id,
       file: posted.path,
@@ -256,9 +267,7 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
       text: findingText(first.body),
       resolved: thread.isResolved,
       url: first.url,
-      replies: rest
-        .filter((c) => c.author && c.author.login !== botAuthor && writerAssociations.has(c.authorAssociation))
-        .map((c) => ({ author: c.author!.login, body: c.body.slice(0, maxReplyChars) })),
+      replies,
     });
   }
   return found;
@@ -267,60 +276,38 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
 const threadComment = 'author { login } authorAssociation body url';
 // 👎 reactions read on a finding, to tell whether someone with write access dismissed it.
 const maxThumbsDown = 20;
-const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id isResolved isOutdated resolvedBy { login } path line originalLine
-          first: comments(first: 1) { nodes { ${threadComment} reactions(content: THUMBS_DOWN, first: ${maxThumbsDown}) { nodes { user { login } } } } }
-          comments(last: ${maxRepliesPerThread}) { totalCount nodes { ${threadComment} } }
-        }
-      }
-    }
-  }
-}`;
-// Pages of 100 review threads a run reads at most, to bound calls.
+const threadFields = `id isResolved isOutdated resolvedBy { login } path line originalLine
+  first: comments(first: 1) { nodes { ${threadComment} reactions(content: THUMBS_DOWN, first: ${maxThumbsDown}) { nodes { user { login } } } } }
+  comments(last: ${maxRepliesPerThread}) { totalCount nodes { ${threadComment} } }`;
+// Review threads on a page, and pages a run reads at most, to bound calls.
+const threadPageSize = 100;
 const maxThreadPages = 10;
 
 // The earlier findings on a pull request, or undefined when its review threads can't be read: GraphQL needs a token, and
 // only it says which threads are resolved.
-export async function readEarlierFindings(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<EarlierFinding[] | undefined> {
+export async function readEarlierFindings(repository: string, number: number, token: string | undefined, isWriter: WriterCheck, fetchPage: typeof fetch = fetch): Promise<EarlierFinding[] | undefined> {
   const threads = await readReviewThreads(repository, number, token, fetchPage);
-  return threads && earlierFindings(threads);
+  return threads && earlierFindings(threads, isWriter);
 }
 
-type ThreadsAnswer = { data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ThreadNode[] } } } } };
-
-// A pull request's review threads, or undefined when they can't all be read: a refused request, a fetch that rejects,
-// or a body that isn't JSON. The review step reads them with its read-only token, and the publish step with the app's
-// token, to resolve and answer the bot's own threads.
-export async function readReviewThreads(repository: string, number: number, token: string | undefined, fetchPage: typeof fetch = fetch): Promise<ThreadNode[] | undefined> {
+// A pull request's review threads, or undefined when they can't all be read: a refused request, a GraphQL error, a
+// fetch that rejects, or a body that isn't JSON. The review step reads them with its read-only token, and the publish
+// step with the app's token, to resolve and answer the bot's own threads.
+export async function readReviewThreads(
+  repository: string,
+  number: number,
+  token: string | undefined,
+  fetchPage: typeof fetch = fetch,
+  log: (line: string) => void = writeLog,
+): Promise<ThreadNode[] | undefined> {
   if (!token) return undefined;
-  const [owner, name] = repository.split('/');
-  const threads: ThreadNode[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < maxThreadPages; page++) {
-    let json: ThreadsAnswer;
-    try {
-      const response = await fetchPage('https://api.github.com/graphql', {
-        method: 'POST',
-        headers: { accept: 'application/vnd.github+json', authorization: `bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ query: threadsQuery, variables: { owner, name, number, cursor } }),
-      });
-      if (!response.ok) return undefined;
-      json = (await response.json()) as ThreadsAnswer;
-    } catch {
-      return undefined;
-    }
-    const listed = json.data?.repository?.pullRequest?.reviewThreads;
-    if (!listed) return undefined;
-    threads.push(...listed.nodes);
-    if (!listed.pageInfo.hasNextPage) return threads;
-    cursor = listed.pageInfo.endCursor;
+  try {
+    const read = await readThreadPages<ThreadNode>(githubApi(token, fetchPage), repository, number, { fields: threadFields, pageSize: threadPageSize, maxPages: maxThreadPages });
+    return read.complete ? read.threads : undefined;
+  } catch (error) {
+    log(`Couldn't read the review threads: ${JSON.stringify(errorText(error))}`);
+    return undefined;
   }
-  return undefined;
 }
 
 // --- Deciding on a re-review ---
