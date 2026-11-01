@@ -67,3 +67,14 @@ test("declarationSpans gives up when the braces don't balance", () => {
   assert.equal(declarationSpans('public class A { } }'), undefined);
   assert.equal(declarationSpans('public class A {\n    public void M() {\n}\n'), undefined);
 });
+
+test("a verbatim string that starts with an escaped quote doesn't unbalance the braces", () => {
+  for (const text of [
+    'public class C { public string Q = @""""; public void M() { } }\n',
+    'public class C { public string Q = @"""Hi"" there"; public void M() { } }\n',
+  ]) {
+    const spans = declarationSpans(text);
+    assert.notEqual(spans, undefined);
+    assert.deepEqual(spans!.map((s) => s.declaration.kind), ['type', 'member', 'member']); // the class, the field Q and the method M
+  }
+});

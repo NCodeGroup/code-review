@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
-import { budgets } from '../src/config.ts';
+import { budgets, synthesisTier } from '../src/config.ts';
 import type { Decision } from '../src/context.ts';
 import type { ChangedFile, Gathered, RuleFile } from '../src/gather.ts';
 import { creditsRanOutReason } from '../src/provider.ts';
@@ -171,16 +171,17 @@ interface Call {
   tier: string;
   part: number;
   budgetUsd: number | undefined;
+  effort: string | undefined;
 }
 
-const depthEnv = ['CODE_REVIEW_TIERS', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_MAX_RUN_USD'];
+const depthEnv = ['CODE_REVIEW_TIERS', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_SYNTHESIS_EFFORT'];
 
 async function run(input: Gathered, options: { env?: Record<string, string>; findings?: (role: string, part: number) => Finding[]; error?: (role: string, part: number) => string | undefined } = {}) {
   const calls: Call[] = [];
   const agent = async <T>(agentRun: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
     const text = Array.isArray(request.prompt) ? request.prompt.join('\n') : String(request.prompt);
     const part = Number(/this is part (\d+)/.exec(text)?.[1] ?? 1);
-    calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd });
+    calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd, effort: request.effort });
     const record = { role: request.role, provider: agentRun.provider, model: request.tier, costUsd: 0.01, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
     const failure = options.error?.(request.role, part);
     if (failure) return { output: undefined, records: [record], error: failure };
@@ -253,6 +254,49 @@ test('CODE_REVIEW_TIERS overrides a deep review\'s reviewers', async () => {
   const { calls } = await run(gathered(['src/Payments/Ledger.cs'], { sensitive: ['src/Payments/**'] }), { env: { CODE_REVIEW_TIERS: 'correctness=sonnet' } });
   assert.deepEqual(tierOf(calls, 'reviewer:correctness'), ['sonnet']);
   assert.deepEqual(tierOf(calls, 'reviewer:security'), ['opus']);
+});
+
+test('synthesis runs on Opus by default', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { findings });
+  assert.deepEqual(tierOf(calls, 'synthesis'), ['opus']);
+});
+
+test('CODE_REVIEW_TIERS can run synthesis on Sonnet', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_TIERS: 'synthesis=sonnet' }, findings });
+  assert.deepEqual(tierOf(calls, 'synthesis'), ['sonnet']);
+});
+
+test('an unknown synthesis tier keeps Opus and warns', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_TIERS: 'synthesis=sonet' }, findings });
+  assert.deepEqual(tierOf(calls, 'synthesis'), ['opus']);
+  const warnings: string[] = [];
+  assert.equal(synthesisTier('synthesis=sonet', (m) => warnings.push(m)), 'opus');
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /sonet/);
+});
+
+const effortOf = (calls: Call[], role: string) => calls.filter((c) => c.role === role).map((c) => c.effort);
+
+test('synthesis sends no effort by default', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { findings });
+  assert.deepEqual(effortOf(calls, 'synthesis'), [undefined]);
+});
+
+test('CODE_REVIEW_SYNTHESIS_EFFORT sets the synthesis call\'s effort', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_SYNTHESIS_EFFORT: 'medium' }, findings });
+  assert.deepEqual(effortOf(calls, 'synthesis'), ['medium']);
+  assert.ok(calls.filter((c) => c.role !== 'synthesis').every((c) => c.effort === undefined));
+});
+
+test('an unknown CODE_REVIEW_SYNTHESIS_EFFORT is ignored', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_SYNTHESIS_EFFORT: 'fast' }, findings });
+  assert.deepEqual(effortOf(calls, 'synthesis'), [undefined]);
 });
 
 test('a deep review verifies the findings in sensitive files on Opus and the rest on Sonnet', async () => {

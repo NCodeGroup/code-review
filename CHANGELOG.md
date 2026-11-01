@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An eval case can record the author association of each issue its description closes, as `issueAssociations` (a member by default), and the evals leave out a non-writer's issue as the review step does ([#109](https://github.com/NCodeGroup/code-review/issues/109)).
 - Timing instrumentation: each model call's record in the trace has when it started (`startedAt`) and when its first response came (`firstResponseMs`), the trace has the engine's stage times (`timings`), `node tools/timings.ts` summarizes downloaded trace artifacts, `npm run bench:review` times a review on a fake agent with production's call durations, and `npm run bench:tests` times each test file ([#128](https://github.com/NCodeGroup/code-review/issues/128)).
 - The README's Interface section writes down the caller–engine contract v1.0.0 will freeze: the action's inputs, the triggers and types a caller needs, each job's permissions, environment and secrets, and the `base` checkout ([#57](https://github.com/NCodeGroup/code-review/issues/57)).
+- The Eval workflow runs a named eval subset (`smoke` or `re-review`) by hand from `main`, with verification on or off, a `CODE_REVIEW_TIERS` override, up to two runs and a cap of $5, $10 or $25 a run, in the `code-review` environment, and uploads the outputs after a secret scan, so evals need no local Bedrock key. `CODE_REVIEW_TIERS` takes `synthesis=<tier>` and `CODE_REVIEW_SYNTHESIS_EFFORT` sets the synthesis call's effort, to measure synthesis on a cheaper setup ([#135](https://github.com/NCodeGroup/code-review/issues/135)).
 
 ### Changed
 
@@ -44,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `Enable-CodeReview` tests run concurrently, which shortens CI's test step by several seconds ([#128](https://github.com/NCodeGroup/code-review/issues/128)).
 - The tests run faster on Windows: `test/rereview.test.ts` builds each git repository its tests only read once instead of once per test, and the fetch time-limit test's server drops its connection after the limit, so the killed git's `git-remote-http` no longer holds the folder through the cleanup's retries; that test now checks the folder is removed on Windows too ([#136](https://github.com/NCodeGroup/code-review/issues/136)).
 - Callers record outcomes in a job of their own, `outcomes`, which runs only when a pull request closes, outside the `code-review` environment and without `id-token: write`, the Bedrock key or a checkout, since it makes no model call; the review job no longer runs on `closed`. This repository's workflow and the README's caller have it, and the README's examples pin v0.4.0 ([#47](https://github.com/NCodeGroup/code-review/issues/47)).
+- Reviewers no longer question a decision the pull request adds for a scope or limit it states, such as leaving existing data as it is: they question it only where it contradicts the code or another decision. The smoke eval's must-not case flagged such a question ([#52](https://github.com/NCodeGroup/code-review/issues/52)).
 
 ### Fixed
 
@@ -56,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A summary no longer says verification couldn't settle a finding it refuted but kept as a question, a refuted blocker on a re-review or a refutation that cites only the lines the pull request adds: it says the finding was refuted and kept ([#114](https://github.com/NCodeGroup/code-review/issues/114)).
 - A re-review shows the reviewers the replies in the earlier findings' threads from an organization member whose membership is private, and a finding's outcome counts their replies: when a reply's author association doesn't name a writer, both ask the repository's permissions, as the description's check does, looking up at most 20 repliers per review ([#124](https://github.com/NCodeGroup/code-review/issues/124)).
 - A finding's outcome is read from the marker that ends its thread's first comment, as everything else reads it, so a one-click suggestion whose code holds a marker-like line can't change which finding the outcome records ([#95](https://github.com/NCodeGroup/code-review/issues/95)).
+- The `api-compat` floor reads a C# verbatim string whose text starts with an escaped quote, such as `@"""Hi"" there"`, as a verbatim string, instead of as a raw string that ran to the end of the file and made every change in it count as public. A measurement across NCodeGroup's C# found no file where conditional compilation unbalances the braces, so the scanner stays ([#122](https://github.com/NCodeGroup/code-review/issues/122)).
 
 ### Security
 

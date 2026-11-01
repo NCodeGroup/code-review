@@ -1,0 +1,118 @@
+# Runs a named eval subset by hand from main, cost-capped per run, to measure a change (issues #123, #135 and #41). It needs no
+# local Bedrock key: it uses the organization's, in the code-review environment, which only the default branch can use.
+#
+# It always uses the production guidance and no precision judge, the smoke eval's settings, so a run stays within its
+# cap. Never add a pull request trigger: the key would then run code from any pull request.
+name: Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      subset:
+        description: The eval subset to run
+        type: choice
+        required: true
+        options:
+          - smoke
+          - re-review
+      verification:
+        description: CODE_REVIEW_VERIFICATION
+        type: choice
+        default: 'off'
+        options:
+          - 'off'
+          - 'on'
+      tiers:
+        description: CODE_REVIEW_TIERS, such as synthesis=sonnet
+        type: string
+        default: ''
+      synthesis-effort:
+        description: CODE_REVIEW_SYNTHESIS_EFFORT (low, medium, high, xhigh or max)
+        type: string
+        default: ''
+      runs:
+        description: How many times to run the subset
+        type: choice
+        default: '1'
+        options:
+          - '1'
+          - '2'
+      max-cost:
+        description: Dollars per run, past which the run stops and fails
+        type: choice
+        default: '10'
+        options:
+          - '5'
+          - '10'
+          - '25'
+
+permissions: {}
+
+# A run costs money, so a second dispatch waits for the running one instead of cancelling it.
+concurrency:
+  group: eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Eval
+    runs-on: ubuntu-latest
+    environment: code-review
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      # The eval reads the issues a case's pull request closes.
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Each input reaches the shell through the environment, quoted, never through the script text.
+      - name: Run the eval
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
+          SUBSET: ${{ inputs.subset }}
+          RUNS: ${{ inputs.runs }}
+          MAX_COST: ${{ inputs.max-cost }}
+          CODE_REVIEW_VERIFICATION: ${{ inputs.verification }}
+          CODE_REVIEW_TIERS: ${{ inputs.tiers }}
+          CODE_REVIEW_SYNTHESIS_EFFORT: ${{ inputs.synthesis-effort }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for i in $(seq 1 "$RUNS"); do
+            node evals/run.ts --subset "$SUBSET" --guidance full --precision off --max-cost "$MAX_COST" --label "eval-$RUN_ID-$i" || status=1
+          done
+          exit "${status:-0}"
+
+      - name: Write the summary
+        if: ${{ !cancelled() }}
+        run: |
+          shopt -s nullglob
+          for f in evals/out/eval-*.json; do
+            node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).summary;console.log("### "+process.argv[1]+"\n\n\`\`\`json\n"+JSON.stringify(s,null,1)+"\n\`\`\`")' "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      # Artifacts on a public repository are public: nothing is uploaded unless the scan passes.
+      - name: Scan the outputs for secrets
+        id: scan
+        if: ${{ !cancelled() }}
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          GH_TOKEN: ${{ github.token }}
+        run: node evals/smoke.ts scan evals/out
+
+      - name: Upload the outputs
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: eval-${{ github.run_id }}
+          path: evals/out/
+          retention-days: 30
+          if-no-files-found: ignore

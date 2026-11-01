@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
+import { parse } from 'yaml';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/output.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
@@ -455,6 +456,33 @@ test('the smoke eval workflow fails the job when the run or the check fails, and
   assert.equal(steps[compare]!.run, 'node evals/smoke.ts check "evals/out/$LABEL.json"');
   assert.ok(steps[0]!.uses.startsWith('actions/checkout@'), steps[0]!.uses);
   assert.ok(steps[0]!.text.includes('fetch-depth: 0'), 'the full history');
+});
+
+test('the eval workflow runs only by hand, in the code-review environment, with capped choices and inputs kept out of the shell', () => {
+  const doc: Record<string, any> = parse(readFileSync(path.join(root, '.github', 'workflows', 'eval.yml'), 'utf8'));
+  const on = doc['on'] ?? doc['true'];
+  assert.deepEqual(Object.keys(on), ['workflow_dispatch']);
+  const inputs = on.workflow_dispatch.inputs;
+  assert.equal(inputs['max-cost'].type, 'choice');
+  assert.ok(inputs['max-cost'].options.length > 0);
+  for (const option of inputs['max-cost'].options) assert.ok(Number.isFinite(Number(option)) && Number(option) <= 25, String(option));
+  assert.deepEqual(inputs.subset.options, ['smoke', 're-review']);
+  assert.deepEqual(inputs.runs.options.map(String), ['1', '2']);
+  const job = Object.values<any>(doc['jobs'])[0];
+  assert.equal(job.environment, 'code-review');
+  const steps: { id?: string; if?: string; uses?: string; run?: string }[] = job.steps;
+  for (const step of steps) assert.ok(!(step.run ?? '').includes('${{'), step.run ?? '');
+  for (const step of steps) if (step.uses) assert.match(`uses: ${step.uses}`, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, step.uses);
+  const scan = steps.findIndex((s) => s.id === 'scan');
+  const upload = steps.findIndex((s) => s.uses?.startsWith('actions/upload-artifact@'));
+  assert.ok(scan >= 0 && upload > scan, 'the scan runs before the upload');
+  assert.equal(steps[upload]!.if, "${{ !cancelled() && steps.scan.outcome == 'success' }}");
+  assert.equal(upload, steps.length - 1, 'nothing runs after the upload');
+  const run = steps.find((s) => s.run?.includes('evals/run.ts'));
+  assert.ok(run, 'a step that runs the eval');
+  const runText = run.run ?? '';
+  assert.ok(runText.includes('--max-cost "$MAX_COST"'), runText);
+  assert.ok(runText.includes('--precision off'), runText);
 });
 
 const evalCase: EvalCase = {

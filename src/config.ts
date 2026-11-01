@@ -51,6 +51,37 @@ export function reviewerTiers(
   return tiers;
 }
 
+// Synthesis runs on Opus; the override is for measuring it on another model (issue #135).
+export function synthesisTier(
+  override = process.env['CODE_REVIEW_TIERS'] ?? '',
+  warn: (message: string) => void = () => {},
+): ModelTier {
+  let synthesis: ModelTier = 'opus';
+  for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
+    const [name, tier] = pair.split('=').map((s) => s.trim());
+    if (name !== 'synthesis') continue;
+    if (tier === 'haiku' || tier === 'sonnet' || tier === 'opus') synthesis = tier;
+    else warn(`CODE_REVIEW_TIERS: synthesis must be haiku, sonnet or opus; "${tier}" is ignored.`);
+  }
+  return synthesis;
+}
+
+// The reasoning efforts a call can ask for.
+export const effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+// CODE_REVIEW_SYNTHESIS_EFFORT sets the synthesis call's reasoning effort, to measure it (issue #135). Unset sends
+// none; any other value warns and is ignored.
+export function synthesisEffort(
+  value = process.env['CODE_REVIEW_SYNTHESIS_EFFORT'] ?? '',
+  warn: (message: string) => void = () => {},
+): (typeof effortLevels)[number] | undefined {
+  const level = value.trim();
+  if (!level) return undefined;
+  if ((effortLevels as readonly string[]).includes(level)) return level as (typeof effortLevels)[number];
+  warn(`CODE_REVIEW_SYNTHESIS_EFFORT must be ${effortLevels.slice(0, -1).join(', ')} or ${effortLevels[effortLevels.length - 1]}; "${value}" is ignored.`);
+  return undefined;
+}
+
 // Per-call cost caps in USD, checked by the Agent SDK against its own estimate, which can overshoot a little.
 export const budgets = {
   selection: 0.25,

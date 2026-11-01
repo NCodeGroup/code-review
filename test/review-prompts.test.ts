@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun, CallRecord, runAgent } from '../src/agent.ts';
 import type { Gathered } from '../src/gather.ts';
-import { review, type Charters } from '../src/review.ts';
+import { decisionsBlock, review, type Charters } from '../src/review.ts';
 
 // An agent that makes no model call: it records each request and answers from the test's table.
 function stubAgent(answer: (request: AgentRequest) => unknown) {
@@ -160,4 +160,14 @@ test('selection can add a project reviewer whose paths match no changed file, an
   assert.equal(requests.find((r) => r.role === 'reviewer:project:billing')?.tier, 'haiku');
   assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:billing')?.status, 'ran');
   assert.ok(!outcome.skipped.includes('project:billing'));
+});
+
+test('the decisions block keeps a scope a new decision states out of the findings', () => {
+  const text = decisionsBlock([{ id: 'ADR-0189', title: 'Retire identifiers', decision: 'Forward only.', proposed: true }]);
+
+  assert.match(text, /\(added or changed by this pull request\)/);
+  assert.ok(text.includes('a scope or limit it states'));
+  assert.ok(text.includes('including what its consequences accept'));
+  assert.ok(!text.includes('but you may question the decision itself'));
+  assert.equal(decisionsBlock([]), '');
 });
