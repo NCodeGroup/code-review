@@ -15,7 +15,6 @@ import {
   maxThreadPages,
   outcomesMarker,
   outcomesSection,
-  parseFindingComment,
   parseOutcomesMarker,
   patchTouches,
   publishOutcomes,
@@ -30,7 +29,7 @@ import {
 } from '../src/outcomes.ts';
 import { headMarker, newestReviewedHead, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
-import { threadBody } from '../src/threads.ts';
+import { parseFindingComment, threadBody } from '../src/threads.ts';
 import { maxReplyAuthorLookups } from '../src/writers.ts';
 
 const none: Evidence = { linesChanged: false, isResolved: false, isOutdated: false, reactions: [], replies: [] };
@@ -185,6 +184,11 @@ test('the outcomes section shows the state and a row per finding', () => {
   assert.match(outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [] }), /Merged at bbbbbbb\. No findings were posted as threads\./);
   const odd = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [{ ...findings[0]!, reviewers: ['a\\|b <i>'] }] });
   assert.ok(odd.includes('| a\\\\\\|b &lt;i> |'), odd);
+});
+
+test('the outcomes section neutralizes mentions and links in its cells', () => {
+  const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [{ ...findings[0]!, reviewers: ['@team [x](https://evil.example)'] }] });
+  assert.ok(section.includes('@\u200bteam [x]\u200b(https:\u200b//evil.example)'), section);
 });
 
 test('the outcomes section names the commit of findings from several reviews', () => {
@@ -480,7 +484,7 @@ test('collectOutcomes counts a replier whose permission cannot be read as a non-
   const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
   assert.ok(
-    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their reactions and replies count as a non-writer's\.$/.test(line)),
+    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their text counts as a non-writer's\.$/.test(line)),
     lines.join('\n'),
   );
 });

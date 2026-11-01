@@ -15,7 +15,7 @@ import { AnthropicTokenSource, secretValues, type Credentials } from './credenti
 import { required, take } from './env.ts';
 import { answerFile, explainFinding, findFinding, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
-import { closedIssues, gather, readPullRequest, templateCandidate } from './gather.ts';
+import { closedIssues, readPullRequest } from './gather.ts';
 import { fetchPullRequest, githubApi, githubReader, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { writeErrorLog, writeLog } from './log.ts';
@@ -29,7 +29,7 @@ import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
 import { newestReviewedHead, upstreamTotal, type Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
-import { confirmTemplateFiles } from './template-check.ts';
+import { gatherChecked } from './template-check.ts';
 import { readClosedIssues, writerCheck } from './writers.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -147,6 +147,8 @@ async function main(): Promise<void> {
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
   const log = writeLog;
+  // One client for the run's reads with the read-only token: each request has a time limit and goes to the runner's GitHub.
+  const github = githubApi(githubToken, fetch, { terseErrors: true });
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
   const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
@@ -156,7 +158,7 @@ async function main(): Promise<void> {
   // no credentials. It never reviews.
   if (isClosedEvent(event)) {
     if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
-    await recordOutcomes(githubApi(githubToken, fetch, { terseErrors: true }), event, repository, outDir);
+    await recordOutcomes(github, event, repository, outDir);
     return;
   }
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
@@ -182,7 +184,7 @@ async function main(): Promise<void> {
     await teach({ outDir, repository, number, githubToken, event }, command);
     return;
   }
-  const isWriter = writerCheck(repository, githubToken, fetch, log);
+  const isWriter = writerCheck(repository, github, log);
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
   if (!event.comment) {
@@ -213,11 +215,9 @@ async function main(): Promise<void> {
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter, fetch, log);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, github, isWriter, log);
   // A template adoption or update leaves a file to the template only when it is the template's own copy.
-  const candidate = templateCandidate(pullRequest, prPath, basePath);
-  const confirmed = candidate ? await confirmTemplateFiles(candidate, prPath, githubReader(githubToken), log) : undefined;
-  const gathered = gather(pullRequest, prPath, basePath, path.join(root, 'guidance'), confirmed);
+  const gathered = await gatherChecked(pullRequest, prPath, basePath, path.join(root, 'guidance'), githubReader(githubToken), log);
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
-  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, isWriter, closedIssues(pullRequest.body));
+  const openIssues = plan ? [] : await readOpenIssues(repository, github, isWriter, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);

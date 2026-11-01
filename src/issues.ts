@@ -3,6 +3,7 @@
 // is the engine's writer check (writers.ts), so a private organization member's issues count.
 
 import { writerAssociations } from './command.ts';
+import type { Api } from './github.ts';
 import type { WriterCheck } from './writers.ts';
 
 // Pages of 100 open issues read at most, the most recently updated first.
@@ -17,21 +18,16 @@ export const maxIssueAuthorLookups = 20;
 // couldn't read the first.
 export async function readOpenIssues(
   repository: string,
-  token: string | undefined,
+  api: Api,
   isWriter: WriterCheck,
   exclude: number[] = [],
-  fetchPage: typeof fetch = fetch,
 ): Promise<{ number: number; title: string }[]> {
   type Listed = { number?: number; title?: string; author_association?: string; user?: { login?: string; type?: string }; pull_request?: unknown };
   const read: Listed[] = [];
   for (let page = 1; page <= maxOpenIssuePages; page++) {
     let issues: Listed[];
     try {
-      const response = await fetchPage(`https://api.github.com/repos/${repository}/issues?state=open&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`, {
-        headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      });
-      if (!response.ok) break;
-      issues = (await response.json()) as Listed[];
+      issues = (await api('GET', `/repos/${repository}/issues?state=open&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`)) as Listed[];
     } catch {
       break;
     }

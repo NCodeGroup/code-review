@@ -443,32 +443,48 @@ export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPat
   return base && base.commit !== head.commit ? base : undefined;
 }
 
-// The template a pull request adopts or updates, the _commit its head's answers name, and the changed files the template
-// would own, for confirmTemplateFiles to compare with the template's own copies before gather leaves any to it.
-export function templateCandidate(pullRequest: PullRequest, prPath: string, basePath: string): TemplateCandidate | undefined {
-  const head = git(prPath, ['rev-parse', 'HEAD']).trim();
-  const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, head]).trim();
-  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, head]));
+// What git says the pull request changes, read once for gather and the template check: the head, the merge base, the
+// changed files, the template it adopts or updates, and the files confirmTemplateFiles checks. gather marks `changed`
+// in place, so each gather gets its own.
+export interface Changes {
+  headSha: string;
+  mergeBase: string;
+  changed: ChangedFile[];
+  template?: Template;
+  candidate?: TemplateCandidate;
+}
+
+export function readChanges(pullRequest: PullRequest, prPath: string, basePath: string): Changes {
+  const headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
+  const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, headSha]).trim();
+  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, headSha]));
   const template = templateOf(pullRequest, changed, prPath, basePath);
   const commit = readTemplate(prPath)?.commit;
-  if (!template || !commit) return undefined;
-  return { template, commit, files: changed.map((f) => f.path).filter((p) => isTemplateOwned(p, template)) };
+  const candidate = template && commit ? { template, commit, files: changed.map((f) => f.path).filter((p) => isTemplateOwned(p, template)) } : undefined;
+  return { headSha, mergeBase, changed, ...(template ? { template } : {}), ...(candidate ? { candidate } : {}) };
 }
 
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
-// confirmedTemplateFiles are the changed files confirmTemplateFiles found to match the template's own copies.
-export function gather(pullRequest: PullRequest, prPath: string, basePath: string, guidanceDir?: string, confirmedTemplateFiles: ReadonlySet<string> = new Set()): Gathered {
+// confirmedTemplateFiles are the changed files confirmTemplateFiles found to match the template's own copies. changes,
+// when given, is the readChanges the template check used.
+export function gather(
+  pullRequest: PullRequest,
+  prPath: string,
+  basePath: string,
+  guidanceDir?: string,
+  confirmedTemplateFiles: ReadonlySet<string> = new Set(),
+  changes: Changes = readChanges(pullRequest, prPath, basePath),
+): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
   // the checkout, and the check run belongs on the commit that was reviewed.
-  pullRequest.headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
-  const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, pullRequest.headSha]).trim();
+  pullRequest.headSha = changes.headSha;
+  const { mergeBase, changed } = changes;
   const range = [mergeBase, pullRequest.headSha];
   // The repository's settings come from the default branch only, so a pull request can't soften its own review.
   const settings = readProjectSettings(basePath);
   const skip = settings.config.skip.map(globToRegExp);
-  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', ...range]));
   // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
-  const candidate = templateOf(pullRequest, changed, prPath, basePath);
+  const candidate = changes.template;
   // A changed file the template would own that doesn't match the template's copy at the head's _commit is an edit by
   // hand, so it joins projectOwned and is the project's everywhere isTemplateOwned is asked.
   const unconfirmed = candidate ? changed.map((f) => f.path).filter((p) => isTemplateOwned(p, candidate) && !confirmedTemplateFiles.has(p)) : [];

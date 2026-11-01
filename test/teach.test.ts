@@ -22,6 +22,9 @@ import {
   type Teaching,
 } from '../src/teach.ts';
 import { fetchGuidanceIssues, ruleFromIssue, taughtRules, withTaughtRules, type GuidanceIssue } from '../training/guidance-issues.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 type Teach = Extract<Command, { kind: 'teach' }>;
 

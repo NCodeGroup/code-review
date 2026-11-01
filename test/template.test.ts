@@ -6,10 +6,11 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
-import { gather, templateCandidate, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
+import { gather, readChanges, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
+import { gatherChecked } from '../src/template-check.ts';
 import { placeFindings } from '../src/threads.ts';
 
 const made: string[] = [];
@@ -278,11 +279,27 @@ test('gather reviews an unconfirmed template file as the project\'s', () => {
   assert.equal(gathered.reviewRules.length, 1);
 });
 
-test('templateCandidate names the head\'s _commit and the changed files the template would own', () => {
+test('readChanges names the head\'s _commit and the changed files the template would own', () => {
   const { repo, base, baseSha } = adoption();
-  assert.deepEqual(templateCandidate({ ...pullRequest(), baseSha }, repo, base), { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
+  assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
   // From the default branch's own commit, nothing changes, the answers file included.
-  assert.equal(templateCandidate({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base), undefined);
+  assert.equal(readChanges({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base).candidate, undefined);
+});
+
+test('gatherChecked reviews the template\'s files as the project\'s when the template can\'t be read, and reads it only for an adoption', async () => {
+  const { repo, base, baseSha } = adoption();
+  const unread = await gatherChecked({ ...pullRequest(), baseSha }, repo, base, undefined, async () => {
+    throw new Error('offline');
+  });
+  assert.deepEqual(unread.files.filter((f) => f.templateOwned), []);
+  assert.ok(unread.template?.projectOwned.includes('.template/Get-PlanState.ps1'));
+  const reads: string[] = [];
+  const plain = await gatherChecked({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base, undefined, async (p) => {
+    reads.push(p);
+    return undefined;
+  });
+  assert.equal(plain.template, undefined);
+  assert.deepEqual(reads, []);
 });
 
 test('selectionFloor leaves the template\'s scripts out of the reviewers they would call', () => {

@@ -5,7 +5,7 @@
 // read-only token, and anything that can't be read or confirmed is the project's, so the check fails closed.
 
 import { errorText } from './comments.ts';
-import { git, readBlobs } from './gather.ts';
+import { gather, git, readBlobs, readChanges, type Gathered, type PullRequest } from './gather.ts';
 import type { ReadApi } from './github.ts';
 import { answersFile, answerValues, matchesTemplateSource, renderedTemplatePaths, templateRef, type TemplateCandidate } from './template.ts';
 
@@ -111,4 +111,19 @@ export async function confirmTemplateFiles(candidate: TemplateCandidate, checkou
   // JSON quoting keeps a path with a line break from starting a workflow command of its own.
   if (differ.length) log(`${differ.length} changed file(s) the template would own differ from ${repository} at ${at}, so they're reviewed as the project's: ${differ.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}`);
   return confirmed;
+}
+
+// gather with the template check in it: the pull request's changes read once, the template's files confirmed through
+// `read`, then everything the reviewers see. The review step and the evals both gather this way.
+export async function gatherChecked(
+  pullRequest: PullRequest,
+  prPath: string,
+  basePath: string,
+  guidanceDir: string | undefined,
+  read: ReadApi,
+  log: (line: string) => void = () => {},
+): Promise<Gathered> {
+  const changes = readChanges(pullRequest, prPath, basePath);
+  const confirmed = changes.candidate ? await confirmTemplateFiles(changes.candidate, prPath, read, log) : undefined;
+  return gather(pullRequest, prPath, basePath, guidanceDir, confirmed, changes);
 }

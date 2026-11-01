@@ -6,14 +6,18 @@ import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { postThreads } from '../src/comments.ts';
 import type { Gathered } from '../src/gather.ts';
+import { githubApi } from '../src/github.ts';
 import { maxIssueAuthorLookups, maxOpenIssuePages, readOpenIssues } from '../src/issues.ts';
 import { annotations, botLogin, checkSummary, checkText, checkTitle, headMarker, summaryComment, summaryMarker, type Results } from '../src/results.ts';
 import { mergeSynthesis, review, settleTracked, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { buildResults } from '../src/review-results.ts';
 import { placeFindings, reviewBody } from '../src/threads.ts';
 import type { WriterCheck } from '../src/writers.ts';
+import { useGitHubDotCom } from './github-env.ts';
 import { pullRequestCheckout, reviewStep } from './steps.ts';
 import { byAssociation } from './writer-stub.ts';
+
+useGitHubDotCom();
 
 const made: string[] = [];
 after(() => {
@@ -30,7 +34,7 @@ test('readOpenIssues keeps the open issues a writer opened, and leaves out pull 
     headers.push(new Headers(init?.headers));
     return Response.json([issue(1), issue(2, 'NONE'), issue(3, 'OWNER', { pull_request: {} }), issue(4, 'COLLABORATOR'), issue(5, 'CONTRIBUTOR'), issue(6)]);
   }) as typeof fetch;
-  assert.deepEqual(await readOpenIssues('o/r', 't', byAssociation, [6], fetchPage), [{ number: 1, title: 'Issue 1' }, { number: 4, title: 'Issue 4' }]);
+  assert.deepEqual(await readOpenIssues('o/r', githubApi('t', fetchPage), byAssociation, [6]), [{ number: 1, title: 'Issue 1' }, { number: 4, title: 'Issue 4' }]);
   assert.deepEqual(urls, ['https://api.github.com/repos/o/r/issues?state=open&sort=updated&direction=desc&per_page=100&page=1']);
   assert.equal(headers[0]!.get('authorization'), 'Bearer t');
 });
@@ -41,15 +45,15 @@ test('readOpenIssues reads at most its page cap, and keeps what it read when a l
     calls++;
     return Response.json(Array.from({ length: 100 }, (_, i) => issue(calls * 1000 + i)));
   }) as unknown as typeof fetch;
-  assert.equal((await readOpenIssues('o/r', 't', byAssociation, [], full)).length, 100 * maxOpenIssuePages);
+  assert.equal((await readOpenIssues('o/r', githubApi('t', full), byAssociation, [])).length, 100 * maxOpenIssuePages);
   assert.equal(calls, maxOpenIssuePages);
   let page = 0;
   const failing = (async () => (++page === 1 ? Response.json(Array.from({ length: 100 }, (_, i) => issue(i + 1))) : new Response('', { status: 502 }))) as unknown as typeof fetch;
-  assert.equal((await readOpenIssues('o/r', 't', byAssociation, [], failing)).length, 100);
+  assert.equal((await readOpenIssues('o/r', githubApi('t', failing), byAssociation, [])).length, 100);
   const rejecting = (async () => {
     throw new TypeError('fetch failed');
   }) as unknown as typeof fetch;
-  assert.deepEqual(await readOpenIssues('o/r', undefined, byAssociation, [], rejecting), []);
+  assert.deepEqual(await readOpenIssues('o/r', githubApi(undefined, rejecting), byAssociation, []), []);
 });
 
 test('readOpenIssues keeps an issue a private organization member opened, and never looks a bot up', async () => {
@@ -63,7 +67,7 @@ test('readOpenIssues keeps an issue a private organization member opened, and ne
     lookups.push(login ?? '');
     return login === 'private-member';
   };
-  assert.deepEqual(await readOpenIssues('o/r', 't', isWriter, [], fetchPage), [{ number: 7, title: 'Issue 7' }]);
+  assert.deepEqual(await readOpenIssues('o/r', githubApi('t', fetchPage), isWriter, []), [{ number: 7, title: 'Issue 7' }]);
   assert.deepEqual(lookups, ['private-member', 'outsider']);
 });
 
@@ -74,7 +78,7 @@ test('readOpenIssues looks up at most maxIssueAuthorLookups authors', async () =
     lookups.push(login ?? '');
     return true;
   };
-  const kept = await readOpenIssues('o/r', 't', isWriter, [], fetchPage);
+  const kept = await readOpenIssues('o/r', githubApi('t', fetchPage), isWriter, []);
   assert.equal(maxIssueAuthorLookups, 20);
   assert.deepEqual(kept.map((i) => i.number), Array.from({ length: 20 }, (_, i) => i + 1));
   assert.equal(lookups.length, 20);

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { postThreads } from '../src/comments.ts';
 import { dismissedThreads, followUpThreads, planFollowUps, stillOpenMarker, stillOpenReply } from '../src/follow-up.ts';
+import { githubApi } from '../src/github.ts';
 import type { EarlierState, ThreadNode } from '../src/rereview.ts';
 import type { Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
@@ -166,14 +167,19 @@ test("planFollowUps answers a private organization member's Autopilot reply when
   const privateReply = () => thread({ replies: [{ login: 'private-member', association: 'CONTRIBUTOR', body: 'Autopilot: fixed in abc123' }] });
   const writes = (async () => Response.json({ permission: 'write' })) as unknown as typeof fetch;
   const answered = privateReply();
-  const actions = await planFollowUps([answered], reReviewed([[answered, 'open']]), writerCheck('o/r', 't', writes));
+  const actions = await planFollowUps([answered], reReviewed([[answered, 'open']]), writerCheck('o/r', githubApi('t', writes)));
   assert.deepEqual(actions.map((a) => [a.kind, a.thread.id]), [['reply', answered.id]]);
   assert.equal(actions[0]!.kind === 'reply' && actions[0]!.body.split('\n').at(-1), '@private-member: needs you.');
   const lines: string[] = [];
   const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
   const unread = privateReply();
-  assert.deepEqual(await planFollowUps([unread], reReviewed([[unread, 'open']]), writerCheck('o/r', 't', outage, (line) => lines.push(line))), []);
+  assert.deepEqual(await planFollowUps([unread], reReviewed([[unread, 'open']]), writerCheck('o/r', githubApi('t', outage), (line) => lines.push(line))), []);
   assert.equal(lines.length, 1);
+});
+
+test('stillOpenReply neutralizes links in the note, but not code spans', () => {
+  const body = stillOpenReply(headSha, 'See https://evil.example and [x](y); `@Override` stays.', 'polewskm');
+  assert.ok(body.includes('See https:\u200b//evil.example and [x]\u200b(y); `@Override` stays.'), body);
 });
 
 test('stillOpenReply keeps the note to one line of text and asks the maintainer on its last line', () => {
@@ -298,7 +304,8 @@ test('the publish step counts a resolution or a 👎 only from a login whose rep
   // The bot's own resolution is never looked up.
   const lookedUp = requests.flatMap((r) => /\/collaborators\/([^/]+)\/permission$/.exec(r.url)?.[1] ?? []);
   assert.deepEqual(lookedUp, ['writer', 'maintainer', 'admin', 'custom', 'triager', 'reader', 'gone']);
-  assert.match(stdout, /::warning::Couldn't read gone's access \(GitHub refused GET \/repos\/o\/r\/collaborators\/gone\/permission: HTTP 404 Not Found\), so their 👎 or resolution doesn't count\./);
+  // A 404 is an answer, as in every writer check: gone isn't a collaborator.
+  assert.doesNotMatch(stdout, /Couldn't read gone's/);
 });
 
 test('on the next /review, the publish step resolves the thread of a fixed finding as the app, and no one else\'s', () => {

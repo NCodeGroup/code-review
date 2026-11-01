@@ -5,6 +5,7 @@ import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
 import { creditsRanOutReason } from './credits.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
+import { neutralizeProse } from './markdown.ts';
 import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -244,7 +245,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     reviewMarker(results),
     '### 🤖 Review complete',
     '',
-    `**Verdict: ${verdictLabel[results.verdict]}** — ${results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' ')}`,
+    `**Verdict: ${verdictLabel[results.verdict]}** — ${neutralizeProse(results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' '))}`,
     '',
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
     '',
@@ -264,7 +265,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   if (count) {
     lines.push('<details><summary>Findings</summary>', '');
     for (const f of results.findings) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`);
     }
     lines.push('', '</details>', '');
   }
@@ -285,7 +286,7 @@ function trackedList(results: Results): string[] {
     '',
     "Open issues already track these, so they aren't posted as threads or counted in the verdict.",
     '',
-    ...tracked.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${cell(f.title)} (tracked in #${f.tracked})`),
+    ...tracked.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (tracked in #${f.tracked})`),
     '',
     '</details>',
     '',
@@ -302,7 +303,7 @@ function upstreamList(results: Results): string[] {
     'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
     '',
   ];
-  for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${cell(f.title)}`);
+  for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`);
   if (results.upstreamOmitted) lines.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
   lines.push('', '</details>', '');
   return lines;
