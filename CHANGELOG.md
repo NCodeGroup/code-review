@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `CONTRIBUTING.md`, `SECURITY.md` and `docs/`, with the project template's decision records in `docs/decisions/project-template/`; the README links them.
+
 ### Changed
 
 - This repository's own workflow and the README's examples pin v1.0.0.
 - The caller runs a plain `/review` only on an open pull request, so a `/review` on a pull request that just closed can't cancel or displace the outcomes job in their shared concurrency group; `/review explain` and `/review teach` still answer on a closed one.
 - The README's `sensitive:` example shows NCodeGroup/Identity's real project paths and the set it uses: tokens, keys and secrets, authentication, client and server.
+- A finding on a repository's `/audit-conventions` command, prompt file or skill, which project-template generates from v0.45.0, moves upstream to NCodeGroup/project-template like a finding on the template's other generated files.
+- The repository follows project-template v0.53.0 (from v0.41.1): CI also checks the decision index and the pull request's title and description for agent attribution, and cancels a run a newer push supersedes; Dependabot waits three days before offering a new version and gives security updates and NCode Review bumps pull requests of their own; a workflow auto-merges a Dependabot bump of this repository's own NCode Review pin to a minor or patch release; the Copilot cloud agent's runner is set up as CI is; and agents get the `/address-feedback` and `/audit-conventions` commands.
 
 ### Fixed
 
