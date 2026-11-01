@@ -207,6 +207,9 @@ async function main(): Promise<void> {
 
   const credentials = takeCredentials();
   const started = Date.now();
+  // When each stage of the review ended, in milliseconds after started, for the trace.
+  const timings: Record<string, number> = {};
+  const mark = (stage: string) => { timings[stage] = Date.now() - started; };
   const pullRequestEvent = event.pull_request ?? event.issue;
   const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
   const pullRequest = readPullRequest(event, repository, authorCanWrite);
@@ -218,6 +221,7 @@ async function main(): Promise<void> {
   pullRequest.issues = await readClosedIssues(repository, closedNumbers, github, isWriter, log);
   // A template adoption or update leaves a file to the template only when it is the template's own copy.
   const gathered = await gatherChecked(pullRequest, prPath, basePath, path.join(root, 'guidance'), githubReader(githubToken), log);
+  mark('gathered');
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
   log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
@@ -237,10 +241,14 @@ async function main(): Promise<void> {
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
   const openIssues = plan ? [] : await readOpenIssues(repository, github, isWriter, closedIssues(pullRequest.body));
 
+  mark('planned');
+
   const choice = await chooseProvider(credentials);
+  mark('provider');
   log(`Provider: ${choice.reason}`);
 
   const proxy = await startProxy(credentials);
+  mark('proxy');
   // A run that starts on the Claude API with a Bedrock key moves to Bedrock if the credits run out partway.
   const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
@@ -253,6 +261,7 @@ async function main(): Promise<void> {
       full: () => review({ run: agentRun, gathered, charters: loadCharters(root), log, agent: runAgent, openIssues }),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
+    mark('reviewed');
     for (const warning of outcome.warnings) log(`::warning::${warning}`);
     if (fallback?.reason) log(`Switched to Bedrock partway: ${fallback.reason}`);
     results = buildResults(outcome, {
@@ -282,6 +291,7 @@ async function main(): Promise<void> {
       shadow: { reviewers: outcome.shadow, skipped: outcome.shadowSkipped, prompts: outcome.shadowPrompts },
       files: gathered.files,
       conventionsChars: gathered.conventions.length,
+      timings: { startedAt: started, ...timings },
       settings: {
         policies: gathered.policies,
         projectReviewers: gathered.projectReviewers.map((r) => ({ name: r.name, paths: r.paths, ...(r.shadow ? { shadow: true } : {}) })),

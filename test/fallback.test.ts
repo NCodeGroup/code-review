@@ -223,7 +223,8 @@ test('a credit error on the context call reruns it on Bedrock, and the reviewers
     ['anthropic', modelIds.anthropic.sonnet, creditsRanOutReason],
     ['bedrock', modelIds.bedrock.sonnet, 'success'],
   ]);
-  assert.deepEqual(byRole('selection'), [['bedrock', modelIds.bedrock.sonnet, 'success']]);
+  // Selection runs beside the context call, so it started on the Claude API before the context call's refusal moved the run.
+  assert.deepEqual(byRole('selection'), [['anthropic', modelIds.anthropic.sonnet, 'success']]);
   // The picked rule puts conventions on the floor and runs a rule check.
   assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['conventions', 'ran'], ['tests', 'ran'], ['rule-check', 'ran']]);
 });

@@ -1,7 +1,6 @@
 // Runs one model call through the Agent SDK, locked down: no settings, hooks, MCP servers or CLAUDE.md from anywhere,
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { HookCallback, Options, SDKAssistantMessageError, SDKMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,6 +58,10 @@ export interface CallRecord {
   cacheWriteTokens: number;
   turns: number;
   durationMs: number;
+  // When the call started, in milliseconds since the epoch.
+  startedAt?: number;
+  // How long after it started the first model response arrived; absent when none did.
+  firstResponseMs?: number;
   outcome: string;
 }
 
@@ -116,7 +119,7 @@ function pathGuard(checkout: string): HookCallback {
 
 // The agent's whole environment: the proxy address, a placeholder key, and the minimum to run. Nothing from this
 // process's environment, which holds the job's token-request variables and inputs, is passed on.
-// A one-shot call turns prompt caching off: a cache write costs 25% more than plain input and nothing would read it.
+// Prompt caching is on unless a call turns it off: even a call without tools takes two turns, since its structured output is a tool call, and the second reads the first's cache.
 export function agentEnvironment(run: AgentRun, home: string, cache = true): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',
@@ -162,8 +165,10 @@ export interface AgentRequest {
   schema: Record<string, unknown>;
   maxTurns: number;
   budgetUsd: number;
-  // False for a call whose prompt nothing else will reuse.
+  // False only for a call that makes one model request and whose prompt nothing else reuses.
   cache?: boolean;
+  // Called once, when the call's first model response arrives: by then the prompt's cache entry exists, so calls that share its first block can start and read it.
+  onFirstResponse?: () => void;
 }
 
 function promptInput(prompt: string | string[]): string | AsyncIterable<SDKUserMessage> {
@@ -237,10 +242,17 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
   let error: string | undefined;
   // Claude Code's category of the API error the turn ended on, carried by the synthetic assistant message it reports.
   let apiErrorKind: SDKAssistantMessageError | undefined;
+  let firstResponseMs: number | undefined;
   try {
-    for await (const message of (run.query ?? query)({ prompt: promptInput(request.prompt), options })) {
+    // Loaded here, not at the top: a closed pull request's run records outcomes without npm ci, and never gets this far.
+    const query = run.query ?? (await import('@anthropic-ai/claude-agent-sdk')).query;
+    for await (const message of query({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
       else if (message.type === 'assistant' && message.error) apiErrorKind = message.error;
+      else if (message.type === 'assistant' && firstResponseMs === undefined) {
+        firstResponseMs = Date.now() - started;
+        request.onFirstResponse?.();
+      }
     }
   } catch (e) {
     error = (e as Error).message;
@@ -259,6 +271,8 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
     cacheWriteTokens: result?.usage.cache_creation_input_tokens ?? 0,
     turns: result?.num_turns ?? 0,
     durationMs: Date.now() - started,
+    startedAt: started,
+    ...(firstResponseMs === undefined ? {} : { firstResponseMs }),
     outcome: error || apiError ? 'error' : (result?.subtype ?? 'no result'),
   };
   if (result?.subtype !== 'success' || apiError) {

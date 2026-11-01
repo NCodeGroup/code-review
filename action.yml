@@ -103,8 +103,10 @@ runs:
       with:
         node-version: 24
 
+    # A closed pull request's run records outcomes with no model call and loads no npm package, so it skips the install.
     - name: Install the engine
       id: install
+      if: github.event.action != 'closed'
       shell: bash
       working-directory: ${{ github.action_path }}
       run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund

@@ -196,7 +196,7 @@ function agentResult(output: Explanation | undefined, error?: string): AgentResu
   };
 }
 
-test('explainFinding makes one uncached Sonnet call capped at 20 turns and $0.50', async () => {
+test('explainFinding makes one Sonnet call, with prompt caching on, capped at 20 turns and $0.50', async () => {
   const calls: unknown[][] = [];
   const run: AgentRun & { checkout: string } = { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: '/work/pr' };
   const request = { found, question: 'why?', headSha: 'a'.repeat(40) };
@@ -205,7 +205,7 @@ test('explainFinding makes one uncached Sonnet call capped at 20 turns and $0.50
   assert.equal(calls.length, 1);
   assert.equal(calls[0]![0], run);
   const { schema, ...options } = calls[0]![1] as Record<string, unknown>;
-  assert.deepEqual(options, { role: 'explain', tier: 'sonnet', systemPrompt: 'system', prompt: explainPrompt(request, '/work/pr'), maxTurns: 20, budgetUsd: 0.5, cache: false });
+  assert.deepEqual(options, { role: 'explain', tier: 'sonnet', systemPrompt: 'system', prompt: explainPrompt(request, '/work/pr'), maxTurns: 20, budgetUsd: 0.5 });
   assert.deepEqual((schema as { required: string[] }).required, ['answer', 'holds', 'reason']);
 });
 

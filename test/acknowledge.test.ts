@@ -724,6 +724,16 @@ test('the acknowledgement and finish scripts load no npm package, so they run be
   }
 });
 
+test("the review and publish scripts load no npm package before a model call, so a closed pull request's run skips npm ci", () => {
+  for (const script of ['main.ts', 'publish.ts']) {
+    const loaded = [...loadedModules(path.join(root, 'src', script))];
+    const packages = loaded.filter((m) => !m.startsWith('node:') && !path.isAbsolute(m));
+    assert.deepEqual(packages, [], script);
+    assert.ok(loaded.includes(path.join(root, 'src', 'agent.ts')), `${script} imports were read`);
+  }
+  assert.equal(actionSteps().find((s) => s.id === 'install')?.if, "github.event.action != 'closed'");
+});
+
 test('the acknowledgement writes no environment file, so nothing of it reaches the review step', () => {
   for (const file of [...loadedModules(path.join(root, 'src', 'acknowledge.ts'))].filter((m) => path.isAbsolute(m))) {
     assert.doesNotMatch(readFileSync(file, 'utf8'), /GITHUB_ENV|GITHUB_PATH|GITHUB_STATE/, file);
