@@ -666,26 +666,7 @@ export interface ReviewOptions {
   openIssues?: { number: number; title: string }[];
 }
 
-export function review(options: ReviewOptions): Promise<Review>;
-export function review(
-  run: AgentRun,
-  gathered: Gathered,
-  engineCharters: Charters,
-  log: (line: string) => void,
-  agent?: typeof runAgent,
-  openIssues?: { number: number; title: string }[],
-): Promise<Review>;
-export async function review(
-  runOrOptions: ReviewOptions | AgentRun,
-  gatheredArg?: Gathered,
-  chartersArg?: Charters,
-  logArg?: (line: string) => void,
-  agentArg?: typeof runAgent,
-  openIssuesArg?: { number: number; title: string }[],
-): Promise<Review> {
-  const options: ReviewOptions = 'gathered' in runOrOptions
-    ? runOrOptions
-    : { run: runOrOptions, gathered: gatheredArg!, charters: chartersArg!, log: logArg!, ...(agentArg ? { agent: agentArg } : {}), ...(openIssuesArg ? { openIssues: openIssuesArg } : {}) };
+export async function review(options: ReviewOptions): Promise<Review> {
   const { run, gathered, charters: engineCharters, log, agent = runAgent, openIssues = [] } = options;
   const calls: CallRecord[] = [];
   const spent = () => totalCost(calls);
