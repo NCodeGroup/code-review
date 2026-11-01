@@ -11,10 +11,12 @@ export function plainText(text: string): string {
   return text.replace(/[`\[\]\r\n]/g, '');
 }
 
-// Model-written text for a comment, neutralized so it can't mention anyone or post a link. Outside code, a zero-width
-// space goes after an @ that starts a mention, between ] and a following (, [ or :, between http: or https: and //, and
-// between www and a following dot. A character reference GitHub would decode into one of those also gets a zero-width
-// space after its &, which keeps it literal text: any reference to @, and references to :, /, ], (, or [ in an http: or
+// Model-written text for a comment, neutralized so it can't mention anyone, post a link or cross-reference an issue or
+// pull request. Outside code, a zero-width space goes after an @ that starts a mention, between ] and a following (, [
+// or :, between http: or https: and //, between www and a following dot, after a # followed by a digit (an issue or
+// pull request reference such as #12 or owner/repo#12), and between GH and a - followed by a digit. A character
+// reference GitHub would decode into one of those also gets a zero-width space after its &, which keeps it literal
+// text: any reference to @, references to # followed by a digit, and references to :, /, ], (, or [ in an http: or
 // https: scheme followed by // or where a ] meets a following (, [ or :. Code stays as written: an inline code span, a
 // backtick run no backslash escapes up to the next run of the same length on its line, and a fenced code block, opened
 // at column 0 on a line after the first by three or more backticks (with no backtick after them) or tildes, and closed
@@ -52,6 +54,9 @@ export function neutralizeProse(text: string): string {
 
 function escapeProse(text: string): string {
   return text
+    .replace(hashBeforeDigit, (match) => (match === '#' ? '#\u200b' : match))
+    .replace(hashReference, breakReferences)
+    .replace(ghPrefix, '$1\u200b')
     .replace(atReference, breakReferences)
     .replace(schemeWithReference, breakReferences)
     .replace(bracketWithReference, breakReferences)
@@ -70,6 +75,10 @@ const afterBracket = `[([]|&#0*40;|&#[xX]0*28;|&lpar;|&#0*91;|&#[xX]0*5[bB];|&ls
 const atReference = new RegExp(at, 'g');
 const schemeWithReference = new RegExp(`[hH][tT][tT][pP][sS]?(?:${colon})(?:${slash})(?:${slash})`, 'g');
 const bracketWithReference = new RegExp(`(?:${closeBracket})(?:${afterBracket})`, 'g');
+const digit = '[0-9]|&#0*(?:4[89]|5[0-7]);|&#[xX]0*3[0-9];';
+const hashBeforeDigit = new RegExp(`&#[0-9]{1,7};|#(?=${digit})`, 'g');
+const hashReference = new RegExp(`(?:&#0*35;|&#[xX]0*23;|&num;)(?=${digit})`, 'g');
+const ghPrefix = new RegExp(`(gh)(?=(?:-|&#0*45;|&#[xX]0*2[dD];)(?:${digit}))`, 'gi');
 
 function breakReferences(match: string): string {
   return match.replace(/&(?=[#a-z])/g, '&\u200b');

@@ -61,6 +61,25 @@ test('neutralizeProse breaks character references where a ] meets a (, [ or :', 
   );
 });
 
+test('neutralizeProse breaks issue and pull request references in prose', () => {
+  assert.equal(neutralizeProse('See #12, o/r#3, GH-4 and gh-5'), 'See #\u200b12, o/r#\u200b3, GH\u200b-4 and gh\u200b-5');
+});
+
+test('neutralizeProse breaks character references that make an issue reference', () => {
+  assert.equal(
+    neutralizeProse('&#35;12, &num;3, &#x23;4, #&#49;2 and &#123'),
+    '&\u200b#35;12, &\u200bnum;3, &\u200b#x23;4, #\u200b&#49;2 and &#\u200b123',
+  );
+});
+
+test('neutralizeProse leaves a # that starts no issue reference as written', () => {
+  assert.equal(neutralizeProse('C# 1, #x, GH-x, &#35;x and &#49;&#50;'), 'C# 1, #x, GH-x, &#35;x and &#49;&#50;');
+});
+
+test('neutralizeProse leaves an issue reference in code as written', () => {
+  assert.equal(neutralizeProse('`#12` and #3\n```\no/r#4\n```'), '`#12` and #\u200b3\n```\no/r#4\n```');
+});
+
 test('neutralizeProse leaves a character reference in a code span as written', () => {
   assert.equal(neutralizeProse('`&#64;x http&#58;//y` and &#64;z'), '`&#64;x http&#58;//y` and &\u200b#64;z');
 });
