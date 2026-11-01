@@ -40,7 +40,6 @@ export function creditsRanOut(message: string): boolean {
 }
 
 export { creditsRanOutReason } from './credits.ts';
-export { NoProviderError } from './no-provider.ts';
 
 // A one-token call to Anthropic tells whether the credits are there. A refusal for any reason falls back to Bedrock
 // when the run has its key and Bedrock accepts it.
