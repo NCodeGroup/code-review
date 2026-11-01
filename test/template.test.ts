@@ -10,6 +10,7 @@ import { gather, readChanges, templateOf, type ChangedFile, type Gathered, type 
 import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
+import { gatherChecked } from '../src/template-check.ts';
 import { placeFindings } from '../src/threads.ts';
 
 const made: string[] = [];
@@ -283,6 +284,22 @@ test('readChanges names the head\'s _commit and the changed files the template w
   assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1'] });
   // From the default branch's own commit, nothing changes, the answers file included.
   assert.equal(readChanges({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base).candidate, undefined);
+});
+
+test('gatherChecked reviews the template\'s files as the project\'s when the template can\'t be read, and reads it only for an adoption', async () => {
+  const { repo, base, baseSha } = adoption();
+  const unread = await gatherChecked({ ...pullRequest(), baseSha }, repo, base, undefined, async () => {
+    throw new Error('offline');
+  });
+  assert.deepEqual(unread.files.filter((f) => f.templateOwned), []);
+  assert.ok(unread.template?.projectOwned.includes('.template/Get-PlanState.ps1'));
+  const reads: string[] = [];
+  const plain = await gatherChecked({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base, undefined, async (p) => {
+    reads.push(p);
+    return undefined;
+  });
+  assert.equal(plain.template, undefined);
+  assert.deepEqual(reads, []);
 });
 
 test('selectionFloor leaves the template\'s scripts out of the reviewers they would call', () => {
