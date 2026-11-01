@@ -82,6 +82,13 @@ export const defaultConfig = (): RepoConfig => ({ sensitive: [], skip: [], polic
 const maxPathChars = 256;
 const reviewerName = /^[A-Za-z0-9][A-Za-z0-9:_-]*$/;
 
+// Why one item of a list of paths or globs can't be used, or undefined when it can.
+function pathItemProblem(key: string, item: unknown): string | undefined {
+  if (typeof item !== 'string' || !item.trim()) return `"${key}" has an empty item`;
+  if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) return `"${key}" has an item that is too long or has control characters`;
+  return undefined;
+}
+
 // The schema: every key optional; the three path lists are lists of strings; tiers maps a reviewer to a model tier.
 // Any error drops the whole file for the defaults. A security tier below minimumSecurityTier isn't an error, which would
 // drop every other setting too: it is raised to the minimum, with a warning.
@@ -96,9 +103,9 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
         continue;
       }
       for (const item of raw) {
-        if (typeof item !== 'string' || !item.trim()) errors.push(`"${key}" has an empty item`);
-        else if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) errors.push(`"${key}" has an item that is too long or has control characters`);
-        else config[key].push(item.trim());
+        const problem = pathItemProblem(key, item);
+        if (problem) errors.push(problem);
+        else if (typeof item === 'string') config[key].push(item.trim());
       }
     } else if (key === 'tiers') {
       if (raw === null) continue;
@@ -289,9 +296,9 @@ export function charterPaths(frontmatter: string): { paths: string[]; problems: 
       problems.push('"paths" must be a list of globs');
     } else {
       for (const item of typeof raw === 'string' ? globList(raw) : (raw ?? [])) {
-        if (typeof item !== 'string' || !item.trim()) problems.push('"paths" has an empty item');
-        else if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) problems.push('"paths" has an item that is too long or has control characters');
-        else paths.push(item.trim());
+        const problem = pathItemProblem('paths', item);
+        if (problem) problems.push(problem);
+        else if (typeof item === 'string') paths.push(item.trim());
       }
     }
   }
