@@ -18,7 +18,7 @@ exit. Each token can write check runs and pull request comments on the one repos
 in the review step's environment. A `/review teach` run also mints one after the agents exit that can write only issues,
 in the one repository its issue opens in. Results and the trace are scanned for secrets before they're written.
 
-Within seconds of the event, before setup-node and `npm ci`, which are most of the wait, the action acknowledges the
+Within seconds of the event, before setup-node and `npm ci`, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
 takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
 `/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
@@ -526,6 +526,14 @@ Copy-Item evals/out/smoke/proposed-baseline-smoke.json evals/baseline-smoke.json
 ```
 
 **Growing the set from verdicts.** `npm run eval:confirm` lists the `real` and `not-real` verdicts nobody has confirmed yet (`--verdict real`, `--verdict unsure` or `--sample 5` of each narrow it), each with the command that confirms it. `npm run eval:confirm -- --case <id> --fingerprint <fp>` adds a `real` finding to its case in `cases.json` as an expected concern, and a `not-real` one as a must-not-flag concern, and marks the verdict confirmed. `--as expect` or `--as must-not` overrides the judge, and is needed for an `unsure` one. Review the new concern's wording in `cases.json` before committing it. In PowerShell, quote the separator: `npm run eval:confirm '--' --case <id> --fingerprint <fp>`.
+
+## Timings
+
+Each model call's record in the trace has `startedAt` and `firstResponseMs`, and the trace's `timings` has the engine's stage times. `node tools/timings.ts <folders>` summarizes downloaded `code-review-trace` artifacts (`gh run download <run id> -n code-review-trace -D traces/<run id>`): each review's phases, then each role's median and p90. In October 2026 a full review's job took a median of 99 s (engine 79 s, of which reviewer calls 40 s and synthesis 24 s), a re-review's 32 s, and a closed pull request's 16 s.
+
+`npm run bench:review` runs a review on a fake agent whose calls take each role's production median (1 s = 10 ms) and prints the median of 7 runs. Use it to compare the engine's scheduling before and after a change; `--max-ms` fails the run above a limit.
+
+`npm run bench:tests` times each test file on its own, slowest first. `--file` runs one file, and `--max-ms` fails above a limit.
 
 ## Checks
 
