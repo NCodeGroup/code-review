@@ -27,10 +27,10 @@ const templateRepositoryName = 'NCodeGroup/project-template';
 
 // The template's workflow commands, each generated as a Claude Code command, a Copilot prompt file and a skill.
 const workflowCommands = [
-  'address-feedback', 'analyze-architecture', 'analyze-decision', 'continue-plan', 'execute-step', 'finish-plan', 'handoff-plan',
-  'orchestrate-plan', 'plan-bugfix', 'plan-docs', 'plan-feature', 'plan-issue', 'plan-migration', 'plan-performance', 'plan-refactor',
-  'plan-security', 'plan-template-update', 'plan-tests', 'replan-step', 'review-code', 'review-plan-diff', 'run-issues', 'ship-plan',
-  'triage-issues',
+  'address-feedback', 'analyze-architecture', 'analyze-decision', 'audit-conventions', 'continue-plan', 'execute-step',
+  'finish-plan', 'handoff-plan', 'orchestrate-plan', 'plan-bugfix', 'plan-docs', 'plan-feature', 'plan-issue', 'plan-migration',
+  'plan-performance', 'plan-refactor', 'plan-security', 'plan-template-update', 'plan-tests', 'replan-step', 'review-code',
+  'review-plan-diff', 'run-issues', 'ship-plan', 'triage-issues',
 ];
 const copilotAgents = [
   'copilot-implementer', 'copilot-orchestrator', 'copilot-planner', 'copilot-reviewer', 'hybrid-orchestrator', 'hybrid-planner',
