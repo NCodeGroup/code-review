@@ -40,7 +40,7 @@ import {
   type Severity,
   type Verdict,
 } from './review.ts';
-import { nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
+import { findingBody, findingTitle, nearby, parsePosted, sameProblem, snapDistance } from './threads.ts';
 import { verifyFindings, type RefutedFinding, type VerificationAgent, type VerificationCall } from './verify.ts';
 
 // The reviewer every re-review runs; reReviewRoster adds security when the changes call for it.
@@ -234,14 +234,7 @@ const maxReplyChars = 1_500;
 const maxRepliesPerThread = 50;
 
 function findingText(body: string): string {
-  return body
-    .split('\n')
-    .slice(1)
-    .join('\n')
-    .replace(/<details>[\s\S]*?<\/details>/g, '')
-    .replace(/<!-- ncode-review:finding .+? -->/g, '')
-    .trim()
-    .slice(0, maxFindingTextChars);
+  return findingBody(body).slice(0, maxFindingTextChars);
 }
 
 // The bot's findings in a pull request's review threads, with the newest replies from people with write access
@@ -259,7 +252,7 @@ export function earlierFindings(threads: ThreadNode[]): EarlierFinding[] {
       file: posted.path,
       line: posted.line,
       severity: posted.severity,
-      title: /^\S+ \*\*(?:Blocker|Should fix|Nit): (.+)\*\* <sub>/.exec(first.body)?.[1] ?? '',
+      title: findingTitle(first.body),
       text: findingText(first.body),
       resolved: thread.isResolved,
       url: first.url,
