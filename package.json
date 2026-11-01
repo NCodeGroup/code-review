@@ -12,6 +12,7 @@
     "eval:compare": "node evals/compare.ts",
     "eval:confirm": "node evals/confirm.ts",
     "bench:review": "node tools/bench-review.ts",
+    "bench:tests": "node tools/time-tests.ts",
     "train": "node training/run.ts"
   },
   "dependencies": {
