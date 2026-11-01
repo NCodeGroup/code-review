@@ -278,6 +278,19 @@ test('a rerun that fails on Bedrock too returns the rerun\'s error with both rec
   assert.deepEqual(fallback, { switched: true, reason: creditsRanOutReason });
 });
 
+test('runAgent passes a request\'s effort to the SDK, and none without one', async () => {
+  const efforts: unknown[] = [];
+  const recording: QueryFunction = async function* ({ options }) {
+    efforts.push(options.effort);
+    yield resultMessage({ structured_output: { findings: [] } });
+  };
+  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', query: recording };
+  await runAgent(run, request({ effort: 'low' }));
+  await runAgent(run, request());
+
+  assert.deepEqual(efforts, ['low', undefined]);
+});
+
 test('a credit error thrown as an exception reruns the call on Bedrock', async () => {
   const seen: SeenCall[] = [];
   const throwing: QueryFunction = async function* ({ options }) {

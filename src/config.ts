@@ -1,5 +1,7 @@
 // Models, prices and limits for the baseline setup: Haiku specialists, Opus selection and synthesis.
 
+import type { AgentRequest } from './agent.ts';
+
 export type Provider = 'anthropic' | 'bedrock';
 export type ModelTier = 'haiku' | 'sonnet' | 'opus';
 
@@ -49,6 +51,29 @@ export function reviewerTiers(
     if (name && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) tiers[name] = tier;
   }
   return tiers;
+}
+
+// Synthesis runs on Opus; the override is for measuring it on another model (#135).
+export function synthesisTier(override = process.env['CODE_REVIEW_TIERS'] ?? ''): ModelTier {
+  let synthesis: ModelTier = 'opus';
+  for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
+    const [name, tier] = pair.split('=').map((s) => s.trim());
+    if (name === 'synthesis' && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) synthesis = tier;
+  }
+  return synthesis;
+}
+
+// CODE_REVIEW_SYNTHESIS_EFFORT sets the synthesis call's reasoning effort, to measure it (#135). Unset sends none; any
+// other value warns and is ignored.
+export function synthesisEffort(
+  value = process.env['CODE_REVIEW_SYNTHESIS_EFFORT'] ?? '',
+  warn: (message: string) => void = () => {},
+): AgentRequest['effort'] {
+  const level = value.trim();
+  if (!level) return undefined;
+  if (level === 'low' || level === 'medium' || level === 'high' || level === 'xhigh' || level === 'max') return level;
+  warn(`CODE_REVIEW_SYNTHESIS_EFFORT must be low, medium, high, xhigh or max; "${value}" is ignored.`);
+  return undefined;
 }
 
 // Per-call cost caps in USD, checked by the Agent SDK against its own estimate, which can overshoot a little.
