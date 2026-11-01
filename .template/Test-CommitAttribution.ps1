@@ -17,7 +17,13 @@
 
     On failure each finding is written as "<short sha> <subject>: <finding>", followed by the remedy: re-author the
     commits with git rebase <base> --exec "git commit --amend --no-edit --reset-author", then git push
-    --force-with-lease. When GITHUB_ACTIONS is true each finding is also written as a workflow error annotation.
+    --force-with-lease. When GITHUB_ACTIONS is true each finding is also written as a workflow error annotation, with
+    %, CR and LF escaped.
+
+    When PullRequestTitle or PullRequestBody is given, the pull request's title and description (on GitLab, when
+    GITLAB_CI is true, the merge request's) are checked line by line for the same attribution lines, because a squash
+    merge can make them the message of the commit on the default branch. The remedy for such a finding is to edit the
+    title or description.
 
     This file comes from the project template. Template updates replace it, so a local edit is lost.
 
@@ -30,8 +36,19 @@
 .PARAMETER Root
     The project root. Defaults to the parent of the .template directory.
 
+.PARAMETER PullRequestTitle
+    The title of the pull request (merge request). Pass it through an environment variable, never interpolated into a
+    command. When it and PullRequestBody are both empty, as on a push, nothing extra is checked.
+
+.PARAMETER PullRequestBody
+    The description of the pull request (merge request). Pass it through an environment variable, never interpolated
+    into a command. When it and PullRequestTitle are both empty, as on a push, nothing extra is checked.
+
 .EXAMPLE
     .\.template\Test-CommitAttribution.ps1 -Base origin/main
+
+.EXAMPLE
+    .\.template\Test-CommitAttribution.ps1 -Base origin/main -PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY
 
 .EXAMPLE
     .\.template\Test-CommitAttribution.ps1 -Base origin/main~20 -Head origin/main
@@ -42,7 +59,9 @@ param(
     [AllowEmptyString()]
     [string]$Base,
     [string]$Head = 'HEAD',
-    [string]$Root = (Split-Path -Parent $PSScriptRoot)
+    [string]$Root = (Split-Path -Parent $PSScriptRoot),
+    [string]$PullRequestTitle = '',
+    [string]$PullRequestBody = ''
 )
 
 Set-StrictMode -Version Latest
@@ -57,6 +76,10 @@ $attributionLines = @(
     '^\s*claude-session:',
     '^\W*generated with \[?claude code'
 )
+$isGitLab = $env:GITLAB_CI -eq 'true'
+$requestName = if ($isGitLab) { 'merge request' } else { 'pull request' }
+$requestLabel = if ($isGitLab) { 'Merge request' } else { 'Pull request' }
+$checkRequest = -not ([string]::IsNullOrWhiteSpace($PullRequestTitle) -and [string]::IsNullOrWhiteSpace($PullRequestBody))
 
 function Test-AgentAccount([string]$Name, [string]$Email) {
     return ($Name -match $accountName) -or ($Email -match $accountEmail)
@@ -64,7 +87,7 @@ function Test-AgentAccount([string]$Name, [string]$Email) {
 
 try {
     # Read Git's output as UTF-8, so the emoji before "Generated with" stays a symbol whatever the console's code page.
-    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
+    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
 
     $headCommit = & git -C $Root rev-parse --verify "$Head^{commit}" 2>$null
     if ($LASTEXITCODE -ne 0) {
@@ -116,14 +139,32 @@ try {
         foreach ($line in $message) {
             foreach ($pattern in $attributionLines) {
                 if ($line -match $pattern) {
-                    $findings.Add("${prefix}: message has agent attribution: $($line.Trim())")
+                    $findings.Add("${prefix}: message has agent attribution: $(($line -replace '[\x00-\x1F\x7F]', ' ').Trim())")
                     break
                 }
             }
         }
     }
 
-    if ($findings.Count -eq 0) {
+    $requestFindings = [System.Collections.Generic.List[string]]::new()
+    if ($checkRequest) {
+        $requestText = [ordered]@{ title = $PullRequestTitle; description = $PullRequestBody }
+        foreach ($entry in $requestText.GetEnumerator()) {
+            foreach ($line in ($entry.Value -split '\r?\n')) {
+                foreach ($pattern in $attributionLines) {
+                    if ($line -match $pattern) {
+                        $requestFindings.Add("$requestLabel $($entry.Key): has agent attribution: $(($line -replace '[\x00-\x1F\x7F]', ' ').Trim())")
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    if ($findings.Count + $requestFindings.Count -eq 0) {
+        if ($checkRequest) {
+            Write-Output "Commit attribution: the $requestName's title and description have no agent attribution."
+        }
         Write-Output "Commit attribution: $($commits.Count) commit(s) checked; none is attributed to an AI agent."
         exit 0
     }
@@ -131,14 +172,24 @@ try {
     foreach ($finding in $findings) {
         Write-Output $finding
     }
-    Write-Output "Re-author these commits before merging: git rebase $remedyBase --exec ""git commit --amend --no-edit --reset-author"", then git push --force-with-lease."
+    foreach ($finding in $requestFindings) {
+        Write-Output $finding
+    }
+    if ($findings.Count) {
+        Write-Output "Re-author these commits before merging: git rebase $remedyBase --exec ""git commit --amend --no-edit --reset-author"", then git push --force-with-lease."
+    }
+    if ($requestFindings.Count) {
+        $requestRemedy = if ($isGitLab) { "Then run the merge request's pipeline again." } else { 'Editing the pull request runs this check again.' }
+        Write-Output "Edit the $requestName's title and description to remove these lines: a rebase doesn't change them, and a squash merge would copy them into the commit on the default branch. $requestRemedy"
+    }
     if ($env:GITHUB_ACTIONS -eq 'true') {
-        foreach ($finding in $findings) {
-            Write-Output "::error title=Commit attribution::$finding"
+        foreach ($finding in @($findings) + @($requestFindings)) {
+            $message = $finding.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Commit attribution::$message"
         }
     }
     exit 1
 }
 finally {
-    try { [Console]::OutputEncoding = $outputEncoding } catch { }
+    try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
 }

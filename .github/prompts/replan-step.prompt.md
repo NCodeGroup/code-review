@@ -12,7 +12,7 @@ If that is empty, take the first step marked `[?]` or `[!]`.
 You are the planner. Do the deep reasoning the executor must not do, then hand the step back for execution.
 
 1. Read `PLAN.md`, the step and its Escalation note, and the current state of the files it touches — `git status` and `git diff` show any partial work.
-2. If the step failed, run its Done-when command and read the failure.
+2. If the step failed, run its Done-when command and read the failure. When the Context for the executor has a `- Prelude:` line, run its command first in the same PowerShell, dot-sourced, as the executor does: `$global:LASTEXITCODE = 0; try { . <prelude> } catch { $_; "prelude failed"; exit 2 }; if (-not $? -or $LASTEXITCODE) { "prelude failed"; exit 2 }; <the Done-when command>`, where `<prelude>` is that line's command. When it exits 2 and the output's last line, apart from any exit code your shell adds, is `prelude failed`, the check never ran, and the step isn't what failed: stop, show me the prelude's error, and say to fix the `- prelude:` line in the `## Landing` section of `AGENTS.md`, or the script it names, and the plan's `- Prelude:` line. Leave the step as it is.
 3. Decide why it came back, with evidence: the step was ambiguous, too big, wrong about the code, missing context, needs a redesign, or is beyond the executor model.
 4. Fix the plan rather than the code:
    - Ambiguous or wrong about the code: rewrite the step with exact files, symbols and behavior.
