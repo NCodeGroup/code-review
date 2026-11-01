@@ -891,7 +891,7 @@ async function finishReview(
   ({ findings, verdict } = apart);
 
   // Verification of the merged blockers and should-fixes, with the checkout, on Opus for a deep review's sensitive files.
-  // Off unless CODE_REVIEW_VERIFICATION=on, and never on a light review. Only the live reviewers' findings reach it: a
+  // On unless CODE_REVIEW_VERIFICATION=off, and never on a light review. Only the live reviewers' findings reach it: a
   // shadow reviewer's findings never went to synthesis, so they are never verified, and its charter isn't given to the
   // verifier. Its calls count toward the run's cost ceiling, and those not yet started when it's reached are skipped.
   const liveCharters = [...charters.reviewers].filter(([name]) => !shadow.has(name)).map(([name, charter]) => [name, charter.text] as const);

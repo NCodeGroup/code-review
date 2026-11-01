@@ -572,7 +572,7 @@ interface ReReviewVerification {
   trace: VerificationCall[];
 }
 
-// Verification of what a re-review would post, as for a first review when CODE_REVIEW_VERIFICATION=on: a refuted
+// Verification of what a re-review would post, as for a first review unless CODE_REVIEW_VERIFICATION=off: a refuted
 // finding is dropped, and one it can't settle is a question one severity lower. A should-fix that becomes a nit isn't
 // posted, since a re-review posts no nits; as verification ranks nits last, the findings left keep their ids.
 async function verifyPosted(
