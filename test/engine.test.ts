@@ -455,6 +455,30 @@ test('summaryComment shows reviewers, models, counts and the worst severity', as
   assert.match(body, /\$0\.69 on Amazon Bedrock, 71s, at abcdef1/);
 });
 
+test('summaryComment neutralizes mentions and links in the summary and the titles', async () => {
+  const { summaryComment } = await import('../src/results.ts');
+  const finding = { file: 'src/A.cs', line: 3, title: 'Ping @team about `@Override`', problem: '', consequence: '', fix: '', evidence: '', confidence: 0.8, reviewers: ['tests'] };
+  const body = summaryComment(
+    {
+      summary: 'Thanks @someone, see https://evil.example',
+      verdict: 'comment',
+      findings: [{ ...finding, severity: 'should-fix', id: 'F1' }],
+      dropped: [],
+      reviewers: [{ name: 'tests', status: 'ran', model: 'global.anthropic.claude-haiku-5-5', findingCount: 1, topSeverity: 'should-fix' }],
+      skipped: [],
+      synthesisModel: 'global.anthropic.claude-opus-5-5',
+      provider: 'bedrock',
+      costUsd: 0.6912,
+      durationMs: 71_400,
+      headSha: 'abcdef1234',
+    } as never,
+    'https://check',
+    'https://help',
+  );
+  assert.ok(body.includes('Thanks @\u200bsomeone, see https:\u200b//evil.example'), body);
+  assert.ok(body.includes('Ping @\u200bteam about `@Override`'), body);
+});
+
 test('the summary comment records the reviewed commit for the next run to read', async () => {
   const { headMarker, reviewedHead } = await import('../src/results.ts');
   const sha = 'be871218490af47fa393c9d0a11b68548265bf0f';
