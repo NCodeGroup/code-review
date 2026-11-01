@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       # The release's notes are its section of CHANGELOG.md, which must exist, dated, before the tag does.
       - name: Check the changelog has the version's section
