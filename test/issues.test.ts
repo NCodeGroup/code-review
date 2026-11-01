@@ -231,6 +231,34 @@ test('the summary comment and the check run list tracked findings apart, and lea
   assert.ok(!annotations(results).some((a) => a.title.includes('Known')));
 });
 
+test('the summary comment breaks an issue reference in a tracked finding\'s title but keeps the one it tracks', () => {
+  const results = {
+    findings: [reviewed('New', 2)],
+    tracked: [{ ...reviewed('Same as #7', 3, 12), id: 'T1' }],
+    reviewers: [],
+    skipped: [],
+    synthesisModel: 'opus',
+    provider: 'bedrock',
+    costUsd: 0,
+    durationMs: 0,
+    headSha: 'h'.repeat(40),
+    summary: 'S.',
+    verdict: 'comment',
+    calls: [],
+    dropped: [],
+    notShown: [],
+  } as unknown as Results;
+  const summary = summaryComment(results, 'https://check', 'https://help');
+  assert.match(summary, /^- 🟠 \*\*T1\*\* `src\/a\.ts:3`: Same as #\u200b7 \(tracked in #12\)$/m);
+});
+
+test('the review body breaks an issue reference in a finding off the changed lines but keeps the one it tracks', () => {
+  const placement = placeFindings([reviewed('Like #7', 9), reviewed('Known', 3, 12)], { 'src/b.ts': [1] }, []);
+  const body = reviewBody(placement, 'h'.repeat(40));
+  assert.match(body, /1 more is tracked in #12\./);
+  assert.ok(body.includes('Like #\u200b7'));
+});
+
 test('buildResults lists the findings an open issue tracks apart from the findings', async () => {
   const { result } = await synthesize([{ number: 12, title: 'Leaked handles' }], 12);
   const results = buildResults(result, { repository: 'o/r', pullRequest: 1, headSha: 'h', provider: 'bedrock', providerReason: 'r', durationMs: 0, notShown: [], diff });
