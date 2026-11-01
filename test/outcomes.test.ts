@@ -720,6 +720,7 @@ function assertOutcomesJob(text: string, label: string): void {
   const { review, outcomes } = jobs;
   assert.equal(review.environment, 'code-review', label);
   assert.ok(review.if?.includes("github.event.action != 'closed'"), label);
+  assert.ok(review.if?.includes("github.event.issue.state == 'open'"), label);
   assert.equal(outcomes.environment, undefined, label);
   assert.deepEqual(outcomes.permissions, { contents: 'read', 'pull-requests': 'read' }, label);
   assert.ok(outcomes.if?.includes("github.event.action == 'closed'"), label);

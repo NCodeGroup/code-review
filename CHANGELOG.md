@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - This repository's own workflow and the README's examples pin v1.0.0.
+- The caller runs a plain `/review` only on an open pull request, so a `/review` on a pull request that just closed can't cancel or displace the outcomes job in their shared concurrency group; `/review explain` and `/review teach` still answer on a closed one.
 
 ## [1.0.0] - 2026-11-01
 
