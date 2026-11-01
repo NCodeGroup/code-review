@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - This repository's own workflow and the README's examples pin v1.0.0.
 - The caller runs a plain `/review` only on an open pull request, so a `/review` on a pull request that just closed can't cancel or displace the outcomes job in their shared concurrency group; `/review explain` and `/review teach` still answer on a closed one.
+- The README's `sensitive:` example shows NCodeGroup/Identity's real project paths and the set it uses: tokens, keys and secrets, authentication, client and server.
 
 ### Fixed
 
