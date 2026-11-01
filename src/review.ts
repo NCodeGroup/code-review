@@ -666,6 +666,45 @@ export interface ReviewOptions {
   openIssues?: { number: number; title: string }[];
 }
 
+// What every kind of review shares: review() sets it up before any model runs, and each stage adds its calls to it.
+interface ReviewSetup {
+  run: AgentRun;
+  gathered: Gathered;
+  log: (line: string) => void;
+  agent: typeof runAgent;
+  openIssues: { number: number; title: string }[];
+  // The engine's charters with the repository's own reviewers.
+  charters: Charters;
+  roster: string[];
+  warnings: string[];
+  sensitive: string[];
+  depth: ReviewDepth;
+  shadow: Set<string>;
+  variants: Partial<Record<PromptName, string>>;
+  shadowPrompts: ShadowPromptRun[];
+  calls: CallRecord[];
+  spent: () => number;
+}
+
+// What the reviewers' calls leave for synthesis and for the stages after it.
+interface ReviewersRun {
+  reviewRun: AgentRun;
+  // Every reviewer chosen, live or shadow.
+  reviewers: string[];
+  live: ReviewerOutcome[];
+  shadowOutcomes: ReviewerOutcome[];
+  // Each live call's outcome.
+  liveJobs: ReviewerOutcome[];
+  ceiling: number;
+  ceilingWarning: string;
+  limit: number;
+  // The live findings on the repository's own files, numbered R1, R2 and so on.
+  raw: (Finding & { reviewer: string; id: string })[];
+  changedFiles: string[];
+  // The findings on the template's files, after the claims guard.
+  upstream: { kept: (Finding & { reviewers: string[] })[]; dropped: DroppedFinding[] };
+}
+
 export async function review(options: ReviewOptions): Promise<Review> {
   const { run, gathered, charters: engineCharters, log, agent = runAgent, openIssues = [] } = options;
   const calls: CallRecord[] = [];
@@ -682,6 +721,7 @@ export async function review(options: ReviewOptions): Promise<Review> {
   const variants = shadowSampled(gathered.pullRequest.number, gathered.pullRequest.headSha, shadowPromptRate()) ? charters.shadowPrompts : {};
   const shadowPrompts: ShadowPromptRun[] = [];
   if (Object.keys(variants).length) log(`Shadow prompts: ${Object.keys(variants).join(', ')}`);
+  const setup: ReviewSetup = { run, gathered, log, agent, openIssues, charters, roster, warnings, sensitive, depth, shadow, variants, shadowPrompts, calls, spent };
 
   // A pull request whose every changed file the repository's skip: leaves out has nothing to review: no model runs.
   if (!gathered.files.length && gathered.skippedByConfig.length) {
@@ -763,111 +803,14 @@ export async function review(options: ReviewOptions): Promise<Review> {
     log(`Reviewers: ${[...selected].map((name) => (shadow.has(name) ? `${name} (shadow)` : name)).join(', ')}${selection.error ? ` (selection failed: ${selection.error})` : ''}`);
   }
 
-  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
-  // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
-  // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
-  // writing it again. On a deep review, the parts with a sensitive file also get correctness and security, both on Opus.
-  const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
-  const deepParts = depth === 'deep' ? sensitiveParts(parts, sensitive) : new Set<number>();
-  const deepReviewers = deepParts.size ? Object.keys(deepReviewerTiers).filter((name) => charters.reviewers.has(name)) : [];
-  if (deepParts.size) log(`Deep: ${deepReviewers.join(', ')} on ${parts.length > 1 ? `part ${[...deepParts].map((p) => p + 1).join(', ')}` : 'the diff'}`);
-  const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
   const batches = !light && ruleChecksOn() ? ruleBatches(catalog, context.rulesFor, rulesPerCheck) : [];
-  const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
-  const partReviewers = (part: number) => [...new Set([...selected, ...(deepParts.has(part) ? deepReviewers : [])])];
-  interface Job extends ReviewJob { role: string; systemPrompt: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
-  const jobs: Job[] = reviewJobs(parts, gathered.files, partReviewers, context.rulesFor, batches, (part) => partTiers(depth, deepParts.has(part), gathered.tiers)).map((job) => ({
-    ...job,
-    role: `reviewer:${job.name}`,
-    systemPrompt: charters.specialistPrompt,
-    charter: job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!.text,
-  }));
-  // A sampled review runs each job again with the shadow prompts, after the live jobs have written the shared cache.
-  const twins: Job[] = jobs.flatMap((job) => {
-    const charter = job.name === ruleCheckName ? variants['rule-check'] : undefined;
-    const prompts: PromptName[] = [...(variants.specialist !== undefined ? ['specialist' as const] : []), ...(charter !== undefined ? ['rule-check' as const] : [])];
-    if (!prompts.length) return [];
-    return [{ ...job, role: `shadow-prompt:${job.role}`, systemPrompt: variants.specialist ?? job.systemPrompt, charter: charter ?? job.charter, twinOf: job, prompts }];
-  });
-  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
-  const outcomeOf = new Map<Job, ReviewerOutcome>();
-  // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
-  const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
-  const reviewOne = async (job: Job): Promise<void> => {
-    const { name, part, label, tier } = job;
-    const where = [parts.length > 1 ? `part ${part + 1}` : '', label, shadow.has(name) ? 'shadow' : '', job.twinOf ? 'shadow prompt' : ''].filter(Boolean).join(', ');
-    if (spent() >= ceiling) {
-      log(`  ${name}${where ? ` (${where})` : ''}: skipped (${runBudgetReason})`);
-      outcomeOf.set(job, { name, status: 'skipped', findings: [], error: runBudgetReason });
-      return;
-    }
-    const result = await agent<{ findings: Finding[] }>(reviewRun, {
-      role: job.role,
-      tier,
-      systemPrompt: job.systemPrompt,
-      prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.charter}`],
-      schema: specialistSchema,
-      maxTurns: maxTurns.specialist,
-      budgetUsd: budgets.specialist[tier],
-    });
-    calls.push(...result.records);
-    const cost = totalCost(result.records);
-    const reported = result.output?.findings ?? [];
-    const kept = reported.filter((f) => f.confidence >= minConfidence);
-    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
-    outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
-  };
-  const concurrency = 6;
-  // The twins start after every live job, so the cost ceiling skips a twin before it skips a live call.
-  await mapWithConcurrency(first, concurrency, reviewOne);
-  await mapWithConcurrency([...jobs.filter((job) => !first.includes(job)), ...twins], concurrency, reviewOne);
-  for (const twin of twins) {
-    const output = (o: ReviewerOutcome) => (o.error ? { error: o.error } : { findings: o.findings });
-    shadowPrompts.push({ prompts: twin.prompts!, role: `${twin.twinOf!.role}${parts.length > 1 ? ` part ${twin.part + 1}` : ''}${twin.label ? ` ${twin.label}` : ''}`, live: output(outcomeOf.get(twin.twinOf!)!), shadow: output(outcomeOf.get(twin)!) });
-  }
-  const perJob = jobs.map((job) => outcomeOf.get(job)!);
-  // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
-  // all of them were.
-  const reviewers = [...new Set([...selected, ...deepReviewers])];
-  const outcomes: ReviewerOutcome[] = outcomeNames(reviewers, jobs).map((name) => {
-    const mine = perJob.filter((o) => o.name === name);
-    const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
-    const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));
-    const skippedCalls = mine.filter((o) => o.status === 'skipped').length;
-    if (skippedCalls) errors.push(status === 'skipped' ? runBudgetReason : `${skippedCalls} of ${mine.length} calls skipped: ${runBudgetReason}`);
-    return {
-      name,
-      status,
-      findings: mine.flatMap((o) => o.findings),
-      ...(errors.length ? { error: errors.join('; ') } : {}),
-    };
-  });
-  // A shadow reviewer's findings stop here: they never reach synthesis, the threads, the summary or the verdict.
-  const live = outcomes.filter((o) => !shadow.has(o.name));
-  const shadowOutcomes = outcomes.filter((o) => shadow.has(o.name));
-  if (shadowOutcomes.length) log(`Shadow reviewers (not posted): ${shadowOutcomes.map((o) => `${o.name} ${o.findings.length} findings`).join(', ')}`);
-  // Only a skipped live call leaves the posted review incomplete.
-  const liveJobs = perJob.filter((o) => !shadow.has(o.name));
-  const skippedJobs = liveJobs.filter((o) => o.status === 'skipped');
-  let ceilingWarning = '';
-  if (skippedJobs.length) {
-    const names = [...new Set(skippedJobs.map((o) => o.name))].join(', ');
-    ceilingWarning = `This review reached its $${ceiling.toFixed(2)} cost ceiling ($${spent().toFixed(2)} spent) and skipped ${skippedJobs.length} of ${liveJobs.length} reviewer calls (${names}), so it is incomplete.`;
-    log(`::warning::${ceilingWarning}`);
-  }
+  const ran = await runReviewers(setup, selected, context, batches);
+  const { reviewRun, reviewers, live, shadowOutcomes, liveJobs, ceiling, ceilingWarning, limit, raw, changedFiles, upstream: guardedUpstream } = ran;
 
   // Synthesis. A light review posts hygiene's findings as it reported them, most severe first.
-  const limit = findingLimit(parts.length);
-  // Findings on the template's files skip synthesis: they're listed for the template's repository instead.
-  const split = byOwner(live.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))), gathered.template);
-  const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
-  const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
   let summary = '';
   let verdict: Verdict | undefined;
   let findings: ReviewedFinding[] = [];
-  const changedFiles = gathered.files.map((f) => f.path);
-  // The claims guard reads the template's findings too: they're listed in the summary comment.
-  const guardedUpstream = dropContradicted(upstreamRaw, changedFiles);
   let dropped: DroppedFinding[] = guardedUpstream.dropped;
   if (light) {
     // No synthesis, but the same guard: a finding that says a changed file isn't changed is left out.
@@ -973,4 +916,111 @@ export async function review(options: ReviewOptions): Promise<Review> {
     depth,
     sensitiveFiles: sensitive,
   };
+}
+
+// The specialists and the rule checks on each part of the diff, then their findings split between the repository's own
+// files, for synthesis, and the template's, which go upstream.
+async function runReviewers(setup: ReviewSetup, selected: Set<string>, context: Context, batches: IndexedRule[][]): Promise<ReviewersRun> {
+  const { run, gathered, log, agent, charters, depth, sensitive, shadow, variants, shadowPrompts, calls, spent } = setup;
+  // Specialists, each with the picked rules for its charter, and each part of the diff with its own set of them: a rule
+  // learned for some files reaches only the parts that change them. The part of the prompt they share is its first
+  // block; one reviewer per model and part goes first and caches it, and the rest read the cache instead of each
+  // writing it again. On a deep review, the parts with a sensitive file also get correctness and security, both on Opus.
+  const parts = gathered.chunks.length ? gathered.chunks : [gathered.diff];
+  const deepParts = depth === 'deep' ? sensitiveParts(parts, sensitive) : new Set<number>();
+  const deepReviewers = deepParts.size ? Object.keys(deepReviewerTiers).filter((name) => charters.reviewers.has(name)) : [];
+  if (deepParts.size) log(`Deep: ${deepReviewers.join(', ')} on ${parts.length > 1 ? `part ${[...deepParts].map((p) => p + 1).join(', ')}` : 'the diff'}`);
+  const reviewRun: AgentRun = { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) };
+  const sharedBlocks = parts.map((diff, part) => `${sharedContext(gathered, context.decisions, diff, part, parts.length)}\n\nThe checkout is at: ${run.checkout}`);
+  const partReviewers = (part: number) => [...new Set([...selected, ...(deepParts.has(part) ? deepReviewers : [])])];
+  interface Job extends ReviewJob { role: string; systemPrompt: string; charter: string; twinOf?: Job; prompts?: PromptName[] }
+  const jobs: Job[] = reviewJobs(parts, gathered.files, partReviewers, context.rulesFor, batches, (part) => partTiers(depth, deepParts.has(part), gathered.tiers)).map((job) => ({
+    ...job,
+    role: `reviewer:${job.name}`,
+    systemPrompt: charters.specialistPrompt,
+    charter: job.name === ruleCheckName ? charters.ruleCheckPrompt : charters.reviewers.get(job.name)!.text,
+  }));
+  // A sampled review runs each job again with the shadow prompts, after the live jobs have written the shared cache.
+  const twins: Job[] = jobs.flatMap((job) => {
+    const charter = job.name === ruleCheckName ? variants['rule-check'] : undefined;
+    const prompts: PromptName[] = [...(variants.specialist !== undefined ? ['specialist' as const] : []), ...(charter !== undefined ? ['rule-check' as const] : [])];
+    if (!prompts.length) return [];
+    return [{ ...job, role: `shadow-prompt:${job.role}`, systemPrompt: variants.specialist ?? job.systemPrompt, charter: charter ?? job.charter, twinOf: job, prompts }];
+  });
+  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
+  const outcomeOf = new Map<Job, ReviewerOutcome>();
+  // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
+  const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
+  const reviewOne = async (job: Job): Promise<void> => {
+    const { name, part, label, tier } = job;
+    const where = [parts.length > 1 ? `part ${part + 1}` : '', label, shadow.has(name) ? 'shadow' : '', job.twinOf ? 'shadow prompt' : ''].filter(Boolean).join(', ');
+    if (spent() >= ceiling) {
+      log(`  ${name}${where ? ` (${where})` : ''}: skipped (${runBudgetReason})`);
+      outcomeOf.set(job, { name, status: 'skipped', findings: [], error: runBudgetReason });
+      return;
+    }
+    const result = await agent<{ findings: Finding[] }>(reviewRun, {
+      role: job.role,
+      tier,
+      systemPrompt: job.systemPrompt,
+      prompt: [sharedBlocks[job.part]!, `${rulesBlock(job.rules).trimStart()}\n\nYour charter:\n${job.charter}`],
+      schema: specialistSchema,
+      maxTurns: maxTurns.specialist,
+      budgetUsd: budgets.specialist[tier],
+    });
+    calls.push(...result.records);
+    const cost = totalCost(result.records);
+    const reported = result.output?.findings ?? [];
+    const kept = reported.filter((f) => f.confidence >= minConfidence);
+    log(`  ${name}${where ? ` (${where})` : ''}: ${result.error ? `failed (${result.error})` : `${kept.length} findings${reported.length > kept.length ? ` (${reported.length - kept.length} below ${minConfidence} confidence dropped)` : ''}`} $${cost.toFixed(3)}`);
+    outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
+  };
+  const concurrency = 6;
+  // The twins start after every live job, so the cost ceiling skips a twin before it skips a live call.
+  await mapWithConcurrency(first, concurrency, reviewOne);
+  await mapWithConcurrency([...jobs.filter((job) => !first.includes(job)), ...twins], concurrency, reviewOne);
+  for (const twin of twins) {
+    const output = (o: ReviewerOutcome) => (o.error ? { error: o.error } : { findings: o.findings });
+    shadowPrompts.push({ prompts: twin.prompts!, role: `${twin.twinOf!.role}${parts.length > 1 ? ` part ${twin.part + 1}` : ''}${twin.label ? ` ${twin.label}` : ''}`, live: output(outcomeOf.get(twin.twinOf!)!), shadow: output(outcomeOf.get(twin)!) });
+  }
+  const perJob = jobs.map((job) => outcomeOf.get(job)!);
+  // One outcome per reviewer across the parts and rule batches: it ran if any of its calls ran, and was skipped only if
+  // all of them were.
+  const reviewers = [...new Set([...selected, ...deepReviewers])];
+  const outcomes: ReviewerOutcome[] = outcomeNames(reviewers, jobs).map((name) => {
+    const mine = perJob.filter((o) => o.name === name);
+    const status = mine.some((o) => o.status === 'ran') ? 'ran' : mine.some((o) => o.status === 'failed') ? 'failed' : 'skipped';
+    const errors = mine.flatMap((o) => (o.status === 'failed' && o.error ? [o.error] : []));
+    const skippedCalls = mine.filter((o) => o.status === 'skipped').length;
+    if (skippedCalls) errors.push(status === 'skipped' ? runBudgetReason : `${skippedCalls} of ${mine.length} calls skipped: ${runBudgetReason}`);
+    return {
+      name,
+      status,
+      findings: mine.flatMap((o) => o.findings),
+      ...(errors.length ? { error: errors.join('; ') } : {}),
+    };
+  });
+  // A shadow reviewer's findings stop here: they never reach synthesis, the threads, the summary or the verdict.
+  const live = outcomes.filter((o) => !shadow.has(o.name));
+  const shadowOutcomes = outcomes.filter((o) => shadow.has(o.name));
+  if (shadowOutcomes.length) log(`Shadow reviewers (not posted): ${shadowOutcomes.map((o) => `${o.name} ${o.findings.length} findings`).join(', ')}`);
+  // Only a skipped live call leaves the posted review incomplete.
+  const liveJobs = perJob.filter((o) => !shadow.has(o.name));
+  const skippedJobs = liveJobs.filter((o) => o.status === 'skipped');
+  let ceilingWarning = '';
+  if (skippedJobs.length) {
+    const names = [...new Set(skippedJobs.map((o) => o.name))].join(', ');
+    ceilingWarning = `This review reached its $${ceiling.toFixed(2)} cost ceiling ($${spent().toFixed(2)} spent) and skipped ${skippedJobs.length} of ${liveJobs.length} reviewer calls (${names}), so it is incomplete.`;
+    log(`::warning::${ceilingWarning}`);
+  }
+
+  const limit = findingLimit(parts.length);
+  // Findings on the template's files skip synthesis: they're listed for the template's repository instead.
+  const split = byOwner(live.flatMap((o) => o.findings.map((f) => ({ reviewer: o.name, ...f }))), gathered.template);
+  const raw = split.own.map((f, i) => ({ id: `R${i + 1}`, ...f }));
+  const upstreamRaw: (Finding & { reviewers: string[] })[] = split.upstream.map(({ reviewer, ...f }) => ({ ...f, reviewers: [reviewer] }));
+  const changedFiles = gathered.files.map((f) => f.path);
+  // The claims guard reads the template's findings too: they're listed in the summary comment.
+  const guardedUpstream = dropContradicted(upstreamRaw, changedFiles);
+  return { reviewRun, reviewers, live, shadowOutcomes, liveJobs, ceiling, ceilingWarning, limit, raw, changedFiles, upstream: guardedUpstream };
 }
