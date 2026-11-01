@@ -131,7 +131,7 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
+      - uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -154,7 +154,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
+        uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
 ```
@@ -211,7 +211,7 @@ The action has no outputs. A caller needs:
 ## Versions
 
 Pin the action to a release's full commit SHA, with the release's tag in a comment:
-`NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0`. Never a tag, a branch or a floating major
+`NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0`. Never a tag, a branch or a floating major
 like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a release
 someone reviewed in a pull request in its own repository, and a SHA is the one pin nobody can move. CodeQL's `extended`
 suite reports any other pin as an unpinned tag, even an immutable release's. Dependabot's `github-actions` ecosystem
