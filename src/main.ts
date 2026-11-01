@@ -13,13 +13,13 @@ import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
-import { answerFile, explainFinding, findFinding, githubReader, writeAnswer, type FoundFinding } from './explain.ts';
+import { answerFile, explainFinding, findFinding, writeAnswer, type FoundFinding } from './explain.ts';
 import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts';
 import { closedIssues, gather, readPullRequest, templateCandidate } from './gather.ts';
-import { fetchPullRequest, runUrl } from './github.ts';
+import { fetchPullRequest, githubApi, githubReader, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
 import { writeErrorLog, writeLog } from './log.ts';
-import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
+import { isClosedEvent, recordOutcomes } from './outcomes.ts';
 import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
 import { chooseProvider, stoppedBy } from './provider.ts';
@@ -156,7 +156,7 @@ async function main(): Promise<void> {
   // no credentials. It never reviews.
   if (isClosedEvent(event)) {
     if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
-    await recordOutcomes(tokenApi(githubToken), event, repository, outDir);
+    await recordOutcomes(githubApi(githubToken, fetch, { terseErrors: true }), event, repository, outDir);
     return;
   }
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.

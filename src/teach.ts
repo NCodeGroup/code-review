@@ -6,8 +6,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxRuleChars, type Command, type FindingRef } from './command.ts';
-import { findFinding, type Answer, type GitHubApi, type ReadApi, type Resolution } from './explain.ts';
-import { GitHubError } from './github.ts';
+import { findFinding, type Answer, type GitHubApi, type Resolution } from './explain.ts';
+import { GitHubError, type ReadApi } from './github.ts';
+import { neutralizeMentions, plainText } from './markdown.ts';
 import { assertNoSecrets } from './outputs.ts';
 
 export { GitHubError };
@@ -38,12 +39,6 @@ export interface TaughtFinding {
   text: string;
 }
 
-// Stops @mentions in quoted text from notifying anyone: a zero-width space after the @, which the training reader
-// removes again.
-export function neutralizeMentions(text: string): string {
-  return text.replace(/@(?=[A-Za-z0-9_-])/g, '@\u200b');
-}
-
 // Quotes text as data in a fenced block whose fence is longer than any run of backticks in it, so nothing in it can
 // close the block early or render as markdown.
 export function fenced(text: string): string {
@@ -66,10 +61,6 @@ export function guidanceMarker(scope: Teaching['scope']): string {
   return `<!-- ncode-review:guidance scope=${scope} -->`;
 }
 
-function plain(text: string): string {
-  return text.replace(/[`\[\]\r\n]/g, '');
-}
-
 export interface TeachContext {
   repository: string;
   number: number;
@@ -85,7 +76,7 @@ export type IssueSource = Omit<TeachContext, 'number' | 'host'> & { pullRequest:
 
 // The issue's body: the rule quoted as data, where it was taught, the finding it comes from, and what to do with it.
 export function issueBody(scope: Teaching['scope'], rule: string, source: IssueSource, finding?: TaughtFinding): string {
-  const who = source.author ? `\`${plain(source.author)}\`` : 'A writer';
+  const who = source.author ? `\`${plainText(source.author)}\`` : 'A writer';
   const hidden = scope === 'org' && source.isPrivate;
   const where = hidden
     ? 'in a private repository'
@@ -93,7 +84,7 @@ export function issueBody(scope: Teaching['scope'], rule: string, source: IssueS
   const parts = [guidanceMarker(scope), `${who} taught this ${scope === 'org' ? 'NCodeGroup-wide' : 'project'} review rule with \`/review teach\` ${where}.`, '### Rule', fenced(rule)];
   if (finding && !hidden) {
     const line = finding.line ? `:${finding.line}` : '';
-    const at = `\`${plain(finding.path ?? '(no file)')}${line}\``;
+    const at = `\`${plainText(finding.path ?? '(no file)')}${line}\``;
     parts.push(`### From finding ${finding.id}`, `${finding.url ? `[${at}](${finding.url})` : at}, as NCode Review posted it:`, fenced(finding.text.slice(0, maxFindingChars)));
   }
   parts.push(

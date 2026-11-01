@@ -1,6 +1,7 @@
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
+import { githubFetch } from './github.ts';
 import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin, keptMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
@@ -155,9 +156,7 @@ export async function readComments(
   let reason = `more than ${commentPageSize * maxCommentPages} comments`;
   const listed = await readCommentPages(endpoint, async (url) => {
     try {
-      const response = await fetchPage(`https://api.github.com${url}`, {
-        headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      });
+      const response = await githubFetch({ token, fetch: fetchPage }, 'GET', url);
       if (response.ok) return (await response.json()) as ListedComment[];
       reason = `HTTP ${response.status}`;
     } catch (error) {

@@ -14,7 +14,6 @@ import {
   explainPrompt,
   failedBody,
   findFinding,
-  githubReader,
   newestReviewFindings,
   postAnswer,
   publishAnswer,
@@ -25,7 +24,11 @@ import {
   type Resolution,
   type ReviewComment,
 } from '../src/explain.ts';
+import { githubReader } from '../src/github.ts';
 import { SecretFoundError } from '../src/outputs.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 function finding(id: number, review: number, findingId: string, extra: Partial<ReviewComment> = {}): ReviewComment {
   return {

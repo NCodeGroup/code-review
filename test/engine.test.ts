@@ -10,6 +10,9 @@ import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
 import { checkTitle, type Results } from '../src/results.ts';
 import { changedLines, documentationOnly, findingLimit, mergeSynthesis, selectionFloor, type Finding } from '../src/review.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 test('globToRegExp matches applyTo patterns the way Copilot does', () => {
   assert.ok(globToRegExp('src/**/*.cs').test('src/NCode.Identity.Jwk/JsonWebKey.cs'));

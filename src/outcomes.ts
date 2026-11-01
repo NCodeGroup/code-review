@@ -10,6 +10,7 @@ import { isFromFork } from './command.ts';
 export { isClosedEvent } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
+import type { Api } from './github.ts';
 import { writeLog } from './log.ts';
 import { assertNoSecrets, printable } from './outputs.ts';
 import {
@@ -24,6 +25,7 @@ import {
   type ReviewRecord,
 } from './results.ts';
 import type { Severity } from './review.ts';
+import { readThreadPages } from './review-threads.ts';
 import { maxReplyAuthorLookups, withLookupLimit } from './writers.ts';
 
 export type Outcome = 'fixed' | 'dismissed' | 'acknowledged' | 'ignored';
@@ -177,28 +179,6 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
   return { id, severity, reviewers: reviewers.filter(Boolean) };
 }
 
-export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
-
-// GitHub's API with a token, throwing on a refused request. The review step reads with the workflow's read-only token.
-export function tokenApi(token: string, fetchImpl: typeof fetch = fetch): Api {
-  return async (method, url, body) => {
-    const response = await fetchImpl(url.startsWith('https://') ? url : `https://api.github.com${url}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!response.ok) throw new Error(`GitHub refused ${method} ${url}: HTTP ${response.status}`);
-    // An empty body, as a 204 has, is no answer rather than malformed JSON.
-    const text = await response.text();
-    return text ? JSON.parse(text) : undefined;
-  };
-}
-
 interface GraphComment {
   author: { login: string } | null;
   authorAssociation: string;
@@ -219,49 +199,13 @@ export interface GraphThread {
 export const threadPageSize = 50;
 export const maxThreadPages = 20;
 
-const threadsQuery = `query($owner: String!, $name: String!, $number: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      reviewThreads(first: ${threadPageSize}, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          isResolved
-          isOutdated
-          path
-          comments(first: 30) {
-            nodes {
-              author { login }
-              authorAssociation
-              body
-              originalLine
-              originalCommit { oid }
-              reactions(first: 30) { nodes { content user { login } } }
-            }
-          }
-        }
-      }
-    }
-  }
-}`;
+const threadFields = `isResolved isOutdated path comments(first: 30) { nodes { author { login } authorAssociation body originalLine originalCommit { oid } reactions(first: 30) { nodes { content user { login } } } } }`;
 
-// Every review thread on a pull request. Small and self-contained on purpose; re-review reads threads too (issue #77),
-// and the two readers could share one later.
+// Every review thread on a pull request, through the pager re-reviews share, with a warning when there are more than
+// it reads.
 export async function readReviewThreads(api: Api, repository: string, number: number, log: (line: string) => void): Promise<GraphThread[]> {
-  const [owner, name] = repository.split('/');
-  const threads: GraphThread[] = [];
-  let after: string | null = null;
-  for (let page = 1; page <= maxThreadPages; page++) {
-    const response = (await api('POST', '/graphql', { query: threadsQuery, variables: { owner, name, number, after } })) as {
-      data?: { repository?: { pullRequest?: { reviewThreads?: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GraphThread[] } } } };
-      errors?: { message?: string }[];
-    };
-    if (response.errors?.length) throw new Error(`GitHub's GraphQL API refused the review threads: ${response.errors.map((e) => e.message).join('; ')}`);
-    const connection = response.data?.repository?.pullRequest?.reviewThreads;
-    if (!connection) throw new Error(`Couldn't read the review threads of #${number}.`);
-    threads.push(...connection.nodes);
-    if (!connection.pageInfo.hasNextPage) return threads;
-    after = connection.pageInfo.endCursor;
-  }
+  const { threads, complete } = await readThreadPages<GraphThread>(api, repository, number, { fields: threadFields, pageSize: threadPageSize, maxPages: maxThreadPages });
+  if (complete) return threads;
   log(`::warning::#${number} has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${threads.length}.`);
   return threads;
 }
