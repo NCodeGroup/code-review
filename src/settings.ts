@@ -49,7 +49,7 @@ export function parseYaml(text: string): Record<string, YamlValue> {
   const out: Record<string, YamlValue> = {};
   const root = doc.contents;
   if (root === null) return out;
-  if (!isMap(root) || root.anchor || root.tag) throw at(root.range?.[0], 'expected "key: value"');
+  if (!isMap(root) || root.flow || root.anchor || root.tag) throw at(root.range?.[0], 'expected "key: value"');
   for (const pair of root.items) {
     const name = key(pair.key);
     const value = pair.value;

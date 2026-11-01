@@ -81,6 +81,7 @@ test('parseYaml refuses what the subset does not support', () => {
     'skip: !!str a',
     '---\na: b\n---\nc: d',
     'skip: "a\n  b"',
+    '{a: b}',
   ]) {
     assert.throws(() => parseYaml(text), /line \d+:/, JSON.stringify(text));
   }
