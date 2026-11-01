@@ -510,17 +510,23 @@ YAML reads an unquoted one as an alias. A setting the engine can't use, such as 
 anything outside the subset, gives a warning in the check run, and the review runs with the defaults for that file; it
 never fails the run. Globs work like `applyTo:`: `**` spans folders, `*` and `?` stay within one.
 
-For example, NCodeGroup/Identity could mark its JOSE, JWT, JWK and secrets projects sensitive, which about 1 in 6 of
-its pull requests touch; adding its authentication, client and server projects would make about 1 in 3 deep, at about
-$1.80 to $2.80 a review. Which set Identity uses is the maintainer's decision, and no repository is configured yet:
+For example, NCodeGroup/Identity marks its JOSE, JWT, JWK and secrets projects sensitive, which about 1 in 6 of its
+pull requests touch, and its authentication, client and server projects, which make about 1 in 3 deep, at about $1.80
+to $2.80 a review ([Identity#437](https://github.com/NCodeGroup/Identity/pull/437)). `*` stays within one folder name, so
+`src/NCode.Identity.Jose*/**` covers `Jose`, `Jose.Abstractions` and `Jose.EdDsa`:
 
 ```yaml
 # .github/code-review/config.yml
 sensitive:
-  - "src/NCode.Jose/**"
-  - "src/NCode.Identity.Jwt/**"
+  - "src/NCode.Identity.Jose*/**"
+  - "src/NCode.Identity.Jwt*/**"
   - "src/NCode.Identity.Jwk/**"
-  - "src/NCode.Identity.Secrets/**"
+  - "src/NCode.Identity.Secrets*/**"
+  - "src/NCode.Identity.OpenId.Authentication*/**"
+  - "src/NCode.Identity.OpenId.Accounts.Authentication/**"
+  - "src/NCode.Identity.OpenId.Client*/**"
+  - "src/NCode.Identity.Server/**"
+  - "src/NCode.Identity.Bff.Server/**"
 skip:
   - "src/**/Vendored/**"
 policies:
