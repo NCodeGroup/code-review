@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     await teach({ outDir, repository, number, githubToken, event }, command);
     return;
   }
-  const isWriter = writerCheck(repository, githubToken, fetch, log);
+  const isWriter = writerCheck(repository, github, log);
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
   if (!event.comment) {

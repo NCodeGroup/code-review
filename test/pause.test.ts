@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import type { ListedComment } from '../src/comments.ts';
+import { githubApi } from '../src/github.ts';
 import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import { writerCheck } from '../src/writers.ts';
@@ -91,12 +92,12 @@ test("a private organization member's comment counts as the maintainer's when th
     urls.push(String(url));
     return Response.json({ permission: 'write' });
   }) as typeof fetch;
-  assert.equal((await unansweredReviews(comments, writerCheck('o/r', 't', writes))).reviews, 0);
+  assert.equal((await unansweredReviews(comments, writerCheck('o/r', githubApi('t', writes)))).reviews, 0);
   // The bot's summaries and the autopilot's comments are never looked up.
   assert.deepEqual(urls, ['https://api.github.com/repos/o/r/collaborators/private-member/permission']);
   const lines: string[] = [];
   const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
-  assert.equal((await unansweredReviews(comments, writerCheck('o/r', 't', outage, (line) => lines.push(line)))).reviews, 3);
+  assert.equal((await unansweredReviews(comments, writerCheck('o/r', githubApi('t', outage), (line) => lines.push(line)))).reviews, 3);
   assert.equal(lines.length, 1);
 });
 

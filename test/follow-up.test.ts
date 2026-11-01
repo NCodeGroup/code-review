@@ -5,6 +5,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { postThreads } from '../src/comments.ts';
 import { dismissedThreads, followUpThreads, planFollowUps, stillOpenMarker, stillOpenReply } from '../src/follow-up.ts';
+import { githubApi } from '../src/github.ts';
 import type { EarlierState, ThreadNode } from '../src/rereview.ts';
 import type { Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
@@ -166,13 +167,13 @@ test("planFollowUps answers a private organization member's Autopilot reply when
   const privateReply = () => thread({ replies: [{ login: 'private-member', association: 'CONTRIBUTOR', body: 'Autopilot: fixed in abc123' }] });
   const writes = (async () => Response.json({ permission: 'write' })) as unknown as typeof fetch;
   const answered = privateReply();
-  const actions = await planFollowUps([answered], reReviewed([[answered, 'open']]), writerCheck('o/r', 't', writes));
+  const actions = await planFollowUps([answered], reReviewed([[answered, 'open']]), writerCheck('o/r', githubApi('t', writes)));
   assert.deepEqual(actions.map((a) => [a.kind, a.thread.id]), [['reply', answered.id]]);
   assert.equal(actions[0]!.kind === 'reply' && actions[0]!.body.split('\n').at(-1), '@private-member: needs you.');
   const lines: string[] = [];
   const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
   const unread = privateReply();
-  assert.deepEqual(await planFollowUps([unread], reReviewed([[unread, 'open']]), writerCheck('o/r', 't', outage, (line) => lines.push(line))), []);
+  assert.deepEqual(await planFollowUps([unread], reReviewed([[unread, 'open']]), writerCheck('o/r', githubApi('t', outage), (line) => lines.push(line))), []);
   assert.equal(lines.length, 1);
 });
 

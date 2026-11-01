@@ -19,31 +19,24 @@ export function failureText(error: unknown): string {
   return error instanceof GitHubError ? `HTTP ${error.status}` : errorText(error);
 }
 
-function headers(token: string | undefined): Record<string, string> {
-  return { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) };
-}
+// Who can write: the legacy `permission` reads maintain as write and triage as read, while `role_name` names the role
+// itself, such as maintain.
+const writerRoles = new Set(['admin', 'maintain', 'write']);
 
 // A check for one repository that asks the API about each login once. A failed or unreadable lookup counts as no, and
 // warns through `log` with the reason.
-export function writerCheck(repository: string, token: string | undefined, fetchJson: typeof fetch = fetch, log: (line: string) => void = () => {}): WriterCheck {
+export function writerCheck(repository: string, api: Api, log: (line: string) => void = () => {}): WriterCheck {
   const known = new Map<string, Promise<boolean>>();
   const lookUp = async (login: string): Promise<boolean> => {
-    let reason: string;
     try {
-      const response = await fetchJson(`https://api.github.com/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`, { headers: headers(token) });
-      // A 404 is an answer: the login isn't a collaborator, or doesn't exist.
-      if (response.status === 404) return false;
-      if (response.ok) {
-        const { permission } = (await response.json()) as { permission?: string };
-        // The legacy base role: maintain reads as write, triage as read.
-        return permission === 'admin' || permission === 'write';
-      }
-      reason = `HTTP ${response.status}`;
+      const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string } | undefined;
+      return writerRoles.has(answer?.permission ?? '') || writerRoles.has(answer?.role_name ?? '');
     } catch (error) {
-      reason = errorText(error);
+      // A 404 is an answer: the login isn't a collaborator, or doesn't exist.
+      if (error instanceof GitHubError && error.status === 404) return false;
+      log(`::warning::Couldn't read ${login}'s permission (${failureText(error)}); their text counts as a non-writer's.`);
+      return false;
     }
-    log(`::warning::Couldn't read ${login}'s permission (${reason}); their text counts as a non-writer's.`);
-    return false;
   };
   return async (login, association) => {
     if (writerAssociations.has(association ?? '')) return true;

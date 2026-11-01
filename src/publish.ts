@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 
   await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted));
   if (threads) {
-    const actions = await planFollowUps(threads, results, writerCheck(results.repository, token, fetch, writeLog), new Set(dismissed.map((d) => d.thread.id)));
+    const actions = await planFollowUps(threads, results, writerCheck(results.repository, api, writeLog), new Set(dismissed.map((d) => d.thread.id)));
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
   }
 
