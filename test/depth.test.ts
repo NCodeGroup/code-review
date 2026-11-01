@@ -307,6 +307,12 @@ test('a deep review verifies the findings in sensitive files on Opus and the res
   assert.deepEqual(verification, [['opus', budgets.deepVerification], ['sonnet', budgets.verification]]);
 });
 
+test('a review verifies by default when CODE_REVIEW_VERIFICATION is unset', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { findings });
+  assert.ok(calls.some((c) => c.role === 'verification'));
+});
+
 test('a light review runs hygiene alone on Haiku, with no context, selection or synthesis, and posts its findings', async () => {
   const rules: RuleFile[] = [{ name: 'repo.instructions.md', globs: [], text: '- Keep it small.\n' }];
   const decisions: Decision[] = [{ id: 'ADR-0001', title: 'T', decision: 'D', proposed: false } as Decision];

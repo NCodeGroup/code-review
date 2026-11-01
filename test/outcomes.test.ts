@@ -105,6 +105,12 @@ test("a non-writer's autopilot verdict is ignored", () => {
   assert.equal(classify({ ...none, linesChanged: true, replies: [{ body: 'Autopilot: not changed.', writer: false }] }), 'fixed');
 });
 
+test("a non-writer's fixed-in claim naming a gained commit is ignored", () => {
+  const sha = '5d49e7e0123456789abcdef0123456789abcdef0';
+  const replies = [{ body: `Autopilot: fixed in ${sha.slice(0, 7)}.`, writer: false }];
+  assert.equal(classify({ ...none, replies, commitsAfter: [sha], linesChanged: false, isResolved: false }), 'ignored');
+});
+
 test('isDeclining reads common ways to decline and leaves agreement alone', () => {
   for (const reply of [
     "Won't fix",
