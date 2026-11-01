@@ -1,0 +1,541 @@
+{
+  "summary": {
+    "label": "smoke-f9f8d1d123432f1fc3be12e2082b3e05a39d945e",
+    "tiers": "",
+    "verification": "off",
+    "expected": 3,
+    "caught": 2,
+    "caughtRaw": 2,
+    "violations": 0,
+    "findings": 28,
+    "blockersAndShouldFixes": 7,
+    "refuted": 0,
+    "findingsPerCase": {
+      "mean": 7,
+      "max": 10
+    },
+    "reviewCostUsd": 4.07788147,
+    "reviewCostPerCase": {
+      "mean": 1.0194703675,
+      "max": 1.6195724500000002
+    },
+    "costUsd": 4.140123470000001,
+    "shadow": {
+      "reviewers": [],
+      "caught": 0,
+      "violations": 0,
+      "findings": 0
+    },
+    "maxCostUsd": 8,
+    "casesRun": 4,
+    "casesSelected": 4
+  },
+  "cases": [
+    {
+      "id": "heap-allocation-key-export",
+      "verdicts": [
+        {
+          "concern": "The public key is exported through heap arrays (new byte[] / ArrayBufferWriter), which the allocation ADR (ADR-0116) and the production conventions reserve for APIs that demand an array; use stackalloc or a pooled buffer writer. The same allocation in the sibling key-type descriptors (Okp, Akp and the base SecretKeyTypeDescriptor), which fix #317 also changed, counts.",
+          "caught": true,
+          "caughtRaw": true,
+          "by": [
+            "src/NCode.Identity.Secrets/KeyTypes/SecretKeyTypeDescriptor.cs:107 (conventions, rule-check)",
+            "src/NCode.Identity.Jose.EdDsa/KeyTypes/OkpSecretKeyTypeDescriptor.cs:98 (rule-check)",
+            "src/NCode.Identity.Secrets/KeyTypes/AkpSecretKeyTypeDescriptor.cs:101 (rule-check)"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "findings": [
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Management/Endpoints/Secrets/DefaultSecretPublicKeyConverter.cs",
+          "line": 46,
+          "title": "Public-key export guard and sequence duplicated in the registration handler",
+          "problem": "`Convert` and `DefaultClientRegistrationEndpointHandler.ExportPublicKeys` each repeat the same steps: `TryGet(secret.SecretType)`, `SupportsPublicKeyExport`, `HasPublicKey()`, `DeserializePublicSecret`, then `ExportPublicKey`.",
+          "consequence": "A later change to what counts as exportable public material has to be made in two places. If only one is updated, the public-key endpoint and the registration `jwks` will disagree, which is the drift ADR-0105 consolidated away.",
+          "fix": "Move the shared sequence into one helper, for example an extension next to `HasPublicKey` in the Secrets.Persistence abstractions, and call it from both places. `ISecretPublicKeyConverter` is internal to Management, so the helper needs to live where both projects can reach it.",
+          "evidence": "Both methods contain `!SecretKeyTypeCatalog.TryGet(secret.SecretType, out var descriptor) || !descriptor.SupportsPublicKeyExport || !secret.HasPublicKey()` followed by `SecretSerializer.DeserializePublicSecret(secret)` and `descriptor.ExportPublicKey(secretKey)`.",
+          "confidence": 0.35,
+          "reviewers": [
+            "hygiene"
+          ],
+          "id": "F1"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.Secrets/KeyTypes/SecretKeyTypeDescriptor.cs",
+          "line": 107,
+          "title": "SPKI exported through the array-returning `ExportSubjectPublicKeyInfo()`",
+          "problem": "`algorithm.ExportSubjectPublicKeyInfo()` here and `key.ExportSubjectPublicKeyInfo()` in `AkpSecretKeyTypeDescriptor` (line 101) each allocate a throwaway `byte[]` that is only base64url-encoded.",
+          "consequence": "Each key generation adds an avoidable heap allocation, against the buffer convention of ADR-0115/0116. The data is public, so nothing leaks; this is about allocation and convention only.",
+          "fix": "Use `TryExportSubjectPublicKeyInfo` into a rented non-sensitive buffer, or write to `BufferFactory.CreatePooledBufferWriter(isSensitive: false)`, then base64url-encode from the written span. Apply the same change in both descriptors.",
+          "evidence": "Rule: rent transient buffers from BufferFactory instead of `new byte[]`/`.ToArray()`, and encode public SPKI with a non-sensitive pooled writer (csharp-production.instructions.md, ADR-0115/0116).",
+          "confidence": 0.4,
+          "reviewers": [
+            "conventions",
+            "rule-check"
+          ],
+          "id": "F2"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.Jose.EdDsa/KeyTypes/OkpSecretKeyTypeDescriptor.cs",
+          "line": 98,
+          "title": "OKP public key staged in `new byte[]` and an undisposed `ArrayBufferWriter`",
+          "problem": "The public key goes into `new byte[curve.PublicKeySize]`, and the SPKI is written to `BufferFactory.CreateArrayBufferWriter()`. Both are transient, and the writer is never disposed.",
+          "consequence": "Extra heap allocations on each generation. If `CreateArrayBufferWriter` returns a pooled or disposable writer, its buffer is never returned; reviewers did not confirm which it is.",
+          "fix": "Use `stackalloc` for the fixed-size public key, and `using var` a `BufferFactory.CreatePooledBufferWriter(isSensitive: false)` for the SPKI.",
+          "evidence": "`var publicKey = new byte[curve.PublicKeySize];` and `var subjectPublicKeyInfo = BufferFactory.CreateArrayBufferWriter();` with no `using`.",
+          "confidence": 0.35,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F3"
+        },
+        {
+          "severity": "nit",
+          "file": "tests/NCode.Identity.Jose.EdDsa.Tests/OkpIntegrationTests.cs",
+          "line": 207,
+          "title": "Is the hand-written OKP SPKI encoder pinned to externally produced bytes?",
+          "problem": "The test compares the SPKI that `OkpKeyEncoder.WriteSubjectPublicKeyInfo` stores with the PEM exported from the deserialized key, and that export likely uses the same encoder.",
+          "consequence": "If the SPKI layout is misread, both sides would carry the same mistake: a wrong Ed25519/Ed448 SPKI could be stored and still pass.",
+          "fix": "If no OpenSSL-produced fixture already pins this encoding elsewhere, add one for Ed25519 and Ed448 (record the command in a comment) and assert the generated SPKI parses to the same public key.",
+          "evidence": "Rule: pin a protocol encoder or parser to bytes another implementation wrote.",
+          "confidence": 0.3,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F4"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Management/Endpoints/Secrets/ISecretPublicKeyConverter.cs",
+          "line": 30,
+          "title": "Doc comment describes the change rather than the current state",
+          "problem": "The summary says \"a private key generated before its public key was stored\", which ties the comment to this change.",
+          "consequence": "A reader who never saw the earlier version gets a comment anchored to past history, against the timeless-present documentation rule.",
+          "fix": "Reword to \"a private key stored without a public key\".",
+          "evidence": "`/// material: a symmetric secret, or a private key generated before its public key was stored.`",
+          "confidence": 0.35,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F5"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.Secrets/KeyTypes/SecretKeyTypeDescriptor.cs",
+          "line": 105,
+          "title": "Call nested inside another call's argument",
+          "problem": "`Base64Url.EncodeToString(algorithm.ExportSubjectPublicKeyInfo())` nests the export call inside the encode call, and `AkpSecretKeyTypeDescriptor` does the same with `key.ExportSubjectPublicKeyInfo()`.",
+          "consequence": "This breaks the house rule against nested calls in arguments. It affects readability only.",
+          "fix": "Assign the SPKI to a local such as `spki` and encode the local. If you adopt the pooled-buffer fix above, this goes away with it.",
+          "evidence": "Rule: do not nest a call inside another call's arguments.",
+          "confidence": 0.35,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F6"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Entities/SecretEntity.cs",
+          "line": 1,
+          "title": "Unrelated removal of the UTF-8 byte-order mark",
+          "problem": "Line 1 loses its leading BOM, which is unrelated to the new `PublicKey` property.",
+          "consequence": "The diff and blame show a spurious header change, and tools that detect encoding from the BOM may treat the file differently.",
+          "fix": "Restore the BOM on line 1.",
+          "evidence": "diff: `-﻿#region Copyright Preamble` / `+#region Copyright Preamble`.",
+          "confidence": 0.5,
+          "suggestion": {
+            "startLine": 1,
+            "endLine": 1,
+            "replacement": "﻿#region Copyright Preamble"
+          },
+          "reviewers": [
+            "hygiene"
+          ],
+          "id": "F7"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.Secrets/KeyTypes/AkpSecretKeyTypeDescriptor.cs",
+          "line": 101,
+          "title": "AKP public-key export allocates a transient byte[]",
+          "problem": "`key.ExportSubjectPublicKeyInfo()` returns a throwaway `byte[]` that is passed straight to `Base64Url.EncodeToString`.",
+          "consequence": "This is an unneeded transient allocation, and it breaks the pooled-buffer convention.",
+          "fix": "Write the SPKI into a non-sensitive pooled writer or rented buffer and encode from its span.",
+          "evidence": "Rule: rent transient buffers from BufferFactory instead of `new byte[]`/`.ToArray()`.",
+          "confidence": 0.4,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F8"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Authentication/Endpoints/Registration/DefaultClientRegistrationEndpointHandler.cs",
+          "line": 1740,
+          "title": "Public-key export sequence repeated in the registration handler",
+          "problem": "ExportPublicKeys repeats the sequence in DefaultSecretPublicKeyConverter.Convert: catalog TryGet, SupportsPublicKeyExport, HasPublicKey, DeserializePublicSecret, ExportPublicKey. The two copies can drift. ISecretPublicKeyConverter is internal to the Management package, so the Authentication project may not be able to reference it; I did not check.",
+          "consequence": "If one copy changes, for example in how a missing public key is handled, the other will not follow.",
+          "fix": "Move the shared sequence into one helper that both callers use, if the project layering allows it.",
+          "evidence": "Rule: reuse shared helpers; move logic repeated within a change into one implementation",
+          "confidence": 0.3,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F9"
+        }
+      ],
+      "reviewCostUsd": 1.6195724500000002,
+      "costUsd": 1.65613645
+    },
+    {
+      "id": "secret-buffer-length",
+      "verdicts": [
+        {
+          "concern": "The rented pool memory can be longer than requested, and the secret is replaced and unescaped over the whole block, so the decoded secret carries the unused remainder; a client_secret_basic secret containing % or + then never matches (401). Slice the memory to the encoded length.",
+          "caught": true,
+          "caughtRaw": true,
+          "by": [
+            "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs:79 (correctness, security, completeness, rule-check)"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "findings": [
+        {
+          "severity": "blocker",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 134,
+          "title": "Basic header base64 decode is mis-sized, unsliced and unchecked in Release",
+          "problem": "The buffer is sized with `Base64Url.GetByteCountForDecode` (unpadded base64url), but the data is decoded with standard `Convert.TryFromBase64Chars`. `base64BytesWritten` is never used to slice `base64Bytes`, and the decode result is checked only by `Debug.Assert`. For example, \"YWI=\" sizes to 3 bytes but decodes to 2.",
+          "consequence": "Padded credentials, which RFC 7617 Basic values normally are, leave trailing zero bytes that become `\\0` characters in the client id or secret, so valid clients fail authentication. In Release, malformed base64 is no longer rejected with ErrorInvalidHeader and garbage is processed as credentials. The removed 'check for exceptions' TODO is left unaddressed. Strict UTF-8 decoding can also throw DecoderFallbackException, which surfaces as a 500.",
+          "fix": "Size the buffer with a standard-base64 upper bound, e.g. `(len / 4) * 3` or `Base64.GetMaxDecodedFromUtf8Length`. Check the `TryFromBase64Chars` result at runtime and return `ErrorInvalidHeader` on failure. Slice to `base64Bytes[..base64BytesWritten]` before `GetCharCount`/`TryGetChars`. Treat a failed UTF-8 decode (result false or DecoderFallbackException) as an invalid header too.",
+          "evidence": "Line 131: `Base64Url.GetByteCountForDecode(encodedCredentials.Length)`; line 134: `Convert.TryFromBase64Chars(encodedCredentials.Span, base64Bytes, out var base64BytesWritten)`; line 135: `Debug.Assert(base64Result && base64BytesWritten == base64ByteCount)`; lines 141/144 then use the whole `base64Bytes`.",
+          "confidence": 0.8,
+          "reviewers": [
+            "hygiene",
+            "correctness",
+            "security",
+            "conventions",
+            "architecture",
+            "completeness",
+            "rule-check"
+          ],
+          "id": "F1"
+        },
+        {
+          "severity": "should-fix",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 79,
+          "title": "UriDecode unescapes the whole rented buffer, not just encoded.Length",
+          "problem": "`destination = buffer.Span` covers the whole rented buffer, but `Replace` writes only the first `encoded.Length` chars, and `Uri.TryUnescapeDataString(destination, destination, ...)` then also processes the unwritten tail. The unescape result is checked only by `Debug.Assert`.",
+          "consequence": "If the pool over-allocates (MemoryPool<char>.Shared does; check SecureMemoryPool), secrets containing '%' or '+' get trailing stale or zero characters and fail authentication. In Release, a failed unescape leaves `unescapedLength` meaningless, so the secret is silently mangled instead of rejected.",
+          "fix": "Use `var destination = buffer.Span[..encoded.Length];` for both `Replace` and `TryUnescapeDataString`, and slice the result to `unescapedLength`. Check the bool result at runtime and map failure to an invalid header or invalid_client error.",
+          "evidence": "`var lease = pool.Rent(encoded.Length); var buffer = lease.Memory; var destination = buffer.Span; source.Replace(destination, '+', ' '); Uri.TryUnescapeDataString(destination, destination, out var unescapedLength); Debug.Assert(decodeResult);`",
+          "confidence": 0.6,
+          "reviewers": [
+            "correctness",
+            "security",
+            "completeness",
+            "rule-check"
+          ],
+          "id": "F2"
+        },
+        {
+          "severity": "should-fix",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/CommonClientAuthenticationHandler.cs",
+          "line": 113,
+          "title": "Secret byte buffer passed unsliced; TryGetBytes checked only by Debug.Assert",
+          "problem": "The whole `clientSecretBytes` from `CryptoPool.Rent(byteCount, ...)` is passed to `AuthenticateClientAsync` instead of `[..bytesWritten]`, and the encode result is checked only by `Debug.Assert`.",
+          "consequence": "If CryptoPool returns memory longer than `byteCount`, the extra bytes enter the secret comparison and valid clients fail. In Release, an encoding failure goes unnoticed.",
+          "fix": "Pass `clientSecretBytes[..bytesWritten]` and replace the `Debug.Assert` with a runtime check. Do this unless CryptoPool is confirmed to return exactly sized memory.",
+          "evidence": "`using var _ = CryptoPool.Rent(byteCount, isSensitive: true, out Memory<byte> clientSecretBytes); ... Debug.Assert(decodeResult && bytesWritten == byteCount); return await AuthenticateClientAsync(publicClient, clientSecretBytes, cancellationToken);`",
+          "confidence": 0.5,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F3"
+        },
+        {
+          "severity": "should-fix",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 148,
+          "title": "Empty-credentials and empty-clientId checks dropped; colon-less credentials accepted as public client",
+          "problem": "The refactor removed the `ErrorInvalidHeader` checks for empty decoded credentials and an empty client id. Credentials with no ':' are still authenticated as a public client with no secret. The old code did this too, so it may be intentional.",
+          "consequence": "An empty client id now goes through a store lookup instead of returning 400. A Basic value with no colon, which RFC 7617 §2 treats as malformed, gives client_id-only authentication through the Authorization header.",
+          "fix": "Restore the empty-credentials and empty-clientId checks. Is the no-colon public-client path intended? If not, return `ErrorInvalidHeader` when `indexOfColon == -1`.",
+          "evidence": "`var clientId = UriDecode(encodedClientId.ToString()); if (indexOfColon == -1) { return await AuthenticateClientAsync(..., hasClientSecret: false, ...); }`. The old code had `if (string.IsNullOrEmpty(clientId)) return new ClientAuthenticationResult(ErrorInvalidHeader);`.",
+          "confidence": 0.55,
+          "reviewers": [
+            "security",
+            "rule-check"
+          ],
+          "id": "F4"
+        },
+        {
+          "severity": "should-fix",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 131,
+          "title": "Rewritten Basic-auth parsing has no test coverage",
+          "problem": "No test in NCode.Identity.OpenId.Core.Tests covers BasicClientAuthenticationHandler or any client authentication handler, although the base64, colon-split and URI-decode logic was rewritten.",
+          "consequence": "The decoding regressions above (trailing NULs, mishandled '%'/'+', malformed base64 accepted) would have shipped unnoticed and will again.",
+          "fix": "Add handler tests for: a padded valid header with id and secret; id only; an id or secret with percent-encoded and '+' characters; empty credentials after the prefix; invalid base64 returning ErrorInvalidHeader. Also add a test of the secret-bytes path in CommonClientAuthenticationHandler.",
+          "evidence": "Grep of the test project for 'BasicClientAuthenticationHandler|ClientAuthenticationHandler' returns no files.",
+          "confidence": 0.6,
+          "reviewers": [
+            "tests"
+          ],
+          "id": "F5"
+        },
+        {
+          "severity": "nit",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 148,
+          "title": "Secure handling is partial: client id and body secret still go through managed strings",
+          "problem": "The client id still goes through `ToString()` and the string `UriDecode`. RequestBodyClientAuthenticationHandler copies the secret into a managed string with `clientSecret.ToString().AsMemory()`.",
+          "consequence": "The body-handler secret gets no secure-memory protection, which the PR title suggests it should.",
+          "fix": "Document or accept that the body and id paths stay non-secure, or move them to pooled buffers.",
+          "evidence": "`var clientId = UriDecode(encodedClientId.ToString());` and `clientSecret.ToString().AsMemory()` in RequestBodyClientAuthenticationHandler.cs.",
+          "confidence": 0.3,
+          "reviewers": [
+            "completeness"
+          ],
+          "id": "F6"
+        },
+        {
+          "severity": "nit",
+          "file": "NCode.Identity.OpenId.Core/Clients/Handlers/BasicClientAuthenticationHandler.cs",
+          "line": 54,
+          "title": "Missing XML docs on new or changed members; no CHANGELOG entry for net9.0 retarget",
+          "problem": "The new `UriDecode` overload and `AuthenticateCredentialsAsync` have no `///` docs. The `clientSecret` param doc on the changed `AuthenticateClientAsync` was not updated. The net8.0→net9.0 retarget, which consumers will see, has no CHANGELOG entry.",
+          "consequence": "Docs and changelog drift from the code, and consumers on net8.0 are not warned.",
+          "fix": "Add the XML docs, update the `clientSecret` param doc, and add a CHANGELOG entry under Unreleased.",
+          "evidence": "New private members have no doc comments; the csproj files change `<TargetFramework>net8.0</TargetFramework>` to `net9.0`.",
+          "confidence": 0.3,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F7"
+        }
+      ],
+      "reviewCostUsd": 0.76949922,
+      "costUsd": 0.7951772200000001
+    },
+    {
+      "id": "accepted-no-backfill",
+      "verdicts": [],
+      "forbidden": [
+        {
+          "concern": "The migration creates the RetiredIssuers and RetiredTenants tables without backfilling already-deleted tenants or retired issuers. ADR-0189 accepts this.",
+          "raisedBy": []
+        }
+      ],
+      "findings": [
+        {
+          "severity": "should-fix",
+          "file": "src/NCode.Identity.OpenId.Persistence.Abstractions/Stores/ITenantStore.cs",
+          "line": 211,
+          "title": "ADR-0189 cited in public `///` docs on ITenantStore",
+          "problem": "The new `///` remarks and summaries on `RemoveAsync`, `IsTenantIdRetiredAsync` and `GetRetiredIssuerHolderOrDefaultAsync` (around lines 211, 233 and 241) cite `(ADR-0189)`.",
+          "consequence": "These docs ship in the package XML file and IntelliSense, so consumers see an internal ADR number they can't look up.",
+          "fix": "Remove `(ADR-0189)` from the `///` text and keep the behaviour description. Put the ADR reference in a `//` comment if it's still wanted.",
+          "evidence": "Rule: \"No internal citations in /// doc comments... never an ADR number\" (csharp-production.instructions.md).",
+          "confidence": 0.8,
+          "reviewers": [
+            "conventions",
+            "rule-check"
+          ],
+          "id": "F1"
+        },
+        {
+          "severity": "should-fix",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Entities/RetiredTenantEntity.cs",
+          "line": 25,
+          "title": "ADR-0189 cited in public entity `///` summaries",
+          "problem": "The class summaries of the public `RetiredTenantEntity` and `RetiredIssuerEntity` both end with `(ADR-0189)`.",
+          "consequence": "The internal ADR number ships in the public XML doc file.",
+          "fix": "Remove the ADR reference from both `///` summaries. If it's still wanted, put it in a `//` comment above each type.",
+          "evidence": "Rule: no internal citations (ADR numbers) in /// doc comments.",
+          "confidence": 0.75,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F2"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Stores/TenantStore.cs",
+          "line": 570,
+          "title": "No relational test covers the unique indexes on the retired tables",
+          "problem": "`RetireIssuerAsync` checks for an existing row and then inserts, so the unique index on `NormalizedIssuer` (and the one on `RetiredTenants.NormalizedTenantId`) is the only guard against duplicates. `TenantStoreRetirementTests` uses EF InMemory, which doesn't enforce unique indexes.",
+          "consequence": "If the index were lost, or two concurrent writers both passed the check, duplicate rows would make `SingleOrDefaultAsync` in `GetRetiredIssuerHolderOrDefaultAsync` throw on the resolver path. The migration does declare both indexes, so today this test would only pin the current schema.",
+          "fix": "Optionally add a SQLite-backed test (shared open `SqliteConnection` plus `EnsureCreated`) that inserts two rows with the same normalized value into each table and asserts `DbUpdateException`.",
+          "evidence": "Rule: test unique indexes against a relational provider such as SQLite, never EF InMemory. The tests use `options.UseInMemoryDatabase(...)`, and the migration creates `IX_RetiredIssuers_NormalizedIssuer` and `IX_RetiredTenants_NormalizedTenantId` as unique.",
+          "confidence": 0.4,
+          "reviewers": [
+            "tests"
+          ],
+          "id": "F3"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Stores/TenantStore.cs",
+          "line": 304,
+          "title": "No test for an update from no issuer to a first issuer",
+          "problem": "No test runs the `previousIssuer is not null` guard that skips retirement when a tenant gets its first issuer; the `UpdateAsync` tests only cover a changed, a cleared and a case-only issuer.",
+          "consequence": "If that guard were wrong, saving a tenant's first issuer could fail or write a bad retired row, and no test would catch it.",
+          "fix": "Add a test that seeds a tenant with a null issuer, calls `ChangeIssuerAsync(NewIssuer)`, and asserts `RetiredIssuers` is empty.",
+          "evidence": "TenantStoreRetirementTests.cs has no `UpdateAsync` case that starts from a null issuer.",
+          "confidence": 0.35,
+          "reviewers": [
+            "tests"
+          ],
+          "id": "F4"
+        },
+        {
+          "severity": "nit",
+          "file": "docs/adr/0159-a-tenant-is-named-by-its-creator.md",
+          "line": 79,
+          "title": "ADR-0159 and ADR-0165 still point to open backlog item F70",
+          "problem": "ADR-0159:79 says the never-reissue rule \"is tracked as backlog `F70`\", and ADR-0165:66 also cites backlog `F70`. This PR closes F70.",
+          "consequence": "Readers are told the rule isn't implemented and are sent to a backlog entry that is no longer in BACKLOG.md.",
+          "fix": "In both ADRs, change the reference to point at ADR-0189 (and BACKLOG-COMPLETED.md if useful).",
+          "evidence": "ADR-0159:79 'Never reissuing a retired name or issuer is tracked as backlog `F70`.'; ADR-0165:66 '(backlog `F70`)'. This PR removes F70 from BACKLOG.md.",
+          "confidence": 0.6,
+          "reviewers": [
+            "hygiene"
+          ],
+          "id": "F5"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Entities/RetiredIssuerEntity.cs",
+          "line": 1,
+          "title": "New entity files start with a UTF-8 BOM",
+          "problem": "The diff shows a BOM before `#region` at the start of both `RetiredIssuerEntity.cs` and `RetiredTenantEntity.cs`.",
+          "consequence": "This breaks the repository's UTF-8-without-BOM convention and adds noise to diffs.",
+          "fix": "Re-save both files as UTF-8 without a BOM.",
+          "evidence": "Diff line `+﻿#region Copyright Preamble`. Rule: save text files as UTF-8 without a BOM.",
+          "confidence": 0.5,
+          "reviewers": [
+            "conventions",
+            "rule-check"
+          ],
+          "id": "F6"
+        },
+        {
+          "severity": "nit",
+          "file": "tests/NCode.Identity.OpenId.IntegrationTests/Endpoints/TenantProvisioningTests.cs",
+          "line": 235,
+          "title": "Null-forgiving `GetString()!` in a new test",
+          "problem": "`GetAddress_ForAnIssuerAnotherTenantGaveUp_ReportsAConflict` uses `GetString()!` instead of checking the value for null.",
+          "consequence": "A missing or null `detail` would show up as a NullReferenceException rather than a clear assertion failure.",
+          "fix": "Use `failure.GetProperty(\"detail\").GetString() is { } detail && detail.Contains(...)` in the predicate, or read the value into a local and call `Assert.NotNull` before `Contains`.",
+          "evidence": "Rule: never use the null-forgiving operator; in tests, check with Assert.NotNull.",
+          "confidence": 0.8,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F7"
+        },
+        {
+          "severity": "nit",
+          "file": "tests/NCode.Identity.OpenId.Persistence.EntityFramework.Tests/Stores/TenantStoreRetirementTests.cs",
+          "line": 41,
+          "title": "InMemory database name is generated inside the options lambda",
+          "problem": "`Guid.NewGuid()` runs inside the `AddTestOpenIdDbContext` options lambda, so every context the provider creates could get a different database.",
+          "consequence": "The tests work today because only one context is resolved. A second context resolved later would see an empty database.",
+          "fix": "Create the name once in a local (`var databaseName = Guid.NewGuid().ToString(\"N\");`) and use that local in the lambda.",
+          "evidence": "Rule: generate the EF InMemory database name once, outside the AddDbContext options lambda.",
+          "confidence": 0.4,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F8"
+        },
+        {
+          "severity": "nit",
+          "file": "tests/NCode.Identity.OpenId.Core.Tests/Tenants/DefaultTenantResolverTests.cs",
+          "line": 365,
+          "title": "Should the new resolver tests drop the manual `mocks.Verify()`?",
+          "problem": "The new tests end with a manual `mocks.Verify()`. The convention says the test base verifies mocks on dispose, but the existing tests in this file do the same thing.",
+          "consequence": "This is only a convention mismatch; it has no functional effect.",
+          "fix": "If the file is meant to follow the dispose-verify convention, remove the manual calls (ideally from the whole file in a separate change). Otherwise, keep them consistent with the file as it is.",
+          "evidence": "Rule: use strict, verified mocks; don't call mock.Verify(...) by hand.",
+          "confidence": 0.3,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F9"
+        },
+        {
+          "severity": "nit",
+          "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Core/Entities/RetiredIssuerEntity.cs",
+          "line": 29,
+          "title": "ADR number in entity /// summary",
+          "problem": "The `///` summaries of the public `RetiredIssuerEntity` and `RetiredTenantEntity` cite ADR-0189. The `RetiredTenantEntity` citation is at about line 29 of its file. Line numbers are approximate.",
+          "consequence": "The reference leaks an internal decision record into shipped XML docs.",
+          "fix": "Move the ADR reference to a `//` comment above the type.",
+          "evidence": "Rule: keep internal references (ADR numbers) out of `///` doc comments.",
+          "confidence": 0.55,
+          "reviewers": [
+            "rule-check"
+          ],
+          "id": "F10"
+        }
+      ],
+      "reviewCostUsd": 1.20437794,
+      "costUsd": 1.20437794
+    },
+    {
+      "id": "test-gap-newest-summary-selection",
+      "verdicts": [
+        {
+          "concern": "lastReviewedHead picks the newest bot summary itself, with summaryComments(all ?? []).at(-1), and reads that summary's head marker. The pull request adds this choice, and no test runs it: the engine test repeats the .at(-1) expression instead of calling the code, and nothing below lastReviewedHead makes the choice. A regression to the oldest summary would make the already-reviewed check review a commit again or skip one it should review.",
+          "caught": false,
+          "caughtRaw": false,
+          "by": []
+        }
+      ],
+      "forbidden": [],
+      "findings": [
+        {
+          "severity": "nit",
+          "file": "src/publish.ts",
+          "line": 33,
+          "title": "postThreads keeps its own page loop beside the new shared pager",
+          "problem": "`postThreads()` still pages `pulls/comments` with its own loop (`page <= 10`, `per_page=100`, short-page break) instead of using `readCommentPages()`, which reads up to 100 pages.",
+          "consequence": "Nothing breaks for users today. But a change to the page cap or to the full-page rule now has to be made in two places, and review-comment listing quietly keeps the old 1,000-comment limit.",
+          "fix": "Route `postThreads` through `readCommentPages` with a `readPage` callback for the `pulls/comments` URL. If it keeps its own cap on purpose, add a comment saying why.",
+          "evidence": "publish.ts:35 `for (let page = 1; page <= 10; page++)` with `if (comments.length < 100) break;`, beside comments.ts:19 `readCommentPages` with `maxCommentPages = 100`.",
+          "confidence": 0.35,
+          "reviewers": [
+            "hygiene"
+          ],
+          "id": "F1"
+        },
+        {
+          "severity": "nit",
+          "file": "src/main.ts",
+          "line": 40,
+          "title": "No test runs lastReviewedHead's switch to the newest summary",
+          "problem": "`lastReviewedHead` now reads `summaryComments(all ?? []).at(-1)` instead of the first bot summary it finds. It isn't exported and it calls `fetch` directly, so no test runs it. Its parts, `summaryComments`, `reviewedHead` and `readCommentPages`, each have their own tests.",
+          "consequence": "If this wiring regressed, for example back to the first summary, a re-review could be skipped or run again without any test failing.",
+          "fix": "Optional: move the selection step (`summaryComments(all).at(-1)`, then `reviewedHead`) into a tested helper in `comments.ts`, and test it with an older stale summary followed by a newer one. Leaving the gap is also reasonable, since each part is tested.",
+          "evidence": "Covered by the tests 'summaryComments lists the bot summary comments oldest first, and the last holds the newest head' and 'readCommentPages reads every page until a short one'.",
+          "confidence": 0.35,
+          "reviewers": [
+            "tests"
+          ],
+          "id": "F2"
+        }
+      ],
+      "reviewCostUsd": 0.48443186,
+      "costUsd": 0.48443186
+    }
+  ]
+}
