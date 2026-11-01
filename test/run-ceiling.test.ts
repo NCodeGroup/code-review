@@ -83,7 +83,7 @@ interface CappedOptions {
   maxRunUsd?: string;
   // CODE_REVIEW_SHADOW for the run; unset when undefined.
   shadow?: string;
-  // CODE_REVIEW_VERIFICATION=on for the run when true.
+  // CODE_REVIEW_VERIFICATION for the run: on when true, off otherwise.
   verification?: boolean;
 }
 
@@ -118,7 +118,7 @@ async function cappedReview({
   for (const name of ceilingEnv) delete process.env[name];
   if (maxRunUsd !== undefined) process.env['CODE_REVIEW_MAX_RUN_USD'] = maxRunUsd;
   if (shadow !== undefined) process.env['CODE_REVIEW_SHADOW'] = shadow;
-  if (verification) process.env['CODE_REVIEW_VERIFICATION'] = 'on';
+  process.env['CODE_REVIEW_VERIFICATION'] = verification ? 'on' : 'off';
   const logs: string[] = [];
   try {
     const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered: { ...gathered, reviewRules, chunks: Array(parts).fill(diff) }, charters, log: (line) => logs.push(line), agent });

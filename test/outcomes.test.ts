@@ -78,6 +78,39 @@ test('an autopilot "fixed in" reply counts only when the lines changed', () => {
   assert.equal(classify({ ...none, replies: autopilot, linesChanged: true }), 'fixed');
 });
 
+test("a writer's Autopilot: fixed in <sha> is fixed when the pull request gained that commit after the review", () => {
+  const replies = [{ body: 'Autopilot: fixed in 5d49e7e. Tests added.', writer: true }];
+  assert.equal(classify({ ...none, replies, isResolved: true, commitsAfter: ['5d49e7e0123456789abcdef0123456789abcdef0'] }), 'fixed');
+});
+
+test('a fixed-in claim naming no later commit falls back to the other rules', () => {
+  const replies = [{ body: 'Autopilot: fixed in 5d49e7e. Tests added.', writer: true }];
+  assert.equal(classify({ ...none, replies, isResolved: true, commitsAfter: [] }), 'dismissed');
+});
+
+test("a writer's Autopilot: not changed is dismissed even when the line changed", () => {
+  assert.equal(classify({ ...none, linesChanged: true, replies: [{ body: 'Autopilot: not changed. It is intended.', writer: true }] }), 'dismissed');
+});
+
+test('the latest autopilot verdict decides', () => {
+  const sha = '5d49e7e0123456789abcdef0123456789abcdef0';
+  const replies = [
+    { body: 'Autopilot: not changed.', writer: true },
+    { body: 'Autopilot: fixed in 5d49e7e.', writer: true },
+  ];
+  assert.equal(classify({ ...none, replies, commitsAfter: [sha] }), 'fixed');
+});
+
+test("a non-writer's autopilot verdict is ignored", () => {
+  assert.equal(classify({ ...none, linesChanged: true, replies: [{ body: 'Autopilot: not changed.', writer: false }] }), 'fixed');
+});
+
+test("a non-writer's fixed-in claim naming a gained commit is ignored", () => {
+  const sha = '5d49e7e0123456789abcdef0123456789abcdef0';
+  const replies = [{ body: `Autopilot: fixed in ${sha.slice(0, 7)}.`, writer: false }];
+  assert.equal(classify({ ...none, replies, commitsAfter: [sha], linesChanged: false, isResolved: false }), 'ignored');
+});
+
 test('isDeclining reads common ways to decline and leaves agreement alone', () => {
   for (const reply of [
     "Won't fix",
@@ -475,6 +508,17 @@ test('collectOutcomes counts a reply from a writer whose association does not sa
   });
   const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'dismissed']]);
+});
+
+test("collectOutcomes takes a writer's Autopilot: fixed in reply naming a commit the pull request gained as fixed", async () => {
+  const sha = 'c'.repeat(40);
+  const base = repliedThread([{ login: 'private-member', association: 'CONTRIBUTOR', body: `Autopilot: fixed in ${sha.slice(0, 7)}` }], () => ({ permission: 'write' }));
+  const api = async (method: string, url: string, body?: unknown) => {
+    if (url.includes('/compare/')) return { files: [], commits: [{ sha }] };
+    return base(method, url, body);
+  };
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'fixed']]);
 });
 
 test('collectOutcomes counts a replier whose permission cannot be read as a non-writer, and warns', async () => {

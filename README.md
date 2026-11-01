@@ -56,7 +56,7 @@ A rule in the learned guidance (`guidance/`) that came only from instruction fil
 
 Each model call has its own cost cap, and a whole review has a **cost ceiling** that guards against a runaway review only: $8 plus $4 for each part of the diff, so $12 for most pull requests and $32 for one reviewed in six parts, far above the $0.60 to $2.10 a normal review costs and the $6 to $7 of a 2 MB pull request. Once the calls so far reach it, the reviewer and rule-check calls that haven't started are skipped, each such reviewer shows `skipped: run budget` in the check run, synthesis still runs on what was found, verification calls that haven't started are skipped too, leaving their findings unverified, and the summary warns that the review is incomplete and doesn't approve. Shadow calls count toward it too, but the shadow-prompt twins start after every live reviewer call, and a skipped shadow reviewer doesn't make the review incomplete. To change it, set `CODE_REVIEW_MAX_RUN_USD` to a positive number of dollars in the calling job's `env`; any other value warns and keeps the default.
 
-**Verification** is off by default. `CODE_REVIEW_VERIFICATION=on` adds a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call, or an Opus call for a deep review's sensitive files, with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each ($1 on Opus). The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason, but only when the refutation cites a line of the checkout outside the lines the pull request adds, and never a blocker or a `security` finding: those, and a refutation that rests on the change's own lines, stay as a question one severity lower, with the refutation in the evidence; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence that names the findings verification refuted and dropped, and counts separately the ones it couldn't settle and the refuted ones it kept, both now questions one severity lower. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. Verification calls count toward the cost ceiling: once the run's spending reaches it, the calls that haven't started are skipped, but the ones already running finish, so a review can end past it, as with the reviewer calls. The calls show as `verification` in the check run's cost table and the trace records each one. It stays off until an eval shows it catches as much at fewer blockers and should-fixes, for what it costs ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+**Verification** is on by default; `CODE_REVIEW_VERIFICATION=off` turns it off. It is a stage after synthesis: each blocker and should-fix it merged goes to a Sonnet call, or an Opus call for a deep review's sensitive files, with Read, Grep and Glob in the checkout, behind the same path guard as the reviewers, with its diff hunk and its reviewers' charters, a file's findings per call at up to $0.50 each ($1 on Opus). The call proves or refutes the finding with a concrete code path. A confirmed finding stays, with the path added to its evidence; a refuted one is dropped and listed in the check run under "Refuted by verification", with the reason, but only when the refutation cites a line of the checkout outside the lines the pull request adds, and never a blocker or a `security` finding: those, and a refutation that rests on the change's own lines, stay as a question one severity lower, with the refutation in the evidence; one it can neither prove nor refute stays as a question, one severity lower. Nits aren't verified. The summary, which synthesis wrote before verification, gets a sentence that names the findings verification refuted and dropped, and counts separately the ones it couldn't settle and the refuted ones it kept, both now questions one severity lower. Verification never makes a review an approval: a request for changes with no blocker or should-fix left becomes a comment, since a verifier misled by the change's own code can refute a real finding. A [re-review](#re-reviews)'s findings go through it too. Verification calls count toward the cost ceiling: once the run's spending reaches it, the calls that haven't started are skipped, but the ones already running finish, so a review can end past it, as with the reviewer calls. The calls show as `verification` in the check run's cost table and the trace records each one. The smoke evals of 2026-11-01 caught as much with it on as off, with 0 must-not flags either way, at 5 blockers and should-fixes against 7 and 8, for about 3% more ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
 
 Most pull requests get the **standard** review above. Two kinds get another ([#42](https://github.com/NCodeGroup/code-review/issues/42)), named at the start of the summary and in the check run:
 
@@ -177,10 +177,10 @@ outcomes. It shares the review's concurrency group, so it waits for a review in 
 
 ## Interface
 
-This is the contract between a caller's workflow and the engine, which v1.0.0 will freeze. From v1.0.0 on, removing or
+This is the contract between a caller's workflow and the engine, which v1.0.0 freezes. From v1.0.0 on, removing or
 renaming an input, changing what an input's default means, or needing another trigger type, permission, secret,
-environment or checkout is a breaking change and a new major version; a new optional input or output isn't. Before
-1.0.0 a minor release may still change it, and its changelog section says how.
+environment or checkout is a breaking change and a new major version; a new optional input or output isn't. Releases
+before 1.0.0 changed it in minor releases; their changelog sections say how.
 
 | Input | Required | Default | What it is |
 |---|---|---|---|
@@ -230,6 +230,14 @@ afterwards, so a mistake is fixed by releasing the next version.
 
 ### Dependabot and pre-releases
 
+From v1.0.0 on, releases aren't marked as pre-releases, so Dependabot's `github-actions` updater proposes each one in a
+consumer's action updates. project-template gives the bump a Dependabot group of its own and a workflow,
+`code-review-auto-merge.yml` ([NCodeGroup/project-template#184](https://github.com/NCodeGroup/project-template/pull/184)),
+that auto-merges the bump for a minor or patch release once the required checks pass and no review thread is
+unresolved. That is the one exception its ADR-0006 records to the rule that a person merges every pull request. A
+major release changes this interface, so a person merges it, and a repository without that workflow merges every bump
+by hand.
+
 No consumer got a Dependabot pull request for v0.2.0 to v0.3.1, because each is marked as a pre-release. Since
 [dependabot-core#13731](https://github.com/dependabot/dependabot-core/pull/13731) (December 2025), the
 `github-actions` updater drops a tag whose GitHub release is marked as a pre-release, and a tag whose name is a
@@ -243,7 +251,8 @@ tag on the pinned commit and looks for a newer allowed tag
 then rewrites the SHA and its `# vX.Y.Z` comment. This repository is public, so access isn't the cause, and grouping
 only puts the bump in the same pull request as the consumer's other action updates.
 
-Until releases stop being marked as pre-releases, bump each consumer by hand: in a pull request, change its
+A consumer that pins a v0 release moves to v1.0.0 by hand, since Dependabot doesn't propose a release when the pinned
+one is hidden as a pre-release: in a pull request, change its
 `NCodeGroup/code-review@<sha> # v<old>` to the new release's commit, `gh api repos/NCodeGroup/code-review/commits/v<new>
 --jq .sha`, and tag. To let Dependabot propose a release instead, clear its flag,
 `gh release edit v<new> -R NCodeGroup/code-review --prerelease=false`, which an immutable release allows
@@ -313,19 +322,20 @@ Each review, all from `ncode-review[bot]`:
 When a pull request closes, merged or not, the bot records what became of each finding it posted as a thread, by rules
 alone: no model call, so the run needs no model key and costs nothing. It reads each thread, its replies and the
 reactions on the finding, and compares the commit the finding was posted on with the closing head. The first rule that
-holds decides:
+holds decides, after the autopilot's replies below:
 
 | Outcome | When |
 |---|---|
-| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. |
-| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". |
+| fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. Or a writer's reply `Autopilot: fixed in <sha>` naming a commit the pull request gained after the finding's review, even when the fix is on other lines, such as a test. |
+| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". Or a writer's reply `Autopilot: not changed`, even when the line changed for another reason. |
 | acknowledged | A 👍 or a reply from a writer, without a change. |
 | ignored | None of these. |
 
 Writers are people with write access: for a reply, its author's association (owner, member or collaborator) or, when
 that doesn't say so, their permission on the repository, with at most 20 repliers looked up; for a reaction, the
-reactor's permission on the repository. A reply starting `Autopilot: fixed in` counts only when the
-finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
+reactor's permission on the repository. Of a writer's replies, the latest `Autopilot: fixed in <sha>` or
+`Autopilot: not changed` decides before the other rules; a `fixed in` reply that names no commit after the review
+counts for nothing. The newest summary comment gets a table of finding, reviewer,
 severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
 model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
@@ -563,7 +573,7 @@ default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 
 The cases come from review comments the learned guidance has read too, so the evals use **held-out guidance** by default: `guidance-holdout/`, built by `npm run train -- --generalize-only --holdout-only`, which leaves out the review comments on the cases' pull requests and the decision records they cite. A catch then shows what the bot learned in general, not the answer to that case. `--guidance full` uses the production `guidance/` instead, which scores about twice as high on these cases for that reason. `guidance-holdout/` is derived, so it is ignored by Git; build it once.
 
-`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=on` turns on verification; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. `CODE_REVIEW_TIERS=synthesis=sonnet` runs synthesis on Sonnet instead of Opus, and `CODE_REVIEW_SYNTHESIS_EFFORT` (`low`, `medium`, `high`, `xhigh` or `max`) sets its effort, for measuring synthesis's cost against its quality. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
+`CODE_REVIEW_RULE_CHECKS=off` turns off the rule checks ([How a review runs](#how-a-review-runs)) to measure what they add. `CODE_REVIEW_VERIFICATION=off` turns verification off; the report counts the blockers and should-fixes posted, and the findings verification refuted, to compare with it off. `CODE_REVIEW_TIERS=synthesis=sonnet` runs synthesis on Sonnet instead of Opus, and `CODE_REVIEW_SYNTHESIS_EFFORT` (`low`, `medium`, `high`, `xhigh` or `max`) sets its effort, for measuring synthesis's cost against its quality. Run each setup at least twice: a run of the first 16 cases varies by about 2 of their 55 expected findings.
 
 Shadow reviewers ([Shadow reviewers and prompts](#shadow-reviewers-and-prompts)) are scored on their own: `--shadow performance` (or `CODE_REVIEW_SHADOW`) runs `performance` in shadow, and the report gives its catches, must-not violations and findings apart from the live reviewers', whose scores never include them. Precision counts only posted findings, so never theirs; the review's cost includes their calls.
 
@@ -584,7 +594,9 @@ gh run download <run id> -n smoke-eval -D evals/out/smoke
 Copy-Item evals/out/smoke/proposed-baseline-smoke.json evals/baseline-smoke.json
 ```
 
-**Eval workflow.** The [Eval](.github/workflows/eval.yml) workflow runs a named subset by hand from `main` (`gh workflow run eval.yml -f subset=re-review -f verification=on`), in the `code-review` environment with the organization's Bedrock key, so no local key is needed. Its inputs are `subset` (`smoke` or `re-review`), `verification`, `tiers` (`CODE_REVIEW_TIERS`), `synthesis-effort`, `runs` (1 or 2) and `max-cost` per run ($5, $10 or $25). It always uses the production guidance and `--precision off`. Each run's summary goes to the job summary, and `evals/out` is uploaded as `eval-<run id>` after the same secret scan as the smoke eval. Compare runs with `npm run eval:compare` after `gh run download <run id> -n eval-<run id> -D evals/out/<name>`.
+**Eval workflow.** The [Eval](.github/workflows/eval.yml) workflow runs a named subset by hand from `main` (`gh workflow run eval.yml -f subset=re-review -f verification=on`), in the `code-review` environment with the organization's Bedrock key, so no local key is needed. Its inputs are `subset` (`smoke` or `re-review`), `verification` (`on` by default), `tiers` (`CODE_REVIEW_TIERS`), `synthesis-effort`, `runs` (1 or 2) and `max-cost` per run ($5, $10 or $25). It always uses the production guidance and `--precision off`. Each run's summary goes to the job summary, and `evals/out` is uploaded as `eval-<run id>` after the same secret scan as the smoke eval. Compare runs with `npm run eval:compare` after `gh run download <run id> -n eval-<run id> -D evals/out/<name>`.
+
+**Results, 2026-11-01.** On the smoke subset with the production guidance and `--precision off`, two runs each, verification off ([41278266855](https://github.com/NCodeGroup/code-review/actions/runs/41278266855), [41280733222](https://github.com/NCodeGroup/code-review/actions/runs/41280733222)) caught 2 of 3 and 2 of 3 expected findings, with 0 must-not flags, 7 and 8 blockers and should-fixes, and $4.14 and $4.04; with it on ([41278712152](https://github.com/NCodeGroup/code-review/actions/runs/41278712152), [41280198652](https://github.com/NCodeGroup/code-review/actions/runs/41280198652)) it caught 2 of 3 and 2 of 3, with 0 must-not flags, 5 and 5 blockers and should-fixes, and $4.21 and $4.16, of which the verification calls were $0.14, about 3%, so verification is on by default ([#41](https://github.com/NCodeGroup/code-review/issues/41)); this departs from that issue's held-out full-set protocol for cost, since the smoke subset is the gate the repository runs on every prompt change. Synthesis on Sonnet ([41279253481](https://github.com/NCodeGroup/code-review/actions/runs/41279253481)) caught the same 2 of 3 with 0 must-not flags at half synthesis's cost ($0.42 against $0.89 for the 4 cases) and 45% less time (68 s against 122 s), but posted 12 blockers and should-fixes against Opus's 7 and 8, which the autopilot would act on; `CODE_REVIEW_SYNTHESIS_EFFORT=medium` ([41279660175](https://github.com/NCodeGroup/code-review/actions/runs/41279660175)) saved nothing ($0.95, 134 s, 8 blockers and should-fixes), so synthesis stays on Opus at the SDK's default effort ([#135](https://github.com/NCodeGroup/code-review/issues/135)). The re-review subset (4 cases) cost $0.45 with verification off ([41278561619](https://github.com/NCodeGroup/code-review/actions/runs/41278561619)): $0.02 for `re-review-declined-trigger`, $0.07 for `re-review-merge-of-main`, $0.10 for `re-review-security-floor` and $0.26 for `re-review-sensitive-path`, the deep one on Opus; and $0.12 with it on ([41278639968](https://github.com/NCodeGroup/code-review/actions/runs/41278639968)), with the prompt cache warm: $0.006, $0.005, $0.022 and $0.090. Neither run posted a finding, so nothing was verified; both had 0 must-not flags and both missed `re-review-sensitive-path`'s expected concern ([#123](https://github.com/NCodeGroup/code-review/issues/123)). The log counted 0 merged and 0 `near` findings, so `mergeOverlapping` doesn't merge `near` ones and stays as it is. The runs cost $24.83 in all.
 
 **Growing the set from verdicts.** `npm run eval:confirm` lists the `real` and `not-real` verdicts nobody has confirmed yet (`--verdict real`, `--verdict unsure` or `--sample 5` of each narrow it), each with the command that confirms it. `npm run eval:confirm -- --case <id> --fingerprint <fp>` adds a `real` finding to its case in `cases.json` as an expected concern, and a `not-real` one as a must-not-flag concern, and marks the verdict confirmed. `--as expect` or `--as must-not` overrides the judge, and is needed for an `unsure` one. Review the new concern's wording in `cases.json` before committing it. In PowerShell, quote the separator: `npm run eval:confirm '--' --case <id> --fingerprint <fp>`.
 
