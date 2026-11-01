@@ -34,6 +34,7 @@ import { changedLines, loadCharters, review, severityRank, type Finding } from '
 import { confirmTemplateFiles } from '../src/template-check.ts';
 import { readWritersIssues, type ClosedIssue } from '../src/writers.ts';
 import { subsets, type Concern, type EvalCase } from './cases.ts';
+import type { EvalOutput } from './output.ts';
 import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
 
 interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[]; caughtShadow?: boolean; byShadow?: string[] }
@@ -266,7 +267,7 @@ const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.
 
 // Writes the run's output to <dir>/<label>.json, then fails a run that passed --max-cost, so the smoke eval still checks
 // and uploads the cases that ran.
-export function writeRunOutput(dir: string, label: string, output: { summary: unknown; cases: unknown[] }, capError: string | undefined): string {
+export function writeRunOutput(dir: string, label: string, output: EvalOutput, capError: string | undefined): string {
   mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${label}.json`);
   writeFileSync(file, JSON.stringify(output, null, 2));
@@ -291,7 +292,7 @@ async function main(): Promise<void> {
   console.log(`Guidance: ${path.basename(guidance)}/`);
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
-  const report: unknown[] = [];
+  const report: EvalOutput['cases'] = [];
   let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
   let caughtShadow = 0, shadowViolations = 0, shadowFindingCount = 0;
   const shadowNames = new Set<string>();
@@ -349,7 +350,7 @@ async function main(): Promise<void> {
           ...Object.entries(changed.lines).flatMap(([file, lines]) => lines.filter((l) => fromBase.get(file)?.has(l)).map((l) => `reviewed ${file}:${l} from the base branch`)),
         ];
       }
-      const outcome = reReviewed ?? (await review({ ...run, checkout: head }, gathered, charters, log));
+      const outcome = reReviewed ?? (await review({ run: { ...run, checkout: head }, gathered, charters, log }));
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       const shadow = outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       for (const o of outcome.shadow) shadowNames.add(o.name);

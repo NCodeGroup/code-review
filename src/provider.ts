@@ -1,30 +1,12 @@
 // Picks the run's provider: Anthropic while the plan's API credits last, then Bedrock with the organization's key.
 
-import { budgetStatus, failureStatus, type RunStatus } from './checks.ts';
 import { bedrockRegion, modelIds, type Provider } from './config.ts';
 import type { Credentials } from './credentials.ts';
+import { NoProviderError } from './no-provider.ts';
 
 export interface ProviderChoice {
   provider: Provider;
   reason: string;
-}
-
-// Neither provider can pay for the review: the credits are used up or the login failed, and the Bedrock key is missing
-// or refused. Nothing has been charged. The run reports it as a used-up budget rather than a failure.
-export class NoProviderError extends Error {
-  readonly reason: string;
-  constructor(reason: string) {
-    super(`No provider available: ${reason}.`);
-    this.reason = reason;
-  }
-}
-
-// How the review step stops on an error. No provider means the budget is used up, not that the review broke: the check
-// run says so, neutral, and the job doesn't fail. Any other error fails both.
-export function stoppedBy(error: unknown, url?: string): { status: RunStatus; failed: boolean } {
-  return error instanceof NoProviderError
-    ? { status: budgetStatus(error.reason), failed: false }
-    : { status: failureStatus(error, url), failed: true };
 }
 
 const bedrockQuotaErrors = new Set(['ThrottlingException', 'ServiceQuotaExceededException']);

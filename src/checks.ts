@@ -5,6 +5,7 @@
 import { errorText } from './comments.ts';
 import type { Api } from './github.ts';
 import { writeLog } from './log.ts';
+import { NoProviderError } from './no-provider.ts';
 import { assertNoSecrets } from './outputs.ts';
 
 export const checkName = 'Code review';
@@ -76,6 +77,14 @@ export function budgetStatus(reason: string): RunStatus {
 // provider as budgetStatus instead.
 export function failureStatus(error: unknown, url?: string): RunStatus {
   return { conclusion: 'failure', title: 'Review failed', summary: `The review failed: ${errorText(error).replace(/\.$/, '')}.${logLine(url)}` };
+}
+
+// How the review step stops on an error. No provider means the budget is used up, not that the review broke: the check
+// run says so, neutral, and the job doesn't fail. Any other error fails both.
+export function stoppedBy(error: unknown, url?: string): { status: RunStatus; failed: boolean } {
+  return error instanceof NoProviderError
+    ? { status: budgetStatus(error.reason), failed: false }
+    : { status: failureStatus(error, url), failed: true };
 }
 
 export function skippedStatus(reason: string): RunStatus {

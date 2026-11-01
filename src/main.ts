@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, runAgent, totalCost, type AgentRun } from './agent.ts';
-import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
+import { skippedStatus, stoppedBy, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -22,12 +22,12 @@ import { writeErrorLog, writeLog } from './log.ts';
 import { isClosedEvent, recordOutcomes } from './outcomes.ts';
 import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
-import { chooseProvider, stoppedBy } from './provider.ts';
+import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
-import { newestReviewedHead, type Results } from './results.ts';
+import { newestReviewedHead, upstreamTotal, type Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
 import { confirmTemplateFiles } from './template-check.ts';
 import { readClosedIssues, writerCheck } from './writers.ts';
@@ -250,7 +250,7 @@ async function main(): Promise<void> {
       plan,
       headSha: pullRequest.headSha,
       lastHead: last,
-      full: () => review(agentRun, gathered, loadCharters(root), log, runAgent, openIssues),
+      full: () => review({ run: agentRun, gathered, charters: loadCharters(root), log, agent: runAgent, openIssues }),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
     for (const warning of outcome.warnings) log(`::warning::${warning}`);
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
   } finally {
     await proxy.close();
   }
-  const upstream = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+  const upstream = upstreamTotal(results);
   log(`${results.findings.length} findings${upstream ? ` (${upstream} more belong upstream)` : ''}, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`);
 }
 

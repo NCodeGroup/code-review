@@ -127,7 +127,7 @@ async function synthesize(openIssues: { number: number; title: string }[] | unde
       : { findings: request.role === 'reviewer:correctness' ? [finding('Leaks the handle')] : [] };
     return { output: output as T, records: [record] };
   };
-  const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, () => {}, agent, openIssues);
+  const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, log: () => {}, agent, ...(openIssues ? { openIssues } : {}) });
   return { result, synthesis: prompts.get('synthesis') ?? '' };
 }
 

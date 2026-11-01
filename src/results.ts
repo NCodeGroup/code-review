@@ -83,6 +83,11 @@ export interface Results {
   shadow?: ShadowResults;
 }
 
+// The findings that belong upstream: those listed and those past the list's limit.
+export function upstreamTotal(results: Pick<Results, 'upstream' | 'upstreamOmitted'>): number {
+  return (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+}
+
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
 export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', 'request-changes': '⛔ Request changes', comment: '💬 Comment' };
@@ -292,7 +297,7 @@ function upstreamList(results: Results): string[] {
   const upstream = results.upstream ?? [];
   if (!upstream.length) return [];
   const lines = [
-    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstream.length + (results.upstreamOmitted ?? 0)})</summary>`,
+    `<details><summary>Belongs upstream, in ${cell(results.template ?? 'the project template')} (${upstreamTotal(results)})</summary>`,
     '',
     'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
     '',
@@ -344,10 +349,10 @@ export function checkSummary(results: Results): string {
   } else if (results.depth === 'light') {
     lines.push('', `**${depthLabel.light}**: every changed file is documentation, the changelog among it, or a template version file, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
   }
-  const upstreamTotal = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
-  if (upstreamTotal) {
-    const one = upstreamTotal === 1;
-    lines.push('', `${upstreamTotal} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
+  const upstream = upstreamTotal(results);
+  if (upstream) {
+    const one = upstream === 1;
+    lines.push('', `${upstream} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
   }
   const trackedCount = results.tracked?.length ?? 0;
   if (trackedCount) {

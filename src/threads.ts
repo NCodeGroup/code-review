@@ -175,6 +175,22 @@ export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): s
   ].join('\n');
 }
 
+// The title on the first line of a comment threadBody wrote, escaped as it is there; '' when the line isn't one.
+export function findingTitle(body: string): string {
+  return /^\S+ \*\*(?:Blocker|Should fix|Nit): (.+)\*\* <sub>/.exec(body)?.[1] ?? '';
+}
+
+// A comment threadBody wrote, without its first line, its evidence and its marker.
+export function findingBody(body: string): string {
+  return body
+    .split('\n')
+    .slice(1)
+    .join('\n')
+    .replace(/<details>[\s\S]*?<\/details>/g, '')
+    .replace(/<!-- ncode-review:finding .+? -->/g, '')
+    .trim();
+}
+
 // One comment of the review: on the finding's line, or across the lines its suggestion replaces.
 export function reviewComment({ finding, line, startLine, suggestion }: InlineFinding): Record<string, unknown> {
   return {

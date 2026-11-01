@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, templateCandidate, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
-import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
+import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
 import { placeFindings } from '../src/threads.ts';
@@ -348,6 +348,13 @@ test('upstreamFindings stops at maxUpstreamFindings, most severe first, and coun
   assert.equal(omitted, 5);
 });
 
+test('upstreamTotal counts the listed upstream findings and the omitted ones', () => {
+  const listed = (line: number): ReviewedFinding => ({ ...finding('.githooks/pre-push', line), id: `U${line}`, reviewers: ['hygiene'] });
+  assert.equal(upstreamTotal({}), 0);
+  assert.equal(upstreamTotal({ upstream: [listed(1), listed(2)] }), 2);
+  assert.equal(upstreamTotal({ upstream: [listed(1)], upstreamOmitted: 3 }), 4);
+});
+
 test('settleUpstream moves what synthesis placed in the template\'s files upstream and renumbers the rest', () => {
   const reviewed = (f: Finding, id: string): ReviewedFinding => ({ ...f, id, reviewers: ['correctness'] });
   const synthesized = [reviewed(finding('.template/Update-Project.ps1', 40, 'should-fix'), 'F1'), reviewed(finding('AGENTS.md', 28, 'should-fix', 'draft: no'), 'F2')];
@@ -414,7 +421,7 @@ test('review leaves out a template finding that says a changed file isn\'t chang
   const saved = process.env['CODE_REVIEW_VERIFICATION'];
   delete process.env['CODE_REVIEW_VERIFICATION'];
   try {
-    const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, () => {}, agent);
+    const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, log: () => {}, agent });
     assert.deepEqual(result.findings.map((f) => [f.id, f.file, f.title]), [['F1', 'AGENTS.md', 'draft: no']]);
     assert.deepEqual(result.upstream.map((f) => [f.id, f.file, f.line, f.title]), [['U1', '.template/Get-PlanState.ps1', 155, 'Empty catch']]);
     assert.deepEqual(result.dropped.map((d) => [d.finding.title, d.file]), [['Claim', 'AGENTS.md']]);

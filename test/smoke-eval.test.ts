@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import type { EvalCase } from '../evals/cases.ts';
-import type { EvalOutput } from '../evals/compare.ts';
+import type { EvalOutput } from '../evals/output.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
 import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, writeRunOutput, type CaseTally } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
@@ -117,7 +117,7 @@ test('writeRunOutput writes the output before it fails a run that passed the cap
   const dir = mkdtempSync(path.join(tmpdir(), 'run-output-'));
   try {
     const out = path.join(dir, 'out');
-    const output = { summary: { caught: 1 }, cases: [{ id: 'large' }] };
+    const output: EvalOutput = { summary: { expected: 1, caught: 1, caughtRaw: 1, violations: 0, costUsd: 0 }, cases: [{ id: 'large', verdicts: [], forbidden: [], findings: [], costUsd: 0 }] };
     assert.throws(() => writeRunOutput(out, 'smoke', output, 'Stopped over --max-cost'), /Stopped over --max-cost/);
     assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'smoke.json'), 'utf8')), output);
     assert.equal(writeRunOutput(out, 'full', output, undefined), path.join(out, 'full.json'));

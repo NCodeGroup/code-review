@@ -17,6 +17,7 @@ import {
   publishCheck,
   skippedStatus,
   stepOutcomesFrom,
+  stoppedBy,
   stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
@@ -25,7 +26,8 @@ import { decideReview, decideRun } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
 import { fetchPullRequest, githubApi, type Api } from '../src/github.ts';
-import { chooseProvider, NoProviderError, stoppedBy } from '../src/provider.ts';
+import { NoProviderError } from '../src/no-provider.ts';
+import { chooseProvider } from '../src/provider.ts';
 import { useGitHubDotCom } from './github-env.ts';
 
 useGitHubDotCom();
@@ -716,7 +718,7 @@ test('the acknowledgement and finish scripts load no npm package, so they run be
     const loaded = [...loadedModules(path.join(root, 'src', script))];
     const packages = loaded.filter((m) => !m.startsWith('node:') && !path.isAbsolute(m));
     assert.deepEqual(packages, [], script);
-    assert.ok(loaded.includes(path.join(root, 'src', 'checks.ts')) && loaded.includes('node:fs'), `${script} imports were read`);
+    assert.ok(loaded.includes(path.join(root, 'src', 'checks.ts')) && loaded.includes(path.join(root, 'src', 'no-provider.ts')) && loaded.includes('node:fs'), `${script} imports were read`);
     // Nor the review's own modules, which may come to need one.
     for (const module of ['provider.ts', 'config.ts', 'credentials.ts']) assert.equal(loaded.includes(path.join(root, 'src', module)), false, `${script} loads ${module}`);
   }

@@ -121,7 +121,7 @@ async function cappedReview({
   if (verification) process.env['CODE_REVIEW_VERIFICATION'] = 'on';
   const logs: string[] = [];
   try {
-    const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, { ...gathered, reviewRules, chunks: Array(parts).fill(diff) }, charters, (line) => logs.push(line), agent);
+    const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered: { ...gathered, reviewRules, chunks: Array(parts).fill(diff) }, charters, log: (line) => logs.push(line), agent });
     return { result, roles, logs };
   } finally {
     for (const [name, value] of saved) {

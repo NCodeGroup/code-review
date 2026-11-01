@@ -8,24 +8,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { percent, spread, type PrecisionCounts } from './precision.ts';
+import { percent, spread } from './precision.ts';
+import type { EvalOutput } from './output.ts';
 
 export const noiseLimit = 2;
-
-// The parts of evals/out/<label>.json that compare reads. precision and reviewCostUsd are absent from an output written
-// without the precision judge.
-export interface EvalOutput {
-  summary: { label?: string; expected: number; caught: number; caughtRaw: number; violations: number; costUsd: number; reviewCostUsd?: number; precision?: PrecisionCounts };
-  cases: {
-    id: string;
-    verdicts: { caught: boolean; caughtRaw: boolean }[];
-    forbidden: { concern?: string; raisedBy: string[] }[];
-    findings: unknown[];
-    precision?: PrecisionCounts;
-    reviewCostUsd?: number;
-    costUsd: number;
-  }[];
-}
 
 export const isNoise = (difference: number): boolean => Math.abs(difference) <= noiseLimit;
 

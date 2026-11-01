@@ -196,7 +196,7 @@ async function run(input: Gathered, options: { env?: Record<string, string>; fin
   for (const name of depthEnv) delete process.env[name];
   Object.assign(process.env, options.env ?? {});
   try {
-    const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, input, charters, () => {}, agent);
+    const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered: input, charters, log: () => {}, agent });
     return { result, calls };
   } finally {
     for (const [name, value] of saved) {

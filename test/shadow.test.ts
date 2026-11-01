@@ -129,7 +129,7 @@ test("the engine's own charters load unchanged, and none is in shadow", () => {
 
 test("a shadow reviewer runs, but its findings reach only the check run's shadow section", async () => {
   const { agent, requests } = stubAgent(reviewAnswers);
-  const outcome = await review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent });
 
   // It ran as usual, with its charter and without the frontmatter.
   const performance = requests.find((r) => r.role === 'reviewer:performance')!;
@@ -179,7 +179,7 @@ test("on a template update, a shadow reviewer's findings on the template's files
     files: [...gathered().files, { path: owned, additions: 1, deletions: 0, generated: false, shown: true, templateOwned: true }],
     template,
   };
-  const outcome = await review(run, updating, charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: updating, charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent });
   assert.deepEqual(outcome.upstream.map((f) => [f.id, f.file, f.title]), [['U1', owned, 'Live upstream']]);
   assert.deepEqual(outcome.shadow.map((o) => o.findings.map((f) => f.title)), [['Shadow upstream']]);
 
@@ -192,7 +192,7 @@ test("on a template update, a shadow reviewer's findings on the template's files
 
 test('a reviewer not marked shadow goes to synthesis and the verdict as before', async () => {
   const { agent, requests } = stubAgent(reviewAnswers);
-  const outcome = await review(run, gathered(), charters('# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: gathered(), charters: charters('# performance\n'), log: () => {}, agent });
   assert.match(String(requests.find((r) => r.role === 'synthesis')!.prompt), /Shadow blocker/);
   assert.equal(outcome.verdict, 'request-changes');
   assert.deepEqual(outcome.shadow, []);
@@ -209,7 +209,7 @@ test("with verification on, a shadow reviewer's findings are never verified, ref
     return reviewAnswers(request);
   });
   const outcome = await withEnv({ CODE_REVIEW_VERIFICATION: 'on' }, () =>
-    review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent));
+    review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent }));
 
   // The injected agent ran verification, on the live finding alone and without the shadow reviewer's charter.
   const verification = requests.filter((r) => r.role === 'verification');
@@ -236,7 +236,7 @@ test('CODE_REVIEW_SHADOW puts the reviewers it names in shadow', async () => {
   assert.deepEqual([...shadowOverride(' performance, tests ,,')], ['performance', 'tests']);
   assert.deepEqual([...shadowOverride('')], []);
   const { agent, requests } = stubAgent(reviewAnswers);
-  const outcome = await withEnv({ CODE_REVIEW_SHADOW: 'performance' }, () => review(run, gathered(), charters('# performance\n'), () => {}, agent));
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW: 'performance' }, () => review({ run, gathered: gathered(), charters: charters('# performance\n'), log: () => {}, agent }));
   assert.doesNotMatch(String(requests.find((r) => r.role === 'synthesis')!.prompt), /Shadow blocker/);
   assert.equal(outcome.verdict, 'comment');
   assert.deepEqual(outcome.shadow.map((o) => o.name), ['performance']);
@@ -247,13 +247,13 @@ test('CODE_REVIEW_SHADOW names that match no reviewer are a warning', async () =
   assert.equal(unknownShadow(new Set(['performance', 'rule-check']), ['correctness', 'performance']), undefined);
   assert.equal(unknownShadow(new Set(['perfromance', 'tests']), ['correctness', 'performance']), 'CODE_REVIEW_SHADOW names no reviewer: perfromance, tests; the reviewers are correctness, performance, rule-check.');
   const { agent } = stubAgent(reviewAnswers);
-  const outcome = await withEnv({ CODE_REVIEW_SHADOW: 'perfromance' }, () => review(run, gathered(), charters('# performance\n'), () => {}, agent));
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW: 'perfromance' }, () => review({ run, gathered: gathered(), charters: charters('# performance\n'), log: () => {}, agent }));
   assert.deepEqual(outcome.warnings, ['CODE_REVIEW_SHADOW names no reviewer: perfromance; the reviewers are correctness, hygiene, tests, performance, rule-check.']);
 });
 
 test('a shadow reviewer selection does not choose is recorded for the trace, not as skipped', async () => {
   const { agent } = stubAgent((request) => (request.role === 'selection' ? { output: { add: [] } } : reviewAnswers(request)));
-  const outcome = await review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent });
   assert.deepEqual(outcome.shadowSkipped, ['performance']);
   assert.ok(!outcome.skipped.includes('performance'));
   assert.equal(buildResults(outcome, context).shadow, undefined);
@@ -264,7 +264,7 @@ test('the shadow section never takes the check run past the text GitHub accepts'
     request.role === 'reviewer:performance'
       ? { output: { findings: Array.from({ length: 200 }, (_, i) => ({ ...finding(`Shadow ${i}`, 'nit'), problem: 'x'.repeat(400) })) } }
       : reviewAnswers(request));
-  const outcome = await review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent });
   const text = checkText(buildResults(outcome, context));
   assert.ok(text.length <= maxCheckText, `${text.length} characters`);
   assert.match(text, /- \d+ more shadow findings, in the trace\.\n\n<\/details>$/);
@@ -273,7 +273,7 @@ test('the shadow section never takes the check run past the text GitHub accepts'
 
 test('when the posted part leaves no room for the shadow section, a one-line note stands in for it', async () => {
   const { agent } = stubAgent(reviewAnswers);
-  const outcome = await review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n'), () => {}, agent);
+  const outcome = await review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n'), log: () => {}, agent });
   const results = buildResults(outcome, context);
   const { shadow: _, ...live } = results;
   const posted = (problem: string) => checkText({ ...live, findings: [{ ...results.findings[0]!, problem }] });
@@ -330,7 +330,7 @@ const variants = { specialist: 'SHADOW specialist', selection: 'SHADOW selection
 
 test('a sampled review runs each shadow prompt beside the live one, keeps both in the trace and posts only the live one', async () => {
   const { agent, requests } = stubAgent(variantAnswers);
-  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () => review(run, gathered(), charters('# performance\n', variants), () => {}, agent));
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () => review({ run, gathered: gathered(), charters: charters('# performance\n', variants), log: () => {}, agent }));
 
   assert.equal(requests.find((r) => r.role === 'shadow-prompt:selection')!.systemPrompt, 'SHADOW selection');
   assert.deepEqual(outcome.shadowPrompts.map((p) => [p.role, p.prompts]), [
@@ -362,13 +362,13 @@ test('a sampled review runs each shadow prompt beside the live one, keeps both i
 
 test('an unsampled review runs no shadow prompt', async () => {
   const { agent, requests } = stubAgent(variantAnswers);
-  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '0' }, () => review(run, gathered(), charters('# performance\n', variants), () => {}, agent));
+  const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '0' }, () => review({ run, gathered: gathered(), charters: charters('# performance\n', variants), log: () => {}, agent }));
   assert.ok(!requests.some((r) => r.role.startsWith('shadow-prompt:')));
   assert.deepEqual(outcome.shadowPrompts, []);
   assert.equal(buildResults(outcome, context).shadow, undefined);
   // Unset, the rate is 0.
   const unset = stubAgent(variantAnswers);
-  await review(run, gathered(), charters('# performance\n', variants), () => {}, unset.agent);
+  await review({ run, gathered: gathered(), charters: charters('# performance\n', variants), log: () => {}, agent: unset.agent });
   assert.ok(!unset.requests.some((r) => r.role.startsWith('shadow-prompt:')));
 });
 
@@ -379,7 +379,7 @@ test('the rate samples the shadow prompts by pull request and head', async () =>
   assert.ok(sampled.length > 0 && sampled.length < numbers.length);
   for (const n of [sampled[0]!, numbers.find((m) => !sampled.includes(m))!]) {
     const { agent, requests } = stubAgent(variantAnswers);
-    await withEnv({ CODE_REVIEW_SHADOW_RATE: '0.3' }, () => review(run, gathered(n, head), charters('# performance\n', variants), () => {}, agent));
+    await withEnv({ CODE_REVIEW_SHADOW_RATE: '0.3' }, () => review({ run, gathered: gathered(n, head), charters: charters('# performance\n', variants), log: () => {}, agent }));
     assert.equal(requests.some((r) => r.role === 'shadow-prompt:synthesis'), sampled.includes(n), `pull request ${n}`);
   }
 });
@@ -392,7 +392,7 @@ test('a sampled rule check runs with the shadow rule-check charter and the shado
     return variantAnswers(request);
   });
   const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
-    review(run, withRule, charters('# performance\n', { specialist: 'SHADOW specialist', 'rule-check': 'SHADOW rule-check' }), () => {}, agent));
+    review({ run, gathered: withRule, charters: charters('# performance\n', { specialist: 'SHADOW specialist', 'rule-check': 'SHADOW rule-check' }), log: () => {}, agent }));
 
   const live = requests.find((r) => r.role === 'reviewer:rule-check')!;
   assert.equal(live.systemPrompt, 'LIVE specialist');
@@ -420,7 +420,7 @@ test('a shadow reviewer or shadow prompt that fails leaves the live review as it
   };
   const { agent } = stubAgent(answers);
   const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
-    review(run, gathered(), charters('---\nshadow: true\n---\n# performance\n', { synthesis: 'SHADOW synthesis' }), () => {}, agent));
+    review({ run, gathered: gathered(), charters: charters('---\nshadow: true\n---\n# performance\n', { synthesis: 'SHADOW synthesis' }), log: () => {}, agent }));
 
   assert.equal(outcome.summary, 'live summary');
   assert.equal(outcome.verdict, 'comment');
@@ -457,7 +457,7 @@ test('on a diff in parts, each shadow prompt twin runs on its own part and is pa
     return { error: 'stub synthesis is down' };
   });
   const outcome = await withEnv({ CODE_REVIEW_SHADOW_RATE: '1' }, () =>
-    review(run, twoParts, charters('# performance\n', { specialist: 'SHADOW specialist' }), () => {}, agent));
+    review({ run, gathered: twoParts, charters: charters('# performance\n', { specialist: 'SHADOW specialist' }), log: () => {}, agent }));
 
   assert.equal(requests.filter((r) => r.role === 'shadow-prompt:reviewer:correctness').length, 2);
   const correctness = outcome.shadowPrompts.filter((p) => p.role.startsWith('reviewer:correctness'));
