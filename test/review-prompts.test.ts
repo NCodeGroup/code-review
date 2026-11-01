@@ -76,7 +76,7 @@ const reviewerCalls = (requests: AgentRequest[], part: number) =>
 
 test("review() gives each part's reviewers that part's diff, and marks the other part's file as in another part", async () => {
   const { agent, requests } = stubAgent(answers);
-  await review(run, twoParts(), charters, () => {}, agent);
+  await review({ run, gathered: twoParts(), charters, log: () => {}, agent });
 
   for (const [part, own, other] of [[1, diffA, diffB], [2, diffB, diffA]] as const) {
     const calls = reviewerCalls(requests, part);
@@ -93,7 +93,7 @@ test("review() gives each part's reviewers that part's diff, and marks the other
 
 test("review() gives each reviewer call its part's rules and its own charter, and the rule check the rule-check prompt", async () => {
   const { agent, requests } = stubAgent(answers);
-  await review(run, twoParts(), charters, () => {}, agent);
+  await review({ run, gathered: twoParts(), charters, log: () => {}, agent });
 
   for (const [part, own, other] of [[1, 'Rule for A', 'Rule for B'], [2, 'Rule for B', 'Rule for A']] as const) {
     const calls = reviewerCalls(requests, part);
@@ -111,7 +111,7 @@ test("review() gives each reviewer call its part's rules and its own charter, an
 
 test('review() gives every reviewer call in each part the specialist system prompt', async () => {
   const { agent, requests } = stubAgent(answers);
-  await review(run, twoParts(), charters, () => {}, agent);
+  await review({ run, gathered: twoParts(), charters, log: () => {}, agent });
 
   for (const part of [1, 2]) {
     const calls = reviewerCalls(requests, part);
@@ -139,7 +139,7 @@ const ledgerChange = (): Gathered => {
 
 test("review() runs a project reviewer whose paths match a changed file, on the tier the repository's config gives it", async () => {
   const { agent, requests } = stubAgent(answers);
-  const outcome = await review(run, ledgerChange(), charters, () => {}, agent);
+  const outcome = await review({ run, gathered: ledgerChange(), charters, log: () => {}, agent });
 
   const selection = String(requests.find((r) => r.role === 'selection')!.prompt);
   assert.match(selection, /^Roster: correctness, hygiene, security, tests, project:ledger, project:billing\nThis repository's own reviewers:\n- project:ledger: Does every entry balance\?\n- project:billing: Are amounts in cents\?\nAlready chosen: [^\n]*\bproject:ledger\b/);
@@ -155,7 +155,7 @@ test("review() runs a project reviewer whose paths match a changed file, on the 
 test('selection can add a project reviewer whose paths match no changed file, and it runs on Haiku by default', async () => {
   const { agent, requests } = stubAgent((request) =>
     request.role === 'selection' ? { add: [{ reviewer: 'project:billing', reason: 'it charges a fee' }] } : answers(request));
-  const outcome = await review(run, ledgerChange(), charters, () => {}, agent);
+  const outcome = await review({ run, gathered: ledgerChange(), charters, log: () => {}, agent });
 
   assert.equal(requests.find((r) => r.role === 'reviewer:project:billing')?.tier, 'haiku');
   assert.deepEqual(outcome.reviewers.find((o) => o.name === 'project:billing')?.status, 'ran');

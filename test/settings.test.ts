@@ -479,7 +479,7 @@ test('a pull request whose every changed file is skipped by config runs no model
 
   const engine: Charters = { specialistPrompt: '', selectionPrompt: '', synthesisPrompt: '', ruleCheckPrompt: '', reReviewPrompt: '', verificationPrompt: '', reviewers: new Map([['security', { text: 'engine security', shadow: false }]]), shadowPrompts: {} };
   // The proxy address goes nowhere: a model call would fail and be recorded.
-  const outcome = await review({ provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, engine, () => {});
+  const outcome = await review({ run: { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: head }, gathered, charters: engine, log: () => {} });
   assert.deepEqual(outcome.calls, []);
   assert.deepEqual(outcome.reviewers, []);
   assert.deepEqual(outcome.findings, []);

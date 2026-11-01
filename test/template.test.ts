@@ -421,7 +421,7 @@ test('review leaves out a template finding that says a changed file isn\'t chang
   const saved = process.env['CODE_REVIEW_VERIFICATION'];
   delete process.env['CODE_REVIEW_VERIFICATION'];
   try {
-    const result = await review({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, () => {}, agent);
+    const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, log: () => {}, agent });
     assert.deepEqual(result.findings.map((f) => [f.id, f.file, f.title]), [['F1', 'AGENTS.md', 'draft: no']]);
     assert.deepEqual(result.upstream.map((f) => [f.id, f.file, f.line, f.title]), [['U1', '.template/Get-PlanState.ps1', 155, 'Empty catch']]);
     assert.deepEqual(result.dropped.map((d) => [d.finding.title, d.file]), [['Claim', 'AGENTS.md']]);
