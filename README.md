@@ -106,7 +106,8 @@ jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
     # comment on one from someone with write access. The engine checks the comment again and skips anything else. A plain
-    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job.
+    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The explain and
+    # teach checks here and in the concurrency group must name the same commands.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
