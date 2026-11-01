@@ -59,6 +59,10 @@ export interface CallRecord {
   cacheWriteTokens: number;
   turns: number;
   durationMs: number;
+  // When the call started, in milliseconds since the epoch.
+  startedAt?: number;
+  // How long after it started the first model response arrived; absent when none did.
+  firstResponseMs?: number;
   outcome: string;
 }
 
@@ -164,6 +168,8 @@ export interface AgentRequest {
   budgetUsd: number;
   // False for a call whose prompt nothing else will reuse.
   cache?: boolean;
+  // Called once, when the call's first model response arrives: by then the prompt's cache entry exists, so calls that share its first block can start and read it.
+  onFirstResponse?: () => void;
 }
 
 function promptInput(prompt: string | string[]): string | AsyncIterable<SDKUserMessage> {
@@ -237,10 +243,15 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
   let error: string | undefined;
   // Claude Code's category of the API error the turn ended on, carried by the synthetic assistant message it reports.
   let apiErrorKind: SDKAssistantMessageError | undefined;
+  let firstResponseMs: number | undefined;
   try {
     for await (const message of (run.query ?? query)({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
       else if (message.type === 'assistant' && message.error) apiErrorKind = message.error;
+      else if (message.type === 'assistant' && firstResponseMs === undefined) {
+        firstResponseMs = Date.now() - started;
+        request.onFirstResponse?.();
+      }
     }
   } catch (e) {
     error = (e as Error).message;
@@ -259,6 +270,8 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
     cacheWriteTokens: result?.usage.cache_creation_input_tokens ?? 0,
     turns: result?.num_turns ?? 0,
     durationMs: Date.now() - started,
+    startedAt: started,
+    ...(firstResponseMs === undefined ? {} : { firstResponseMs }),
     outcome: error || apiError ? 'error' : (result?.subtype ?? 'no result'),
   };
   if (result?.subtype !== 'success' || apiError) {
