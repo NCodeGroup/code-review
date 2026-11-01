@@ -96,6 +96,44 @@ function pullRequest(baseSha: string, headSha: string): PullRequest {
   return { repository: 'o/r', number: 1, title: 't', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha, headSha };
 }
 
+// A fixture built the first time a test asks for it; every later test gets the same frozen object. Only tests that read
+// a repository share one: a test that commits, checks out or merges builds its own, so no test sees another's changes.
+function shared<T extends object>(build: () => T): () => Readonly<T> {
+  let built: Readonly<T> | undefined;
+  return () => (built ??= Object.freeze(build()));
+}
+
+// The pull request as reviewed: its head is the reviewed commit.
+const reviewedRepo = shared(() => {
+  const { repo, first, reviewed } = pullRequestRepo();
+  return { repo, first, reviewed };
+});
+
+// The head after the last review adds a line at the end of a.ts.
+const moreRepo = shared(() => {
+  const { repo, first, reviewed, a } = pullRequestRepo();
+  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  return { repo, first, reviewed, head };
+});
+
+// main moved on and the head merges it, with nothing else since the last review.
+const mergedRepo = shared(() => {
+  const { repo, reviewed } = pullRequestRepo();
+  const main = moveMain(repo);
+  git(repo, 'merge', '-q', '--no-edit', 'main');
+  return { repo, reviewed, main, head: git(repo, 'rev-parse', 'HEAD') };
+});
+
+// As mergedRepo, then the author edits line 20 of a.ts again, line 25 below main's five new lines.
+const editedRepo = shared(() => {
+  const { repo, reviewed, a } = pullRequestRepo();
+  const main = moveMain(repo);
+  git(repo, 'merge', '-q', '--no-edit', 'main');
+  const edited = [...numbered(5, 'main'), ...a];
+  edited[24] = 'changed again 20';
+  return { repo, reviewed, main, head: commit(repo, { 'a.ts': edited }, 'edit') };
+});
+
 test('changedSince counts nothing when the default branch only moved the hunks', () => {
   const before = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -20 +20 @@\n-line 20\n+changed 20\n@@ -50,0 +51 @@\n+added after 50\n';
   const now = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -25 +25 @@\n-line 20\n+changed 20\n@@ -55,0 +56 @@\n+added after 50\n';
@@ -129,32 +167,19 @@ test('changedSince marks a file deleted since the last review, and changedHunksD
 });
 
 test('sinceLastReview counts nothing from main when the head merges main', () => {
-  const { repo, reviewed } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const head = git(repo, 'rev-parse', 'HEAD');
+  const { repo, reviewed, main, head } = mergedRepo();
   // The range from the reviewed head holds main's changes, which is why it isn't used.
   assert.match(git(repo, 'diff', reviewed, head), /b from main/);
   assert.deepEqual(sinceLastReview(repo, main, main, head, reviewed), { lines: {}, hunks: 0, removed: {} });
 });
 
 test('sinceLastReview counts the author\'s edit after a merge of main, on its line in the new head', () => {
-  const { repo, reviewed, a } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const edited = [...numbered(5, 'main'), ...a];
-  edited[24] = 'changed again 20';
-  const head = commit(repo, { 'a.ts': edited }, 'edit');
+  const { repo, reviewed, main, head } = editedRepo();
   assert.deepEqual(sinceLastReview(repo, main, main, head, reviewed), { lines: { 'a.ts': [25] }, hunks: 1, removed: { 'a.ts': ['+changed 20'] } });
 });
 
 test('planReReview gives the reviewer only the changed hunks, with their context', async () => {
-  const { repo, reviewed, a } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const edited = [...numbered(5, 'main'), ...a];
-  edited[24] = 'changed again 20';
-  const head = commit(repo, { 'a.ts': edited }, 'edit');
+  const { repo, reviewed, main, head } = editedRepo();
   const gathered = gather(pullRequest(main, head), repo, repo);
   const earlier: EarlierFinding[] = [];
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => earlier, log: () => {} });
@@ -168,7 +193,7 @@ test('planReReview gives the reviewer only the changed hunks, with their context
 });
 
 test('planReReview reviews in full on a first review and on a /review of the head already reviewed', async () => {
-  const { repo, first, reviewed } = pullRequestRepo();
+  const { repo, first, reviewed } = reviewedRepo();
   const gathered = gather(pullRequest(first, reviewed), repo, repo);
   const options = { gathered, checkout: repo, fetchCommit: () => true, readEarlier: async () => [], log: () => {} };
   assert.equal(await planReReview({ ...options, lastHead: undefined }), undefined);
@@ -176,8 +201,7 @@ test('planReReview reviews in full on a first review and on a /review of the hea
 });
 
 test('planReReview goes on without the earlier findings, and warns, when the threads cannot be read', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const lines: string[] = [];
   const plan = await planReReview({ gathered: gather(pullRequest(first, head), repo, repo), checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => undefined, log: (l) => lines.push(l) });
   assert.deepEqual(plan?.earlier, []);
@@ -575,12 +599,7 @@ function fakeAgent(output: unknown, requests: AgentRequest[]) {
 }
 
 test('reReview runs only correctness on Sonnet, with the changed hunks and the earlier findings, and posts only should-fix and above on changed lines', async () => {
-  const { repo, reviewed, a } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const edited = [...numbered(5, 'main'), ...a];
-  edited[24] = 'changed again 20';
-  const head = commit(repo, { 'a.ts': edited }, 'edit');
+  const { repo, reviewed, main, head } = editedRepo();
   const gathered = gather(pullRequest(main, head), repo, repo);
   const earlier = [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 }), earlierFinding({ id: 'F2', file: 'a.ts', line: 56, resolved: true })];
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => earlier, log: () => {} });
@@ -610,12 +629,7 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
 });
 
 test('reReview runs correctness on the model the repository\'s tiers: name', async () => {
-  const { repo, reviewed, a } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const edited = [...numbered(5, 'main'), ...a];
-  edited[24] = 'changed again 20';
-  const head = commit(repo, { 'a.ts': edited }, 'edit');
+  const { repo, reviewed, main, head } = editedRepo();
   const gathered = { ...gather(pullRequest(main, head), repo, repo), tiers: { correctness: 'opus' as const } };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
   assert.ok(plan);
@@ -626,8 +640,7 @@ test('reReview runs correctness on the model the repository\'s tiers: name', asy
 });
 
 test('reReview gives its correctness call the Bedrock fallback of the run, and keeps both calls of a rerun on Bedrock', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -647,8 +660,7 @@ test('reReview gives its correctness call the Bedrock fallback of the run, and k
 });
 
 test('reReview leaves out a finding that says a file the pull request changes is not changed, as the first review does', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -662,8 +674,7 @@ test('reReview leaves out a finding that says a file the pull request changes is
 });
 
 test('reReview lists a finding below blocker on a template-owned file upstream, as the first review does', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   gathered.template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
@@ -682,10 +693,7 @@ test('reReview lists a finding below blocker on a template-owned file upstream, 
 });
 
 test('reReview makes no model call when nothing in the pull request changed', async () => {
-  const { repo, reviewed } = pullRequestRepo();
-  const main = moveMain(repo);
-  git(repo, 'merge', '-q', '--no-edit', 'main');
-  const head = git(repo, 'rev-parse', 'HEAD');
+  const { repo, reviewed, main, head } = mergedRepo();
   const gathered = gather(pullRequest(main, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -714,8 +722,7 @@ test('reReview makes no model call and never approves when what changed is only 
 });
 
 test('reReview reports a failed reviewer and claims nothing about the changes', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -741,9 +748,15 @@ function roleAgent(outputs: Record<string, unknown>, requests: AgentRequest[]) {
 }
 
 // The pull request's head after the last review changes a.ts again and adds token.ts, which the floor gives to security.
-function securityChange(): { repo: string; reviewed: string; gathered: ReturnType<typeof gather>; head: string } {
+const securityRepo = shared(() => {
   const { repo, first, reviewed, a } = pullRequestRepo();
   const head = commit(repo, { 'a.ts': [...a, 'more'], 'token.ts': ['export const token = 1;'] }, 'more');
+  return { repo, first, reviewed, head };
+});
+
+// Each call gathers afresh, so a test's changes to what it gathered stay its own.
+function securityChange(): { repo: string; reviewed: string; gathered: ReturnType<typeof gather>; head: string } {
+  const { repo, first, reviewed, head } = securityRepo();
   return { repo, reviewed, gathered: gather(pullRequest(first, head), repo, repo), head };
 }
 
@@ -834,8 +847,7 @@ test('reReview posts nothing and records the last head when correctness fails an
 });
 
 test('reReview of a change to a sensitive: path runs correctness and security on Opus and says it went deep', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -861,8 +873,7 @@ test('reReview stays standard when the sensitive file changed only before the la
 });
 
 test('reReview of a sensitive change verifies its findings on Opus', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -876,8 +887,7 @@ test('reReview of a sensitive change verifies its findings on Opus', async () =>
 });
 
 test('reReview of a sensitive change still says it went deep when one of its reviewers fails, and posts nothing', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = { ...gather(pullRequest(first, head), repo, repo), sensitive: ['a.ts'] };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -924,8 +934,7 @@ test('a run whose reviewers all failed records the head reviewed before it, or n
 });
 
 test('reReview never approves when the earlier threads could not be read', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => undefined, log: () => {} });
   assert.ok(plan);
@@ -952,8 +961,7 @@ function verifier(answers: Record<string, Omit<Verification, 'id'>>, requests: A
 }
 
 test('reReview with verification on verifies what it would post, as the first review does, and posts no nit it makes', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -991,8 +999,7 @@ test('reReview with verification on verifies what it would post, as the first re
 });
 
 test('reReview with verification on never approves after refuting what it would post, and approves with nothing to verify', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -1012,8 +1019,7 @@ test('reReview with verification on never approves after refuting what it would 
 });
 
 test('reReview with verification on keeps a refuted blocker as a should-fix question', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
@@ -1027,8 +1033,7 @@ test('reReview with verification on keeps a refuted blocker as a should-fix ques
 });
 
 test('reReview with verification on says a should-fix refuted only on the change\'s own lines was kept as a nit, not posted, and never approves', async () => {
-  const { repo, first, reviewed, a } = pullRequestRepo();
-  const head = commit(repo, { 'a.ts': [...a, 'more'] }, 'more');
+  const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
