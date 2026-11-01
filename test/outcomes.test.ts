@@ -186,6 +186,11 @@ test('the outcomes section shows the state and a row per finding', () => {
   assert.ok(odd.includes('| a\\\\\\|b &lt;i> |'), odd);
 });
 
+test('the outcomes section neutralizes mentions and links in its cells', () => {
+  const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [{ ...findings[0]!, reviewers: ['@team [x](https://evil.example)'] }] });
+  assert.ok(section.includes('@\u200bteam [x]\u200b(https:\u200b//evil.example)'), section);
+});
+
 test('the outcomes section names the commit of findings from several reviews', () => {
   const later = { ...findings[0]!, reviewedAt: 'c'.repeat(40) };
   const section = outcomesSection({ state: 'merged', head: 'b'.repeat(40), findings: [findings[0]!, later] });

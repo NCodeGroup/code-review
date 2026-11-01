@@ -7,7 +7,7 @@
 
 import { errorText } from './comments.ts';
 import { writeLog } from './log.ts';
-import { neutralizeMentions } from './markdown.ts';
+import { neutralizeProse } from './markdown.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { autopilotPrefix } from './pause.ts';
 import { botAuthor, type ThreadNode } from './rereview.ts';
@@ -74,7 +74,7 @@ function alreadyAnswered(thread: ThreadNode): boolean {
 const maxNoteChars = 1_000;
 
 export function stillOpenReply(headSha: string, note: string, maintainer: string): string {
-  const reason = neutralizeMentions(note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;')) || 'The re-review still finds the problem in the code now.';
+  const reason = neutralizeProse(note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;')) || 'The re-review still finds the problem in the code now.';
   const who = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(maintainer) ? `@${maintainer}` : 'Maintainer';
   return [stillOpenMarker, `This stays open: the re-review at ${headSha.slice(0, 7)} still finds it. ${reason}`, '', `${who}: needs you.`].join('\n');
 }

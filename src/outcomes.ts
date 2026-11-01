@@ -12,6 +12,7 @@ import { errorText, readCommentPages } from './comments.ts';
 import type { Provider } from './config.ts';
 import type { Api } from './github.ts';
 import { writeLog } from './log.ts';
+import { neutralizeProse } from './markdown.ts';
 import { assertNoSecrets, printable } from './outputs.ts';
 import {
   botLogin,
@@ -336,7 +337,7 @@ export function parseOutcomesMarker(body: string): { version: number; state: Clo
 }
 
 function cell(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;');
+  return neutralizeProse(text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;'));
 }
 
 // The outcomes section: the marker, then a table of finding, reviewer, severity and outcome.

@@ -177,6 +177,11 @@ test("planFollowUps answers a private organization member's Autopilot reply when
   assert.equal(lines.length, 1);
 });
 
+test('stillOpenReply neutralizes links in the note, but not code spans', () => {
+  const body = stillOpenReply(headSha, 'See https://evil.example and [x](y); `@Override` stays.', 'polewskm');
+  assert.ok(body.includes('See https:\u200b//evil.example and [x]\u200b(y); `@Override` stays.'), body);
+});
+
 test('stillOpenReply keeps the note to one line of text and asks the maintainer on its last line', () => {
   const body = stillOpenReply(headSha, 'Line one\n\n<script>alert(1)</script>', 'polewskm');
   assert.equal(body, [stillOpenMarker, 'This stays open: the re-review at ccccccc still finds it. Line one &lt;script>alert(1)&lt;/script>', '', '@polewskm: needs you.'].join('\n'));
