@@ -190,7 +190,7 @@ function agentResult(output: Explanation | undefined, error?: string): AgentResu
   };
 }
 
-test('explainFinding makes one uncached Sonnet call capped at 20 turns and $0.50', async () => {
+test('explainFinding makes one Sonnet call, with prompt caching on, capped at 20 turns and $0.50', async () => {
   const calls: unknown[][] = [];
   const run: AgentRun & { checkout: string } = { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: '/work/pr' };
   const request = { found, question: 'why?', headSha: 'a'.repeat(40) };

@@ -12,29 +12,20 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import type { AgentRequest, AgentResult, AgentRun, CallRecord, runAgent } from '../src/agent.ts';
 import type { Gathered } from '../src/gather.ts';
-import { loadCharters, review } from '../src/review.ts';
+import { defaultCallSeconds, expectedCallSeconds, loadCharters, review } from '../src/review.ts';
 
 // Milliseconds the fake agent sleeps for each second a real call takes.
 export const msPerSecond = 10;
 // Seconds before a call's first response, when a caller learns the call has started to answer.
 export const firstResponseSeconds = 4;
-// Seconds a call takes, by role; a reviewer without an entry takes ten.
+// Seconds a call takes, by role. The reviewers' come from the table the review orders its waiting calls by, so the two
+// can't drift apart; a reviewer without an entry takes defaultCallSeconds.
 export const callSeconds: Record<string, number> = {
   context: 7.6,
   selection: 5.0,
   synthesis: 24.0,
   verification: 10,
-  'reviewer:rule-check': 7.1,
-  'reviewer:architecture': 10.1,
-  'reviewer:completeness': 11.9,
-  'reviewer:conventions': 8.7,
-  'reviewer:correctness': 10.6,
-  'reviewer:hygiene': 17.1,
-  'reviewer:intent': 9.4,
-  'reviewer:security': 12.5,
-  'reviewer:tests': 22.8,
-  'reviewer:data-model': 17.3,
-  'reviewer:infrastructure': 8.4,
+  ...Object.fromEntries(Object.entries(expectedCallSeconds).map(([name, seconds]) => [`reviewer:${name}`, seconds])),
 };
 
 export interface BenchCall {
@@ -109,9 +100,9 @@ export async function benchReview(options: { msPerSecond?: number } = {}): Promi
   const began = performance.now();
   const agent = (async (_run: AgentRun, request: AgentRequest): Promise<AgentResult<unknown>> => {
     const startMs = performance.now() - began;
-    const total = (callSeconds[request.role] ?? 10) * scale;
+    const total = (callSeconds[request.role] ?? defaultCallSeconds) * scale;
     await sleep(firstResponseSeconds * scale);
-    (request as AgentRequest & { onFirstResponse?: () => void }).onFirstResponse?.();
+    request.onFirstResponse?.();
     await sleep(total - firstResponseSeconds * scale);
     calls.push({ role: request.role, startMs, endMs: performance.now() - began });
     const record: CallRecord = {

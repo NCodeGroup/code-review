@@ -76,6 +76,7 @@ function tempDir(): string {
 
 async function run(args: string[], answers: Answer[]): Promise<{ status: number | null; output: string; calls: Call[] }> {
   assert.ok(pwsh, 'pwsh is not installed, and CI needs it to test tools/Enable-CodeReview.ps1');
+  // The same path, kept in a const so the assertion's narrowing to string holds inside the Promise callback below.
   const command = pwsh;
   const dir = tempDir();
   writeFileSync(path.join(dir, 'gh.ps1'), fakeGh);

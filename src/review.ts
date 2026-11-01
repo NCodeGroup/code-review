@@ -937,7 +937,8 @@ async function finishReview(
   };
 }
 
-// How long each reviewer's call takes, in seconds: the medians of 60 production traces (October 2026). Waiting calls start longest first, so a slow one isn't left to start last; nothing else depends on these.
+// How long each reviewer's call takes, in seconds: the medians of 60 production traces (October 2026). Waiting calls
+// start longest first, so a slow one isn't left to start last; tools/bench-review.ts times its fake calls by them too.
 export const expectedCallSeconds: Record<string, number> = { tests: 22.8, 'data-model': 17.3, hygiene: 17.1, security: 12.5, completeness: 11.9, correctness: 10.6, architecture: 10.1, intent: 9.4, conventions: 8.7, infrastructure: 8.4, 'rule-check': 7.1 };
 export const defaultCallSeconds = 10;
 
