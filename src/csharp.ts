@@ -54,8 +54,9 @@ function skipString(text: string, i: number): number {
   }
   let quotes = 0;
   while (text[q + quotes] === '"') quotes++;
-  if (quotes >= 3) {
+  if (quotes >= 3 && !verbatim) {
     // A raw string ends at the next run of as many quotes; its holes need no parsing to be masked.
+    // A verbatim string is never raw, so `@""""` is a verbatim string holding one quote.
     const end = text.indexOf('"'.repeat(quotes), q + quotes);
     return end < 0 ? text.length : end + quotes;
   }
