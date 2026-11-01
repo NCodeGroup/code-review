@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, templateCandidate, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
-import { checkSummary, checkText, summaryComment, type Results } from '../src/results.ts';
+import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
 import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
 import { placeFindings } from '../src/threads.ts';
@@ -346,6 +346,13 @@ test('upstreamFindings stops at maxUpstreamFindings, most severe first, and coun
   assert.ok(upstream.slice(0, shouldFix).every((f) => f.severity === 'should-fix'));
   assert.ok(upstream.slice(shouldFix).every((f) => f.severity === 'nit'));
   assert.equal(omitted, 5);
+});
+
+test('upstreamTotal counts the listed upstream findings and the omitted ones', () => {
+  const listed = (line: number): ReviewedFinding => ({ ...finding('.githooks/pre-push', line), id: `U${line}`, reviewers: ['hygiene'] });
+  assert.equal(upstreamTotal({}), 0);
+  assert.equal(upstreamTotal({ upstream: [listed(1), listed(2)] }), 2);
+  assert.equal(upstreamTotal({ upstream: [listed(1)], upstreamOmitted: 3 }), 4);
 });
 
 test('settleUpstream moves what synthesis placed in the template\'s files upstream and renumbers the rest', () => {

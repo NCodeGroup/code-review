@@ -27,7 +27,7 @@ import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { loadCharters, review } from './review.ts';
 import { buildResults } from './review-results.ts';
-import { newestReviewedHead, type Results } from './results.ts';
+import { newestReviewedHead, upstreamTotal, type Results } from './results.ts';
 import { guidanceLabel, planTeaching, teachingFile } from './teach.ts';
 import { confirmTemplateFiles } from './template-check.ts';
 import { readClosedIssues, writerCheck } from './writers.ts';
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
   } finally {
     await proxy.close();
   }
-  const upstream = (results.upstream?.length ?? 0) + (results.upstreamOmitted ?? 0);
+  const upstream = upstreamTotal(results);
   log(`${results.findings.length} findings${upstream ? ` (${upstream} more belong upstream)` : ''}, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`);
 }
 
