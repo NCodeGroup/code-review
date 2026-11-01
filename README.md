@@ -627,3 +627,10 @@ The traces of v1.0.0's review of [#144](https://github.com/NCodeGroup/code-revie
 Comment `/wif-test` on any issue in this repository. The WIF smoke test workflow checks that a job in the
 `code-review` environment gets an Anthropic token, that a job outside it is refused, and that the organization's
 Bedrock key works.
+
+## Project
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to set up, build, test and propose a change.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [docs/decisions/](docs/decisions/README.md): the decisions behind the design, the project's and the template's.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release, in the Keep a Changelog format.
