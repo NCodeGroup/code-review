@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ReviewedFinding } from '../src/review.ts';
-import { findingBody, findingTitle, threadBody } from '../src/threads.ts';
+import { findingBody, findingTitle, parseFindingComment, threadBody } from '../src/threads.ts';
 
 const finding = (overrides: Partial<ReviewedFinding> = {}): ReviewedFinding => ({
   id: 'F1', severity: 'should-fix', file: 'src/a.ts', line: 12, title: 'Overlapping runs race', problem: 'Two runs write the file.', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['correctness'], ...overrides,
@@ -18,4 +18,10 @@ test('findingBody leaves out the first line, the evidence and the marker', () =>
   assert.ok(body.startsWith('Two runs write the file.'));
   assert.match(body, /\*\*Fix:\*\*/);
   assert.doesNotMatch(body, /<details>|ncode-review:finding/);
+});
+
+test('parseFindingComment reads the marker threadBody wrote, not one in a suggestion before it', () => {
+  const decoy = '<!-- ncode-review:finding id=F9 fp=0000000000000000 severity=nit -->';
+  const body = threadBody(finding({ id: 'F2', severity: 'blocker', reviewers: ['security'] }), { startLine: 12, endLine: 12, replacement: decoy });
+  assert.deepEqual(parseFindingComment(body), { id: 'F2', severity: 'blocker', reviewers: ['security'] });
 });

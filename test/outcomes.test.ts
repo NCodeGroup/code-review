@@ -15,7 +15,6 @@ import {
   maxThreadPages,
   outcomesMarker,
   outcomesSection,
-  parseFindingComment,
   parseOutcomesMarker,
   patchTouches,
   publishOutcomes,
@@ -30,7 +29,7 @@ import {
 } from '../src/outcomes.ts';
 import { headMarker, newestReviewedHead, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
-import { threadBody } from '../src/threads.ts';
+import { parseFindingComment, threadBody } from '../src/threads.ts';
 import { maxReplyAuthorLookups } from '../src/writers.ts';
 
 const none: Evidence = { linesChanged: false, isResolved: false, isOutdated: false, reactions: [], replies: [] };

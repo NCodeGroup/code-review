@@ -26,6 +26,7 @@ import {
 } from './results.ts';
 import type { Severity } from './review.ts';
 import { readThreadPages } from './review-threads.ts';
+import { parseFindingComment } from './threads.ts';
 import { maxReplyAuthorLookups, withLookupLimit, writerCheck } from './writers.ts';
 
 export type Outcome = 'fixed' | 'dismissed' | 'acknowledged' | 'ignored';
@@ -157,22 +158,6 @@ export interface OutcomesReport {
   // The newest summary comment, which the publish step edits; absent when there's none, and it posts a final one.
   summaryCommentId?: number;
   summaryBody?: string;
-}
-
-// The finding a bot comment carries, from its marker; reviewers come from the visible line for a comment posted before
-// the marker named them, or whose marker names them as blank.
-export function parseFindingComment(body: string): { id: string; severity: Severity; reviewers: string[] } | undefined {
-  const marker = /<!-- ncode-review:finding (.+?) -->/.exec(body);
-  if (!marker) return undefined;
-  const fields = new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string]));
-  const id = fields.get('id');
-  const severity = fields.get('severity') as Severity | undefined;
-  if (!id || !severity) return undefined;
-  const listed = (fields.get('reviewer') ?? '').split(',').filter(Boolean);
-  const reviewers = listed.length
-    ? listed
-    : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
-  return { id, severity, reviewers: reviewers.filter(Boolean) };
 }
 
 interface GraphComment {

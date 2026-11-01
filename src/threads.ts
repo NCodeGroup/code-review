@@ -42,6 +42,21 @@ export function markerFields(body: string | undefined): Map<string, string> | un
   return marker ? new Map(marker[1]!.split(' ').map((pair) => pair.split('=') as [string, string])) : undefined;
 }
 
+// The finding a bot comment carries, from its marker; reviewers come from the visible line for a comment posted before
+// the marker named them, or whose marker names them as blank. It reads the last marker, as markerFields does: the one
+// threadBody wrote, after any suggestion.
+export function parseFindingComment(body: string): { id: string; severity: Severity; reviewers: string[] } | undefined {
+  const fields = markerFields(body);
+  const id = fields?.get('id');
+  const severity = fields?.get('severity') as Severity | undefined;
+  if (!id || !severity) return undefined;
+  const listed = (fields?.get('reviewer') ?? '').split(',').filter(Boolean);
+  const reviewers = listed.length
+    ? listed
+    : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
+  return { id, severity, reviewers: reviewers.filter(Boolean) };
+}
+
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
 export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null }[]): PostedThread[] {
   const posted: PostedThread[] = [];
