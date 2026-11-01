@@ -3,6 +3,7 @@
 // tracks.
 
 import { createHash } from 'node:crypto';
+import { neutralizeProse } from './markdown.ts';
 import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
 
 // The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
@@ -171,20 +172,25 @@ function text(value: string): string {
   return value.replace(/</g, '&lt;');
 }
 
+// Model-written text: escaped as text() does, then neutralized, so it can't mention anyone or post a link.
+function prose(value: string): string {
+  return neutralizeProse(text(value));
+}
+
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {
   const reviewers = finding.reviewers.map((name) => name.replace(/[^A-Za-z0-9._-]/g, '-')).join(',');
   const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity}${reviewers ? ` reviewer=${reviewers}` : ''} -->`;
   return [
-    `${severityDot[finding.severity]} **${severityLabel[finding.severity]}: ${text(finding.title)}** <sub>${finding.id} · ${text(finding.reviewers.join(', '))}</sub>`,
+    `${severityDot[finding.severity]} **${severityLabel[finding.severity]}: ${prose(finding.title)}** <sub>${finding.id} · ${text(finding.reviewers.join(', '))}</sub>`,
     '',
-    text(finding.problem),
+    prose(finding.problem),
     '',
-    `**Consequence:** ${text(finding.consequence)}`,
+    `**Consequence:** ${prose(finding.consequence)}`,
     '',
-    `**Fix:** ${text(finding.fix)}`,
+    `**Fix:** ${prose(finding.fix)}`,
     '',
     ...(suggestion ? [suggestionBlock(suggestion.replacement), ''] : []),
-    `<details><summary>Evidence</summary>\n\n${text(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
+    `<details><summary>Evidence</summary>\n\n${prose(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
     '',
     marker,
   ].join('\n');
@@ -227,7 +233,7 @@ export function reviewBody(placement: Placement, headSha: string): string {
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${text(f.title)}** \`${text(f.file)}:${f.line}\`. ${text(f.problem)} **Fix:** ${text(f.fix)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}`);
     }
   }
   return lines.join('\n');
