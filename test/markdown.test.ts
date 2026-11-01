@@ -72,6 +72,13 @@ test('neutralizeProse breaks character references that make an issue reference',
   );
 });
 
+test('neutralizeProse breaks a GH reference whose hyphen or digit is a character reference', () => {
+  assert.equal(
+    neutralizeProse('GH&#45;4, GH&#x2D;5, gh&#x2d;6, GH-&#52;, GH-&#x37; and GH&#45;&#56;'),
+    'GH\u200b&#45;4, GH\u200b&#x2D;5, gh\u200b&#x2d;6, GH\u200b-&#52;, GH\u200b-&#x37; and GH\u200b&#45;&#56;',
+  );
+});
+
 test('neutralizeProse leaves a # that starts no issue reference as written', () => {
   assert.equal(neutralizeProse('C# 1, #x, GH-x, &#35;x and &#49;&#50;'), 'C# 1, #x, GH-x, &#35;x and &#49;&#50;');
 });

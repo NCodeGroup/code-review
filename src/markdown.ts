@@ -14,7 +14,8 @@ export function plainText(text: string): string {
 // Model-written text for a comment, neutralized so it can't mention anyone, post a link or cross-reference an issue or
 // pull request. Outside code, a zero-width space goes after an @ that starts a mention, between ] and a following (, [
 // or :, between http: or https: and //, between www and a following dot, after a # followed by a digit (an issue or
-// pull request reference such as #12 or owner/repo#12), and between GH and a - followed by a digit. A character
+// pull request reference such as #12 or owner/repo#12), and between GH and a - followed by a digit, where the - or the
+// digit may also be a character reference such as &#45; and the zero-width space still goes right after GH. A character
 // reference GitHub would decode into one of those also gets a zero-width space after its &, which keeps it literal
 // text: any reference to @, references to # followed by a digit, and references to :, /, ], (, or [ in an http: or
 // https: scheme followed by // or where a ] meets a following (, [ or :. Code stays as written: an inline code span, a
