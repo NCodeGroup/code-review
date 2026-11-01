@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-01
+
 ### Added
 
 - Settings checks: `tiers:` can't put `security` below Sonnet (a lower tier is raised to Sonnet, with a warning), and a `skip:` glob that matches nearly every path, such as `**`, and a `CODE_REVIEW_SHADOW` name that matches no reviewer are warnings in the check run ([#94](https://github.com/NCodeGroup/code-review/issues/94)).
@@ -13,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Timing instrumentation: each model call's record in the trace has when it started (`startedAt`) and when its first response came (`firstResponseMs`), the trace has the engine's stage times (`timings`), `node tools/timings.ts` summarizes downloaded trace artifacts, `npm run bench:review` times a review on a fake agent with production's call durations, and `npm run bench:tests` times each test file ([#128](https://github.com/NCodeGroup/code-review/issues/128)).
 - The README's Interface section writes down the caller–engine contract v1.0.0 will freeze: the action's inputs, the triggers and types a caller needs, each job's permissions, environment and secrets, and the `base` checkout ([#57](https://github.com/NCodeGroup/code-review/issues/57)).
 - The Eval workflow runs a named eval subset (`smoke` or `re-review`) by hand from `main`, with verification on or off, a `CODE_REVIEW_TIERS` override, up to two runs and a cap of $5, $10 or $25 a run, in the `code-review` environment, and uploads the outputs after a secret scan, so evals need no local Bedrock key. `CODE_REVIEW_TIERS` takes `synthesis=<tier>` and `CODE_REVIEW_SYNTHESIS_EFFORT` sets the synthesis call's effort, to measure synthesis on a cheaper setup ([#135](https://github.com/NCodeGroup/code-review/issues/135)).
+- The smoke eval's first baseline, `evals/baseline-smoke.json`, from the run on `main` after the decisions rule was narrowed: caught 2 of 3, the must-not case quiet ([#52](https://github.com/NCodeGroup/code-review/issues/52)).
 
 ### Changed
 
@@ -46,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The tests run faster on Windows: `test/rereview.test.ts` builds each git repository its tests only read once instead of once per test, and the fetch time-limit test's server drops its connection after the limit, so the killed git's `git-remote-http` no longer holds the folder through the cleanup's retries; that test now checks the folder is removed on Windows too ([#136](https://github.com/NCodeGroup/code-review/issues/136)).
 - Callers record outcomes in a job of their own, `outcomes`, which runs only when a pull request closes, outside the `code-review` environment and without `id-token: write`, the Bedrock key or a checkout, since it makes no model call; the review job no longer runs on `closed`. This repository's workflow and the README's caller have it, and the README's examples pin v0.4.0 ([#47](https://github.com/NCodeGroup/code-review/issues/47)).
 - Reviewers no longer question a decision the pull request adds for a scope or limit it states, such as leaving existing data as it is: they question it only where it contradicts the code or another decision. The smoke eval's must-not case flagged such a question ([#52](https://github.com/NCodeGroup/code-review/issues/52)).
+- Verification is on by default; `CODE_REVIEW_VERIFICATION=off` turns it off. On the smoke evals it caught as much as without it, with no must-not flag, at 5 blockers and should-fixes against 7 and 8, for about 3% more. The Eval workflow runs it by default too ([#41](https://github.com/NCodeGroup/code-review/issues/41)).
+- The README's Evals section records the 2026-11-01 results: verification on and off, synthesis on Sonnet and at medium effort, which stays on Opus at the default effort since Sonnet posted more serious findings, and the re-review cases' cost, with no overlapping findings for `mergeOverlapping` to merge ([#123](https://github.com/NCodeGroup/code-review/issues/123), [#135](https://github.com/NCodeGroup/code-review/issues/135)).
 
 ### Fixed
 
@@ -59,6 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A re-review shows the reviewers the replies in the earlier findings' threads from an organization member whose membership is private, and a finding's outcome counts their replies: when a reply's author association doesn't name a writer, both ask the repository's permissions, as the description's check does, looking up at most 20 repliers per review ([#124](https://github.com/NCodeGroup/code-review/issues/124)).
 - A finding's outcome is read from the marker that ends its thread's first comment, as everything else reads it, so a one-click suggestion whose code holds a marker-like line can't change which finding the outcome records ([#95](https://github.com/NCodeGroup/code-review/issues/95)).
 - The `api-compat` floor reads a C# verbatim string whose text starts with an escaped quote, such as `@"""Hi"" there"`, as a verbatim string, instead of as a raw string that ran to the end of the file and made every change in it count as public. A measurement across NCodeGroup's C# found no file where conditional compilation unbalances the braces, so the scanner stays ([#122](https://github.com/NCodeGroup/code-review/issues/122)).
+- A finding's outcome follows a writer's latest `Autopilot: fixed in <sha>` reply when the pull request gained that commit after the review, even when the fix is on other lines, and a writer's `Autopilot: not changed` reply, even when the line changed for another reason; the monthly report's hand count found both counted the other way ([#97](https://github.com/NCodeGroup/code-review/issues/97)).
 
 ### Security
 
@@ -147,7 +153,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/NCodeGroup/code-review/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/NCodeGroup/code-review/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/NCodeGroup/code-review/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/NCodeGroup/code-review/compare/v0.2.1...v0.3.0
