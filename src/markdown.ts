@@ -20,6 +20,8 @@ export function plainText(text: string): string {
 // its line, a fence-like line that is indented or first, or a fence never closed), the whole text is escaped, code
 // included: a zero-width space in code is invisible, and a ping isn't.
 export function neutralizeProse(text: string): string {
+  // CommonMark ends a line at a lone \r too, so the fence and code span rules below must see it as a line break.
+  text = text.replace(/\r(?!\n)/g, '\n');
   const lines = text.split('\n');
   const out: string[] = [];
   let fence: string | undefined;

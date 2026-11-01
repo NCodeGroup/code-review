@@ -39,3 +39,8 @@ test('neutralizeProse escapes everything for an indented, first-line or unclosed
   assert.equal(neutralizeProse('```js\n@x\n```'), '```js\n@\u200bx\n```');
   assert.equal(neutralizeProse('x\n```\n@y'), 'x\n```\n@\u200by');
 });
+
+test('neutralizeProse reads a lone carriage return as a line break', () => {
+  assert.equal(neutralizeProse('x\n```\n@x\r```\n@y\n```'), 'x\n```\n@\u200bx\n```\n@\u200by\n```');
+  assert.equal(neutralizeProse('x\r\n```\r\n@x\r\n```\r\ny @z'), 'x\r\n```\r\n@x\r\n```\r\ny @\u200bz');
+});
