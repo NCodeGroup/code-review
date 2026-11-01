@@ -7,7 +7,7 @@ import path from 'node:path';
 import { runAgent, totalCost, withoutTools, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
 import { parseCharter, type Charter } from './charter.ts';
 import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
-import { mapWithConcurrency } from './concurrency.ts';
+import { runLeadersFirst } from './concurrency.ts';
 import { budgets, deepReviewerTiers, findingsPerExtraChunk, lightReviewerTiers, maxFindings, maxFindingsCap, maxTurns, maxUpstreamFindings, minConfidence, reviewerTiers, ruleChecksOn, rulesPerCheck, runCeiling, shadowOverride, shadowPromptRate, verificationOn, type ModelTier } from './config.ts';
 import { guidanceRules, repositoryRules, rulesForFiles, selectContext, type Context, type Decision, type IndexedRule } from './context.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
@@ -936,6 +936,10 @@ async function finishReview(
   };
 }
 
+// How long each reviewer's call takes, in seconds: the medians of 60 production traces (October 2026). Waiting calls start longest first, so a slow one isn't left to start last; nothing else depends on these.
+export const expectedCallSeconds: Record<string, number> = { tests: 22.8, 'data-model': 17.3, hygiene: 17.1, security: 12.5, completeness: 11.9, correctness: 10.6, architecture: 10.1, intent: 9.4, conventions: 8.7, infrastructure: 8.4, 'rule-check': 7.1 };
+export const defaultCallSeconds = 10;
+
 // The specialists and the rule checks on each part of the diff, then their findings split between the repository's own
 // files, for synthesis, and the template's, which go upstream.
 async function runReviewers(setup: ReviewSetup, selected: Set<string>, context: Context, batches: IndexedRule[][]): Promise<ReviewersRun> {
@@ -965,11 +969,10 @@ async function runReviewers(setup: ReviewSetup, selected: Set<string>, context: 
     if (!prompts.length) return [];
     return [{ ...job, role: `shadow-prompt:${job.role}`, systemPrompt: variants.specialist ?? job.systemPrompt, charter: charter ?? job.charter, twinOf: job, prompts }];
   });
-  const first = jobs.filter((job, i) => jobs.findIndex((other) => other.tier === job.tier && other.part === job.part) === i);
   const outcomeOf = new Map<Job, ReviewerOutcome>();
   // A runaway guard only: calls already running finish, and each call's own cap bounds how far they go past it.
   const ceiling = runCeiling(parts.length, undefined, (message) => log(`::warning::${message}`));
-  const reviewOne = async (job: Job): Promise<void> => {
+  const reviewOne = async (job: Job, started: () => void): Promise<void> => {
     const { name, part, label, tier } = job;
     const where = [parts.length > 1 ? `part ${part + 1}` : '', label, shadow.has(name) ? 'shadow' : '', job.twinOf ? 'shadow prompt' : ''].filter(Boolean).join(', ');
     if (spent() >= ceiling) {
@@ -985,6 +988,7 @@ async function runReviewers(setup: ReviewSetup, selected: Set<string>, context: 
       schema: specialistSchema,
       maxTurns: maxTurns.specialist,
       budgetUsd: budgets.specialist[tier],
+      onFirstResponse: started,
     });
     calls.push(...result.records);
     const cost = totalCost(result.records);
@@ -994,9 +998,12 @@ async function runReviewers(setup: ReviewSetup, selected: Set<string>, context: 
     outcomeOf.set(job, result.error ? { name, status: 'failed', findings: [], error: result.error } : { name, status: 'ran', findings: kept });
   };
   const concurrency = 6;
-  // The twins start after every live job, so the cost ceiling skips a twin before it skips a live call.
-  await mapWithConcurrency(first, concurrency, reviewOne);
-  await mapWithConcurrency([...jobs.filter((job) => !first.includes(job)), ...twins], concurrency, reviewOne);
+  // Each part's calls on one model share a cached first block, so the first of them leads and the rest start once its
+  // first response has written the cache, or once it finishes. The twins start only after every live call has been
+  // released, so the cost ceiling skips a twin before a live call.
+  const groups = new Map<string, Job[]>();
+  for (const job of jobs) groups.set(`${job.part}:${job.tier}`, [...(groups.get(`${job.part}:${job.tier}`) ?? []), job]);
+  await runLeadersFirst([...groups.values()], twins, concurrency, (job) => expectedCallSeconds[job.name] ?? defaultCallSeconds, reviewOne);
   for (const twin of twins) {
     const output = (o: ReviewerOutcome) => (o.error ? { error: o.error } : { findings: o.findings });
     shadowPrompts.push({ prompts: twin.prompts!, role: `${twin.twinOf!.role}${parts.length > 1 ? ` part ${twin.part + 1}` : ''}${twin.label ? ` ${twin.label}` : ''}`, live: output(outcomeOf.get(twin.twinOf!)!), shadow: output(outcomeOf.get(twin)!) });
