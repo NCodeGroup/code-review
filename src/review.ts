@@ -773,6 +773,8 @@ export async function review(options: ReviewOptions): Promise<Review> {
     schema: selectionSchema,
     maxTurns: 3,
     budgetUsd: budgets.selection,
+    // One request, whose prompt nothing else reuses: caching would pay to write it and never read it (issue #133).
+    cache: false,
   });
   const [picked, selection, shadowSelection] = await Promise.all([
     picking,
@@ -823,6 +825,8 @@ export async function review(options: ReviewOptions): Promise<Review> {
       schema: synthesisSchema,
       maxTurns: 3,
       budgetUsd: budgets.synthesis,
+      // One request, whose prompt nothing else reuses: caching would pay to write it and never read it (issue #133).
+      cache: false,
     });
     const [synthesis, shadowSynthesis] = await Promise.all([
       agent<SynthesisOutput>(oneShot, synthesisRequest('synthesis', charters.synthesisPrompt)),
