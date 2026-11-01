@@ -147,6 +147,8 @@ async function main(): Promise<void> {
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
   const log = writeLog;
+  // One client for the run's reads with the read-only token: each request has a time limit and goes to the runner's GitHub.
+  const github = githubApi(githubToken, fetch, { terseErrors: true });
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
   const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
@@ -156,7 +158,7 @@ async function main(): Promise<void> {
   // no credentials. It never reviews.
   if (isClosedEvent(event)) {
     if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
-    await recordOutcomes(githubApi(githubToken, fetch, { terseErrors: true }), event, repository, outDir);
+    await recordOutcomes(github, event, repository, outDir);
     return;
   }
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
@@ -235,7 +237,7 @@ async function main(): Promise<void> {
     log,
   });
   // Only a full review's synthesis can mark a finding as tracked in an open issue.
-  const openIssues = plan ? [] : await readOpenIssues(repository, githubToken, isWriter, closedIssues(pullRequest.body));
+  const openIssues = plan ? [] : await readOpenIssues(repository, github, isWriter, closedIssues(pullRequest.body));
 
   const choice = await chooseProvider(credentials);
   log(`Provider: ${choice.reason}`);

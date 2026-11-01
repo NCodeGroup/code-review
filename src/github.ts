@@ -81,7 +81,7 @@ function send(client: GitHubClient, method: string, target: string, body: unknow
 }
 
 // Calls GitHub with a token, and throws a GitHubError on any answer but a success.
-export function githubApi(token: string, fetchFn: typeof fetch = fetch, options: Omit<GitHubClient, 'token' | 'fetch'> = {}): Api {
+export function githubApi(token: string | undefined, fetchFn: typeof fetch = fetch, options: Omit<GitHubClient, 'token' | 'fetch'> = {}): Api {
   const client = { ...options, token, fetch: fetchFn };
   return async (method, url, body) => {
     const response = await githubFetch(client, method, url, body);
