@@ -15,7 +15,8 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoSecrets } from '../src/outputs.ts';
-import { compare, noiseLimit, readOutput, table, type EvalOutput } from './compare.ts';
+import { compare, noiseLimit, readOutput, table } from './compare.ts';
+import type { EvalOutput } from './output.ts';
 
 export const baselineFile = 'evals/baseline-smoke.json';
 export const proposedName = 'proposed-baseline-smoke.json';
