@@ -120,13 +120,14 @@ export const maxTurns = { specialist: 30, explain: 20, verification: 20 };
 
 // Verification: after synthesis, Sonnet calls with the checkout try to prove or refute each blocker and should-fix, a
 // file's findings at a time, up to findingsPerVerification per call, and Opus calls for a deep review's sensitive files.
-// It stays off until an eval shows it gains more than it costs; CODE_REVIEW_VERIFICATION=on turns it on.
+// Verification is on unless CODE_REVIEW_VERIFICATION=off; the smoke evals of 2026-11-01 caught as much with it on, at 5
+// blockers and should-fixes against 7 and 8, for about 3% more (issue #41).
 export const findingsPerVerification = 8;
 // Verification calls in flight at once, after the first call has cached the block they share.
 export const verificationConcurrency = 6;
 
 export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? ''): boolean {
-  return value === 'on';
+  return value.trim() !== 'off';
 }
 
 // Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
