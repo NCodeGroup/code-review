@@ -31,13 +31,11 @@ permissions: {}
 jobs:
   review:
     # The engine checks a comment again (exactly `/review`, from a writer, on a pull request that isn't from a fork) and
-    # stops before any model call when it isn't one. A closed pull request only records outcomes, whoever closed it (a
-    # merge queue merges as a bot) and whatever its labels; the engine never reviews on `closed`.
+    # stops before any model call when it isn't one.
     if: >-
-      (github.event_name == 'pull_request_target' &&
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        (github.event.action == 'closed' ||
-          (github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')))) ||
+        github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
@@ -45,11 +43,10 @@ jobs:
     # Anthropic's federation rule trusts only jobs in this environment, which only the default branch can deploy to.
     environment: code-review
     timeout-minutes: 30
-    # Each /review explain or /review teach comment gets its own group, so it never cancels a review in progress. A closed
-    # pull request's run waits for a review in progress, so its threads are counted, instead of cancelling it.
+    # Each /review explain or /review teach comment gets its own group, so it never cancels a review in progress.
     concurrency:
       group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: ${{ github.event.action != 'closed' }}
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
@@ -68,3 +65,25 @@ jobs:
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+  outcomes:
+    # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
+    # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
+    # environment, without id-token: write, the Bedrock key or a checkout.
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The review's group: it waits for a review in progress, so that review's threads are counted, instead of cancelling it.
+    concurrency:
+      group: code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Record the outcomes
+        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
+        with:
+          app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}

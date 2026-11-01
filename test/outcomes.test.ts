@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { parse } from 'yaml';
 import {
   classify,
   collectOutcomes,
@@ -657,11 +658,35 @@ test('the caller triggers on closed, and the action gives a closed run no model 
 
 test("this repository's workflow triggers on closed exactly when its pin is a release that records outcomes", () => {
   const workflow = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /github\.event\.action == 'closed' \|\|/);
   const pin = /NCodeGroup\/code-review@[0-9a-f]{40} # v(\d+)\.(\d+)\.(\d+)/.exec(workflow);
   assert.ok(pin, 'the action is pinned to a release');
   const [major, minor, patch] = pin.slice(1).map(Number) as [number, number, number];
   // v0.3.1 and earlier review a closed pull request at model cost; a later release records its outcomes instead.
   const recordsOutcomes = major > 0 || minor > 3 || (minor === 3 && patch > 1);
   assert.equal(/types: \[[^\]]*\bclosed\b/.test(workflow), recordsOutcomes, recordsOutcomes ? 'add closed to the types with this pin' : 'closed waits for a pin that records outcomes');
+});
+
+type WorkflowStep = { uses?: string; with?: Record<string, unknown> };
+type WorkflowJob = { environment?: string; if?: string; permissions?: unknown; concurrency?: unknown; steps?: WorkflowStep[] };
+
+function assertOutcomesJob(text: string, label: string): void {
+  const { jobs } = parse(text) as { jobs: { review: WorkflowJob; outcomes: WorkflowJob } };
+  const { review, outcomes } = jobs;
+  assert.equal(review.environment, 'code-review', label);
+  assert.ok(review.if?.includes("github.event.action != 'closed'"), label);
+  assert.equal(outcomes.environment, undefined, label);
+  assert.deepEqual(outcomes.permissions, { contents: 'read', 'pull-requests': 'read' }, label);
+  assert.ok(outcomes.if?.includes("github.event.action == 'closed'"), label);
+  assert.deepEqual(outcomes.concurrency, { group: 'code-review-${{ github.event.pull_request.number }}', 'cancel-in-progress': false }, label);
+  assert.equal(outcomes.steps?.length, 1, label);
+  const [step] = outcomes.steps ?? [];
+  assert.deepEqual(Object.keys(step?.with ?? {}), ['app-private-key'], label);
+  const reviewStep = review.steps?.find((s) => s.uses?.startsWith('NCodeGroup/code-review@'));
+  assert.ok(reviewStep, label);
+  assert.equal(step?.uses, reviewStep.uses, label);
+}
+
+test("this repository's workflow records outcomes in a job of its own, outside the code-review environment", () => {
+  const workflow = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
+  assertOutcomesJob(workflow, 'workflow');
 });
