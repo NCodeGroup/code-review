@@ -105,13 +105,11 @@ permissions: {}
 jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A
-    # closed pull request, whoever closed it, only records its findings' outcomes, with no model call.
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else.
     if: >-
-      (github.event_name == 'pull_request_target' &&
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        (github.event.action == 'closed' ||
-          (github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')))) ||
+        github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
@@ -120,7 +118,7 @@ jobs:
     timeout-minutes: 30
     concurrency:
       group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: ${{ github.event.action != 'closed' }}
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
@@ -133,10 +131,32 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1
+      - uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+
+  outcomes:
+    # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
+    # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
+    # environment, without id-token: write, the Bedrock key or a checkout.
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The review's group: it waits for a review in progress, so that review's threads are counted, instead of cancelling it.
+    concurrency:
+      group: code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Record the outcomes
+        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0
+        with:
+          app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
 ```
 
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change
@@ -150,6 +170,10 @@ The acknowledgement needs nothing more from this workflow: its token comes from 
 receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
 later) on the runner before setup-node, as `ubuntu-latest` has; on a runner without one, the review runs without the
 acknowledgement.
+
+The `outcomes` job runs only when a pull request closes. It makes no model call, so it runs outside the `code-review`
+environment, without `id-token: write`, the Bedrock key or a checkout, and only the app's key reaches it, to post the
+outcomes. It shares the review's concurrency group, so it waits for a review in progress.
 
 ## Versions
 
@@ -274,9 +298,10 @@ for each finding, its reviewers, severity and outcome, the commit it was reviewe
 model, for the monthly report. The table shows 100 findings at most, and the marker as many as fit in a comment (about
 40,000 characters), counting the rest as `omitted`; the run warns when it leaves any out. When there's no summary
 comment, a final one is posted. A finding with no changed line to sit on, posted in the review's body rather than as a
-thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run. The caller needs `closed` in
-its `pull_request_target` types for this, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier
-treat a closed pull request like an opened one and would pay to review it.
+thread, gets no outcome. A closed pull request gets no 👀 and no "Code review" check run.
+The caller records them in a job of its own, `outcomes` in [Using it](#using-it), and needs `closed` in its
+`pull_request_target` types, added in the same change that pins a release after v0.3.1: v0.3.1 and earlier treat a
+closed pull request like an opened one and would pay to review it.
 
 ### Monthly report
 
