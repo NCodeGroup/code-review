@@ -231,9 +231,12 @@ afterwards, so a mistake is fixed by releasing the next version.
 ### Dependabot and pre-releases
 
 From v1.0.0 on, releases aren't marked as pre-releases, so Dependabot's `github-actions` updater proposes each one in a
-consumer's action updates. project-template gives the bump a Dependabot group of its own and a workflow that
-auto-merges it for a minor or patch release once checks pass; a major release changes this interface, so a person
-merges it.
+consumer's action updates. project-template gives the bump a Dependabot group of its own and a workflow,
+`code-review-auto-merge.yml` ([NCodeGroup/project-template#184](https://github.com/NCodeGroup/project-template/pull/184)),
+that auto-merges the bump for a minor or patch release once the required checks pass and no review thread is
+unresolved. That is the one exception its ADR-0006 records to the rule that a person merges every pull request. A
+major release changes this interface, so a person merges it, and a repository without that workflow merges every bump
+by hand.
 
 No consumer got a Dependabot pull request for v0.2.0 to v0.3.1, because each is marked as a pre-release. Since
 [dependabot-core#13731](https://github.com/dependabot/dependabot-core/pull/13731) (December 2025), the
