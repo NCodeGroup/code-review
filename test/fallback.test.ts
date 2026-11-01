@@ -152,7 +152,7 @@ async function reviewOnFakeSdk(input: Gathered, apiRefuses: (prompt: string) => 
     query: fakeQuery(seen, apiRefuses, bedrockFails),
   };
   try {
-    const outcome = await review(run, input, loadCharters(root), () => {});
+    const outcome = await review({ run, gathered: input, charters: loadCharters(root), log: () => {} });
     const byRole = (role: string) => outcome.calls.filter((c) => c.role === role).map((c) => [c.provider, c.model, c.outcome]);
     return { outcome, fallback, seen, byRole };
   } finally {

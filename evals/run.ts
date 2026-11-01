@@ -350,7 +350,7 @@ async function main(): Promise<void> {
           ...Object.entries(changed.lines).flatMap(([file, lines]) => lines.filter((l) => fromBase.get(file)?.has(l)).map((l) => `reviewed ${file}:${l} from the base branch`)),
         ];
       }
-      const outcome = reReviewed ?? (await review({ ...run, checkout: head }, gathered, charters, log));
+      const outcome = reReviewed ?? (await review({ run: { ...run, checkout: head }, gathered, charters, log }));
       const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       const shadow = outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
       for (const o of outcome.shadow) shadowNames.add(o.name);

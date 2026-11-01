@@ -250,7 +250,7 @@ async function main(): Promise<void> {
       plan,
       headSha: pullRequest.headSha,
       lastHead: last,
-      full: () => review(agentRun, gathered, loadCharters(root), log, runAgent, openIssues),
+      full: () => review({ run: agentRun, gathered, charters: loadCharters(root), log, agent: runAgent, openIssues }),
       again: (p) => reReview(agentRun, gathered, loadCharters(root), p, log),
     });
     for (const warning of outcome.warnings) log(`::warning::${warning}`);
