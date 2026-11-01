@@ -4,7 +4,8 @@
 // author_association alone misses writers: GitHub reports an organization member whose membership is private as
 // CONTRIBUTOR, in event payloads and to the workflow's token. So an author it doesn't name a writer is looked up in the
 // repository's permissions, which the workflow's token can read (metadata: read). The loop limit (pause.ts), the open
-// issues synthesis reads (issues.ts) and the replies to the autopilot (follow-up.ts) use the same check.
+// issues synthesis reads (issues.ts), the replies to the autopilot (follow-up.ts), the replies a re-review reads
+// (rereview.ts) and the replies a finding's outcome counts (outcomes.ts) use the same check.
 
 import { writerAssociations } from './command.ts';
 import { errorText } from './comments.ts';
@@ -43,6 +44,24 @@ export function writerCheck(repository: string, token: string | undefined, fetch
     if (!login) return false;
     if (!known.has(login)) known.set(login, lookUp(login));
     return known.get(login)!;
+  };
+}
+
+// Repliers looked up at most per review, beyond the ones whose association says they can write: a busy pull request's
+// threads could otherwise cost an API call per replier.
+export const maxReplyAuthorLookups = 20;
+
+// isWriter, looking up at most limit logins their association doesn't settle; any later login counts as a non-writer.
+export function withLookupLimit(isWriter: WriterCheck, limit: number): WriterCheck {
+  const looked = new Set<string>();
+  return async (login, association) => {
+    if (writerAssociations.has(association ?? '')) return true;
+    if (!login) return false;
+    if (!looked.has(login)) {
+      if (looked.size >= limit) return false;
+      looked.add(login);
+    }
+    return isWriter(login, association);
   };
 }
 

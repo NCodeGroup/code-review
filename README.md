@@ -42,11 +42,11 @@ The reviewers see a pull request's description, its commit subjects and the issu
 their authors can write to the repository. The engine asks the repository's permissions when the event doesn't say so:
 GitHub reports an organization member whose membership is private as a contributor. The prompt says whether the pull
 request has a description, and when one was left out, so no reviewer reports a description it wasn't shown as missing.
-The loop limit's count of maintainer comments, the open issues a finding can be tracked in and the `Autopilot:` replies
-the bot answers use the same check. A `/review` comment still counts only when its `author_association` names a writer,
-as the workflow's `if:` below checks before the engine starts: a permission lookup there would let more people start a
-run that holds the model credentials. So a private organization member can't start a review that way;
-[Commands](#commands) says what they can do.
+The loop limit's count of maintainer comments, the open issues a finding can be tracked in, the `Autopilot:` replies
+the bot answers, the replies a re-review reads and the replies a finding's outcome counts use the same check. A
+`/review` comment still counts only when its `author_association` names a writer, as the workflow's `if:` below checks
+before the engine starts: a permission lookup there would let more people start a run that holds the model credentials.
+So a private organization member can't start a review that way; [Commands](#commands) says what they can do.
 
 Besides the reviewers, **rule checks** go through the rules the context stage picked for the pull request, twelve at a time, on Sonnet: each call checks its rules one by one against every part of the diff, searching the changed files for what the rule's check names. They report as `rule-check` and run on every review, outside the reviewer roster, so selection can't skip them. In the evals they caught about one more expected finding in 55, at about 70% more cost. `CODE_REVIEW_RULE_CHECKS=off` turns them off.
 
@@ -265,8 +265,9 @@ holds decides:
 | acknowledged | A 👍 or a reply from a writer, without a change. |
 | ignored | None of these. |
 
-Writers are people with write access: for a reply, its author's association (owner, member or collaborator); for a
-reaction, the reactor's permission on the repository. A reply starting `Autopilot: fixed in` counts only when the
+Writers are people with write access: for a reply, its author's association (owner, member or collaborator) or, when
+that doesn't say so, their permission on the repository, with at most 20 repliers looked up; for a reaction, the
+reactor's permission on the repository. A reply starting `Autopilot: fixed in` counts only when the
 finding's line changed, which already makes it fixed. The newest summary comment gets a table of finding, reviewer,
 severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and
