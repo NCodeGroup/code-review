@@ -149,6 +149,12 @@ test('answerBody refers to the finding\'s comment and ends with why it still hol
   );
 });
 
+test('answerBody neutralizes mentions and links in the answer and the reason, but not in code spans', () => {
+  const body = answerBody(found, { answer: 'Ask @owner, see [this](https://evil.example).', holds: true, reason: 'because `@Override` is missing for @team.' });
+  assert.ok(body.includes('Ask @\u200bowner, see [this]\u200b(https:\u200b//evil.example).'), body);
+  assert.ok(body.includes('Still holds because `@Override` is missing for @\u200bteam.'), body);
+});
+
 test('answerBody ends with a concession when the finding does not hold', () => {
   const body = answerBody({ id: 'F1', comment: finding(42, 200, 'F1', { line: null, original_line: 8 }) }, { answer: 'The caller checks it.', holds: false, reason: 'the guard on line 3 returns first.' });
   assert.match(body, /^Re F1 \(\[`src\/a\.ts:8`\]\(https:\/\/github\.com\/NCodeGroup\/code-review\/pull\/7#discussion_r42\)\): The caller checks it\./);
