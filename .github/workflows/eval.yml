@@ -16,9 +16,9 @@ on:
           - smoke
           - re-review
       verification:
-        description: CODE_REVIEW_VERIFICATION
+        description: CODE_REVIEW_VERIFICATION (on by default, as in production)
         type: choice
-        default: 'off'
+        default: 'on'
         options:
           - 'off'
           - 'on'
