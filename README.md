@@ -175,6 +175,39 @@ The `outcomes` job runs only when a pull request closes. It makes no model call,
 environment, without `id-token: write`, the Bedrock key or a checkout, and only the app's key reaches it, to post the
 outcomes. It shares the review's concurrency group, so it waits for a review in progress.
 
+## Interface
+
+This is the contract between a caller's workflow and the engine, which v1.0.0 will freeze. From v1.0.0 on, removing or
+renaming an input, changing what an input's default means, or needing another trigger type, permission, secret,
+environment or checkout is a breaking change and a new major version; a new optional input or output isn't. Before
+1.0.0 a minor release may still change it, and its changelog section says how.
+
+| Input | Required | Default | What it is |
+|---|---|---|---|
+| `app-private-key` | yes | none | The NCode Review app's private key (the `NCODE_REVIEW_APP_PRIVATE_KEY` organization secret). |
+| `bedrock-api-key` | no | `''` | The Bedrock API key used once the plan's API credits run out (`AWS_BEARER_TOKEN_BEDROCK`). |
+| `pr-path` | no | `pr` | Where the pull request's head is read, relative to the workspace. |
+| `base-path` | no | `base` | Where the default branch is checked out, relative to the workspace. |
+| `github-token` | no | `${{ github.token }}` | A read-only token the engine reads the pull request, its issues and its comments with. |
+| `app-client-id` | no | `Iv23liAbZt44tgephpLC` | The NCode Review app's client ID. |
+| `federation-rule-id` | no | `fdrl_019dXaBRa2Zo1UazugiQwWZ3` | The Anthropic federation rule the job logs in through. |
+| `organization-id` | no | `e9301a37-092f-47c8-9b24-188808b1d576` | The Anthropic organization. |
+| `service-account-id` | no | `svac_012yav3w3rfhH5i9bAgoWLHe` | The Anthropic service account the federation rule maps to. |
+| `workspace-id` | no | `wrkspc_019f5RLk5SG4XWE8XKwWFHZh` | The Anthropic workspace that pays for the review. |
+
+The action has no outputs. A caller needs:
+
+- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, and `issue_comment`,
+  with the type `created`;
+- a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
+  and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
+  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`;
+- an `outcomes` job with no environment, the permissions `contents: read` and `pull-requests: read`, no checkout, and
+  the secret `NCODE_REVIEW_APP_PRIVATE_KEY`;
+- a Linux runner for both, such as `ubuntu-latest`.
+
+[Using it](#using-it) shows a caller that meets it.
+
 ## Versions
 
 Pin the action to a release's full commit SHA, with the release's tag in a comment:
