@@ -5,8 +5,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { closedIssues, gather, readPullRequest, type Gathered } from '../src/gather.ts';
+import { githubApi } from '../src/github.ts';
 import { pullRequestBlock, selectionFloor, sharedContext } from '../src/review.ts';
 import { readClosedIssues, readWritersIssues, writerCheck } from '../src/writers.ts';
+import { useGitHubDotCom } from './github-env.ts';
+
+useGitHubDotCom();
 
 const made: string[] = [];
 after(() => {
@@ -85,7 +89,7 @@ async function gatherFor(body: string | null, permissions: Record<string, string
   const authorCanWrite = await isWriter(pullRequestEvent.user.login, pullRequestEvent.author_association);
   const pullRequest = readPullRequest(event, 'o/r', authorCanWrite);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues('o/r', closedNumbers, 't', isWriter, fetchJson);
+  pullRequest.issues = await readClosedIssues('o/r', closedNumbers, githubApi('t', fetchJson), isWriter);
   return gather(pullRequest, repo, repo);
 }
 
@@ -153,7 +157,7 @@ test('a closed issue that cannot be read is left out with a warning, and the oth
     return new Response('', { status: 500 });
   }) as typeof fetch;
   const lines: string[] = [];
-  const issues = await readClosedIssues('o/r', [21, 22, 23], 't', writerCheck('o/r', 't', fetchJson), fetchJson, (line) => lines.push(line));
+  const issues = await readClosedIssues('o/r', [21, 22, 23], githubApi('t', fetchJson), writerCheck('o/r', 't', fetchJson), (line) => lines.push(line));
   assert.deepEqual(issues, [{ number: 21, title: issue21.title, body: issue21.body }]);
   assert.equal(lines.length, 2);
   assert.match(lines[0] ?? '', /^::warning::Couldn't read issue #22, which the description closes \(offline\)/);

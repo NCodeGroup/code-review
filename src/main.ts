@@ -215,7 +215,7 @@ async function main(): Promise<void> {
   const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
-  pullRequest.issues = await readClosedIssues(repository, closedNumbers, githubToken, isWriter, fetch, log);
+  pullRequest.issues = await readClosedIssues(repository, closedNumbers, github, isWriter, log);
   // A template adoption or update leaves a file to the template only when it is the template's own copy.
   const candidate = templateCandidate(pullRequest, prPath, basePath);
   const confirmed = candidate ? await confirmTemplateFiles(candidate, prPath, githubReader(githubToken), log) : undefined;
