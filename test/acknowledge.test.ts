@@ -17,6 +17,7 @@ import {
   publishCheck,
   skippedStatus,
   stepOutcomesFrom,
+  stoppedBy,
   stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
@@ -25,7 +26,7 @@ import { decideReview, decideRun } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
 import { fetchPullRequest, githubApi, type Api } from '../src/github.ts';
-import { chooseProvider, NoProviderError, stoppedBy } from '../src/provider.ts';
+import { chooseProvider, NoProviderError } from '../src/provider.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = 'NCodeGroup/code-review';

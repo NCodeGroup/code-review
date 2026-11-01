@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, runAgent, totalCost, type AgentRun } from './agent.ts';
-import { skippedStatus, stoppedRecord, type RunStatus } from './checks.ts';
+import { skippedStatus, stoppedBy, stoppedRecord, type RunStatus } from './checks.ts';
 import { decideRun, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
@@ -22,7 +22,7 @@ import { writeErrorLog, writeLog } from './log.ts';
 import { isClosedEvent, recordOutcomes, tokenApi } from './outcomes.ts';
 import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
-import { chooseProvider, stoppedBy } from './provider.ts';
+import { chooseProvider } from './provider.ts';
 import { startProxy } from './proxy.ts';
 import { planReReview, readEarlierFindings, reReview, runReview } from './rereview.ts';
 import { loadCharters, review } from './review.ts';
