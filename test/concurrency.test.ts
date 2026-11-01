@@ -100,6 +100,24 @@ test('runLeadersFirst starts released items longest-expected first, and the afte
   await done;
 });
 
+test('runLeadersFirst keeps the after items waiting while a group is unreleased, even with a free slot', async () => {
+  const h = harness();
+  const done = runLeadersFirst([['a1', 'a2'], ['b1', 'b2']], ['z'], 4, () => 1, h.fn);
+  await settle();
+  h.signal('a1');
+  await settle();
+  // a2 is released and running; b is still unreleased and a slot is free, but z must not start.
+  assert.deepEqual(h.started, ['a1', 'b1', 'a2']);
+  h.signal('b1');
+  await settle();
+  assert.deepEqual(h.started, ['a1', 'b1', 'a2', 'b2']);
+  h.finish('a1');
+  await settle();
+  assert.deepEqual(h.started, ['a1', 'b1', 'a2', 'b2', 'z']);
+  for (const item of ['b1', 'a2', 'b2', 'z']) h.finish(item);
+  await done;
+});
+
 test('runLeadersFirst resolves at once with nothing to run', async () => {
   const h = harness();
   await runLeadersFirst([], [], 3, () => 1, h.fn);
