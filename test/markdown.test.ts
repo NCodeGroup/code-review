@@ -40,6 +40,35 @@ test('neutralizeProse escapes everything for an indented, first-line or unclosed
   assert.equal(neutralizeProse('x\n```\n@y'), 'x\n```\n@\u200by');
 });
 
+test('neutralizeProse breaks every character reference to an @', () => {
+  assert.equal(
+    neutralizeProse('Hi &#64;a, &#x40;b, &#X0040;c, &#000064;d and &commat;e'),
+    'Hi &\u200b#64;a, &\u200b#x40;b, &\u200b#X0040;c, &\u200b#000064;d and &\u200bcommat;e',
+  );
+});
+
+test('neutralizeProse breaks character references in an http or https scheme', () => {
+  assert.equal(
+    neutralizeProse('See http&#58;//a, https:&#x2F;/b and HTTP&colon;&sol;&#047;c'),
+    'See http&\u200b#58;//a, https:&\u200b#x2F;/b and HTTP&\u200bcolon;&\u200bsol;&\u200b#047;c',
+  );
+});
+
+test('neutralizeProse breaks character references where a ] meets a (, [ or :', () => {
+  assert.equal(
+    neutralizeProse('[a]&#40;b) [c]&#x5B;d] [e]&colon; f&#93;(g) h&rsqb;&lpar;i)'),
+    '[a]&\u200b#40;b) [c]&\u200b#x5B;d] [e]&\u200bcolon; f&\u200b#93;(g) h&\u200brsqb;&\u200blpar;i)',
+  );
+});
+
+test('neutralizeProse leaves a character reference in a code span as written', () => {
+  assert.equal(neutralizeProse('`&#64;x http&#58;//y` and &#64;z'), '`&#64;x http&#58;//y` and &\u200b#64;z');
+});
+
+test('neutralizeProse leaves a character reference that forms no mention or link as written', () => {
+  assert.equal(neutralizeProse('a&#58; b, &#47;c, x&#93; and &#40;y'), 'a&#58; b, &#47;c, x&#93; and &#40;y');
+});
+
 test('neutralizeProse reads a lone carriage return as a line break', () => {
   assert.equal(neutralizeProse('x\n```\n@x\r```\n@y\n```'), 'x\n```\n@\u200bx\n```\n@\u200by\n```');
   assert.equal(neutralizeProse('x\r\n```\r\n@x\r\n```\r\ny @z'), 'x\r\n```\r\n@x\r\n```\r\ny @\u200bz');

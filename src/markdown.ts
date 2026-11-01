@@ -13,12 +13,14 @@ export function plainText(text: string): string {
 
 // Model-written text for a comment, neutralized so it can't mention anyone or post a link. Outside code, a zero-width
 // space goes after an @ that starts a mention, between ] and a following (, [ or :, between http: or https: and //, and
-// between www and a following dot. Code stays as written: an inline code span, a backtick run no backslash escapes up to
-// the next run of the same length on its line, and a fenced code block, opened at column 0 on a line after the first by
-// three or more backticks (with no backtick after them) or tildes, and closed by a line of at most three spaces and a run
-// of the same character at least as long. When GitHub might read the code differently (a backtick run with no closer on
-// its line, a fence-like line that is indented or first, or a fence never closed), the whole text is escaped, code
-// included: a zero-width space in code is invisible, and a ping isn't.
+// between www and a following dot. A character reference GitHub would decode into one of those also gets a zero-width
+// space after its &, which keeps it literal text: any reference to @, and references to :, /, ], (, or [ in an http: or
+// https: scheme followed by // or where a ] meets a following (, [ or :. Code stays as written: an inline code span, a
+// backtick run no backslash escapes up to the next run of the same length on its line, and a fenced code block, opened
+// at column 0 on a line after the first by three or more backticks (with no backtick after them) or tildes, and closed
+// by a line of at most three spaces and a run of the same character at least as long. When GitHub might read the code
+// differently (a backtick run with no closer on its line, a fence-like line that is indented or first, or a fence never
+// closed), the whole text is escaped, code included: a zero-width space in code is invisible, and a ping isn't.
 export function neutralizeProse(text: string): string {
   // CommonMark ends a line at a lone \r too, so the fence and code span rules below must see it as a line break.
   text = text.replace(/\r(?!\n)/g, '\n');
@@ -50,10 +52,27 @@ export function neutralizeProse(text: string): string {
 
 function escapeProse(text: string): string {
   return text
+    .replace(atReference, breakReferences)
+    .replace(schemeWithReference, breakReferences)
+    .replace(bracketWithReference, breakReferences)
     .replace(/@(?=[A-Za-z0-9_-])/g, '@\u200b')
     .replace(/\](?=[([:])/g, ']\u200b')
     .replace(/(https?:)(?=\/\/)/gi, '$1\u200b')
     .replace(/(www)(?=\.)/gi, '$1\u200b');
+}
+
+// Character references GitHub decodes: decimal or hexadecimal with any leading zeros, or named.
+const at = '&#0*64;|&#[xX]0*40;|&commat;';
+const colon = ':|&#0*58;|&#[xX]0*3[aA];|&colon;';
+const slash = '/|&#0*47;|&#[xX]0*2[fF];|&sol;';
+const closeBracket = '\\]|&#0*93;|&#[xX]0*5[dD];|&rsqb;|&rbrack;';
+const afterBracket = `[([]|&#0*40;|&#[xX]0*28;|&lpar;|&#0*91;|&#[xX]0*5[bB];|&lsqb;|&lbrack;|${colon}`;
+const atReference = new RegExp(at, 'g');
+const schemeWithReference = new RegExp(`[hH][tT][tT][pP][sS]?(?:${colon})(?:${slash})(?:${slash})`, 'g');
+const bracketWithReference = new RegExp(`(?:${closeBracket})(?:${afterBracket})`, 'g');
+
+function breakReferences(match: string): string {
+  return match.replace(/&(?=[#a-z])/g, '&\u200b');
 }
 
 // A line with its prose escaped and its code spans as written, or undefined when a backtick run has no closer on it.
