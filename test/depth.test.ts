@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
-import { budgets } from '../src/config.ts';
+import { budgets, synthesisTier } from '../src/config.ts';
 import type { Decision } from '../src/context.ts';
 import type { ChangedFile, Gathered, RuleFile } from '../src/gather.ts';
 import { creditsRanOutReason } from '../src/provider.ts';
@@ -266,6 +266,16 @@ test('CODE_REVIEW_TIERS can run synthesis on Sonnet', async () => {
   const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
   const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_TIERS: 'synthesis=sonnet' }, findings });
   assert.deepEqual(tierOf(calls, 'synthesis'), ['sonnet']);
+});
+
+test('an unknown synthesis tier keeps Opus and warns', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { env: { CODE_REVIEW_TIERS: 'synthesis=sonet' }, findings });
+  assert.deepEqual(tierOf(calls, 'synthesis'), ['opus']);
+  const warnings: string[] = [];
+  assert.equal(synthesisTier('synthesis=sonet', (m) => warnings.push(m)), 'opus');
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /sonet/);
 });
 
 const effortOf = (calls: Call[], role: string) => calls.filter((c) => c.role === role).map((c) => c.effort);

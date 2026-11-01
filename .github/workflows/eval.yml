@@ -1,4 +1,4 @@
-# Runs a named eval subset by hand from main, cost-capped per run, to measure a change (#123, #135, #41). It needs no
+# Runs a named eval subset by hand from main, cost-capped per run, to measure a change (issues #123, #135 and #41). It needs no
 # local Bedrock key: it uses the organization's, in the code-review environment, which only the default branch can use.
 #
 # It always uses the production guidance and no precision judge, the smoke eval's settings, so a run stays within its

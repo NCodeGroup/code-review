@@ -1,7 +1,5 @@
 // Models, prices and limits for the baseline setup: Haiku specialists, Opus selection and synthesis.
 
-import type { AgentRequest } from './agent.ts';
-
 export type Provider = 'anthropic' | 'bedrock';
 export type ModelTier = 'haiku' | 'sonnet' | 'opus';
 
@@ -53,26 +51,34 @@ export function reviewerTiers(
   return tiers;
 }
 
-// Synthesis runs on Opus; the override is for measuring it on another model (#135).
-export function synthesisTier(override = process.env['CODE_REVIEW_TIERS'] ?? ''): ModelTier {
+// Synthesis runs on Opus; the override is for measuring it on another model (issue #135).
+export function synthesisTier(
+  override = process.env['CODE_REVIEW_TIERS'] ?? '',
+  warn: (message: string) => void = () => {},
+): ModelTier {
   let synthesis: ModelTier = 'opus';
   for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
     const [name, tier] = pair.split('=').map((s) => s.trim());
-    if (name === 'synthesis' && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) synthesis = tier;
+    if (name !== 'synthesis') continue;
+    if (tier === 'haiku' || tier === 'sonnet' || tier === 'opus') synthesis = tier;
+    else warn(`CODE_REVIEW_TIERS: synthesis must be haiku, sonnet or opus; "${tier}" is ignored.`);
   }
   return synthesis;
 }
 
-// CODE_REVIEW_SYNTHESIS_EFFORT sets the synthesis call's reasoning effort, to measure it (#135). Unset sends none; any
-// other value warns and is ignored.
+// The reasoning efforts a call can ask for.
+export const effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+// CODE_REVIEW_SYNTHESIS_EFFORT sets the synthesis call's reasoning effort, to measure it (issue #135). Unset sends
+// none; any other value warns and is ignored.
 export function synthesisEffort(
   value = process.env['CODE_REVIEW_SYNTHESIS_EFFORT'] ?? '',
   warn: (message: string) => void = () => {},
-): AgentRequest['effort'] {
+): (typeof effortLevels)[number] | undefined {
   const level = value.trim();
   if (!level) return undefined;
-  if (level === 'low' || level === 'medium' || level === 'high' || level === 'xhigh' || level === 'max') return level;
-  warn(`CODE_REVIEW_SYNTHESIS_EFFORT must be low, medium, high, xhigh or max; "${value}" is ignored.`);
+  if ((effortLevels as readonly string[]).includes(level)) return level as (typeof effortLevels)[number];
+  warn(`CODE_REVIEW_SYNTHESIS_EFFORT must be ${effortLevels.slice(0, -1).join(', ')} or ${effortLevels[effortLevels.length - 1]}; "${value}" is ignored.`);
   return undefined;
 }
 

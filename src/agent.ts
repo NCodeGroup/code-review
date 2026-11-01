@@ -5,7 +5,7 @@ import type { HookCallback, Options, SDKAssistantMessageError, SDKMessage, SDKRe
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { bedrockRegion, modelIds, type ModelTier, type Provider } from './config.ts';
+import { bedrockRegion, effortLevels, modelIds, type ModelTier, type Provider } from './config.ts';
 import { creditsRanOut, creditsRanOutReason } from './provider.ts';
 import { placeholderKey } from './proxy.ts';
 
@@ -166,7 +166,7 @@ export interface AgentRequest {
   maxTurns: number;
   budgetUsd: number;
   // The model's reasoning effort; unset sends none, the SDK's default.
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  effort?: (typeof effortLevels)[number];
   // False only for a call that makes one model request and whose prompt nothing else reuses.
   cache?: boolean;
   // Called once, when the call's first model response arrives: by then the prompt's cache entry exists, so calls that share its first block can start and read it.
