@@ -211,7 +211,7 @@ The action has no outputs. A caller needs:
 ## Versions
 
 Pin the action to a release's full commit SHA, with the release's tag in a comment:
-`NCodeGroup/code-review@eaa9846049fdda1ce724fc34107391ba5f6d8708 # v0.3.1`. Never a tag, a branch or a floating major
+`NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0`. Never a tag, a branch or a floating major
 like `@v1`: the action receives the app's private key and the Bedrock key, so a consumer should run only a release
 someone reviewed in a pull request in its own repository, and a SHA is the one pin nobody can move. CodeQL's `extended`
 suite reports any other pin as an unpinned tag, even an immutable release's. Dependabot's `github-actions` ecosystem
