@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import type { EvalCase } from '../evals/cases.ts';
-import type { EvalOutput } from '../evals/compare.ts';
+import type { EvalOutput } from '../evals/output.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
 import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, writeRunOutput, type CaseTally } from '../evals/run.ts';
 import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';

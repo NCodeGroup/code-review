@@ -11,8 +11,6 @@ import { fileURLToPath } from 'node:url';
 import { percent, spread } from './precision.ts';
 import type { EvalOutput } from './output.ts';
 
-export type { EvalOutput } from './output.ts';
-
 export const noiseLimit = 2;
 
 export const isNoise = (difference: number): boolean => Math.abs(difference) <= noiseLimit;
