@@ -197,7 +197,6 @@ export async function selectContext(
       schema: pickSchema,
       maxTurns: 3,
       budgetUsd: 0.75,
-      cache: false,
     },
   );
   if (!result.output) return { context: empty, result };

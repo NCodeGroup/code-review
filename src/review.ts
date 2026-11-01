@@ -773,7 +773,6 @@ export async function review(options: ReviewOptions): Promise<Review> {
     schema: selectionSchema,
     maxTurns: 3,
     budgetUsd: budgets.selection,
-    cache: false,
   });
   const [picked, selection, shadowSelection] = await Promise.all([
     picking,
@@ -821,7 +820,6 @@ export async function review(options: ReviewOptions): Promise<Review> {
       schema: synthesisSchema,
       maxTurns: 3,
       budgetUsd: budgets.synthesis,
-      cache: false,
     });
     const [synthesis, shadowSynthesis] = await Promise.all([
       agent<SynthesisOutput>(oneShot, synthesisRequest('synthesis', charters.synthesisPrompt)),

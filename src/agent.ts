@@ -120,7 +120,7 @@ function pathGuard(checkout: string): HookCallback {
 
 // The agent's whole environment: the proxy address, a placeholder key, and the minimum to run. Nothing from this
 // process's environment, which holds the job's token-request variables and inputs, is passed on.
-// A one-shot call turns prompt caching off: a cache write costs 25% more than plain input and nothing would read it.
+// Prompt caching is on unless a call turns it off: even a call without tools takes two turns, since its structured output is a tool call, and the second reads the first's cache.
 export function agentEnvironment(run: AgentRun, home: string, cache = true): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',
@@ -166,7 +166,7 @@ export interface AgentRequest {
   schema: Record<string, unknown>;
   maxTurns: number;
   budgetUsd: number;
-  // False for a call whose prompt nothing else will reuse.
+  // False only for a call that makes one model request and whose prompt nothing else reuses.
   cache?: boolean;
   // Called once, when the call's first model response arrives: by then the prompt's cache entry exists, so calls that share its first block can start and read it.
   onFirstResponse?: () => void;
