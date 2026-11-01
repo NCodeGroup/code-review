@@ -653,17 +653,40 @@ type Selection = { add: { reviewer: string; reason: string }[] };
 // Why a reviewer call that never started was skipped, in the check run.
 export const runBudgetReason = 'run budget';
 
-// The agent runs through a function the caller can replace, so a test can review with a stub that makes no model call.
-// `openIssues` holds the repository's open issues a writer opened, for synthesis to mark a finding one already tracks;
-// a test may leave it out, and a light review doesn't use it.
-export async function review(
+export interface ReviewOptions {
+  run: AgentRun;
+  gathered: Gathered;
+  // The engine's charters; the repository's own reviewers join them.
+  charters: Charters;
+  log: (line: string) => void;
+  // The agent runs through a function the caller can replace, so a test can review with a stub that makes no model call.
+  agent?: typeof runAgent;
+  // The repository's open issues a writer opened, for synthesis to mark a finding one already tracks; a test may leave
+  // it out, and a light review doesn't use it.
+  openIssues?: { number: number; title: string }[];
+}
+
+export function review(options: ReviewOptions): Promise<Review>;
+export function review(
   run: AgentRun,
   gathered: Gathered,
   engineCharters: Charters,
   log: (line: string) => void,
-  agent: typeof runAgent = runAgent,
-  openIssues: { number: number; title: string }[] = [],
+  agent?: typeof runAgent,
+  openIssues?: { number: number; title: string }[],
+): Promise<Review>;
+export async function review(
+  runOrOptions: ReviewOptions | AgentRun,
+  gatheredArg?: Gathered,
+  chartersArg?: Charters,
+  logArg?: (line: string) => void,
+  agentArg?: typeof runAgent,
+  openIssuesArg?: { number: number; title: string }[],
 ): Promise<Review> {
+  const options: ReviewOptions = 'gathered' in runOrOptions
+    ? runOrOptions
+    : { run: runOrOptions, gathered: gatheredArg!, charters: chartersArg!, log: logArg!, ...(agentArg ? { agent: agentArg } : {}), ...(openIssuesArg ? { openIssues: openIssuesArg } : {}) };
+  const { run, gathered, charters: engineCharters, log, agent = runAgent, openIssues = [] } = options;
   const calls: CallRecord[] = [];
   const spent = () => totalCost(calls);
   const project = gathered.projectReviewers;
