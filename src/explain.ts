@@ -131,7 +131,6 @@ export function explainFinding(
     schema: explanationSchema,
     maxTurns: maxTurns.explain,
     budgetUsd: budgets.explain,
-    cache: false,
   });
 }
 

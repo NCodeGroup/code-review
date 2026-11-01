@@ -708,7 +708,6 @@ export async function reReview(
           schema: reReviewSchema,
           maxTurns: maxTurns.specialist,
           budgetUsd: budgets.specialist[tier],
-          cache: false,
         },
       );
       return { name, result };
