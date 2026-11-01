@@ -45,10 +45,23 @@ export interface Evidence {
   // Reactions on the finding's comment and replies in its thread, each marked by whether a writer gave it.
   reactions: { content: string; writer: boolean }[];
   replies: { body: string; writer: boolean }[];
+  // The commits the pull request gained after the finding's review, from the same comparison.
+  commitsAfter?: string[];
 }
 
-// An autopilot's claim to have fixed a finding counts only when the finding's lines changed, which already makes it fixed,
-// so on its own it is neither a fix nor an acknowledgment.
+// The last of the replies, in order, that is an autopilot verdict: `Autopilot: fixed in <sha>` or `Autopilot: not changed`.
+function autopilotVerdict(replies: Evidence['replies']): { fixedIn: string } | 'not changed' | undefined {
+  let verdict: { fixedIn: string } | 'not changed' | undefined;
+  for (const reply of replies) {
+    const fixed = /^\s*Autopilot:\s*fixed in\s+([0-9a-f]{7,40})\b/i.exec(reply.body);
+    if (fixed?.[1]) verdict = { fixedIn: fixed[1].toLowerCase() };
+    else if (/^\s*Autopilot:\s*not changed\b/i.test(reply.body)) verdict = 'not changed';
+  }
+  return verdict;
+}
+
+// An autopilot's claim to have fixed a finding that names no commit the pull request gained after the review is neither
+// a fix nor an acknowledgment.
 const autopilotFixed = /^\s*Autopilot: fixed in\b/im;
 
 // A reply that declines the finding. Anything else a writer replies acknowledges it, so the patterns stay narrow: a word
@@ -74,11 +87,16 @@ export function isDeclining(reply: string): boolean {
 }
 
 // The first rule that holds, in this order:
+// - a writer's latest autopilot verdict: `Autopilot: not changed` is dismissed, and `Autopilot: fixed in <sha>` is fixed
+//   when the pull request gained a commit that <sha> prefixes after the finding's review (issue #97).
 // - fixed: the finding's lines changed afterwards, or its thread is outdated and resolved.
 // - dismissed: a writer's 👎, a resolved thread without a change, or a writer's reply that declines it.
 // - acknowledged: a writer's 👍 or reply, without a change.
 // - ignored: none of these.
 export function classify(evidence: Evidence): Outcome {
+  const verdict = autopilotVerdict(evidence.replies.filter((r) => r.writer));
+  if (verdict === 'not changed') return 'dismissed';
+  if (verdict && evidence.commitsAfter?.some((sha) => sha.toLowerCase().startsWith(verdict.fixedIn))) return 'fixed';
   if (evidence.linesChanged || (evidence.isOutdated && evidence.isResolved)) return 'fixed';
   const replies = evidence.replies.filter((r) => r.writer && !autopilotFixed.test(r.body));
   const reacted = (content: string) => evidence.reactions.some((r) => r.writer && r.content === content);
@@ -230,17 +248,24 @@ export async function collectOutcomes(
 
   // One comparison per reviewed commit, from it to the closing head. One that fails leaves the threads to decide.
   const compared = new Map<string, ComparedFile[] | undefined>();
+  const commitsAfter = new Map<string, string[]>();
   for (const commit of new Set(threads.map((t) => t.first.originalCommit?.oid).filter((oid): oid is string => !!oid))) {
     if (commit === head) {
       compared.set(commit, []);
+      commitsAfter.set(commit, []);
       continue;
     }
     try {
-      const comparison = (await api('GET', `/repos/${repository}/compare/${commit}...${head}`)) as { files?: ComparedFile[] };
+      const comparison = (await api('GET', `/repos/${repository}/compare/${commit}...${head}`)) as {
+        files?: ComparedFile[];
+        commits?: { sha: string }[];
+      };
       compared.set(commit, comparison.files ?? []);
+      commitsAfter.set(commit, comparison.commits?.map((c) => c.sha) ?? []);
     } catch (error) {
       log(`::warning::Couldn't compare ${commit.slice(0, 7)} with ${head.slice(0, 7)} (${errorText(error)}); its findings count as unchanged.`);
       compared.set(commit, undefined);
+      commitsAfter.set(commit, []);
     }
   }
 
@@ -275,6 +300,7 @@ export async function collectOutcomes(
       isOutdated: thread.isOutdated,
       reactions,
       replies: replyEvidence,
+      commitsAfter: commitsAfter.get(reviewedAt) ?? [],
     });
     const review = reviews.get(reviewedAt);
     const model = review && (finding.reviewers.map((r) => review.models[r]).find(Boolean) ?? review.synthesisModel);
