@@ -100,9 +100,16 @@ function input(findings: ReviewedFinding[], agent: VerificationAgent, enabled = 
 test('verificationOn is on unless CODE_REVIEW_VERIFICATION is off', () => {
   assert.equal(verificationOn(''), true);
   assert.equal(verificationOn('on'), true);
-  assert.equal(verificationOn('yes'), true);
+  assert.equal(verificationOn(' ON '), true);
   assert.equal(verificationOn('off'), false);
-  assert.equal(verificationOn(' off '), false);
+  assert.equal(verificationOn(' Off '), false);
+});
+
+test('an unknown CODE_REVIEW_VERIFICATION keeps verification on and warns', () => {
+  const warnings: string[] = [];
+  assert.equal(verificationOn('false', (m) => warnings.push(m)), true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] ?? '', /"false"/);
 });
 
 test('verifyFindings makes no call and changes nothing when verification is off', async () => {

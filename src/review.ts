@@ -902,7 +902,7 @@ async function finishReview(
     systemPrompt: charters.verificationPrompt,
     charters: new Map([...liveCharters, ...(shadow.has(ruleCheckName) ? [] : [[ruleCheckName, charters.ruleCheckPrompt] as const])]),
     log,
-    enabled: verificationOn() && depth !== 'light',
+    enabled: verificationOn(undefined, (message) => log(`::warning::${message}`)) && depth !== 'light',
     ...(depth === 'deep' ? { deep: sensitiveMatcher(gathered.sensitive) } : {}),
     ceiling: { limit: ceiling, spent },
     agent,

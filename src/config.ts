@@ -126,8 +126,12 @@ export const findingsPerVerification = 8;
 // Verification calls in flight at once, after the first call has cached the block they share.
 export const verificationConcurrency = 6;
 
-export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? ''): boolean {
-  return value.trim() !== 'off';
+// Verification is on unless CODE_REVIEW_VERIFICATION=off; the README's Evals section has the evidence (issue #41).
+export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? '', warn: (message: string) => void = () => {}): boolean {
+  const setting = value.trim().toLowerCase();
+  if (setting === 'off') return false;
+  if (setting !== '' && setting !== 'on') warn(`CODE_REVIEW_VERIFICATION must be on or off; "${value}" is ignored, so verification stays on.`);
+  return true;
 }
 
 // Rule checks: besides the reviewers, the rules the context stage picked go in batches of this many to Sonnet calls that
