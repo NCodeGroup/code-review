@@ -32,6 +32,7 @@ import {
 import { headMarker, newestReviewedHead, reviewMarker, reviewRecords, summaryComment, summaryMarker, supersededComment, type Results } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { threadBody } from '../src/threads.ts';
+import { maxReplyAuthorLookups } from '../src/writers.ts';
 
 const none: Evidence = { linesChanged: false, isResolved: false, isOutdated: false, reactions: [], replies: [] };
 
@@ -450,6 +451,50 @@ test("collectOutcomes leaves out the bot's own reactions and replies", async () 
   const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
   assert.ok(!calls.some((call) => call.includes('/permission')), calls.join('\n'));
+});
+
+// One finding thread with these replies, and the rest of fakeGitHub's answers.
+function repliedThread(replies: { login: string; association: string; body: string }[], answer: (url: string) => unknown) {
+  const { api: base } = fakeGitHub();
+  const thread = botThread(reviewed({ id: 'F9', file: 'src/Z.cs', line: 99, severity: 'nit' }), { replies });
+  return async (method: string, url: string, body?: unknown) => {
+    if (url === '/graphql') return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [thread] } } } } };
+    if (url.endsWith('/permission')) return answer(url);
+    return base(method, url, body);
+  };
+}
+
+test('collectOutcomes counts a reply from a writer whose association does not say so', async () => {
+  const api = repliedThread([{ login: 'private-member', association: 'CONTRIBUTOR', body: "Won't fix this." }], (url) => {
+    if (url === '/repos/o/r/collaborators/private-member/permission') return { permission: 'write' };
+    throw new Error(`Unexpected ${url}`);
+  });
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'dismissed']]);
+});
+
+test('collectOutcomes counts a replier whose permission cannot be read as a non-writer, and warns', async () => {
+  const api = repliedThread([{ login: 'private-member', association: 'CONTRIBUTOR', body: "Won't fix this." }], () => {
+    throw new Error('HTTP 502');
+  });
+  const lines: string[] = [];
+  const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
+  assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
+  assert.ok(
+    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their reactions and replies count as a non-writer's\.$/.test(line)),
+    lines.join('\n'),
+  );
+});
+
+test('collectOutcomes looks up at most maxReplyAuthorLookups repliers', async () => {
+  const looked: string[] = [];
+  const replies = Array.from({ length: maxReplyAuthorLookups + 1 }, (_, i) => ({ login: `user${i}`, association: 'CONTRIBUTOR', body: 'Thanks.' }));
+  const api = repliedThread(replies, (url) => {
+    looked.push(url);
+    return { permission: 'read' };
+  });
+  await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, () => {});
+  assert.equal(looked.length, maxReplyAuthorLookups);
 });
 
 test('collectOutcomes takes the newest review marker of a commit reviewed twice', async () => {
