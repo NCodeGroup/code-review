@@ -105,13 +105,17 @@ permissions: {}
 jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else.
+    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A plain
+    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The explain and
+    # teach checks here and in the concurrency group must name the same commands.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
+        (github.event.issue.state == 'open' || startsWith(github.event.comment.body, '/review explain') ||
+          startsWith(github.event.comment.body, '/review teach')) &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     environment: code-review
