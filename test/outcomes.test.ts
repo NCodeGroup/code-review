@@ -480,7 +480,7 @@ test('collectOutcomes counts a replier whose permission cannot be read as a non-
   const report = await collectOutcomes(api, 'o/r', { number: 5, merged: true, head: { sha: closedHead } }, (line) => lines.push(line));
   assert.deepEqual(report?.findings.map((f) => [f.id, f.outcome]), [['F9', 'ignored']]);
   assert.ok(
-    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their reactions and replies count as a non-writer's\.$/.test(line)),
+    lines.some((line) => /^::warning::Couldn't read private-member's permission \(.*HTTP 502.*\); their text counts as a non-writer's\.$/.test(line)),
     lines.join('\n'),
   );
 });

@@ -26,14 +26,10 @@ import {
 } from './results.ts';
 import type { Severity } from './review.ts';
 import { readThreadPages } from './review-threads.ts';
-import { maxReplyAuthorLookups, withLookupLimit } from './writers.ts';
+import { maxReplyAuthorLookups, withLookupLimit, writerCheck } from './writers.ts';
 
 export type Outcome = 'fixed' | 'dismissed' | 'acknowledged' | 'ignored';
 export type ClosedState = 'merged' | 'closed';
-
-// Writers, as the engine's writer check counts them (writers.ts): a reply's author by their association or, failing
-// that, their permission on the repository; a reactor, whose reaction carries no association, by their permission.
-const writerPermissions = new Set(['admin', 'maintain', 'write']);
 
 // GraphQL names the app's bot without the "[bot]" suffix the REST API adds.
 const botLogins = new Set([botLogin, botLogin.replace(/\[bot\]$/, '')]);
@@ -262,20 +258,10 @@ export async function collectOutcomes(
     }
   }
 
-  const permissions = new Map<string, boolean>();
-  const isWriter = async (login: string): Promise<boolean> => {
-    if (!permissions.has(login)) {
-      try {
-        const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string };
-        permissions.set(login, writerPermissions.has(answer.permission ?? '') || writerPermissions.has(answer.role_name ?? ''));
-      } catch (error) {
-        log(`::warning::Couldn't read ${login}'s permission (${errorText(error)}); their reactions and replies count as a non-writer's.`);
-        permissions.set(login, false);
-      }
-    }
-    return permissions.get(login)!;
-  };
-  const isReplyWriter = withLookupLimit(async (login) => !!login && (await isWriter(login)), maxReplyAuthorLookups);
+  // The engine's writer check (writers.ts): a reply's author by their association or else their permission, a reactor,
+  // whose reaction carries no association, by their permission.
+  const isWriter = writerCheck(repository, api, log);
+  const isReplyWriter = withLookupLimit(isWriter, maxReplyAuthorLookups);
 
   const findings: FindingOutcome[] = [];
   for (const { thread, first, replies, finding } of threads) {
@@ -285,7 +271,7 @@ export async function collectOutcomes(
     for (const reaction of first.reactions.nodes) {
       const login = reaction.user?.login;
       if (!login || botLogins.has(login) || (reaction.content !== 'THUMBS_UP' && reaction.content !== 'THUMBS_DOWN')) continue;
-      reactions.push({ content: reaction.content, writer: await isWriter(login) });
+      reactions.push({ content: reaction.content, writer: await isWriter(login, undefined) });
     }
     // When the comparison can't tell, GitHub's own judgment that the code under the thread changed stands in.
     const changed = files && first.originalLine !== null ? lineChanged(files, thread.path, first.originalLine) : false;
