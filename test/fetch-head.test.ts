@@ -181,10 +181,13 @@ test('fetchPullRequestHead fetches the named commit when no branch or pull reque
   assert.equal(git(dir, 'rev-parse', 'HEAD'), head);
 });
 
-// Like the header test, this needs a real server: only a remote that accepts a connection and then never answers
+// Like the header test, this needs a real server: only a remote that accepts a connection and then doesn't answer
 // makes git wait until its time limit.
 test('fetchPullRequestHead gives up on a remote that never answers, instead of waiting for the job to be killed', async () => {
-  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
+  // The server never answers, and drops each connection 3 s after it opens, twice the time limit, which git's own timer
+  // started before the connection, so the limit still ends the fetch. The drop ends git's child, git-remote-http, which on
+  // Windows outlives the killed git and holds the folder through the cleanup's retries.
+  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.on('connection',(c)=>setTimeout(()=>c.destroy(),3000));s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
   let output = '';
   server.stdout.on('data', (chunk) => { output += String(chunk); });
   try {
@@ -198,13 +201,10 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
     assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc.*ETIMEDOUT/s);
     const elapsed = Date.now() - started;
     assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
-    // The killed fetch's folder is removed too. On Windows the killed git's own child (git-remote-http) can hold it past
-    // the cleanup's retries, so this is checked where the review runs: Linux, and macOS.
-    if (process.platform !== 'win32') {
-      const deadline = Date.now() + 5_000;
-      while (existsSync(dir) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
-      assert.ok(!existsSync(dir), 'the timed-out fetch left its folder behind');
-    }
+    // The killed fetch's folder is removed too.
+    const removedBy = Date.now() + 5_000;
+    while (existsSync(dir) && Date.now() < removedBy) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(!existsSync(dir), 'the timed-out fetch left its folder behind');
   } finally {
     server.kill();
   }
