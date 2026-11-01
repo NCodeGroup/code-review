@@ -172,6 +172,7 @@ interface Call {
   part: number;
   budgetUsd: number | undefined;
   effort: string | undefined;
+  cache: boolean | undefined;
 }
 
 const depthEnv = ['CODE_REVIEW_TIERS', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_MAX_RUN_USD', 'CODE_REVIEW_SYNTHESIS_EFFORT'];
@@ -181,7 +182,7 @@ async function run(input: Gathered, options: { env?: Record<string, string>; fin
   const agent = async <T>(agentRun: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
     const text = Array.isArray(request.prompt) ? request.prompt.join('\n') : String(request.prompt);
     const part = Number(/this is part (\d+)/.exec(text)?.[1] ?? 1);
-    calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd, effort: request.effort });
+    calls.push({ role: request.role, tier: request.tier, part, budgetUsd: request.budgetUsd, effort: request.effort, cache: request.cache });
     const record = { role: request.role, provider: agentRun.provider, model: request.tier, costUsd: 0.01, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
     const failure = options.error?.(request.role, part);
     if (failure) return { output: undefined, records: [record], error: failure };
@@ -260,6 +261,17 @@ test('synthesis runs on Opus by default', async () => {
   const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
   const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { findings });
   assert.deepEqual(tierOf(calls, 'synthesis'), ['opus']);
+});
+
+test('the context, selection and synthesis calls don\'t cache their prompts, and the reviewers do', async () => {
+  const findings = (role: string) => (role === 'reviewer:correctness' ? [finding('src/Payments/Ledger.cs')] : []);
+  const { calls } = await run(gathered(['src/Payments/Ledger.cs']), { findings });
+  const oneShots = calls.filter((c) => ['context', 'selection', 'synthesis'].includes(c.role));
+  assert.ok(oneShots.some((c) => c.role === 'selection') && oneShots.some((c) => c.role === 'synthesis'));
+  assert.ok(oneShots.every((c) => c.cache === false));
+  const reviewers = calls.filter((c) => c.role.startsWith('reviewer:'));
+  assert.ok(reviewers.length > 0);
+  assert.ok(reviewers.every((c) => c.cache !== false));
 });
 
 test('CODE_REVIEW_TIERS can run synthesis on Sonnet', async () => {

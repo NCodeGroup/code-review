@@ -197,6 +197,8 @@ export async function selectContext(
       schema: pickSchema,
       maxTurns: 3,
       budgetUsd: 0.75,
+      // One request, whose prompt nothing else reuses: caching would pay to write it and never read it (issue #133).
+      cache: false,
     },
   );
   if (!result.output) return { context: empty, result };

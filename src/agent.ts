@@ -119,7 +119,9 @@ function pathGuard(checkout: string): HookCallback {
 
 // The agent's whole environment: the proxy address, a placeholder key, and the minimum to run. Nothing from this
 // process's environment, which holds the job's token-request variables and inputs, is passed on.
-// Prompt caching is on unless a call turns it off: even a call without tools takes two turns, since its structured output is a tool call, and the second reads the first's cache.
+// Prompt caching is on unless a call turns it off: a call with tools reads its earlier turns' prefix, and calls that share
+// a first block read each other's. The context, selection and synthesis calls have no tools and make one request each, so
+// they turn it off (issue #133).
 export function agentEnvironment(run: AgentRun, home: string, cache = true): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',
