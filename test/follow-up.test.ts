@@ -299,7 +299,8 @@ test('the publish step counts a resolution or a 👎 only from a login whose rep
   // The bot's own resolution is never looked up.
   const lookedUp = requests.flatMap((r) => /\/collaborators\/([^/]+)\/permission$/.exec(r.url)?.[1] ?? []);
   assert.deepEqual(lookedUp, ['writer', 'maintainer', 'admin', 'custom', 'triager', 'reader', 'gone']);
-  assert.match(stdout, /::warning::Couldn't read gone's access \(GitHub refused GET \/repos\/o\/r\/collaborators\/gone\/permission: HTTP 404 Not Found\), so their 👎 or resolution doesn't count\./);
+  // A 404 is an answer, as in every writer check: gone isn't a collaborator.
+  assert.doesNotMatch(stdout, /Couldn't read gone's/);
 });
 
 test('on the next /review, the publish step resolves the thread of a fixed finding as the app, and no one else\'s', () => {

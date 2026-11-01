@@ -12,10 +12,10 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { acknowledgedFrom, publishCheck } from './checks.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { errorText, postSummary, postThreads } from './comments.ts';
+import { postSummary, postThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
-import { githubApi, githubGraphql, type Api } from './github.ts';
+import { githubApi, githubGraphql } from './github.ts';
 import { writeErrorLog, writeLog } from './log.ts';
 import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
@@ -25,12 +25,6 @@ import { publishTeaching } from './teach.ts';
 import { writerCheck } from './writers.ts';
 
 const interactUrl = 'https://github.com/NCodeGroup/code-review#commands';
-
-// Whether a login has write access to the repository: admin, maintain or write.
-async function isWriter(api: Api, repository: string, login: string): Promise<boolean> {
-  const access = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string };
-  return ['admin', 'maintain', 'write'].includes(access.role_name ?? '') || ['admin', 'write'].includes(access.permission ?? '');
-}
 
 // The paused notice the review step left instead of results, or undefined for a review.
 function readPaused(outDir: string): Paused | undefined {
@@ -91,18 +85,12 @@ async function main(): Promise<void> {
   // The bot's earlier threads, to tell which ones the maintainer dismissed and to resolve or answer them.
   const threads = await readReviewThreads(results.repository, results.pullRequest, token);
   if (!threads) writeLog("::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered.");
-  const dismissed = threads
-    ? await dismissedThreads(threads, (login) =>
-        isWriter(api, results.repository, login).catch((error) => {
-          writeLog(`::warning::Couldn't read ${login}'s access (${errorText(error)}), so their 👎 or resolution doesn't count.`);
-          return false;
-        }),
-      )
-    : [];
+  const isWriter = writerCheck(results.repository, api, writeLog);
+  const dismissed = threads ? await dismissedThreads(threads, (login) => isWriter(login, undefined)) : [];
 
   await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted));
   if (threads) {
-    const actions = await planFollowUps(threads, results, writerCheck(results.repository, api, writeLog), new Set(dismissed.map((d) => d.thread.id)));
+    const actions = await planFollowUps(threads, results, isWriter, new Set(dismissed.map((d) => d.thread.id)));
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
   }
 
