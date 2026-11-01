@@ -39,5 +39,6 @@ Map the issue's labels to a kind of plan. Compare each label in lowercase, ignor
 | `test`, `tests`, `testing` | tests |
 | `refactor`, `refactoring`, `tech-debt`, `technical debt`, `cleanup` | refactor |
 | `dependencies`, `upgrade`, `migration` | migration |
+| `template-update` | template-update |
 
 When no label maps, judge the kind from the issue's title and body. When the labels map to more than one kind, or the text points to a different kind than the labels do, pick the kind of the main change the issue asks for.
