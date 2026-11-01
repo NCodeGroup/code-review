@@ -1,7 +1,6 @@
 // Runs one model call through the Agent SDK, locked down: no settings, hooks, MCP servers or CLAUDE.md from anywhere,
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { HookCallback, Options, SDKAssistantMessageError, SDKMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -245,7 +244,9 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
   let apiErrorKind: SDKAssistantMessageError | undefined;
   let firstResponseMs: number | undefined;
   try {
-    for await (const message of (run.query ?? query)({ prompt: promptInput(request.prompt), options })) {
+    // Loaded here, not at the top: a closed pull request's run records outcomes without npm ci, and never gets this far.
+    const query = run.query ?? (await import('@anthropic-ai/claude-agent-sdk')).query;
+    for await (const message of query({ prompt: promptInput(request.prompt), options })) {
       if (message.type === 'result') result = message;
       else if (message.type === 'assistant' && message.error) apiErrorKind = message.error;
       else if (message.type === 'assistant' && firstResponseMs === undefined) {
