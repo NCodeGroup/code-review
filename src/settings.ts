@@ -3,10 +3,17 @@
 // repository. A setting that can't be used is left out with a warning for the check run; it never fails the review.
 
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from 'yaml';
+import type * as Yaml from 'yaml';
 import { parseCharter } from './charter.ts';
 import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecurityTier, tierRank, type ModelTier } from './config.ts';
+
+// The yaml library is loaded on first use, not at the top: a closed pull request's run loads this module through
+// gather.ts without npm ci, and never reads settings.
+const requireHere = createRequire(import.meta.url);
+let yamlLibrary: typeof Yaml | undefined;
+const yaml = (): typeof Yaml => (yamlLibrary ??= requireHere('yaml') as typeof Yaml);
 
 export const settingsFolder = '.github/code-review';
 const configPath = `${settingsFolder}/config.yml`;
@@ -23,6 +30,7 @@ export class YamlError extends Error {}
 // collections, with comments and quoted strings. Anchors, aliases, tags, multi-line values, more than one document and
 // deeper nesting are refused, so a file never means something other than what it appears to. An error names its line.
 export function parseYaml(text: string): Record<string, YamlValue> {
+  const { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } = yaml();
   const lines = new LineCounter();
   const doc = parseDocument(text, { schema: 'failsafe', lineCounter: lines, prettyErrors: false, uniqueKeys: true });
   const at = (offset: number | undefined, message: string) => new YamlError(`line ${lines.linePos(offset ?? 0).line}: ${message}`);
