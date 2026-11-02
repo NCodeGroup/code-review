@@ -16,7 +16,7 @@ import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { githubApi } from './github.ts';
 import { writeLog } from './log.ts';
-import { botLogin, recordedHead } from './results.ts';
+import { botLogin, earlierFindingLink, recordedHead } from './results.ts';
 import { readThreadPages } from './review-threads.ts';
 import {
   byOwner,
@@ -512,7 +512,7 @@ export function reReviewSummary(s: {
   else if (!s.reviewed) parts.push(`What changed since the last review at ${since} is only in generated files or files over the size budget, so nothing was reviewed again.`);
   else parts.push(`Re-review of what changed since the last review at ${since}: ${what}, by ${names}.`);
   const checked = s.earlier.filter((e) => !e.finding.resolved && e.status !== 'unchecked');
-  if (checked.length) parts.push(`Earlier findings: ${checked.map((e) => `[${e.finding.id}](${e.finding.url}) ${stateLabel[e.status]}`).join(', ')}.`);
+  if (checked.length) parts.push(`Earlier findings: ${checked.map((e) => `${earlierFindingLink(e.finding.id, e.finding.url)} ${stateLabel[e.status]}`).join(', ')}.`);
   if (s.nits || s.outside) {
     const left = [s.nits ? plural(s.nits, 'nit') : '', s.outside ? `${plural(s.outside, 'finding')} away from the changed lines` : ''].filter(Boolean).join(' and ');
     parts.push(`${left} ${s.nits + s.outside === 1 ? "isn't" : "aren't"} posted on a re-review.`);

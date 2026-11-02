@@ -371,6 +371,12 @@ test('reReviewSummary names both reviewers when security ran too', () => {
   assert.equal(summary, 'Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness and security. No further findings above nits.');
 });
 
+test('reReviewSummary names an earlier finding without a link when its thread address is not an https link', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted: [], nits: 0, outside: 0, earlier: [{ finding: earlierFinding({ url: 'javascript:alert(1)' }), status: 'fixed', note: '' }] });
+  assert.match(summary, / Earlier findings: F1 fixed\. /);
+  assert.doesNotMatch(summary, /javascript/);
+});
+
 test('reReviewSummary leaves out the done line while a should-fix is new or still open, or the review failed', () => {
   const open: EarlierStatus = { finding: earlierFinding(), status: 'open', note: '' };
   const base = { lastHead: reviewed, changed: since, reviewed: true, nits: 0, outside: 0 };
