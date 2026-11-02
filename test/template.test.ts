@@ -97,6 +97,7 @@ test('isTemplateOwned covers the files the template added through v0.54.0', () =
 
 // This repository is made from the template, so its copies of the template's generated files are the template's at its
 // _commit. When a template update adds a name the rule doesn't list, this fails: add the name to src/template.ts.
+// The template's workflows are named, since the project's own share their folder.
 test('isTemplateOwned covers every generated file this repository has from the template', () => {
   const root = path.resolve(import.meta.dirname, '..');
   const files = (folder: string): string[] =>
@@ -105,7 +106,11 @@ test('isTemplateOwned covers every generated file this repository has from the t
           .filter((entry) => entry.isFile())
           .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).replace(/\\/g, '/'))
       : [];
-  const generated = ['.template', '.githooks', '.claude/commands', '.claude/agents', '.github/prompts', '.github/skills', '.github/agents'].flatMap(files);
+  const generated = [
+    ...['.template', '.githooks', '.claude/commands', '.claude/agents', '.github/prompts', '.github/skills', '.github/agents', 'docs/decisions/project-template'].flatMap(files),
+    '.github/workflows/template-update.yml',
+    '.github/workflows/code-review-auto-merge.yml',
+  ];
   assert.ok(generated.length > 50, `found ${generated.length}`);
   assert.deepEqual(generated.filter((file) => !isTemplateOwned(file, template)), []);
 });
