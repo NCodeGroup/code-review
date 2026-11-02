@@ -9,6 +9,8 @@ import { neutralizeProse } from './markdown.ts';
 import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
+import { earlierThread, type PostedThread } from './threads.ts';
+import { settleVerdict } from './verdict.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
@@ -19,6 +21,13 @@ export interface ReviewerResult {
   topSeverity?: Severity;
   error?: string;
 }
+
+// The earlier thread a finding repeats: its finding's id there, its link ('' when the listing gave none), and whether the
+// maintainer dismissed it.
+export interface EarlierThread { id: string; url: string; dismissed: boolean }
+
+// A finding that repeats one of the bot's earlier threads, with that thread.
+export type RaisedFinding = ReviewedFinding & { earlier: EarlierThread };
 
 // What the shadow reviewers and prompts did: shown only in the check run's collapsed shadow section.
 export interface ShadowResults {
@@ -48,6 +57,9 @@ export interface Results {
   // Findings an open issue already tracks, numbered T1, T2 and so on: listed apart, never posted as threads, and left
   // out of the verdict and the counts. Absent when there are none.
   tracked?: ReviewedFinding[];
+  // Findings that repeat the bot's earlier threads, set by the publish step: listed apart, never posted again or counted
+  // in the totals; a dismissed one is out of the verdict too.
+  alreadyRaised?: RaisedFinding[];
   // Findings left out before posting because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
@@ -82,6 +94,27 @@ export interface Results {
   reReview?: { changedLines: Record<string, number[]>; earlier: { url: string; status: EarlierState; note: string }[] };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
+}
+
+// Findings that repeat one of the bot's earlier threads leave the findings and are listed apart, with the thread each
+// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat of a dismissed thread leaves
+// the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
+// problem is still in the code.
+export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
+  const findings: ReviewedFinding[] = [];
+  const raised: RaisedFinding[] = [];
+  for (const finding of results.findings) {
+    const match = earlierThread(finding, posted, dismissed);
+    if (match) raised.push({ ...finding, earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed } });
+    else findings.push(finding);
+  }
+  if (!raised.length) return results;
+  return {
+    ...results,
+    findings,
+    alreadyRaised: raised,
+    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed)) ?? results.verdict,
+  };
 }
 
 // The findings that belong upstream: those listed and those past the list's limit.

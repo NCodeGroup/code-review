@@ -5,8 +5,9 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import type { ThreadNode } from '../src/rereview.ts';
 import type { Results } from '../src/results.ts';
+import { settleAlreadyRaised } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
-import { threadBody } from '../src/threads.ts';
+import { parsePosted, threadBody } from '../src/threads.ts';
 import { runStep } from './steps.ts';
 
 const made: string[] = [];
@@ -87,4 +88,50 @@ test('the publish step reports a finding that repeats a dismissed thread as alre
   assert.ok(body.includes('<details><summary>Already raised (1)</summary>'), body);
   assert.ok(body.includes('- 🟡 **F1** `src/Rule.cs:25`: ADR-1202 citation removed rather than moved (already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed)'), body);
   assert.ok(!body.includes('<summary>Findings</summary>'), body);
+});
+
+const resultsWith = (overrides: Partial<Results> = {}): Results => ({
+  repository: 'o/r',
+  pullRequest: 1,
+  headSha,
+  provider: 'bedrock',
+  providerReason: 'test',
+  summary: 'One nit.',
+  verdict: 'comment',
+  findings: [],
+  reviewers: [],
+  skipped: [],
+  synthesisModel: '',
+  calls: [],
+  costUsd: 0,
+  durationMs: 0,
+  notShown: [],
+  dropped: [],
+  changedLines: {},
+  ...overrides,
+});
+
+const postedThread = (f: ReviewedFinding) => parsePosted([{ path: f.file, line: f.line, body: threadBody(f), html_url: threadUrl }])[0]!;
+
+const earlierBlocker = finding({ id: 'F7', severity: 'blocker', title: 'Token logged' });
+const repeat = finding({ severity: 'blocker', title: 'Token written to the log', line: 26 });
+const other = finding({ id: 'F2', file: 'src/Other.cs', line: 3 });
+
+test('settleAlreadyRaised moves a finding that repeats a dismissed thread out of the findings and the verdict', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'request-changes', findings: [repeat, other] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.findings.map((f) => f.id), ['F2']);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F1', { id: 'F7', url: threadUrl, dismissed: true }]]);
+  assert.equal(settled.verdict, 'comment');
+});
+
+test('settleAlreadyRaised keeps the verdict a repeat of an open thread carries', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'request-changes', findings: [repeat] }), [postedThread(earlierBlocker)], []);
+  assert.deepEqual(settled.findings, []);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => f.earlier), [{ id: 'F7', url: threadUrl, dismissed: false }]);
+  assert.equal(settled.verdict, 'request-changes');
+});
+
+test('settleAlreadyRaised returns the results as they are when no finding repeats a thread', () => {
+  const r = resultsWith({ findings: [other] });
+  assert.equal(settleAlreadyRaised(r, [], []), r);
 });
