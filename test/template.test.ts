@@ -280,7 +280,7 @@ test('gather marks the template\'s files in an adoption, orders them last and ke
   const { repo, base, baseSha } = adoption();
   const gathered = gather({ ...pullRequest(), baseSha }, repo, base, undefined, new Set(['.template/Get-PlanState.ps1']));
   assert.deepEqual(gathered.template, { ...template, owned: ['.template/Get-PlanState.ps1'] });
-  const owned =gathered.files.filter((f) => f.templateOwned).map((f) => f.path);
+  const owned = gathered.files.filter((f) => f.templateOwned).map((f) => f.path);
   assert.deepEqual(owned, ['.template/Get-PlanState.ps1']);
   assert.ok(gathered.diff.lastIndexOf('diff --git a/.template/Get-PlanState.ps1') > gathered.diff.lastIndexOf('diff --git a/src/a.ps1'));
   assert.deepEqual(gathered.reviewRules, []);
