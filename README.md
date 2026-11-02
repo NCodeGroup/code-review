@@ -1,9 +1,9 @@
 # code-review
 AI pull request review for NCodeGroup repositories: a GitHub composite action on the Claude Agent SDK
 
-Phase 1 (shadow mode): a set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus
-merging their findings. Results go only to a neutral "Code review" check run on the pull request, with annotations on
-the changed lines, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
+A set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus merging their findings.
+Results go to review threads on the changed lines, a summary comment and a neutral "Code review" check run with
+annotations, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
 Bedrock key does. A review whose credits run out partway reruns the refused call on Bedrock and makes the rest of its
 calls there; its check run and summary say so and split the cost by provider.
 
@@ -313,13 +313,18 @@ Each review, all from `ncode-review[bot]`:
   finding with no changed line to sit on goes in that review's body. A finding already posted on the pull request
   isn't posted again, so `/review` adds only what's new. Nor is one whose thread someone with write access dismissed,
   by resolving it while it was still on the code it was posted on or with a 👎, even at another severity;
+- lists a finding apart, under "Already raised", when it repeats one of the bot's earlier threads on the pull request,
+  posted or dismissed: the summary comment and the check run name the earlier finding, link its thread and say
+  "dismissed" when it was, and leave it out of the finding counts and the annotations; a dismissed one is left out of
+  the verdict too;
 - lists a finding apart, under "Tracked in open issues", instead of raising it as new, when an open issue someone with
   write access opened already tracks it: synthesis gets those issues' numbers and titles, as data, and the finding gets
   no thread and isn't verified; the summary comment and the check run leave it out of the verdict and the finding
   counts;
 - posts a summary comment: who reviewed, with which model, how many findings, and the worst severity. The previous
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
-- completes that "Code review" check run, neutral, with all the findings and annotations.
+- completes that "Code review" check run, neutral, with the new findings and their annotations, and the ones already
+  raised or tracked in open issues listed apart.
 
 ### Outcomes
 
