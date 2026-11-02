@@ -9,11 +9,11 @@ import type * as Yaml from 'yaml';
 import { parseCharter } from './charter.ts';
 import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecurityTier, tierRank, type ModelTier } from './config.ts';
 
-// The yaml library is loaded on first use, not at the top: a closed pull request's run loads this module through
-// gather.ts without npm ci, and never reads settings.
+// The yaml library is loaded on first use, not at the top: a closed pull request's run loads this module and
+// src/template.ts through gather.ts without npm ci, and never reads settings or the template's copier.yml.
 const requireHere = createRequire(import.meta.url);
 let yamlLibrary: typeof Yaml | undefined;
-const yaml = (): typeof Yaml => (yamlLibrary ??= requireHere('yaml') as typeof Yaml);
+export const yaml =(): typeof Yaml => (yamlLibrary ??= requireHere('yaml') as typeof Yaml);
 
 export const settingsFolder = '.github/code-review';
 const configPath = `${settingsFolder}/config.yml`;

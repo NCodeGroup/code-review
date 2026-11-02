@@ -14,6 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { yaml } from './settings.ts';
 
 export interface Template {
   // The template's repository: NCodeGroup/project-template.
@@ -154,6 +155,37 @@ export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?
     if (!rendered.has(file)) rendered.set(file, { sha: entry.sha, jinja });
   }
   return rendered;
+}
+
+// An entry copier.yml lists is matched as a plain path or a folder: a pattern, a negation or a Jinja expression needs
+// Copier to match, so a list holding one reads as unreadable.
+const patternEntry = /[*?[\]{}]|^!/;
+
+// The files the template owns, from the paths its template/ folder renders (renderedTemplatePaths) and its copier.yml:
+// each one copier.yml neither writes once (_skip_if_exists) nor merges with the project's (_merged_files), by name or by
+// a folder above it. Undefined when copier.yml isn't YAML, doesn't render from template/, or doesn't hold both lists as
+// plain paths, so the caller leaves every file the project's.
+export function templateOwnedFiles(paths: Iterable<string>, copier: string): Set<string> | undefined {
+  let parsed: unknown;
+  try {
+    parsed = yaml().parse(copier, { schema: 'failsafe' });
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+  const settings = parsed as Record<string, unknown>;
+  const skipped = settings['_skip_if_exists'];
+  const merged = settings['_merged_files'];
+  if (settings['_subdirectory'] !== 'template') return undefined;
+  const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
+  if (!isStrings(skipped) || !isStrings(merged)) return undefined;
+  const entries: string[] = [];
+  for (const raw of [...skipped, ...merged]) {
+    const entry = raw.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+    if (entry === '' || patternEntry.test(entry)) return undefined;
+    entries.push(entry);
+  }
+  return new Set([...paths].filter((file) => !entries.some((entry) => file === entry || file.startsWith(`${entry}/`))));
 }
 
 const plainAnswer = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/;

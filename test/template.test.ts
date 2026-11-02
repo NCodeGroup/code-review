@@ -9,7 +9,7 @@ import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, readChanges, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
 import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
-import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateRef, templateRepository, type Template } from '../src/template.ts';
+import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateOwnedFiles, templateRef, templateRepository, type Template } from '../src/template.ts';
 import { gatherChecked } from '../src/template-check.ts';
 import { placeFindings } from '../src/threads.ts';
 
@@ -143,6 +143,47 @@ test('renderedTemplatePaths maps the template folder\'s files to the paths they 
   assert.deepEqual([...rendered.keys()], ['CLAUDE.md', '.github/instructions/project-template.instructions.md', 'build/ProjectTemplate.props']);
   assert.deepEqual(rendered.get('CLAUDE.md'), { sha: 'a'.repeat(40), jinja: false });
   assert.deepEqual(rendered.get('.github/instructions/project-template.instructions.md'), { sha: 'b'.repeat(40), jinja: true });
+});
+
+test('templateOwnedFiles leaves out the files copier.yml writes once or merges', () => {
+  const copier = [
+    '_min_copier_version: "9.0.0"',
+    '_subdirectory: template',
+    '# Files written once.',
+    '_skip_if_exists:',
+    '  - AGENTS.md',
+    '  - docs/decisions/README.md',
+    '_merged_files:',
+    '  - .gitignore',
+    'stack:',
+    '  type: str',
+    '  choices:',
+    '    node: node',
+    '    dotnet: dotnet',
+    '_message_after_copy: |',
+    '  Done.',
+    '  Next steps.',
+    '',
+  ].join('\n');
+  const paths = ['CLAUDE.md', 'AGENTS.md', '.gitignore', '.template/Get-PlanState.ps1', 'docs/decisions/project-template/0001-x.md', 'docs/decisions/README.md'];
+  assert.deepEqual([...templateOwnedFiles(paths, copier)!], ['CLAUDE.md', '.template/Get-PlanState.ps1', 'docs/decisions/project-template/0001-x.md']);
+});
+
+test('templateOwnedFiles leaves out every file under a folder copier.yml names', () => {
+  const copier = '_subdirectory: template\n_skip_if_exists: [docs/designs/]\n_merged_files: []\n';
+  assert.deepEqual([...templateOwnedFiles(['docs/designs/_template.md', 'docs/designs-notes.md'], copier)!], ['docs/designs-notes.md']);
+});
+
+test('templateOwnedFiles reads nothing from a copier.yml it can\'t read plainly', () => {
+  const unreadable = [
+    '_skip_if_exists: [\n',
+    '- a\n',
+    '_skip_if_exists: []\n_merged_files: []\n',
+    '_subdirectory: src\n_skip_if_exists: []\n_merged_files: []\n',
+    '_subdirectory: template\n_skip_if_exists: []\n',
+    ...['"docs/*.md"', '"!AGENTS.md"', '"{{ name }}.md"', '{a: b}'].map((entry) => `_subdirectory: template\n_merged_files: []\n_skip_if_exists: [${entry}]\n`),
+  ];
+  for (const copier of unreadable) assert.equal(templateOwnedFiles(['CLAUDE.md'], copier), undefined, copier);
 });
 
 const headAnswers = new Map([['project_name', 'code-review'], ['host', 'github']]);
