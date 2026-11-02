@@ -682,7 +682,7 @@ test('reReview leaves out a finding that says a file the pull request changes is
 test('reReview lists a finding below blocker on a template-owned file upstream, as the first review does', async () => {
   const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
-  gathered.template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
+  gathered.template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [], owned: ['.template/Get-PlanState.ps1'] };
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
   assert.ok(plan);
   plan.changed.lines['.template/Get-PlanState.ps1'] = [10];

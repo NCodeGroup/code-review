@@ -49,9 +49,16 @@ const repository = 'NCodeGroup/project-template';
 
 // A fake of GitHub's API for the template at one ref: its commit, its file list from `sources` (paths under template/)
 // and their blobs, and whether its default branch `main`, its tag v0.42.0, or neither reaches the commit. Every request
-// is recorded.
-function templateApi(ref: string, sources: Record<string, string>, requests: string[] = [], reach: 'branch' | 'tag' | 'none' = 'branch'): ReadApi {
-  const blobs = new Map(Object.values(sources).map((text) => [blobSha(text), text]));
+// is recorded. When `copier` isn't null, the template also has a copier.yml with that text at its root.
+const defaultCopier = '_subdirectory: template\n_skip_if_exists:\n  - AGENTS.md\n_merged_files:\n  - .gitignore\n';
+function templateApi(
+  ref: string,
+  sources: Record<string, string>,
+  requests: string[] = [],
+  reach: 'branch' | 'tag' | 'none' = 'branch',
+  copier: string | null = defaultCopier,
+): ReadApi {
+  const blobs = new Map([...Object.values(sources), ...(copier === null ? [] : [copier])].map((text) => [blobSha(text), text]));
   return async (apiPath) => {
     requests.push(apiPath);
     if (apiPath === `/repos/${repository}/commits/${ref}`) return { sha: commitSha, commit: { tree: { sha: treeSha } } };
@@ -66,7 +73,9 @@ function templateApi(ref: string, sources: Record<string, string>, requests: str
       ];
     }
     if (apiPath === `/repos/${repository}/git/trees/${treeSha}?recursive=1`) {
-      return { truncated: false, tree: Object.entries(sources).map(([p, text]) => ({ path: `template/${p}`, type: 'blob', sha: blobSha(text) })) };
+      const tree = Object.entries(sources).map(([p, text]) => ({ path: `template/${p}`, type: 'blob', sha: blobSha(text) }));
+      if (copier !== null) tree.push({ path: 'copier.yml', type: 'blob', sha: blobSha(copier) });
+      return { truncated: false, tree };
     }
     const blob = /\/git\/blobs\/([0-9a-f]{40})$/.exec(apiPath);
     if (blob && blobs.has(blob[1]!)) return { content: Buffer.from(blobs.get(blob[1]!)!).toString('base64'), encoding: 'base64' };
@@ -99,10 +108,46 @@ test('confirmTemplateFiles confirms no file rendered from a Jinja source with a 
   assert.deepEqual([...(await confirmTemplateFiles(candidate(['CLAUDE.md']), checkout({ 'CLAUDE.md': 'Run gh now.\n' }), read))], []);
 });
 
-test('confirmTemplateFiles confirms a file the head deleted and the template no longer has', async () => {
+test("confirmTemplateFiles leaves a file the template doesn't render, or one the head deleted, to the project", async () => {
   const repo = checkout({ 'README.md': 'x\n' });
   const confirmed = await confirmTemplateFiles(candidate(['.template/Old.ps1', '.template/Get-PlanState.ps1']), repo, templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }));
-  assert.deepEqual([...confirmed], ['.template/Old.ps1']);
+  assert.deepEqual([...confirmed], []);
+});
+
+test('confirmTemplateFiles counts every file the template renders that the pull request leaves alone, and none copier.yml writes once or merges', async () => {
+  const files = { '.template/Get-PlanState.ps1': script, '.githooks/pre-push': 'hook\n', 'AGENTS.md': 'agents\n', '.gitignore': 'x\n' };
+  const confirmed = await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1', 'AGENTS.md', '.gitignore']), checkout(files), templateApi('v0.42.0', files));
+  assert.deepEqual([...confirmed].sort(), ['.githooks/pre-push', '.template/Get-PlanState.ps1']);
+});
+
+test('confirmTemplateFiles counts the files the template renders when the pull request changes none of them', async () => {
+  const files = { '.template/Get-PlanState.ps1': script, 'AGENTS.md': 'agents\n' };
+  const confirmed = await confirmTemplateFiles(candidate([]), checkout(files), templateApi('v0.42.0', files));
+  assert.deepEqual([...confirmed], ['.template/Get-PlanState.ps1']);
+});
+
+test('confirmTemplateFiles counts a file a newer template release adds, and none the project adds', async () => {
+  const repo = checkout({ '.github/workflows/new.yml': 'on: push\n', 'src/main.ts': 'x\n' });
+  const confirmed = await confirmTemplateFiles(candidate(['.github/workflows/new.yml', 'src/main.ts']), repo, templateApi('v0.42.0', { '.github/workflows/new.yml': 'on: push\n' }));
+  assert.deepEqual([...confirmed], ['.github/workflows/new.yml']);
+});
+
+test('confirmTemplateFiles leaves a file project_owned_files names to the project', async () => {
+  const files = { '.githooks/pre-push': 'hook\n', '.template/Get-PlanState.ps1': script };
+  const owned: TemplateCandidate = { ...candidate(['.githooks/pre-push']), template: { repository, commit: 'v0.41.1', projectOwned: ['.githooks/pre-push'] } };
+  const confirmed = await confirmTemplateFiles(owned, checkout(files), templateApi('v0.42.0', files));
+  assert.deepEqual([...confirmed], ['.template/Get-PlanState.ps1']);
+});
+
+test("confirmTemplateFiles confirms nothing, with a warning, when copier.yml is missing or doesn't list plain paths", async () => {
+  const repo = checkout({ '.template/Get-PlanState.ps1': script });
+  const copiers = [null, '_subdirectory: template\n_skip_if_exists:\n  - "docs/*.md"\n_merged_files: []\n', '_subdirectory: template\n_skip_if_exists: []\n'];
+  for (const copier of copiers) {
+    const lines: string[] = [];
+    const read = templateApi('v0.42.0', { '.template/Get-PlanState.ps1': script }, [], 'branch', copier);
+    assert.deepEqual([...(await confirmTemplateFiles(candidate(['.template/Get-PlanState.ps1']), repo, read, (l) => lines.push(l)))], []);
+    assert.match(lines.join('\n'), /^::warning::Couldn't read NCodeGroup\/project-template at "v0\.42\.0" \((it has no copier\.yml|its copier\.yml doesn't list)/);
+  }
 });
 
 test('confirmTemplateFiles reads a described commit at its SHA', async () => {

@@ -7,7 +7,7 @@
 import { errorText } from './comments.ts';
 import { gather, git, readBlobs, readChanges, type Gathered, type PullRequest } from './gather.ts';
 import type { ReadApi } from './github.ts';
-import { answersFile, answerValues, matchesTemplateSource, renderedTemplatePaths, templateRef, type TemplateCandidate } from './template.ts';
+import { answersFile, answerValues, matchesTemplateSource, renderedTemplatePaths, templateOwnedFiles, templateRef, type TemplateCandidate } from './template.ts';
 
 const sha = /^[0-9a-f]{40}$/;
 
@@ -51,48 +51,64 @@ async function notTemplateCommit(repository: string, commit: string, ref: string
   return `it isn't on ${JSON.stringify(branch)} or the ${tried.length} newest tag(s), as a commit from a fork wouldn't be`;
 }
 
-// The candidate's files that match the template's own copies. A file the template renders from a .jinja source must be
-// its exact rendering with the head's answers, as matchesTemplateSource reads it; any other must be the same blob. A
-// file neither has, such as one the template removed and the pull request deleted, matches.
+// The text of a blob in the template, or undefined when GitHub doesn't return it as base64 content.
+async function blobText(repository: string, blobSha: string, read: ReadApi): Promise<string | undefined> {
+  const blob = (await read(`/repos/${repository}/git/blobs/${blobSha}`)) as { content?: unknown; encoding?: unknown } | undefined;
+  if (blob?.encoding !== 'base64' || typeof blob.content !== 'string') return undefined;
+  return Buffer.from(blob.content, 'base64').toString('utf8');
+}
+
+// The files the template owns in this pull request, read from the template at the _commit the head's answers name: each
+// one its template/ folder renders that its copier.yml neither writes once nor merges (templateOwnedFiles) and
+// project_owned_files doesn't name. One of the candidate's changed files counts only when it is the template's own copy:
+// a file the template renders from a .jinja source must be its exact rendering with the head's answers, as
+// matchesTemplateSource reads it, and any other the same blob. A file the template doesn't render, or one the head
+// deleted, is the project's, and so is every file when the template or its copier.yml can't be read.
 export async function confirmTemplateFiles(candidate: TemplateCandidate, checkout: string, read: ReadApi, log: (line: string) => void = () => {}): Promise<Set<string>> {
   const confirmed = new Set<string>();
   const { files, template } = candidate;
-  if (!files.length) return confirmed;
   const repository = template.repository;
   const at = JSON.stringify(candidate.commit);
   const unread = (reason: string) => {
-    log(`::warning::Couldn't read ${repository} at ${at} (${reason}), so ${files.length} changed file(s) the template would own are reviewed as the project's.`);
+    log(`::warning::Couldn't read ${repository} at ${at} (${reason}), so none of the ${files.length} changed file(s) is left to the template.`);
     return confirmed;
   };
   const ref = templateRef(candidate.commit);
   if (!ref) return unread("it isn't a tag or a commit");
   let rendered: ReturnType<typeof renderedTemplatePaths>;
+  let owned: Set<string>;
   try {
     const commit = (await read(`/repos/${repository}/commits/${encodeURIComponent(ref)}`)) as { sha?: unknown; commit?: { tree?: { sha?: unknown } } } | undefined;
     const tree = commit?.commit?.tree?.sha;
     if (typeof tree !== 'string' || !sha.test(tree) || typeof commit?.sha !== 'string' || !sha.test(commit.sha)) return unread('no such commit');
     const foreign = await notTemplateCommit(repository, commit.sha, ref, read);
     if (foreign) {
-      log(`::warning::Couldn't confirm that ${at} is ${repository}'s own commit (${foreign}), so ${files.length} changed file(s) the template would own are reviewed as the project's.`);
+      log(`::warning::Couldn't confirm that ${at} is ${repository}'s own commit (${foreign}), so none of the ${files.length} changed file(s) is left to the template.`);
       return confirmed;
     }
     const listing = (await read(`/repos/${repository}/git/trees/${tree}?recursive=1`)) as { truncated?: boolean; tree?: unknown } | undefined;
     if (!listing || listing.truncated || !Array.isArray(listing.tree)) return unread('its file list is missing or truncated');
     rendered = renderedTemplatePaths(listing.tree);
+    const copier = (listing.tree as { path?: unknown; type?: unknown; sha?: unknown }[]).find((e) => e?.path === 'copier.yml' && e.type === 'blob');
+    if (typeof copier?.sha !== 'string' || !sha.test(copier.sha)) return unread('it has no copier.yml');
+    const copierText = await blobText(repository, copier.sha, read);
+    if (copierText === undefined) return unread("its copier.yml can't be read");
+    const listed = templateOwnedFiles(rendered.keys(), copierText);
+    if (!listed) return unread("its copier.yml doesn't list the files it writes once and merges as plain paths");
+    owned = listed;
   } catch (error) {
     return unread(errorText(error));
   }
+  const projectOwned = new Set(template.projectOwned);
+  const changed = files.filter((f) => owned.has(f) && !projectOwned.has(f));
   const heads = headBlobShas(checkout);
-  const jinjaFiles = files.filter((f) => rendered.get(f)?.jinja && heads.has(f));
+  const jinjaFiles = changed.filter((f) => rendered.get(f)?.jinja && heads.has(f));
   const headTexts = readBlobs(checkout, 'HEAD', jinjaFiles.length ? [...jinjaFiles, answersFile] : []);
   const answers = answerValues(headTexts.get(answersFile) ?? '');
-  for (const file of files) {
+  for (const file of changed) {
     const source = rendered.get(file);
     const head = heads.get(file);
-    if (!source || !head) {
-      if (!source && !head) confirmed.add(file);
-      continue;
-    }
+    if (!source || !head) continue;
     if (!source.jinja) {
       if (source.sha === head) confirmed.add(file);
       continue;
@@ -100,17 +116,16 @@ export async function confirmTemplateFiles(candidate: TemplateCandidate, checkou
     const text = headTexts.get(file);
     if (text === undefined || !sha.test(source.sha)) continue;
     try {
-      const blob = (await read(`/repos/${repository}/git/blobs/${source.sha}`)) as { content?: unknown; encoding?: unknown } | undefined;
-      if (blob?.encoding !== 'base64' || typeof blob.content !== 'string') continue;
-      if (matchesTemplateSource(Buffer.from(blob.content, 'base64').toString('utf8'), text, answers)) confirmed.add(file);
+      const sourceText = await blobText(repository, source.sha, read);
+      if (sourceText !== undefined && matchesTemplateSource(sourceText, text, answers)) confirmed.add(file);
     } catch {
       // A source that can't be read leaves the file the project's.
     }
   }
-  const differ = files.filter((f) => !confirmed.has(f));
+  const differ = changed.filter((f) => !confirmed.has(f));
   // JSON quoting keeps a path with a line break from starting a workflow command of its own.
   if (differ.length) log(`${differ.length} changed file(s) the template would own differ from ${repository} at ${at}, so they're reviewed as the project's: ${differ.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}`);
-  return confirmed;
+  return new Set([...owned].filter((f) => !projectOwned.has(f) && (!files.includes(f) || confirmed.has(f))));
 }
 
 // gather with the template check in it: the pull request's changes read once, the template's files confirmed through

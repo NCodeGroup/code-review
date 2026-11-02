@@ -167,7 +167,7 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
 
 test("on a template update, a shadow reviewer's findings on the template's files stay out of the upstream list", async () => {
   const owned = '.template/Get-PlanState.ps1';
-  const template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
+  const template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [], owned: [owned] };
   const onTemplate = (title: string, severity: Finding['severity']) => ({ ...finding(title, severity), file: owned });
   const { agent } = stubAgent((request) => {
     if (request.role === 'reviewer:correctness') return { output: { findings: [finding('Live nit', 'nit'), onTemplate('Live upstream', 'should-fix')] } };

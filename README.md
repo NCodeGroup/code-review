@@ -394,34 +394,31 @@ updates the template, which adds the answers file or changes its `_commit`, and 
 anywhere else a change to one is an edit by hand, reviewed as the project's. A change to the answers file that keeps
 `_commit`, such as one to `project_owned_files`, is an edit by hand too. It reads the answers file from the default
 branch, or, for the pull request that adopts the template, from its head. When `_src_path` names
-NCodeGroup/project-template, these files are template-owned, as of its v0.54.0, except any that `project_owned_files`
-lists: everything under `.template/` and `docs/decisions/project-template/`, the template's hooks
-(`.githooks/commit-msg` and `pre-push`), its generated commands, prompt files, skills and agents in `.claude/commands/`,
-`.claude/agents/`, `.github/prompts/`, `.github/skills/` and `.github/agents/`, `CLAUDE.md`, `.template-version`,
-`.github/instructions/project-template.instructions.md`, its C# rules (`.github/instructions/csharp.instructions.md`,
-`.github/instructions/csharp-tests.instructions.md`, `.claude/rules/csharp.md` and `.claude/rules/csharp-tests.md`), its
-workflows `template-update.yml` and `code-review-auto-merge.yml`, and its .NET files in `build/`
-(`ProjectTemplate.props`, `ProjectTemplate.globalconfig`, `ProjectTemplate.Tests.globalconfig`, `BannedSymbols.txt`,
-`dod.ps1` and `Update-PublicApi.ps1`). A file a later template version adds is the project's until the engine lists it.
-Everything else is the project's, including a command, prompt, skill, agent or hook it adds under a name the template
-doesn't use, the files the template writes once (`AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
-`code-review.yml`, `docs/decisions/README.md`), the files it merges with the project's (`.gitignore`, `.gitattributes`,
-the settings, `ci.yml`, `copilot-setup-steps.yml`, `dependabot.yml`) and the answers file.
+NCodeGroup/project-template, the engine reads which files are template-owned from the template itself, at the `_commit`
+the head's answers name: every file its `template/` folder renders, except the ones its `copier.yml` writes once
+(`_skip_if_exists`, such as `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `code-review.yml` and
+`docs/decisions/README.md`) or merges with the project's (`_merged_files`, such as `.gitignore`, `.gitattributes`, the
+settings, `ci.yml`, `copilot-setup-steps.yml` and `dependabot.yml`), and any that `project_owned_files` lists. That
+covers everything under `.template/` and `docs/decisions/project-template/`, the template's hooks, its generated
+commands, prompt files, skills and agents, `CLAUDE.md` and `.template-version`, and a file a later template version adds
+is template-owned in the pull request that updates to that version. Everything else is the project's, including a
+command, prompt, skill, agent or hook it adds under a name the template doesn't use, a file the template no longer
+renders or the pull request deletes, and the answers file.
 
-The engine also compares each changed file the template would own with NCodeGroup/project-template
-at the `_commit` the head's answers name, reading it through GitHub's API with the run's read-only token. A file that
-differs, such as one edited by hand in the same pull request, is the project's and reviewed as usual. A file the
-template renders from a `.jinja` source matches only when that source has no blocks or comments and every expression in
-it is a plain name the head's `.copier-answers.yml` holds a single value for, and putting those values in gives the
-file exactly; any other `.jinja` file, such as one with an `{% if %}` block or a filter, is the project's, since the
-engine doesn't render Jinja and can't tell what a block's text should be. The pull request writes those answers, so each
-value put in must be only letters, digits, spaces, dots, hyphens and underscores, up to 80 characters, or the file is
-the project's. The engine trusts that commit only when the
-template's default branch or one of its tags reaches it: GitHub serves a commit from any fork of the template at the
-template's own address, so a commit made in a fork counts as one it can't read. Past the default branch, a tag that
-points straight at the commit counts, and otherwise it compares at most three tags, the one `_commit` names and the
-newest, so a commit only an older tag reaches leaves those files reviewed as the project's. When the template can't be
-read at that commit, every such file is the project's, and the run's log says why.
+Each changed file the template would own must also match NCodeGroup/project-template's own copy at that `_commit`, which
+the engine reads through GitHub's API with the run's read-only token. A file that differs, such as one edited by hand in
+the same pull request, is the project's and reviewed as usual. A file the template renders from a `.jinja` source
+matches only when that source has no blocks or comments and every expression in it is a plain name the head's
+`.copier-answers.yml` holds a single value for, and putting those values in gives the file exactly; any other `.jinja`
+file, such as one with an `{% if %}` block or a filter, is the project's, since the engine doesn't render Jinja and
+can't tell what a block's text should be. The pull request writes those answers, so each value put in must be only
+letters, digits, spaces, dots, hyphens and underscores, up to 80 characters, or the file is the project's. The engine
+trusts that commit only when the template's default branch or one of its tags reaches it: GitHub serves a commit from
+any fork of the template at the template's own address, so a commit made in a fork counts as one it can't read. Past the
+default branch, a tag that points straight at the commit counts, and otherwise it compares at most three tags, the one
+`_commit` names and the newest, so a commit only an older tag reaches leaves those files reviewed as the project's. When
+the template can't be read at that commit, or its `copier.yml` lists a pattern, such as `docs/*.md`, instead of a plain
+path or folder, every file is the project's, and the run's log says why.
 
 The reviewers are told which changed files are template-owned, and those files don't choose reviewers or rules. A
 finding on one isn't posted as a thread: the summary comment lists it once, with its file and line, under "Belongs
