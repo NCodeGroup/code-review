@@ -933,6 +933,24 @@ test('a run whose reviewers all failed records the head reviewed before it, or n
   assert.match(summaryComment(results as never, 'https://check', 'https://help'), new RegExp(headMarker(head)));
 });
 
+test('summaryComment keeps the links to earlier findings live and neutralizes the rest of a re-review summary', () => {
+  const url = 'https://github.com/o/r/pull/1#discussion_r1';
+  const summary = reReviewSummary({
+    lastHead: reviewed,
+    changed: since,
+    reviewed: true,
+    posted: [],
+    nits: 0,
+    outside: 0,
+    earlier: [{ finding: earlierFinding(), status: 'fixed', note: '' }],
+    verification: { refuted: [{ finding: { title: 'See [x](https://evil.example) @team' }, path: 'a.ts', reason: 'r' }], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 0, refutedKeptDropped: 0 } as never,
+  });
+  const results = { summary, verdict: 'comment', findings: [], dropped: [], reviewers: [], skipped: [], synthesisModel: '', provider: 'bedrock', costUsd: 0, durationMs: 0, headSha: 'b'.repeat(40), reReview: { changedLines: {}, earlier: [{ id: 'F1', url, status: 'fixed', note: '' }] } };
+  const verdict = summaryComment(results as never, 'https://check', 'https://help').split('\n').find((line) => line.startsWith('**Verdict:'))!;
+  assert.ok(verdict.includes(`Earlier findings: [F1](${url}) fixed.`), verdict);
+  assert.ok(verdict.includes('"See [x]​(https:​//evil.example) @​team"'), verdict);
+});
+
 test('reReview never approves when the earlier threads could not be read', async () => {
   const { repo, first, reviewed, head } = moreRepo();
   const gathered = gather(pullRequest(first, head), repo, repo);
