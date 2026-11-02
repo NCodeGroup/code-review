@@ -67,7 +67,6 @@ async function blobText(repository: string, blobSha: string, read: ReadApi): Pro
 export async function confirmTemplateFiles(candidate: TemplateCandidate, checkout: string, read: ReadApi, log: (line: string) => void = () => {}): Promise<Set<string>> {
   const confirmed = new Set<string>();
   const { files, template } = candidate;
-  if (!files.length) return confirmed;
   const repository = template.repository;
   const at = JSON.stringify(candidate.commit);
   const unread = (reason: string) => {

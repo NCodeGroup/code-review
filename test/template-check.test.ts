@@ -120,6 +120,12 @@ test('confirmTemplateFiles counts every file the template renders that the pull 
   assert.deepEqual([...confirmed].sort(), ['.githooks/pre-push', '.template/Get-PlanState.ps1']);
 });
 
+test('confirmTemplateFiles counts the files the template renders when the pull request changes none of them', async () => {
+  const files = { '.template/Get-PlanState.ps1': script, 'AGENTS.md': 'agents\n' };
+  const confirmed = await confirmTemplateFiles(candidate([]), checkout(files), templateApi('v0.42.0', files));
+  assert.deepEqual([...confirmed], ['.template/Get-PlanState.ps1']);
+});
+
 test('confirmTemplateFiles counts a file a newer template release adds, and none the project adds', async () => {
   const repo = checkout({ '.github/workflows/new.yml': 'on: push\n', 'src/main.ts': 'x\n' });
   const confirmed = await confirmTemplateFiles(candidate(['.github/workflows/new.yml', 'src/main.ts']), repo, templateApi('v0.42.0', { '.github/workflows/new.yml': 'on: push\n' }));
