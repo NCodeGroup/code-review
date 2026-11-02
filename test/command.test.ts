@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { parse } from 'yaml';
 import { commandFromEvent, isFromFork, maxQuestionChars, parseCommand, skipReason, skipReasonFor } from '../src/command.ts';
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
@@ -52,6 +54,31 @@ test('parseCommand drops a footer from an explain question and a taught rule', (
   assert.deepEqual(parseCommand('/Review Explain F3'), { kind: 'explain', ref: { kind: 'id', id: 'F3' }, question: '' });
   // A `---` inside a line is no footer.
   assert.deepEqual(parseCommand('/review teach --verbose flag'), { kind: 'teach', scope: 'repository', rule: '--verbose flag' });
+});
+
+test("the caller's concurrency group puts only a first line of /review in the pull request's group", () => {
+  const group =
+    "code-review-${{ github.event_name == 'issue_comment' && !(github.event.comment.body == '/review' || startsWith(github.event.comment.body, format('/review{0}', fromJSON('\"\\n\"'))) || startsWith(github.event.comment.body, format('/review{0}', fromJSON('\"\\r\\n\"')))) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}";
+  const groupOf = (text: string) => (parse(text) as { jobs: { review: { concurrency: { group: string } } } }).jobs.review.concurrency.group;
+  const workflow = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
+  const caller = readme.slice(callerStart, readme.indexOf('\n```', callerStart));
+  assert.equal(groupOf(workflow), group);
+  assert.equal(groupOf(caller), group);
+
+  // Mirrors the expression, case-insensitively as GitHub compares strings.
+  const joinsPullRequestGroup = (body: string) => {
+    const b = body.toLowerCase();
+    return b === '/review' || b.startsWith('/review\n') || b.startsWith('/review\r\n');
+  };
+  for (const body of ['/review', '/REVIEW', '/review\n\n---\nfooter', '/review\r\n\r\n---\r\nfooter', '/review\nplease']) {
+    assert.equal(joinsPullRequestGroup(body), true, body);
+    assert.deepEqual(parseCommand(body), { kind: 'review' }, body);
+  }
+  for (const body of ['/review please', '/review explain F3', '/review teach a rule', '/reviewed', '/review ']) {
+    assert.equal(joinsPullRequestGroup(body), false, body);
+  }
 });
 
 test('parseCommand reads /review explain with a finding id and no question', () => {
