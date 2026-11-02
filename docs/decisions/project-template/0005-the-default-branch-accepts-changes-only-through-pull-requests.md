@@ -22,7 +22,9 @@ it, or, in a project that merges through a merge queue, on the merged result the
 1. On GitHub, one repository ruleset protects the default branch, with no bypass actors, as the template's repository
    baseline writes it:
    - the branch cannot be deleted or force-pushed;
-   - a pull request is required, with zero required approvals and every review conversation resolved before the merge;
+   - a pull request is required, with zero required approvals and every review conversation resolved before the merge,
+     each one remediated and replied to first
+     ([ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md));
    - merges use the methods [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md) sets: a merge
      commit or a rebase;
    - the CI jobs, `build-and-test` and `Commit attribution` by default, are required status checks on a branch that is
@@ -37,7 +39,9 @@ it, or, in a project that merges through a merge queue, on the merged result the
    decides inside the job what work to skip.
 4. On a host that cannot require pull requests, such as a private repository on GitHub Free, the Landing section sets
    `protect: hook`, and `.githooks/pre-push` refuses any push to the default branch from a clone that runs the
-   template's hooks. On GitLab, a protected branch with "Pipelines must succeed" plays the ruleset's part.
+   template's hooks. On GitLab, the default branch's protection with "Allowed to push and merge" set to "No one",
+   and the project's "Pipelines must succeed" merge check, play the ruleset's part; `tools/Set-GitLabBaseline.ps1` in
+   the project template's repository sets both.
 5. An approval requirement is added when a second maintainer exists.
 
 ## Options considered
@@ -64,8 +68,12 @@ it, or, in a project that merges through a merge queue, on the merged result the
 
 - `AGENTS.md` Landing section, `.githooks/pre-push`, `.github/workflows/ci.yml` or `.gitlab-ci.yml`
 - `tools/Set-RepositoryBaseline.ps1` in the project template's repository, which writes the ruleset
+- `tools/Set-GitLabBaseline.ps1` in the project template's repository, which lets no one push to a GitLab project's
+  default branch and turns on its merge checks
 - [ADR-0002](0002-commits-are-attributed-to-people-not-agents.md): commits are attributed to people, not agents.
 - [ADR-0004](0004-trunk-based-development-on-the-default-branch.md): trunk-based development on the default branch.
 - [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
 - [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md): pull requests merge with a merge commit or
   by rebasing.
+- [ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md): every pull request
+  discussion is remediated and replied to before it merges.

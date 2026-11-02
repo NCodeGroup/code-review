@@ -21,7 +21,8 @@ records, such a project would have to override three of them.
 
 A pull request into the default branch merges with a merge commit or by rebasing, never by squashing. The repository
 baseline's ruleset allows only those two methods, and a person who approves by turning on auto-merge picks a merge
-commit ([ADR-0006](0006-a-person-merges-every-pull-request.md)).
+commit ([ADR-0006](0006-a-person-merges-every-pull-request.md)). On GitLab, `tools/Set-GitLabBaseline.ps1` in the
+project template's repository sets the project's "Squash commits when merging" to "Do not allow".
 
 This record is the one place the template sets the merge method; ADR-0004, ADR-0005 and ADR-0006 refer to it.
 
@@ -61,5 +62,6 @@ A project that squash-merges, for example through a merge queue, writes one reco
 - [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
 - `.template/Test-CommitAttribution.ps1`: the commit attribution check.
 - `tools/Set-RepositoryBaseline.ps1` in the project template's repository: the baseline's ruleset.
+- `tools/Set-GitLabBaseline.ps1` in the project template's repository: the GitLab project's squash setting.
 - [project-template#200](https://github.com/NCodeGroup/project-template/issues/200) and
   [project-template#201](https://github.com/NCodeGroup/project-template/issues/201)

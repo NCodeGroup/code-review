@@ -41,8 +41,8 @@
 
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
     instead. Either way it exits 0, as it does when there is nothing to update. With a conflict it commits nothing,
-    says how to finish or abandon the update, and exits 1. On any other failure the project is reset to where it
-    was.
+    says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
+    staged as it is in the working tree. On any other failure the project is reset to where it was.
 
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
@@ -385,6 +385,7 @@ try {
             $keptLines[$file] = $text.Substring($templatePart.Length)
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
+        $resetFiles = @()
         $resetCommitted = [bool](git status --porcelain)
         if ($resetCommitted) { git add -A; git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
 
@@ -424,8 +425,11 @@ try {
             if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
-        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
-        if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }
+        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree. The index keeps the reset's version of each file it changed, such as a .gitignore without its kept lines, so note them.
+        if ($resetCommitted) {
+            $resetFiles = @(git -c core.quotePath=false diff --name-only --no-renames $head HEAD)
+            git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' }
+        }
     }
     catch {
         git reset -q --hard $head; git clean -fdq
@@ -438,6 +442,12 @@ try {
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
+    }
+    else {
+        # git add -A waits for the conflicts, so stage each file the reset changed as the update left it. Otherwise the index keeps the reset's version: a file the update left as it was is listed as modified, and a commit that doesn't stage it again takes that version.
+        $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
+        $restage = @($resetFiles | Where-Object { $_ -notin $unmerged })
+        if ($restage) { git --literal-pathspecs add -A -- $restage }
     }
     # Enable the template's versioned hooks in this clone, unless it already has a hooks path or runs hooks another way
     # (Get-GitHooksSetup): then warn, because without them nothing strips AI agent attribution before a push.
