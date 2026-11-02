@@ -16,3 +16,16 @@ export function writeLog(line: string): void {
 export function writeErrorLog(line: string): void {
   console.error(logText(line));
 }
+
+// The frames of error's stack, each without its indent; empty for a value that isn't an Error or has no stack.
+export function stackFrames(error: unknown): string[] {
+  if (!(error instanceof Error) || !error.stack) return [];
+  return error.stack.split('\n').filter((line) => /^\s+at /.test(line)).map((line) => line.trim());
+}
+
+// Reports what stopped a step: its message as an ::error:: line, then each frame of its stack on a line of its own,
+// so the run's log shows where it was thrown.
+export function writeFailure(error: unknown): void {
+  writeErrorLog(`::error::${error instanceof Error ? error.message : String(error)}`);
+  for (const frame of stackFrames(error)) writeErrorLog(frame);
+}

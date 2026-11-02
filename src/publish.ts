@@ -17,7 +17,7 @@ import { postSummary, postThreads, errorText, readPostedThreads } from './commen
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
 import { githubApi, githubGraphql } from './github.ts';
-import { writeErrorLog, writeLog } from './log.ts';
+import { writeFailure, writeLog } from './log.ts';
 import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
 import { readReviewThreads } from './rereview.ts';
@@ -112,6 +112,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  writeErrorLog(`::error::${(error as Error).message}`);
+  writeFailure(error);
   process.exitCode = 1;
 });
