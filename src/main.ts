@@ -18,7 +18,7 @@ import { fetchCommit, fetchHeadFor, fetchPullRequestHead } from './fetch-head.ts
 import { closedIssues, readPullRequest } from './gather.ts';
 import { fetchPullRequest, githubApi, githubReader, runUrl } from './github.ts';
 import { readOpenIssues } from './issues.ts';
-import { writeErrorLog, writeLog } from './log.ts';
+import { writeErrorLog, writeFailure, writeLog } from './log.ts';
 import { isClosedEvent, recordOutcomes } from './outcomes.ts';
 import { writeForPublish } from './outputs.ts';
 import { checkPause, pausedStatus, type Paused } from './pause.ts';
@@ -319,6 +319,6 @@ main().catch((error) => {
     writeLog(`::warning::${error.message} No review ran, and nothing was charged.`);
     return;
   }
-  writeErrorLog(`::error::${(error as Error).message}`);
+  writeFailure(error);
   process.exitCode = 1;
 });
