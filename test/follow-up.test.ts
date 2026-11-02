@@ -61,7 +61,7 @@ const headSha = 'c'.repeat(40);
 
 // What a re-review hands the publish step about each earlier thread.
 function reReviewed(statuses: [ThreadNode, EarlierState, string?][], changedLines: Record<string, number[]> = {}): Pick<Results, 'headSha' | 'reReview'> {
-  return { headSha, reReview: { changedLines, earlier: statuses.map(([t, status, note]) => ({ url: url(t), status, note: note ?? '' })) } };
+  return { headSha, reReview: { changedLines, earlier: statuses.map(([t, status, note]) => ({ id: 'F1', url: url(t), status, note: note ?? '' })) } };
 }
 
 test('planFollowUps resolves the bot\'s thread of a fixed finding when the thread is outdated or its lines changed', async () => {
@@ -333,7 +333,7 @@ test('on the next /review, the publish step resolves the thread of a fixed findi
     notShown: [],
     dropped: [],
     changedLines: {},
-    reReview: { changedLines: {}, earlier: [{ url: url(fixed), status: 'fixed', note: 'The lock now covers it.' }, { url: url(theirs), status: 'fixed', note: '' }] },
+    reReview: { changedLines: {}, earlier: [{ id: 'F1', url: url(fixed), status: 'fixed', note: 'The lock now covers it.' }, { id: 'F2', url: url(theirs), status: 'fixed', note: '' }] },
   };
   writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
   const { requests } = runStep(
@@ -367,7 +367,7 @@ test('when the review threads can\'t be read, the publish step warns, posts as b
   const results: Results = {
     repository: 'o/r', pullRequest: 1, headSha, provider: 'bedrock', providerReason: 'test', summary: 's', verdict: 'comment', findings: [],
     reviewers: [], skipped: [], synthesisModel: '', calls: [], costUsd: 0, durationMs: 0, notShown: [], dropped: [], changedLines: {},
-    reReview: { changedLines: {}, earlier: [{ url: 'https://github.com/o/r/pull/1#discussion_r1', status: 'fixed', note: '' }] },
+    reReview: { changedLines: {}, earlier: [{ id: 'F1', url: 'https://github.com/o/r/pull/1#discussion_r1', status: 'fixed', note: '' }] },
   };
   writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
   const { requests, stdout } = runStep(

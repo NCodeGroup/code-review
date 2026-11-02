@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { neutralizeMentions, neutralizeProse, plainText } from '../src/markdown.ts';
+import { neutralizeMentions, neutralizeProse, neutralizeProseKeeping, plainText } from '../src/markdown.ts';
 
 test('neutralizeMentions puts a zero-width space after an @ that starts a mention', () => {
   assert.equal(neutralizeMentions('Ask @someone or @org/team'), 'Ask @\u200bsomeone or @\u200borg/team');
@@ -98,4 +98,17 @@ test('neutralizeProse leaves a character reference that forms no mention or link
 test('neutralizeProse reads a lone carriage return as a line break', () => {
   assert.equal(neutralizeProse('x\n```\n@x\r```\n@y\n```'), 'x\n```\n@\u200bx\n```\n@\u200by\n```');
   assert.equal(neutralizeProse('x\r\n```\r\n@x\r\n```\r\ny @z'), 'x\r\n```\r\n@x\r\n```\r\ny @\u200bz');
+});
+
+test('neutralizeProseKeeping leaves each kept link as written and neutralizes the text around it', () => {
+  assert.equal(
+    neutralizeProseKeeping('See [F1](https://x.y/1), [F1](https://x.y/1) and [a](https://evil) @t', ['[F1](https://x.y/1)']),
+    'See [F1](https://x.y/1), [F1](https://x.y/1) and [a]\u200b(https:\u200b//evil) @\u200bt',
+  );
+});
+
+test('neutralizeProseKeeping with nothing to keep neutralizes as neutralizeProse does', () => {
+  const text = 'Ask @someone: see [docs](https://x.y) and #12';
+  assert.equal(neutralizeProseKeeping(text, []), neutralizeProse(text));
+  assert.equal(neutralizeProseKeeping(text, ['', '[F9](https://absent)']), neutralizeProse(text));
 });

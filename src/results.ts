@@ -5,7 +5,7 @@ import type { DroppedFinding } from './claims.ts';
 import type { Provider } from './config.ts';
 import { creditsRanOutReason } from './credits.ts';
 import { depthLabel, type ReviewDepth } from './depth.ts';
-import { neutralizeProse } from './markdown.ts';
+import { neutralizeProse, neutralizeProseKeeping, plainText } from './markdown.ts';
 import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -90,8 +90,9 @@ export interface Results {
   recordedHead?: string;
   // For a re-review: what it found of each earlier finding, by the URL of its thread's first comment, and the lines
   // changed since the last review, so the publish step can resolve the threads of fixed findings and answer the
-  // autopilot once.
-  reReview?: { changedLines: Record<string, number[]>; earlier: { url: string; status: EarlierState; note: string }[] };
+  // autopilot once. Each earlier finding comes with its id and the URL of its thread's first comment, so the summary
+  // comment can keep its link live.
+  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[] };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
 }
@@ -278,13 +279,16 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   const count = results.findings.length;
   const raised = results.alreadyRaised ?? [];
   const recorded = results.recordedHead ?? results.headSha;
+  // The links a re-review's summary writes to the earlier findings' threads are the engine's own and stay live; the
+  // rest of the summary is neutralized.
+  const kept = (results.reReview?.earlier ?? []).filter((e) => threadUrlPattern.test(e.url)).map((e) => earlierFindingLink(e.id, e.url));
   const lines = [
     summaryMarker,
     ...(recorded ? [headMarker(recorded)] : []),
     reviewMarker(results),
     '### 🤖 Review complete',
     '',
-    `**Verdict: ${verdictLabel[results.verdict]}** — ${neutralizeProse(results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' '))}`,
+    `**Verdict: ${verdictLabel[results.verdict]}** — ${neutralizeProseKeeping(results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' '), kept)}`,
     '',
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'}${raised.length ? `, ${raised.length} already raised` : ''} ([run details](${checkUrl}))`,
     '',
@@ -322,9 +326,15 @@ const threadUrlPattern = /^https:\/\/[^\s()<>\[\]]+$/;
 
 // How an already raised finding names the earlier thread it repeats, escaped like the rest of the text it sits in.
 function raisedAs(earlier: EarlierThread): string {
-  const name = cell(earlier.id) || 'an earlier finding';
-  const link = threadUrlPattern.test(earlier.url) ? `[${name}](${earlier.url})` : name;
+  const link = earlierFindingLink(earlier.id, earlier.url, cell);
   return `already raised as ${link}${earlier.dismissed ? ', dismissed' : ''}`;
+}
+
+// How a re-review's summary names an earlier finding: a link to its thread, or its id as plain text when the thread's
+// address isn't an https link. The name is escaped as the caller's text needs, as plain text unless it says otherwise.
+export function earlierFindingLink(id: string, url: string, escape: (text: string) => string = plainText): string {
+  const name = escape(id) || 'an earlier finding';
+  return threadUrlPattern.test(url) ? `[${name}](${url})` : name;
 }
 
 // Findings an earlier thread already raises, once, in the summary: they aren't posted again or counted in the findings.

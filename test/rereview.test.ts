@@ -371,6 +371,12 @@ test('reReviewSummary names both reviewers when security ran too', () => {
   assert.equal(summary, 'Re-review of what changed since the last review at aaaaaaa: 1 hunk in 1 file, by correctness and security. No further findings above nits.');
 });
 
+test('reReviewSummary names an earlier finding without a link when its thread address is not an https link', () => {
+  const summary = reReviewSummary({ lastHead: reviewed, changed: since, reviewed: true, posted: [], nits: 0, outside: 0, earlier: [{ finding: earlierFinding({ url: 'javascript:alert(1)' }), status: 'fixed', note: '' }] });
+  assert.match(summary, / Earlier findings: F1 fixed\. /);
+  assert.doesNotMatch(summary, /javascript/);
+});
+
 test('reReviewSummary leaves out the done line while a should-fix is new or still open, or the review failed', () => {
   const open: EarlierStatus = { finding: earlierFinding(), status: 'open', note: '' };
   const base = { lastHead: reviewed, changed: since, reviewed: true, nits: 0, outside: 0 };
@@ -931,6 +937,24 @@ test('a run whose reviewers all failed records the head reviewed before it, or n
   assert.match(summaryComment({ ...results, recordedHead: reviewed } as never, 'https://check', 'https://help'), new RegExp(headMarker(reviewed)));
   assert.doesNotMatch(summaryComment({ ...results, recordedHead: '' } as never, 'https://check', 'https://help'), /ncode-review:head=/);
   assert.match(summaryComment(results as never, 'https://check', 'https://help'), new RegExp(headMarker(head)));
+});
+
+test('summaryComment keeps the links to earlier findings live and neutralizes the rest of a re-review summary', () => {
+  const url = 'https://github.com/o/r/pull/1#discussion_r1';
+  const summary = reReviewSummary({
+    lastHead: reviewed,
+    changed: since,
+    reviewed: true,
+    posted: [],
+    nits: 0,
+    outside: 0,
+    earlier: [{ finding: earlierFinding(), status: 'fixed', note: '' }],
+    verification: { refuted: [{ finding: { title: 'See [x](https://evil.example) @team' }, path: 'a.ts', reason: 'r' }], questionedPosted: 0, questionedDropped: 0, refutedKeptPosted: 0, refutedKeptDropped: 0 } as never,
+  });
+  const results = { summary, verdict: 'comment', findings: [], dropped: [], reviewers: [], skipped: [], synthesisModel: '', provider: 'bedrock', costUsd: 0, durationMs: 0, headSha: 'b'.repeat(40), reReview: { changedLines: {}, earlier: [{ id: 'F1', url, status: 'fixed', note: '' }] } };
+  const verdict = summaryComment(results as never, 'https://check', 'https://help').split('\n').find((line) => line.startsWith('**Verdict:'))!;
+  assert.ok(verdict.includes(`Earlier findings: [F1](${url}) fixed.`), verdict);
+  assert.ok(verdict.includes('"See [x]​(https:​//evil.example) @​team"'), verdict);
 });
 
 test('reReview never approves when the earlier threads could not be read', async () => {
