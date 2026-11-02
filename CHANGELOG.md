@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-02
+
 ### Changed
 
 - The repository follows project-template v0.59.0 (from v0.53.0): agents get the `/run-feedback` command, which runs `/address-feedback` round after round until a pull request merges or closes; `/address-feedback`, `/run-issues` and `/run-feedback` reply `Autopilot:` to every unresolved review thread they read, as the template's new ADR-0014 records; and `/run-issues` comments `/review` after it pushes fixes, so NCode Review reviews them ([#166](https://github.com/NCodeGroup/code-review/issues/166)).
@@ -195,7 +197,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.1.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/NCodeGroup/code-review/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/NCodeGroup/code-review/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/NCodeGroup/code-review/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/NCodeGroup/code-review/compare/v0.4.0...v1.0.0
