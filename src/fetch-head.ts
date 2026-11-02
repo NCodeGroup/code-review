@@ -24,8 +24,12 @@ export const fetchTimeoutMs = 180_000;
 export const cleanupWindowMs = 30_000;
 const cleanupRetryDelayMs = 200;
 
-// Removes the folder a failed fetch made, retrying any error until `windowMs` has passed, then throwing the last one. A
-// test passes its own `remove` to stand in for a folder that is held.
+// The errors a folder another process holds gives, the ones Node's own rmSync retries. Any other error, such as EACCES, is
+// thrown at once: waiting won't fix it.
+const heldCodes = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY', 'EMFILE', 'ENFILE']);
+
+// Removes the folder a failed fetch made, retrying an error from a held folder until `windowMs` has passed, then throwing
+// the last one. A test passes its own `remove` to stand in for a folder that is held.
 export function removeFolder(folder: string, options: { windowMs?: number; delayMs?: number; remove?: (folder: string) => void } = {}): void {
   const { windowMs = cleanupWindowMs, delayMs = cleanupRetryDelayMs, remove = (f) => rmSync(f, { recursive: true, force: true }) } = options;
   const deadline = Date.now() + windowMs;
@@ -34,7 +38,8 @@ export function removeFolder(folder: string, options: { windowMs?: number; delay
       remove(folder);
       return;
     } catch (error) {
-      if (Date.now() + delayMs > deadline) throw error;
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (!code || !heldCodes.has(code) || Date.now() + delayMs > deadline) throw error;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     }
   }

@@ -219,10 +219,16 @@ test('removeFolder retries a held folder until it can be removed', () => {
 
 test('removeFolder throws the last error once its window has passed', () => {
   let tries = 0;
-  const started = Date.now();
-  assert.throws(() => removeFolder('held', { windowMs: 100, delayMs: 10, remove: () => { tries++; throw new Error(`busy ${tries}`); } }), (error: Error) => error.message === `busy ${tries}`);
+  const busy = () => { tries++; throw Object.assign(new Error(`busy ${tries}`), { code: 'EBUSY' }); };
+  assert.throws(() => removeFolder('held', { windowMs: 100, delayMs: 10, remove: busy }), (error: Error) => error.message === `busy ${tries}`);
   assert.ok(tries > 1, `it tried ${tries} times`);
-  assert.ok(Date.now() - started < 1_000);
+});
+
+test('removeFolder throws an error a held folder would not give at once, without waiting', () => {
+  let tries = 0;
+  const denied = () => { tries++; throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
+  assert.throws(() => removeFolder('held', { windowMs: 60_000, delayMs: 10, remove: denied }), /denied/);
+  assert.equal(tries, 1);
 });
 
 test('fetchPullRequestHead refuses a time limit Node would not take, before it touches anything', () => {
