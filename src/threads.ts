@@ -34,6 +34,8 @@ export interface PostedThread {
   fingerprint: string;
   // Empty when the marker has no reviewer field.
   reviewers: string[];
+  // The thread's first comment on GitHub, when the listing gave it.
+  url?: string;
 }
 
 // The fields of an inline comment's finding marker (id, fp, severity, and reviewer on newer comments), or undefined
@@ -59,7 +61,7 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
 }
 
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
-export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null }[]): PostedThread[] {
+export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null; html_url?: string }[]): PostedThread[] {
   const posted: PostedThread[] = [];
   for (const comment of comments) {
     const fields = markerFields(comment.body);
@@ -71,6 +73,7 @@ export function parsePosted(comments: { body?: string; path?: string; line?: num
       severity: (fields.get('severity') ?? 'nit') as Severity,
       fingerprint: fields.get('fp') ?? '',
       reviewers: (fields.get('reviewer') ?? '').split(',').filter(Boolean),
+      ...(comment.html_url ? { url: comment.html_url } : {}),
     });
   }
   return posted;
@@ -103,6 +106,14 @@ function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: bool
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
 }
 
+// The thread a finding repeats, a dismissed one first, by the rule `repeats` gives.
+export function earlierThread(finding: ReviewedFinding, posted: PostedThread[], dismissed: PostedThread[] = []): { thread: PostedThread; dismissed: boolean } | undefined {
+  const dismissedThread = dismissed.find((p) => repeats(finding, p, true));
+  if (dismissedThread) return { thread: dismissedThread, dismissed: true };
+  const postedThread = posted.find((p) => repeats(finding, p, false));
+  return postedThread ? { thread: postedThread, dismissed: false } : undefined;
+}
+
 // Two findings in the same file within a few lines of each other.
 export function nearby(a: Pick<ReviewedFinding, 'file' | 'line'>, b: Pick<ReviewedFinding, 'file' | 'line'>): boolean {
   return a.file === b.file && Math.abs(a.line - b.line) <= repeatDistance;
@@ -118,7 +129,7 @@ export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>,
 export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
   const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
   for (const finding of findings) {
-    if (posted.some((p) => repeats(finding, p, false)) || dismissed.some((p) => repeats(finding, p, true))) {
+    if (earlierThread(finding, posted, dismissed)) {
       placement.alreadyPosted.push(finding);
       continue;
     }
