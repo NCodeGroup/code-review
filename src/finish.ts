@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { acknowledgedFrom, finishCheck, finishStatus, stepOutcomesFrom } from './checks.ts';
 import { githubApi, runUrl } from './github.ts';
-import { writeErrorLog, writeLog } from './log.ts';
+import { writeFailure, writeLog } from './log.ts';
 
 function readStatusFile(outDir: string): string | undefined {
   try {
@@ -29,6 +29,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  writeErrorLog(`::error::${(error as Error).message}`);
+  writeFailure(error);
   process.exitCode = 1;
 });
