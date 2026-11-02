@@ -9,7 +9,7 @@ import { chunkDiff, dropToolEnforced, globToRegExp, isDocumentation, isGenerated
 import { isPackableProject, markContracts, touchesPublicMember, touchesSerializedContract } from '../src/contracts.ts';
 import { assertNoSecrets, SecretFoundError } from '../src/outputs.ts';
 import { placeholderKey } from '../src/proxy.ts';
-import { checkTitle, type Results } from '../src/results.ts';
+import { checkSummary, checkTitle, type Results } from '../src/results.ts';
 import { changedLines, documentationOnly, findingLimit, mergeSynthesis, selectionFloor, type Finding } from '../src/review.ts';
 import { useGitHubDotCom } from './github-env.ts';
 
@@ -409,7 +409,14 @@ test('assertNoSecrets catches known values and credential shapes', () => {
 test('checkTitle counts findings by severity', () => {
   const finding = { file: 'a', line: 1, title: '', problem: '', consequence: '', fix: '', evidence: '', confidence: 1, id: 'F1', reviewers: [] };
   const results = { findings: [{ ...finding, severity: 'blocker' }, { ...finding, severity: 'nit' }] } as unknown as Results;
-  assert.equal(checkTitle(results), '1 blocker, 0 should-fix, 1 nit (shadow mode)');
+  assert.equal(checkTitle(results), '1 blocker, 0 should-fix, 1 nit');
+});
+
+test('checkSummary says, as the summary comment does, that findings are posted as review threads', () => {
+  const results = { verdict: 'comment', summary: 's', costUsd: 0, provider: 'bedrock', durationMs: 0, notShown: [], dropped: [], findings: [] } as unknown as Results;
+  const summary = checkSummary(results);
+  assert.match(summary, /^Trial: findings are posted as review threads and in the check run\. \$0\.00 on Amazon Bedrock, 0s\.$/m);
+  assert.doesNotMatch(summary, /shadow mode/i);
 });
 
 test('summaryComment shows reviewers, models, counts and the worst severity', async () => {

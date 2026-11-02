@@ -224,7 +224,7 @@ test('the summary comment and the check run list tracked findings apart, and lea
   assert.match(summary, /^- 🟠 \*\*T1\*\* `src\/a\.ts:3`: Known \(tracked in #12\)$/m);
   assert.match(summary, /\*\*F2\*\* `src\/a\.ts:2`: New$/m);
   assert.match(summary, /— 1 finding \(/);
-  assert.equal(checkTitle(results), '0 blocker, 1 should-fix, 0 nit (shadow mode)');
+  assert.equal(checkTitle(results), '0 blocker, 1 should-fix, 0 nit');
   const text = checkText(results);
   assert.match(text, /### Tracked in open issues\n\n- \*\*T1 Should fix\*\* `src\/a\.ts:3`: \*\*Known\*\* p \*Fix:\* f — tracked in #12\.\n/);
   assert.match(checkSummary(results), /1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict\./);

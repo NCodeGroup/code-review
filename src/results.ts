@@ -123,6 +123,11 @@ function switchNote(results: Results): string {
   return results.switchedToBedrock ? ` Switched to Bedrock partway: ${results.switchedToBedrock}.` : '';
 }
 
+// The summary comment and the check run say where findings go the same way, so neither contradicts the other.
+function postedNote(results: Pick<Results, 'upstream'>): string {
+  return `Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run.`;
+}
+
 // "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5", and a list of models as a list,
 // each once: a run that switched to Bedrock partway ran one tier on both providers' ids.
 export function shortModel(model: string): string {
@@ -272,7 +277,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   lines.push(...trackedList(results));
   lines.push(...upstreamList(results));
   lines.push(
-    `<sub>Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
+    `<sub>${postedNote(results)} ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
 }
@@ -331,9 +336,9 @@ function cell(text: string): string {
 export function checkTitle(results: Results): string {
   const counts = { blocker: 0, 'should-fix': 0, nit: 0 };
   for (const f of results.findings) counts[f.severity]++;
-  if (!results.findings.length) return 'No findings (shadow mode)';
+  if (!results.findings.length) return 'No findings';
   const parts = [`${counts.blocker} blocker`, `${counts['should-fix']} should-fix`, `${counts.nit} nit`];
-  return `${parts.join(', ')} (shadow mode)`;
+  return parts.join(', ');
 }
 
 export function checkSummary(results: Results): string {
@@ -342,7 +347,7 @@ export function checkSummary(results: Results): string {
     '',
     results.summary.replace(/</g, '&lt;'),
     '',
-    `Shadow mode: these findings appear only in this check run. ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
+    `${postedNote(results)} ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
   ];
   const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
   if (results.depth === 'deep') {
