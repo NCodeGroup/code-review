@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The repository follows project-template v0.59.0 (from v0.53.0): agents get the `/run-feedback` command, which runs `/address-feedback` round after round until a pull request merges or closes; `/address-feedback`, `/run-issues` and `/run-feedback` reply `Autopilot:` to every unresolved review thread they read, as the template's new ADR-0014 records; and `/run-issues` comments `/review` after it pushes fixes, so NCode Review reviews them ([#166](https://github.com/NCodeGroup/code-review/issues/166)).
+
 ## [1.1.0] - 2026-11-02
 
 ### Changed
