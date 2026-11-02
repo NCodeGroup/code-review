@@ -326,15 +326,14 @@ const threadUrlPattern = /^https:\/\/[^\s()<>\[\]]+$/;
 
 // How an already raised finding names the earlier thread it repeats, escaped like the rest of the text it sits in.
 function raisedAs(earlier: EarlierThread): string {
-  const name = cell(earlier.id) || 'an earlier finding';
-  const link = threadUrlPattern.test(earlier.url) ? `[${name}](${earlier.url})` : name;
+  const link = earlierFindingLink(earlier.id, earlier.url, cell);
   return `already raised as ${link}${earlier.dismissed ? ', dismissed' : ''}`;
 }
 
 // How a re-review's summary names an earlier finding: a link to its thread, or its id as plain text when the thread's
-// address isn't an https link.
-export function earlierFindingLink(id: string, url: string): string {
-  const name = plainText(id) || 'an earlier finding';
+// address isn't an https link. The name is escaped as the caller's text needs, as plain text unless it says otherwise.
+export function earlierFindingLink(id: string, url: string, escape: (text: string) => string = plainText): string {
+  const name = escape(id) || 'an earlier finding';
   return threadUrlPattern.test(url) ? `[${name}](${url})` : name;
 }
 
