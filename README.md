@@ -389,15 +389,19 @@ updates the template, which adds the answers file or changes its `_commit`, and 
 anywhere else a change to one is an edit by hand, reviewed as the project's. A change to the answers file that keeps
 `_commit`, such as one to `project_owned_files`, is an edit by hand too. It reads the answers file from the default
 branch, or, for the pull request that adopts the template, from its head. When `_src_path` names
-NCodeGroup/project-template, these files are template-owned, except any that `project_owned_files` lists: everything
-under `.template/`, the template's hooks
+NCodeGroup/project-template, these files are template-owned, as of its v0.54.0, except any that `project_owned_files`
+lists: everything under `.template/` and `docs/decisions/project-template/`, the template's hooks
 (`.githooks/commit-msg` and `pre-push`), its generated commands, prompt files, skills and agents in `.claude/commands/`,
 `.claude/agents/`, `.github/prompts/`, `.github/skills/` and `.github/agents/`, `CLAUDE.md`, `.template-version`,
-`.github/instructions/project-template.instructions.md`, `.github/instructions/csharp.instructions.md`,
-`.claude/rules/csharp.md` and `build/ProjectTemplate.props`. Everything else is the project's, including a command,
-prompt, skill, agent or hook it adds under a name the template doesn't use, the files the template writes once
-(`AGENTS.md`, `README.md`, `code-review.yml`), the files it merges with the project's (`.gitignore`, `.gitattributes`, the
-settings, `ci.yml`, `dependabot.yml`) and the answers file.
+`.github/instructions/project-template.instructions.md`, its C# rules (`.github/instructions/csharp.instructions.md`,
+`.github/instructions/csharp-tests.instructions.md`, `.claude/rules/csharp.md` and `.claude/rules/csharp-tests.md`), its
+workflows `template-update.yml` and `code-review-auto-merge.yml`, and its .NET files in `build/`
+(`ProjectTemplate.props`, `ProjectTemplate.globalconfig`, `ProjectTemplate.Tests.globalconfig`, `BannedSymbols.txt`,
+`dod.ps1` and `Update-PublicApi.ps1`). A file a later template version adds is the project's until the engine lists it.
+Everything else is the project's, including a command, prompt, skill, agent or hook it adds under a name the template
+doesn't use, the files the template writes once (`AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+`code-review.yml`, `docs/decisions/README.md`), the files it merges with the project's (`.gitignore`, `.gitattributes`,
+the settings, `ci.yml`, `copilot-setup-steps.yml`, `dependabot.yml`) and the answers file.
 
 The engine also compares each changed file the template would own with NCodeGroup/project-template
 at the `_commit` the head's answers name, reading it through GitHub's API with the run's read-only token. A file that

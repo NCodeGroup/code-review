@@ -83,8 +83,21 @@ test('isTemplateOwned covers the files the template replaces, and none the proje
   assert.ok(!isTemplateOwned('.template/Get-PlanState.ps1', undefined));
 });
 
+// project-template v0.42.0 to v0.53.0 added these files, and replaces them on every update; v0.54.0 added none.
+test('isTemplateOwned covers the files the template added through v0.54.0', () => {
+  for (const file of ['docs/decisions/project-template/0001-conventions-and-lessons-live-in-the-repository.md', 'docs/decisions/project-template/README.md', 'docs/decisions/project-template/0100-warnings-are-errors-in-every-project.md', '.github/workflows/template-update.yml', '.github/workflows/code-review-auto-merge.yml', '.github/instructions/csharp-tests.instructions.md', '.claude/rules/csharp-tests.md', 'build/ProjectTemplate.globalconfig', 'build/ProjectTemplate.Tests.globalconfig', 'build/BannedSymbols.txt', 'build/dod.ps1', 'build/Update-PublicApi.ps1']) {
+    assert.ok(isTemplateOwned(file, template), file);
+  }
+  // The project's own decisions and the files the template writes once or merges next to them stay the project's.
+  for (const file of ['docs/decisions/README.md', 'docs/decisions/0000-template.md', 'docs/decisions/1000-use-postgres.md', 'docs/decisions/project-template-notes.md', '.github/workflows/copilot-setup-steps.yml', '.github/workflows/publish.yml', '.github/workflows/release.yml', 'build/env.ps1', 'Directory.Build.props', 'CONTRIBUTING.md', 'SECURITY.md', 'docs/README.md']) {
+    assert.ok(!isTemplateOwned(file, template), file);
+  }
+  assert.ok(!isTemplateOwned('build/dod.ps1', { ...template, projectOwned: ['build/dod.ps1'] }));
+});
+
 // This repository is made from the template, so its copies of the template's generated files are the template's at its
 // _commit. When a template update adds a name the rule doesn't list, this fails: add the name to src/template.ts.
+// The template's workflows are named, since the project's own share their folder.
 test('isTemplateOwned covers every generated file this repository has from the template', () => {
   const root = path.resolve(import.meta.dirname, '..');
   const files = (folder: string): string[] =>
@@ -93,7 +106,11 @@ test('isTemplateOwned covers every generated file this repository has from the t
           .filter((entry) => entry.isFile())
           .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).replace(/\\/g, '/'))
       : [];
-  const generated = ['.template', '.githooks', '.claude/commands', '.claude/agents', '.github/prompts', '.github/skills', '.github/agents'].flatMap(files);
+  const generated = [
+    ...['.template', '.githooks', '.claude/commands', '.claude/agents', '.github/prompts', '.github/skills', '.github/agents', 'docs/decisions/project-template'].flatMap(files),
+    '.github/workflows/template-update.yml',
+    '.github/workflows/code-review-auto-merge.yml',
+  ];
   assert.ok(generated.length > 50, `found ${generated.length}`);
   assert.deepEqual(generated.filter((file) => !isTemplateOwned(file, template)), []);
 });

@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - The context, selection and synthesis calls no longer cache their prompts: each makes one request, so caching paid 25% more to write about 150,000 tokens a review that nothing read. Reviewer followers keep reading their leader's cache, as the traces confirmed ([#133](https://github.com/NCodeGroup/code-review/issues/133)).
+- In a pull request that adopts or updates project-template, a finding on a file the template added through v0.54.0 and replaces on every update moves upstream to NCodeGroup/project-template like a finding on its other files, instead of being posted as the project's: its decision records in `docs/decisions/project-template/`, its `template-update.yml` and `code-review-auto-merge.yml` workflows, its C# test rules (`.github/instructions/csharp-tests.instructions.md` and `.claude/rules/csharp-tests.md`) and its .NET `build/` files (`ProjectTemplate.globalconfig`, `ProjectTemplate.Tests.globalconfig`, `BannedSymbols.txt`, `dod.ps1` and `Update-PublicApi.ps1`) ([#148](https://github.com/NCodeGroup/code-review/issues/148)).
 
 ## [1.0.0] - 2026-11-01
 

@@ -2,12 +2,15 @@
 // .copier-answers.yml. A template update replaces the template's files and discards any edit, so a defect in one can
 // only be fixed in the template: findings on them belong upstream, not on the pull request.
 //
-// The engine can't render the template, so it applies a fixed rule instead: `.template/` and the files below, which the
-// template renders and replaces on every update, are template-owned; everything else, including the files the template
-// writes once (_skip_if_exists), the files it merges with the project's (_merged_files), the answers file, anything
-// listed in project_owned_files, and a command, prompt, skill, agent or hook the project adds under a name the template
-// doesn't use, is the project's. The rule applies only when _src_path names NCodeGroup/project-template. A name the
-// template adds after this list was written counts as the project's, so its findings are posted rather than hidden.
+// The engine can't render the template, so it applies a fixed rule instead: `.template/`,
+// `docs/decisions/project-template/` and the files below, which the template renders and replaces on every update, are
+// template-owned; everything else, including the files the template writes once (_skip_if_exists), the files it merges
+// with the project's (_merged_files), the answers file, anything listed in project_owned_files, and a command, prompt,
+// skill, agent or hook the project adds under a name the template doesn't use, is the project's. The rule applies only
+// when _src_path names NCodeGroup/project-template. A name the template adds after this list was written counts as the
+// project's, so its findings are posted rather than hidden.
+// The list follows the template through v0.54.0: when a release adds a file, list each one its template/ folder renders
+// that copier.yml doesn't name under _skip_if_exists or _merged_files.
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -36,7 +39,7 @@ const copilotAgents = [
   'copilot-implementer', 'copilot-orchestrator', 'copilot-planner', 'copilot-reviewer', 'hybrid-orchestrator', 'hybrid-planner',
   'hybrid-reviewer', 'local-implementer', 'plan-executor',
 ];
-const templateFolders = ['.template/'];
+const templateFolders = ['.template/', 'docs/decisions/project-template/'];
 const templateFiles = new Set([
   'CLAUDE.md',
   '.template-version',
@@ -46,7 +49,16 @@ const templateFiles = new Set([
   '.github/instructions/project-template.instructions.md',
   '.github/instructions/csharp.instructions.md',
   '.claude/rules/csharp.md',
+  '.claude/rules/csharp-tests.md',
+  '.github/instructions/csharp-tests.instructions.md',
   'build/ProjectTemplate.props',
+  'build/ProjectTemplate.globalconfig',
+  'build/ProjectTemplate.Tests.globalconfig',
+  'build/BannedSymbols.txt',
+  'build/dod.ps1',
+  'build/Update-PublicApi.ps1',
+  '.github/workflows/template-update.yml',
+  '.github/workflows/code-review-auto-merge.yml',
   '.github/prompts/execute-step-local.prompt.md',
   ...workflowCommands.flatMap((name) => [`.claude/commands/${name}.md`, `.github/prompts/${name}.prompt.md`, `.github/skills/${name}/SKILL.md`]),
   ...copilotAgents.map((name) => `.github/agents/${name}.agent.md`),
