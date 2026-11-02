@@ -1339,6 +1339,7 @@ test('touchesPublicMember finds a public or protected declaration added or remov
   assert.ok(touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    protected internal void Added() { }'), csHead));
   assert.ok(touchesPublicMember(csSection('@@ -10,3 +10,2 @@\n     }\n-    public void Removed() => Go();\n '), csHead));
   assert.ok(touchesPublicMember(csSection('@@ -1,2 +0,0 @@\n-namespace NCode.Lib;\n-public class Gone { }'), ''));
+  assert.ok(touchesPublicMember(csSection('@@ -1,3 +0,0 @@\n-namespace NCode.Lib;\n-[ExcludeFromCodeCoverage]\n-public class Gone { }'), ''), 'a deleted file with an attribute');
   assert.ok(touchesPublicMember(csSection('@@ -6,0 +6,1 @@\n+    [Obsolete]'), csHead), 'an attribute belongs to the member below it');
 });
 

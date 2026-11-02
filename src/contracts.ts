@@ -107,6 +107,8 @@ function scanHead(head: string): HeadScan {
       return chain;
     },
     codeFrom(index) {
+      // A deleted file's removed lines sit before head line 0, so a removed attribute asks from index -1.
+      if (index < 0 || index >= lines.length) return undefined;
       if (index < codeStart || index > codeEnd) {
         codeStart = index;
         codeEnd = index;
