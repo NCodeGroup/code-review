@@ -22,6 +22,9 @@ export interface Template {
   // The template version the answers record, such as v0.41.1.
   commit: string;
   projectOwned: string[];
+  // The files the template owns in this pull request, as the template check found them (confirmTemplateFiles).
+  // Absent or empty until it confirms some, so nothing is the template's when the template couldn't be read.
+  owned?: string[];
 }
 
 export const answersFile = '.copier-answers.yml';
