@@ -90,7 +90,73 @@ test('the publish step reports a finding that repeats a dismissed thread as alre
   assert.ok(!body.includes('<summary>Findings</summary>'), body);
 });
 
-const resultsWith = (overrides: Partial<Results> = {}): Results => ({
+test('the publish step counts every finding as new when the earlier review comments can\'t be read', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'already-raised-'));
+  made.push(dir);
+  const out = path.join(dir, 'out');
+  mkdirSync(out);
+  const earlier = finding({ id: 'F2', title: 'Was the ADR-1202 citation meant to be dropped?' });
+  const first = { author: { login: 'ncode-review' }, authorAssociation: 'NONE', body: threadBody(earlier), url: threadUrl };
+  const dismissed: ThreadNode = {
+    id: 'PRRT_1',
+    isResolved: true,
+    isOutdated: false,
+    resolvedBy: { login: 'polewskm' },
+    path: earlier.file,
+    line: earlier.line,
+    originalLine: earlier.line,
+    first: { nodes: [{ ...first, reactions: { nodes: [] } }] },
+    comments: { totalCount: 1, nodes: [first] },
+  };
+  const results: Results = {
+    repository: 'o/r',
+    pullRequest: 1,
+    headSha,
+    provider: 'bedrock',
+    providerReason: 'test',
+    summary: 'One nit.',
+    verdict: 'comment',
+    findings: [finding()],
+    reviewers: [{ name: 'hygiene', status: 'ran', model: 'haiku', findingCount: 1, topSeverity: 'nit' }],
+    skipped: [],
+    synthesisModel: '',
+    calls: [],
+    costUsd: 0,
+    durationMs: 0,
+    notShown: [],
+    dropped: [],
+    changedLines: { 'src/Rule.cs': [25] },
+  };
+  writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
+  // The route for the bot's inline comments is left out, so the fake answers 404 and readPostedThreads throws; postThreads
+  // then reads them again and fails, as it does without this step's early read.
+  const { requests, stdout, status } = runStep(
+    'publish.ts',
+    dir,
+    {
+      rest: {
+        'GET https://api.github.com/repos/o/r/collaborators/polewskm/permission': { role_name: 'admin', permission: 'admin' },
+        'POST https://api.github.com/repos/o/r/check-runs': { html_url: 'https://github.com/o/r/runs/1' },
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'POST https://api.github.com/repos/o/r/issues/1/comments': { html_url: 'https://github.com/o/r/pull/1#issuecomment-1' },
+      },
+      graphql: [['reviewThreads', { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [dismissed] } } } } }]],
+    },
+    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
+    true,
+  );
+  assert.notEqual(status, 0);
+  const check = requests.find((r) => r.method === 'POST' && r.url === 'https://api.github.com/repos/o/r/check-runs');
+  assert.ok(check, 'the check run was posted');
+  const output = check.body.output;
+  assert.equal(output.title, '0 blocker, 0 should-fix, 1 nit');
+  assert.equal(output.annotations.length, 1);
+  assert.ok(!output.text.includes('already raised'), output.text);
+  assert.ok(stdout.includes("Couldn't read the earlier review comments"), stdout);
+  assert.equal(requests.some((r) => r.method === 'POST' && r.url.endsWith('/pulls/1/reviews')), false);
+});
+
+const resultsWith =  (overrides: Partial<Results> = {}): Results => ({
   repository: 'o/r',
   pullRequest: 1,
   headSha,
