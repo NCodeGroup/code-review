@@ -16,6 +16,7 @@ import { printable } from './outputs.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, templateVersionFiles, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
+import { settleVerdict, verdictFor, verdictRank } from './verdict.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
 export { depthLabel, severityRank, type ReviewDepth, type Severity };
@@ -584,23 +585,6 @@ export function settleUpstream(
 }
 
 type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[]; tracked?: number })[] };
-
-const verdictRank: Record<Verdict, number> = { approve: 0, comment: 1, 'request-changes': 2 };
-
-function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
-  return findings.some((f) => f.severity === 'blocker') ? 'request-changes' : findings.length ? 'comment' : 'approve';
-}
-
-// Synthesis gave its verdict with every finding in view, so when some are removed after it, a verdict they carried gives
-// way to the one the kept findings call for. Its request-changes on should-fixes that together make the change unsafe
-// stands while one is kept and no blocker was removed. Without synthesis's verdict there is none to settle: review()
-// derives one from the findings it posts, after verification.
-function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], removed: Pick<Finding, 'severity'>[]): Verdict | undefined {
-  if (!verdict || !removed.length) return verdict;
-  if (verdict === 'request-changes' && findings.length && !removed.some((f) => f.severity === 'blocker')) return verdict;
-  const fromFindings = verdictFor(findings);
-  return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
-}
 
 // What a review posts from synthesis's answer, or from the reviewers' own findings when synthesis failed: the findings
 // that say a changed file isn't changed are dropped before the limit, so each frees its place, and the rest are numbered.

@@ -1,5 +1,5 @@
 name: NCode code review
-description: Reviews a pull request with Claude and posts the findings as the "Code review" check run (shadow mode).
+description: Reviews a pull request with Claude and posts the findings as review threads, a summary comment and the "Code review" check run.
 
 inputs:
   app-private-key:

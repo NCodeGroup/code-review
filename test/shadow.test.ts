@@ -153,7 +153,7 @@ test("a shadow reviewer runs, but its findings reach only the check run's shadow
   assert.doesNotMatch(summary, /Shadow blocker|performance/);
   assert.match(summary, /\*\*3 reviewers run\*\* — 1 finding/);
   assert.ok(!annotations(results).some((a) => a.title.includes('Shadow blocker')));
-  assert.equal(checkTitle(results), '0 blocker, 0 should-fix, 1 nit (shadow mode)');
+  assert.equal(checkTitle(results), '0 blocker, 0 should-fix, 1 nit');
 
   const text = checkText(results);
   const [posted, shadowSection] = text.split('<details><summary>Shadow findings (not posted)</summary>');

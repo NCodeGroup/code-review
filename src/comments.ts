@@ -57,19 +57,21 @@ export async function readPostedThreads(
 // GitHub rejects the whole review when any comment's line isn't in the diff, so on a rejection it posts them all in
 // the review's body instead. When the pull request has more review comments than it reads, it posts none, since it
 // can't tell which findings are already posted; the check run still has them all. A page that can't be read throws.
+// `posted`, when given, is the bot's earlier threads the caller already read, so they aren't read twice.
 export async function postThreads(
   api: (method: string, url: string, body?: unknown) => Promise<any>,
-  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked'>,
+  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked' | 'alreadyRaised'>,
   secrets: Iterable<string>,
   log: (line: string) => void = writeLog,
   dismissed: PostedThread[] = [],
+  posted?: PostedThread[],
 ): Promise<void> {
-  const posted = await readPostedThreads(api, results.repository, results.pullRequest);
-  if (!posted) {
+  const earlier = posted ?? (await readPostedThreads(api, results.repository, results.pullRequest));
+  if (!earlier) {
     log(`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`);
     return;
   }
-  const placement = placeFindings([...results.findings, ...(results.tracked ?? [])], results.changedLines, posted, dismissed);
+  const placement = placeFindings([...results.findings, ...(results.alreadyRaised ?? []), ...(results.tracked ?? [])], results.changedLines, earlier, dismissed);
   if (!placement.inline.length && !placement.inBody.length) {
     const left = [
       placement.alreadyPosted.length ? `${placement.alreadyPosted.length} already posted` : '',

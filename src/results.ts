@@ -9,6 +9,8 @@ import { neutralizeProse } from './markdown.ts';
 import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
+import { earlierThread, type PostedThread } from './threads.ts';
+import { settleVerdict } from './verdict.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
@@ -19,6 +21,13 @@ export interface ReviewerResult {
   topSeverity?: Severity;
   error?: string;
 }
+
+// The earlier thread a finding repeats: its finding's id there, its link ('' when the listing gave none), and whether the
+// maintainer dismissed it.
+export interface EarlierThread { id: string; url: string; dismissed: boolean }
+
+// A finding that repeats one of the bot's earlier threads, with that thread.
+export type RaisedFinding = ReviewedFinding & { earlier: EarlierThread };
 
 // What the shadow reviewers and prompts did: shown only in the check run's collapsed shadow section.
 export interface ShadowResults {
@@ -48,6 +57,9 @@ export interface Results {
   // Findings an open issue already tracks, numbered T1, T2 and so on: listed apart, never posted as threads, and left
   // out of the verdict and the counts. Absent when there are none.
   tracked?: ReviewedFinding[];
+  // Findings that repeat the bot's earlier threads, set by the publish step: listed apart, never posted again or counted
+  // in the totals; a dismissed one is out of the verdict too.
+  alreadyRaised?: RaisedFinding[];
   // Findings left out before posting because they say a file the pull request changes isn't changed.
   dropped: DroppedFinding[];
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
@@ -82,6 +94,27 @@ export interface Results {
   reReview?: { changedLines: Record<string, number[]>; earlier: { url: string; status: EarlierState; note: string }[] };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
+}
+
+// Findings that repeat one of the bot's earlier threads leave the findings and are listed apart, with the thread each
+// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat of a dismissed thread leaves
+// the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
+// problem is still in the code.
+export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
+  const findings: ReviewedFinding[] = [];
+  const raised: RaisedFinding[] = [];
+  for (const finding of results.findings) {
+    const match = earlierThread(finding, posted, dismissed);
+    if (match) raised.push({ ...finding, earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed } });
+    else findings.push(finding);
+  }
+  if (!raised.length) return results;
+  return {
+    ...results,
+    findings,
+    alreadyRaised: raised,
+    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed)) ?? results.verdict,
+  };
 }
 
 // The findings that belong upstream: those listed and those past the list's limit.
@@ -121,6 +154,11 @@ function costLine(results: Results, names: Record<Provider, string>): string {
 
 function switchNote(results: Results): string {
   return results.switchedToBedrock ? ` Switched to Bedrock partway: ${results.switchedToBedrock}.` : '';
+}
+
+// The summary comment and the check run say where findings go the same way, so neither contradicts the other.
+function postedNote(results: Pick<Results, 'upstream'>): string {
+  return `Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run.`;
 }
 
 // "global.anthropic.claude-haiku-5-5" and "claude-haiku-5-5" both read as "haiku-5-5", and a list of models as a list,
@@ -238,6 +276,7 @@ export function keptMarkerLines(body: string): string[] {
 export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;
+  const raised = results.alreadyRaised ?? [];
   const recorded = results.recordedHead ?? results.headSha;
   const lines = [
     summaryMarker,
@@ -247,7 +286,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     '',
     `**Verdict: ${verdictLabel[results.verdict]}** — ${neutralizeProse(results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' '))}`,
     '',
-    `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'} ([run details](${checkUrl}))`,
+    `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'}${raised.length ? `, ${raised.length} already raised` : ''} ([run details](${checkUrl}))`,
     '',
     ...droppedNote(results.dropped, checkUrl),
     '| Reviewer | Model | Findings | Top |',
@@ -269,12 +308,39 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     }
     lines.push('', '</details>', '');
   }
+  lines.push(...alreadyRaisedList(results));
   lines.push(...trackedList(results));
   lines.push(...upstreamList(results));
   lines.push(
-    `<sub>Trial: findings${results.upstream?.length ? " in this repository's files" : ''} are posted as review threads and in the check run. ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
+    `<sub>${postedNote(results)} ${costLine(results, providerLabel)}, ${Math.round(results.durationMs / 1000)}s, at ${results.headSha.slice(0, 7)}.${switchNote(results)} ([how to interact](${interactUrl}))</sub>`,
   );
   return lines.join('\n');
+}
+
+// Only an https link to the earlier thread is written as a link; anything else is shown as plain text.
+const threadUrlPattern = /^https:\/\/[^\s()<>\[\]]+$/;
+
+// How an already raised finding names the earlier thread it repeats, escaped like the rest of the text it sits in.
+function raisedAs(earlier: EarlierThread): string {
+  const name = cell(earlier.id) || 'an earlier finding';
+  const link = threadUrlPattern.test(earlier.url) ? `[${name}](${earlier.url})` : name;
+  return `already raised as ${link}${earlier.dismissed ? ', dismissed' : ''}`;
+}
+
+// Findings an earlier thread already raises, once, in the summary: they aren't posted again or counted in the findings.
+function alreadyRaisedList(results: Results): string[] {
+  const raised = results.alreadyRaised ?? [];
+  if (!raised.length) return [];
+  return [
+    `<details><summary>Already raised (${raised.length})</summary>`,
+    '',
+    "Threads on this pull request already raise these, so they aren't posted again or counted in the findings; a dismissed one isn't counted in the verdict either.",
+    '',
+    ...raised.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (${raisedAs(f.earlier)})`),
+    '',
+    '</details>',
+    '',
+  ];
 }
 
 // Findings an open issue already tracks, once, in the summary: they aren't threads, and don't count toward the verdict.
@@ -331,9 +397,11 @@ function cell(text: string): string {
 export function checkTitle(results: Results): string {
   const counts = { blocker: 0, 'should-fix': 0, nit: 0 };
   for (const f of results.findings) counts[f.severity]++;
-  if (!results.findings.length) return 'No findings (shadow mode)';
+  const raised = results.alreadyRaised ?? [];
+  const also = raised.length ? `, ${raised.length} already raised` : '';
+  if (!results.findings.length) return raised.length ? `No new findings${also}` : 'No findings';
   const parts = [`${counts.blocker} blocker`, `${counts['should-fix']} should-fix`, `${counts.nit} nit`];
-  return `${parts.join(', ')} (shadow mode)`;
+  return `${parts.join(', ')}${also}`;
 }
 
 export function checkSummary(results: Results): string {
@@ -342,7 +410,7 @@ export function checkSummary(results: Results): string {
     '',
     results.summary.replace(/</g, '&lt;'),
     '',
-    `Shadow mode: these findings appear only in this check run. ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
+    `${postedNote(results)} ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
   ];
   const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
   if (results.depth === 'deep') {
@@ -360,6 +428,12 @@ export function checkSummary(results: Results): string {
     lines.push('', trackedCount === 1
       ? "1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict."
       : `${trackedCount} findings already tracked in open issues are listed after the findings, and aren't posted as threads or counted in the verdict.`);
+  }
+  const raisedCount = results.alreadyRaised?.length ?? 0;
+  if (raisedCount) {
+    lines.push('', raisedCount === 1
+      ? "1 finding repeats a thread already on this pull request: it's listed after the findings, and isn't posted again or counted in the finding counts."
+      : `${raisedCount} findings repeat threads already on this pull request: they're listed after the findings, and aren't posted again or counted in the finding counts.`);
   }
   const withheld = results.suggestionsWithheld ?? 0;
   if (withheld) {
@@ -398,6 +472,14 @@ export function checkText(results: Results): string {
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     );
+  }
+  const raised = results.alreadyRaised ?? [];
+  if (raised.length) {
+    out.push('### Already raised', '');
+    for (const f of raised) {
+      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`);
+    }
+    out.push('');
   }
   const tracked = results.tracked ?? [];
   if (tracked.length) {
