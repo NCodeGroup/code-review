@@ -5,7 +5,7 @@ Issues and pull requests are welcome. [README.md](README.md) explains the projec
 ## Prerequisites
 
 - Git, and PowerShell 7 (`pwsh`): every command here runs from the repository root in PowerShell 7.
-- Node.js 24, the version `.node-version` names, and npm. Install the dependencies with `npm ci`.
+- Node.js 24, the version `.node-version` names, and npm. With nvs, `. ./tools/Use-Node.ps1` switches the shell to it. Install the dependencies with `npm ci`.
 - On Windows, `git config --global core.longpaths true`, once: a Claude Code plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
 
 ## Set Up
