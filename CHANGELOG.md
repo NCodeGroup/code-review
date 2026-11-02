@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- When the review, publish or finish step stops on an unexpected error, the run's log lists the error's stack frames, one line each, below its `::error::` line, so a crash can be traced from the log without reproducing it; a thrown value that isn't an error is logged as text instead of `undefined`.
+
 ## [1.0.1] - 2026-11-01
 
 ### Added
