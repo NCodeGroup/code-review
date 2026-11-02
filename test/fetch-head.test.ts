@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { authEnvironment, fetchHeadFor, fetchPullRequestHead, fetchTimeoutMs } from '../src/fetch-head.ts';
+import { authEnvironment, fetchHeadFor, fetchPullRequestHead, fetchTimeoutMs, removeFolder } from '../src/fetch-head.ts';
 
 const made: string[] = [];
 after(() => {
@@ -184,10 +184,10 @@ test('fetchPullRequestHead fetches the named commit when no branch or pull reque
 // Like the header test, this needs a real server: only a remote that accepts a connection and then doesn't answer
 // makes git wait until its time limit.
 test('fetchPullRequestHead gives up on a remote that never answers, instead of waiting for the job to be killed', async () => {
-  // The server never answers, and drops each connection 3 s after it opens, twice the time limit, which git's own timer
-  // started before the connection, so the limit still ends the fetch. The drop ends git's child, git-remote-http, which on
-  // Windows outlives the killed git and holds the folder through the cleanup's retries.
-  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.on('connection',(c)=>setTimeout(()=>c.destroy(),3000));s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
+  // The server never answers and never drops a connection, and says when one closes. Killing git at its time limit
+  // leaves its child, git-remote-http, holding the connection, and on Windows the folder (issue #165), so the child must
+  // give up on its own: only then does the connection close.
+  const server = spawn(process.execPath, ['-e', "const s=require('http').createServer(()=>{});s.on('connection',(c)=>c.on('close',()=>console.log('C')));s.listen(0,'127.0.0.1',()=>console.log('P '+s.address().port));"], { stdio: ['ignore', 'pipe', 'inherit'] });
   let output = '';
   server.stdout.on('data', (chunk) => { output += String(chunk); });
   try {
@@ -201,13 +201,34 @@ test('fetchPullRequestHead gives up on a remote that never answers, instead of w
     assert.throws(() => fetchPullRequestHead({ path: dir, remoteUrl: `http://127.0.0.1:${port}/o/r.git`, number: 1, sha: 'c'.repeat(40), timeoutMs: 1500 }), /Couldn't fetch commit ccccccc.*ETIMEDOUT/s);
     const elapsed = Date.now() - started;
     assert.ok(elapsed >= 1500, `it ended after ${elapsed} ms, before its limit, so something else stopped it`);
-    // The killed fetch's folder is removed too.
-    const removedBy = Date.now() + 5_000;
-    while (existsSync(dir) && Date.now() < removedBy) await new Promise((resolve) => setTimeout(resolve, 50));
+    // The killed git's child gave up too, and the fetch's folder is removed.
+    const closedBy = Date.now() + 10_000;
+    while (!/^C$/m.test(output) && Date.now() < closedBy) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.match(output, /^C$/m, "the killed git's child kept waiting on the remote");
     assert.ok(!existsSync(dir), 'the timed-out fetch left its folder behind');
   } finally {
     server.kill();
   }
+});
+
+test('removeFolder retries a held folder until it can be removed', () => {
+  let tries = 0;
+  removeFolder('held', { delayMs: 1, remove: () => { if (++tries < 4) throw Object.assign(new Error('busy'), { code: 'EBUSY' }); } });
+  assert.equal(tries, 4);
+});
+
+test('removeFolder throws the last error once its window has passed', () => {
+  let tries = 0;
+  const busy = () => { tries++; throw Object.assign(new Error(`busy ${tries}`), { code: 'EBUSY' }); };
+  assert.throws(() => removeFolder('held', { windowMs: 100, delayMs: 10, remove: busy }), (error: Error) => error.message === `busy ${tries}`);
+  assert.ok(tries > 1, `it tried ${tries} times`);
+});
+
+test('removeFolder throws an error a held folder would not give at once, without waiting', () => {
+  let tries = 0;
+  const denied = () => { tries++; throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
+  assert.throws(() => removeFolder('held', { windowMs: 60_000, delayMs: 10, remove: denied }), /denied/);
+  assert.equal(tries, 1);
 });
 
 test('fetchPullRequestHead refuses a time limit Node would not take, before it touches anything', () => {

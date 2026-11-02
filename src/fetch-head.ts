@@ -17,14 +17,32 @@ import { writeErrorLog } from './log.ts';
 // How long a fetch may take before the run reports it instead of waiting for the job's own limit.
 export const fetchTimeoutMs = 180_000;
 
-// A failed fetch's folder is removed with these retries, about two seconds in all: a git killed at its time limit can leave
-// a child holding the folder for a moment.
-const cleanupRetries = 10;
+// A failed fetch's folder is removed with retries for up to this long. Killing git at its time limit doesn't kill its
+// child, git-remote-http, which on Windows holds the folder until it exits. The low-speed limit `git` sets on every fetch
+// ends that child within about a second of the time limit, and Windows gives up on a connection that is never accepted
+// after about 21 s, so the window covers both (issue #165). Off Windows nothing holds a folder, and the first try removes it.
+export const cleanupWindowMs = 30_000;
 const cleanupRetryDelayMs = 200;
 
-// Removes the folder a failed fetch made. A test passes its own to make the removal fail.
-export function removeFolder(folder: string): void {
-  rmSync(folder, { recursive: true, force: true, maxRetries: cleanupRetries, retryDelay: cleanupRetryDelayMs });
+// The errors a folder another process holds gives, the ones Node's own rmSync retries. Any other error, such as EACCES, is
+// thrown at once: waiting won't fix it.
+const heldCodes = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY', 'EMFILE', 'ENFILE']);
+
+// Removes the folder a failed fetch made, retrying an error from a held folder until `windowMs` has passed, then throwing
+// the last one. A test passes its own `remove` to stand in for a folder that is held.
+export function removeFolder(folder: string, options: { windowMs?: number; delayMs?: number; remove?: (folder: string) => void } = {}): void {
+  const { windowMs = cleanupWindowMs, delayMs = cleanupRetryDelayMs, remove = (f) => rmSync(f, { recursive: true, force: true }) } = options;
+  const deadline = Date.now() + windowMs;
+  for (;;) {
+    try {
+      remove(folder);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (!code || !heldCodes.has(code) || Date.now() + delayMs > deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
+  }
 }
 
 export interface FetchHead {
@@ -69,11 +87,14 @@ export function authEnvironment(remoteUrl: string, token: string | undefined): R
 
 // An empty folder stands in for the home directory, the hooks folder and the global configuration, so nothing a runner
 // or the checked-out code could hold there is read.
-// `run.env` adds to git's environment (the token's header), and `run.timeout` is a limit in milliseconds.
+// `run.env` adds to git's environment (the token's header), and `run.timeout` is a limit in milliseconds. A limit also
+// bounds git's transport child, which killing git at the limit leaves running: it gives up on its own once the remote has
+// sent nothing for the limit, rounded up to a whole second, so it exits about when git is killed (issue #165).
 function git(where: { cwd: string; empty: string }, args: string[], run: { env?: Record<string, string>; timeout?: number } = {}): string {
   const { cwd, empty } = where;
   const { env: extra = {}, timeout } = run;
-  return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...args], {
+  const stall = timeout === undefined ? [] : ['-c', 'http.lowSpeedLimit=1', '-c', `http.lowSpeedTime=${Math.ceil(timeout / 1000)}`];
+  return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...stall, ...args], {
     encoding: 'utf8',
     ...(timeout === undefined ? {} : { timeout, killSignal: 'SIGKILL' as const }),
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -153,8 +174,8 @@ export function fetchPullRequestHead(options: FetchHead): void {
       git(where, ['checkout', '-q', '--force', '--detach', options.sha]);
     } catch (error) {
       // A half-made repository would be taken for a checkout by the next attempt, which refuses one with no commit. A
-      // git killed at its time limit can leave a child holding the folder for a moment, so retry, and never let a failed
-      // cleanup hide the fetch's own error.
+      // git killed at its time limit can leave a child holding the folder until it gives up, so retry, and never let a
+      // failed cleanup hide the fetch's own error.
       try {
         (options.remove ?? removeFolder)(options.path);
       } catch (cleanupError) {
