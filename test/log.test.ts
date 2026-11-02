@@ -47,7 +47,7 @@ test('writeFailure writes the message as an ::error:: line, then each stack fram
 test('writeFailure writes an error without a stack as its message alone', (t) => {
   const logged = t.mock.method(console, 'error', () => {});
   const error = new Error('x');
-  error.stack = undefined;
+  delete error.stack;
   writeFailure(error);
   assert.deepEqual(
     logged.mock.calls.map((call) => call.arguments[0]),
