@@ -13,7 +13,7 @@ import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecur
 // src/template.ts through gather.ts without npm ci, and never reads settings or the template's copier.yml.
 const requireHere = createRequire(import.meta.url);
 let yamlLibrary: typeof Yaml | undefined;
-export const yaml =(): typeof Yaml => (yamlLibrary ??= requireHere('yaml') as typeof Yaml);
+export const yaml = (): typeof Yaml => (yamlLibrary ??= requireHere('yaml') as typeof Yaml);
 
 export const settingsFolder = '.github/code-review';
 const configPath = `${settingsFolder}/config.yml`;
