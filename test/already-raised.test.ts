@@ -156,7 +156,7 @@ test('the publish step counts every finding as new when the earlier review comme
   assert.equal(requests.some((r) => r.method === 'POST' && r.url.endsWith('/pulls/1/reviews')), false);
 });
 
-const resultsWith =  (overrides: Partial<Results> = {}): Results => ({
+const resultsWith = (overrides: Partial<Results> = {}): Results => ({
   repository: 'o/r',
   pullRequest: 1,
   headSha,
