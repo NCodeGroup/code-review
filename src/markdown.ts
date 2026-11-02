@@ -53,6 +53,29 @@ export function neutralizeProse(text: string): string {
   return fence ? escapeProse(text) : out.join('\n');
 }
 
+// Text that holds links the engine wrote itself among model-written text: each string in kept, wherever it appears
+// exactly, stays as written, and the text between them is neutralized as neutralizeProse does.
+export function neutralizeProseKeeping(text: string, kept: readonly string[]): string {
+  const keep = kept.filter((k) => k !== '');
+  let out = '';
+  let rest = text;
+  for (;;) {
+    let index = -1;
+    let found = '';
+    for (const k of keep) {
+      const pos = rest.indexOf(k);
+      if (pos === -1) continue;
+      if (index === -1 || pos < index || (pos === index && k.length > found.length)) {
+        index = pos;
+        found = k;
+      }
+    }
+    if (index === -1) return out + neutralizeProse(rest);
+    out += neutralizeProse(rest.slice(0, index)) + found;
+    rest = rest.slice(index + found.length);
+  }
+}
+
 function escapeProse(text: string): string {
   return text
     .replace(hashBeforeDigit, (match) => (match === '#' ? '#\u200b' : match))
