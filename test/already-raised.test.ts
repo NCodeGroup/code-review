@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import type { ThreadNode } from '../src/rereview.ts';
-import type { Results } from '../src/results.ts';
-import { settleAlreadyRaised } from '../src/results.ts';
+import type { EarlierThread, RaisedFinding, Results } from '../src/results.ts';
+import { checkSummary, checkText, checkTitle, settleAlreadyRaised, summaryComment } from '../src/results.ts';
 import type { ReviewedFinding } from '../src/review.ts';
 import { parsePosted, threadBody } from '../src/threads.ts';
 import { runStep } from './steps.ts';
@@ -134,4 +134,41 @@ test('settleAlreadyRaised keeps the verdict a repeat of an open thread carries',
 test('settleAlreadyRaised returns the results as they are when no finding repeats a thread', () => {
   const r = resultsWith({ findings: [other] });
   assert.equal(settleAlreadyRaised(r, [], []), r);
+});
+
+const raisedFinding = (e: Partial<EarlierThread> = {}): RaisedFinding => ({ ...finding(), earlier: { id: 'F2', url: threadUrl, dismissed: true, ...e } });
+const raisedEntry = '- 🟡 **F1** `src/Rule.cs:25`: ADR-1202 citation removed rather than moved (already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed)';
+const raisedCheckLine = '- **F1 Nit** `src/Rule.cs:25`: **ADR-1202 citation removed rather than moved** p *Fix:* f — already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed.';
+
+test('summaryComment counts only the new findings and lists the already raised ones apart, linking each thread', () => {
+  const body = summaryComment(resultsWith({ alreadyRaised: [raisedFinding()] }), 'https://check', 'https://interact');
+  assert.ok(body.includes('— 0 findings, 1 already raised ([run details](https://check))'), body);
+  assert.ok(body.includes('<details><summary>Already raised (1)</summary>'), body);
+  assert.ok(body.includes(raisedEntry), body);
+  assert.ok(!body.includes('<summary>Findings</summary>'), body);
+});
+
+test('summaryComment names an earlier thread without a link unless its URL is https', () => {
+  const body = summaryComment(resultsWith({ alreadyRaised: [raisedFinding({ url: 'javascript:alert(1)', dismissed: false })] }), 'https://check', 'https://interact');
+  assert.ok(body.includes('(already raised as F2)'), body);
+  assert.ok(!body.includes('javascript'), body);
+});
+
+test('checkTitle counts the already raised findings apart from the new ones', () => {
+  assert.equal(checkTitle(resultsWith({ alreadyRaised: [raisedFinding()] })), 'No new findings, 1 already raised');
+  assert.equal(checkTitle(resultsWith({ findings: [finding({ id: 'F3' })], alreadyRaised: [raisedFinding()] })), '0 blocker, 0 should-fix, 1 nit, 1 already raised');
+  assert.equal(checkTitle(resultsWith()), 'No findings');
+});
+
+test('checkSummary says how many findings repeat a thread already on the pull request', () => {
+  const one = checkSummary(resultsWith({ alreadyRaised: [raisedFinding()] }));
+  assert.ok(one.includes("1 finding repeats a thread already on this pull request: it's listed after the findings, and isn't posted again or counted in the finding counts."), one);
+  const two = checkSummary(resultsWith({ alreadyRaised: [raisedFinding(), raisedFinding({ id: 'F3' })] }));
+  assert.ok(two.includes("2 findings repeat threads already on this pull request: they're listed after the findings, and aren't posted again or counted in the finding counts."), two);
+});
+
+test('checkText lists the already raised findings in a section of their own', () => {
+  const text = checkText(resultsWith({ alreadyRaised: [raisedFinding()] }));
+  assert.ok(text.includes('### Already raised'), text);
+  assert.ok(text.includes(raisedCheckLine), text);
 });
