@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - When the review, publish or finish step stops on an unexpected error, the run's log lists the error's stack frames, one line each, below its `::error::` line, so a crash can be traced from the log without reproducing it; a thrown value that isn't an error is logged as text instead of `undefined`.
 - In a pull request that adopts or updates project-template, the engine reads which files the template owns from the template itself, at the `_commit` the head's answers name: every file its `template/` folder renders except those its `copier.yml` writes once (`_skip_if_exists`) or merges (`_merged_files`) and those `project_owned_files` lists. A file a new template release adds moves its findings upstream in the pull request that updates to that release, without waiting for an engine release that lists it. A template file the pull request deletes, or one the template no longer renders, is the project's, and when `copier.yml` can't be read or lists a pattern instead of a path, every file is the project's and the run's log says why ([#152](https://github.com/NCodeGroup/code-review/issues/152), [ADR-1000](docs/decisions/1000-template-owned-files-come-from-the-templates-copier-yml.md)).
 
+### Fixed
+
+- A re-review's summary comment links each earlier finding under "Earlier findings" to its thread again, instead of showing the link's markdown with its address broken: the comment keeps the links the engine writes to the bot's own threads as they are, and still neutralizes the model's text around them. An earlier finding whose thread address isn't an https link is named without a link ([#154](https://github.com/NCodeGroup/code-review/issues/154)).
+
 ## [1.0.1] - 2026-11-01
 
 ### Added
@@ -32,7 +36,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A finding that repeats one of the bot's earlier threads on the pull request, posted or dismissed, is listed apart under "Already raised" in the summary comment and the check run, naming the earlier finding, linking its thread and saying "dismissed" when the maintainer dismissed it, and is left out of the finding counts and the annotations; a dismissed one is left out of the verdict too. Before, when every finding repeated a thread, no review was posted, yet the summary comment and the check run still reported them as new findings ([#151](https://github.com/NCodeGroup/code-review/issues/151)).
 - A pull request that deletes a C# file in a packed project no longer crashes the review with `Cannot read properties of undefined (reading 'trim')` when a removed line is an attribute: the public-surface check looked for the declaration below the attribute before the deleted file's first line ([#155](https://github.com/NCodeGroup/code-review/issues/155)).
 - The check run no longer says it's in shadow mode: its title drops "(shadow mode)" and its summary says, as the summary comment does, that findings are posted as review threads and in the check run; the action's description and the README's opening say the same ([#151](https://github.com/NCodeGroup/code-review/issues/151)).
-- A re-review's summary comment links each earlier finding under "Earlier findings" to its thread again, instead of showing the link's markdown with its address broken: the comment keeps the links the engine writes to the bot's own threads as they are, and still neutralizes the model's text around them. An earlier finding whose thread address isn't an https link is named without a link ([#154](https://github.com/NCodeGroup/code-review/issues/154)).
 
 ## [1.0.0] - 2026-11-01
 
