@@ -14,7 +14,7 @@ This file belongs to the project: template updates never change it. Keep it unde
 
 ## Commands
 
-Run from the repository root in PowerShell 7.
+Run from the repository root in PowerShell 7, after `. ./tools/Use-Node.ps1`, which puts the Node.js version `.node-version` names on `PATH`: this machine selects Node.js with nvs, and its default version is older than the engine needs, so the tests fail without it. The Landing section's `prelude` runs it for the workflow's commands; run it yourself before any other `node` or `npm` command in a new shell.
 
 - Build: `npm run typecheck`
 - Test: `npm test`
@@ -34,7 +34,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - pr-format: none
 - review-bots: ncode-review
 - max-review-rounds: 3
-- prelude: none
+- prelude: ./tools/Use-Node.ps1
 
 ## Conventions
 
