@@ -52,6 +52,7 @@ test('parseCommand drops a footer from an explain question and a taught rule', (
   });
   assert.deepEqual(parseCommand('/review explain F3\n\n- - -\nfooter'), { kind: 'explain', ref: { kind: 'id', id: 'F3' }, question: '' });
   assert.deepEqual(parseCommand('/Review Explain F3'), { kind: 'explain', ref: { kind: 'id', id: 'F3' }, question: '' });
+  assert.deepEqual(parseCommand('/Review Teach a rule'), { kind: 'teach', scope: 'repository', rule: 'a rule' });
   // A `---` inside a line is no footer.
   assert.deepEqual(parseCommand('/review teach --verbose flag'), { kind: 'teach', scope: 'repository', rule: '--verbose flag' });
 });
@@ -67,7 +68,9 @@ test("the caller's concurrency group puts only a first line of /review in the pu
   assert.equal(groupOf(workflow), group);
   assert.equal(groupOf(caller), group);
 
-  // Mirrors the expression, case-insensitively as GitHub compares strings.
+  // Mirrors the expression, case-insensitively as GitHub compares strings. It only documents the truth table the
+  // expression is meant to have, and that the engine agrees with it: the expression itself is pinned above as a string,
+  // and only a live run on GitHub evaluates it.
   const joinsPullRequestGroup = (body: string) => {
     const b = body.toLowerCase();
     return b === '/review' || b.startsWith('/review\n') || b.startsWith('/review\r\n');
