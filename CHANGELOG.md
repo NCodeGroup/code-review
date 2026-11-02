@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-02
+
 ### Changed
 
 - When the review, publish or finish step stops on an unexpected error, the run's log lists the error's stack frames, one line each, below its `::error::` line, so a crash can be traced from the log without reproducing it; a thrown value that isn't an error is logged as text instead of `undefined`.
@@ -184,7 +186,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.0.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/NCodeGroup/code-review/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/NCodeGroup/code-review/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/NCodeGroup/code-review/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/NCodeGroup/code-review/compare/v0.3.1...v0.4.0
