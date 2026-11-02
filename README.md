@@ -106,8 +106,8 @@ jobs:
   review:
     # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
     # comment on one from someone with write access. The engine checks the comment again and skips anything else. A plain
-    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The explain and
-    # teach checks here and in the concurrency group must name the same commands.
+    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The concurrency
+    # group below decides which comments can cancel a review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
@@ -121,7 +121,7 @@ jobs:
     environment: code-review
     timeout-minutes: 30
     concurrency:
-      group: code-review-${{ (startsWith(github.event.comment.body, '/review explain') || startsWith(github.event.comment.body, '/review teach')) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
+      group: code-review-${{ github.event_name == 'issue_comment' && !(github.event.comment.body == '/review' || startsWith(github.event.comment.body, format('/review{0}', fromJSON('"\n"'))) || startsWith(github.event.comment.body, format('/review{0}', fromJSON('"\r\n"')))) && format('command-{0}', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     permissions:
       id-token: write
@@ -280,13 +280,17 @@ you to the repository as a collaborator.
 | `/review teach F3 <rule>` | The same for a rule that comes from the newest review's F3, such as "don't flag X because Y": the issue also quotes the finding with its file, line and link. A finding comment's link works in place of the id. |
 | `/review teach org <rule>` | Opens the issue in NCodeGroup/code-review instead, for a rule every NCodeGroup repository's review follows. |
 
+A command is the comment's first line, in any case. `/review` followed by more lines is a review, while `/review please`
+isn't a command. For explain and teach, the question or rule may go on over several lines, and everything from a `---`
+line on, such as a signature or an agent's footer, is ignored.
+
 `/review explain` finds an id among the bot's inline finding comments of the newest review; a finding that went in a
 review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
 review's ids, with no model call. Otherwise one Sonnet agent with Read, Grep and Glob, locked down like the reviewers,
 reads the pull request's latest commit, within a budget of about $0.50. The `if:` above already lets the command through,
-since it checks only that the comment starts with `/review`. The `concurrency` group above gives each explain or teach
-comment a group of its own, so either command while a review is running doesn't cancel that review, and a review
-doesn't cancel an answer.
+since it checks only that the comment starts with `/review`. The `concurrency` group above puts only a comment whose first
+line is exactly `/review` in the pull request's group, so an explain or teach comment, or any other comment that starts
+with `/review`, never cancels a review in progress, and a review doesn't cancel an answer.
 
 `/review teach` makes no model call and writes no code. The review step words the issue: the rule quoted as data in a
 fenced block, with its mentions defused, who taught it and a link to the comment, and for `teach F3` the finding's file,

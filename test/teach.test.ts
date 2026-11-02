@@ -64,7 +64,7 @@ test('parseCommand keeps an empty rule for the teach step to answer, and ignores
   assert.deepEqual(parseCommand('/review teach org'), { kind: 'teach', scope: 'org', rule: '' });
   assert.equal(parseCommand('/review teacher F3'), undefined);
   assert.equal(parseCommand('Please /review teach F3 x'), undefined);
-  assert.equal(parseCommand('/review\nteach F3 x'), undefined);
+  assert.deepEqual(parseCommand('/review\nteach F3 x'), { kind: 'review' });
 });
 
 test('commandFromEvent takes /review teach only from a writer, in a top-level comment on a pull request', () => {

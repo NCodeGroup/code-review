@@ -64,14 +64,21 @@ function parseTeach(rest: string): Extract<Command, { kind: 'teach' }> {
   return { kind: 'teach', scope: 'repository', rule: rest };
 }
 
-// The comment must be exactly the command, apart from surrounding whitespace, so a sentence that merely mentions
-// /review doesn't start a run. `/review explain <ref>` may go on with a question, on the same line or the next ones.
+// A Markdown thematic break, such as the `---` a signature or an agent's attribution footer starts with, ends the command.
+const footerRule = /^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*\r?$/m;
+
+// The command is the comment's first line, so a footer or a sentence below it doesn't stop a review, while a first line
+// that merely mentions /review doesn't start one. Everything from a thematic-break line on is dropped, so a footer never
+// reaches an explain question or a taught rule. The words match in any case, as the workflow's `startsWith` does.
+// `/review explain <ref>` may still go on with a question, and `/review teach` with a rule, on the same line or the next ones.
 export function parseCommand(body: string): Command | undefined {
-  const text = body.trim();
-  if (text === '/review') return { kind: 'review' };
-  const teach = /^\/review[ \t]+teach(?:\s+([\s\S]*))?$/.exec(text);
+  const whole = body.trim();
+  const rule = footerRule.exec(whole);
+  const text = (rule ? whole.slice(0, rule.index) : whole).trim();
+  if (/^\/review$/i.test(text.split(/\r?\n/, 1)[0]!.trim())) return { kind: 'review' };
+  const teach = /^\/review[ \t]+teach(?:\s+([\s\S]*))?$/i.exec(text);
   if (teach) return parseTeach((teach[1] ?? '').trim());
-  const explain = /^\/review[ \t]+explain(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(text);
+  const explain = /^\/review[ \t]+explain(?:\s+(\S+))?(?:\s+([\s\S]*))?$/i.exec(text);
   if (!explain) return undefined;
   const ref = explain[1] ? parseFindingRef(explain[1]) : { kind: 'invalid' as const, text: '' };
   return { kind: 'explain', ref, question: (explain[2] ?? '').trim().slice(0, maxQuestionChars) };
