@@ -444,7 +444,7 @@ export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPat
 }
 
 // What git says the pull request changes, read once for gather and the template check: the head, the merge base, the
-// changed files, the template it adopts or updates, and the files confirmTemplateFiles checks. gather marks `changed`
+// changed files, the template it adopts or updates, and the files confirmTemplateFiles sorts. gather marks `changed`
 // in place, so each gather gets its own.
 export interface Changes {
   headSha: string;
@@ -460,19 +460,19 @@ export function readChanges(pullRequest: PullRequest, prPath: string, basePath: 
   const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, headSha]));
   const template = templateOf(pullRequest, changed, prPath, basePath);
   const commit = readTemplate(prPath)?.commit;
-  const candidate = template && commit ? { template, commit, files: changed.map((f) => f.path).filter((p) => isTemplateOwned(p, template)) } : undefined;
+  const candidate = template && commit ? { template, commit, files: changed.map((f) => f.path).filter((p) => p !== answersFile && !template.projectOwned.includes(p)) } : undefined;
   return { headSha, mergeBase, changed, ...(template ? { template } : {}), ...(candidate ? { candidate } : {}) };
 }
 
 // guidanceDir, when given, adds the NCodeGroup-wide guidance the training learned ahead of the repository's own rules.
-// confirmedTemplateFiles are the changed files confirmTemplateFiles found to match the template's own copies. changes,
-// when given, is the readChanges the template check used.
+// ownedTemplateFiles are the files confirmTemplateFiles found the template owns in this pull request. changes, when
+// given, is the readChanges the template check used.
 export function gather(
   pullRequest: PullRequest,
   prPath: string,
   basePath: string,
   guidanceDir?: string,
-  confirmedTemplateFiles: ReadonlySet<string> = new Set(),
+  ownedTemplateFiles: ReadonlySet<string> = new Set(),
   changes: Changes = readChanges(pullRequest, prPath, basePath),
 ): Gathered {
   // Review exactly what's checked out. For a /review comment, the pull request may have moved between the API read and
@@ -483,12 +483,9 @@ export function gather(
   // The repository's settings come from the default branch only, so a pull request can't soften its own review.
   const settings = readProjectSettings(basePath);
   const skip = settings.config.skip.map(globToRegExp);
-  // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out.
-  const candidate = changes.template;
-  // A changed file the template would own that doesn't match the template's copy at the head's _commit is an edit by
-  // hand, so it joins projectOwned and is the project's everywhere isTemplateOwned is asked.
-  const unconfirmed = candidate ? changed.map((f) => f.path).filter((p) => isTemplateOwned(p, candidate) && !confirmedTemplateFiles.has(p)) : [];
-  const template = candidate && unconfirmed.length ? { ...candidate, projectOwned: [...candidate.projectOwned, ...unconfirmed] } : candidate;
+  // Whether the pull request adopts or updates the template doesn't depend on what skip: leaves out. The template owns
+  // the files the template check found, none when it didn't run or couldn't read the template.
+  const template = changes.template ? { ...changes.template, owned: [...ownedTemplateFiles] } : undefined;
   const skippedByConfig = changed.filter((f) => skip.some((p) => p.test(f.path))).map((f) => f.path);
   const files = changed.filter((f) => !skippedByConfig.includes(f.path));
   for (const file of files) if (isTemplateOwned(file.path, template)) file.templateOwned = true;

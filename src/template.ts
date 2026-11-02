@@ -2,15 +2,13 @@
 // .copier-answers.yml. A template update replaces the template's files and discards any edit, so a defect in one can
 // only be fixed in the template: findings on them belong upstream, not on the pull request.
 //
-// The engine can't render the template, so it applies a fixed rule instead: `.template/`,
-// `docs/decisions/project-template/` and the files below, which the template renders and replaces on every update, are
-// template-owned; everything else, including the files the template writes once (_skip_if_exists), the files it merges
-// with the project's (_merged_files), the answers file, anything listed in project_owned_files, and a command, prompt,
-// skill, agent or hook the project adds under a name the template doesn't use, is the project's. The rule applies only
-// when _src_path names NCodeGroup/project-template. A name the template adds after this list was written counts as the
-// project's, so its findings are posted rather than hidden.
-// The list follows the template through v0.54.0: when a release adds a file, list each one its template/ folder renders
-// that copier.yml doesn't name under _skip_if_exists or _merged_files.
+// The engine reads the rule from the template itself, at the _commit the head's answers name (src/template-check.ts):
+// every file its template/ folder renders is template-owned, except the ones its copier.yml writes once
+// (_skip_if_exists) or merges with the project's (_merged_files) and any that project_owned_files lists. Everything
+// else is the project's, the answers file and a command, prompt, skill, agent or hook the project adds under a name the
+// template doesn't use among them. The rule applies only when _src_path names NCodeGroup/project-template, and a file
+// is template-owned only once the template check has confirmed it, so a template it can't read leaves every file the
+// project's.
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -22,7 +20,7 @@ export interface Template {
   // The template version the answers record, such as v0.41.1.
   commit: string;
   projectOwned: string[];
-  // The files the template owns in this pull request, as the template check found them (confirmTemplateFiles).
+  // The files the template owns in this pull request, as the template check found them (src/template-check.ts).
   // Absent or empty until it confirms some, so nothing is the template's when the template couldn't be read.
   owned?: string[];
 }
@@ -31,42 +29,6 @@ export const answersFile = '.copier-answers.yml';
 // The files a template update changes that hold only the template's version and the answers it was made with.
 export const templateVersionFiles: readonly string[] = [answersFile, '.template-version'];
 const templateRepositoryName = 'NCodeGroup/project-template';
-
-// The template's workflow commands, each generated as a Claude Code command, a Copilot prompt file and a skill.
-const workflowCommands = [
-  'address-feedback', 'analyze-architecture', 'analyze-decision', 'audit-conventions', 'continue-plan', 'execute-step',
-  'finish-plan', 'handoff-plan', 'orchestrate-plan', 'plan-bugfix', 'plan-docs', 'plan-feature', 'plan-issue', 'plan-migration',
-  'plan-performance', 'plan-refactor', 'plan-security', 'plan-template-update', 'plan-tests', 'replan-step', 'review-code',
-  'review-plan-diff', 'run-issues', 'ship-plan', 'triage-issues',
-];
-const copilotAgents = [
-  'copilot-implementer', 'copilot-orchestrator', 'copilot-planner', 'copilot-reviewer', 'hybrid-orchestrator', 'hybrid-planner',
-  'hybrid-reviewer', 'local-implementer', 'plan-executor',
-];
-const templateFolders = ['.template/', 'docs/decisions/project-template/'];
-const templateFiles = new Set([
-  'CLAUDE.md',
-  '.template-version',
-  '.githooks/commit-msg',
-  '.githooks/pre-push',
-  '.claude/agents/plan-executor.md',
-  '.github/instructions/project-template.instructions.md',
-  '.github/instructions/csharp.instructions.md',
-  '.claude/rules/csharp.md',
-  '.claude/rules/csharp-tests.md',
-  '.github/instructions/csharp-tests.instructions.md',
-  'build/ProjectTemplate.props',
-  'build/ProjectTemplate.globalconfig',
-  'build/ProjectTemplate.Tests.globalconfig',
-  'build/BannedSymbols.txt',
-  'build/dod.ps1',
-  'build/Update-PublicApi.ps1',
-  '.github/workflows/template-update.yml',
-  '.github/workflows/code-review-auto-merge.yml',
-  '.github/prompts/execute-step-local.prompt.md',
-  ...workflowCommands.flatMap((name) => [`.claude/commands/${name}.md`, `.github/prompts/${name}.prompt.md`, `.github/skills/${name}/SKILL.md`]),
-  ...copilotAgents.map((name) => `.github/agents/${name}.agent.md`),
-]);
 
 function unquote(value: string): string {
   const trimmed = value.trim();
@@ -108,7 +70,8 @@ export function templateRepository(srcPath: string): string {
   return github ? github[1]! : trimmed;
 }
 
-// Only NCodeGroup/project-template: the rule lists its files, not those of another template, a fork or a local copy.
+// Only NCodeGroup/project-template: the engine reads that template's layout, not another template's, a fork's or a local
+// copy's.
 export function templateFromAnswers(text: string): Template | undefined {
   const answers = parseAnswers(text);
   if (templateRepository(answers.srcPath).toLowerCase() !== templateRepositoryName.toLowerCase()) return undefined;
@@ -123,12 +86,12 @@ export function readTemplate(checkout: string): Template | undefined {
 }
 
 export function isTemplateOwned(file: string, template: Template | undefined): boolean {
-  if (!template || template.projectOwned.includes(file)) return false;
-  return templateFiles.has(file) || templateFolders.some((folder) => file.startsWith(folder));
+  return !!template?.owned?.includes(file) && !template.projectOwned.includes(file);
 }
 
-// What a pull request that adopts or updates the template would leave to it: the template, the _commit its head's
-// answers name, and the changed files the template would own, before they're compared with the template's own copies.
+// What a pull request that adopts or updates the template leaves to the template check: the template, the _commit its
+// head's answers name, and every changed file but the answers file and the ones project_owned_files lists. The check
+// reads which files the template owns from the template itself, and counts a file missing from `files` as unchanged.
 export interface TemplateCandidate {
   template: Template;
   commit: string;
