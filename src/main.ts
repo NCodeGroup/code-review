@@ -280,7 +280,7 @@ async function main(): Promise<void> {
       diff: gathered.diff,
       recordedHead,
       ...(reReviewTrace.reReview
-        ? { reReview: { changedLines: reReviewTrace.reReview.changedLines, earlier: reReviewTrace.reReview.earlier.map(({ url, status, note }) => ({ url, status, note })) } }
+        ? { reReview: { changedLines: reReviewTrace.reReview.changedLines, earlier: reReviewTrace.reReview.earlier.map(({ id, url, status, note }) => ({ id, url, status, note })) } }
         : {}),
     });
     // The shadow reviewers' findings and the shadow prompts' outputs, beside the live ones they shadow.
