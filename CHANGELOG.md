@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- In a pull request that adopts or updates project-template, the engine reads which files the template owns from the template itself, at the `_commit` the head's answers name: every file its `template/` folder renders except those its `copier.yml` writes once (`_skip_if_exists`) or merges (`_merged_files`) and those `project_owned_files` lists. A file a new template release adds moves its findings upstream in the pull request that updates to that release, without waiting for an engine release that lists it. A template file the pull request deletes, or one the template no longer renders, is the project's, and when `copier.yml` can't be read or lists a pattern instead of a path, every file is the project's and the run's log says why ([#152](https://github.com/NCodeGroup/code-review/issues/152), [ADR-1000](docs/decisions/1000-template-owned-files-come-from-the-templates-copier-yml.md)).
+
 ## [1.0.1] - 2026-11-01
 
 ### Added
