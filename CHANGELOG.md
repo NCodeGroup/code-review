@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The repository follows project-template v0.59.0 (from v0.53.0): agents get the `/run-feedback` command, which runs `/address-feedback` round after round until a pull request merges or closes; `/address-feedback`, `/run-issues` and `/run-feedback` reply `Autopilot:` to every unresolved review thread they read, as the template's new ADR-0014 records; and `/run-issues` comments `/review` after it pushes fixes, so NCode Review reviews them ([#166](https://github.com/NCodeGroup/code-review/issues/166)).
 
+### Fixed
+
+- A closed pull request's outcomes count a writer's `Autopilot: nothing to change` reply, which project-template v0.57.0's commands post on a finding they judge needs no change, as dismissed, as `Autopilot: not changed` is, instead of acknowledged, so the monthly report's dismissal counts stay right ([#168](https://github.com/NCodeGroup/code-review/issues/168)).
+- A fetch of the pull request's head that reaches its time limit no longer leaves git's transport child, `git-remote-http`, waiting on a remote that never answers: every fetch with a limit sets git's low-speed limit to the same time, so the child gives up on its own about when git is killed. The cleanup after a failed fetch retries for up to 30 s instead of about 2 s, so on Windows, where that child holds the folder until it exits, the folder is removed and the next attempt starts clean ([#165](https://github.com/NCodeGroup/code-review/issues/165)).
+
 ## [1.1.0] - 2026-11-02
 
 ### Changed

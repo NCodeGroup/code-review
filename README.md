@@ -336,14 +336,14 @@ holds decides, after the autopilot's replies below:
 | Outcome | When |
 |---|---|
 | fixed | The finding's line was edited or removed, or code was added right next to it, afterwards; or its thread is outdated and resolved. When GitHub's comparison can't show the line (a diff too large for a patch, or more than 300 changed files), an outdated thread counts as a changed line, and the run warns. Or a writer's reply `Autopilot: fixed in <sha>` naming a commit the pull request gained after the finding's review, even when the fix is on other lines, such as a test. |
-| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". Or a writer's reply `Autopilot: not changed`, even when the line changed for another reason. |
+| dismissed | A 👎 from a writer, a thread resolved without a change, or a writer's reply that declines it, such as "won't fix", "false positive" or "by design". Or a writer's reply `Autopilot: not changed` or `Autopilot: nothing to change`, even when the line changed for another reason. |
 | acknowledged | A 👍 or a reply from a writer, without a change. |
 | ignored | None of these. |
 
 Writers are people with write access: for a reply, its author's association (owner, member or collaborator) or, when
 that doesn't say so, their permission on the repository, with at most 20 repliers looked up; for a reaction, the
-reactor's permission on the repository. Of a writer's replies, the latest `Autopilot: fixed in <sha>` or
-`Autopilot: not changed` decides before the other rules; a `fixed in` reply that names no commit after the review
+reactor's permission on the repository. Of a writer's replies, the latest `Autopilot: fixed in <sha>`,
+`Autopilot: not changed` or `Autopilot: nothing to change` decides before the other rules; a `fixed in` reply that names no commit after the review
 counts for nothing. The newest summary comment gets a table of finding, reviewer,
 severity and outcome, with the pull request's state, and a hidden `<!-- ncode-review:outcomes {...} -->` marker holding,
 for each finding, its reviewers, severity and outcome, the commit it was reviewed at, and that review's cost, provider and

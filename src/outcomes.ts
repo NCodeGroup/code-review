@@ -49,13 +49,15 @@ export interface Evidence {
   commitsAfter?: string[];
 }
 
-// The last of the replies, in order, that is an autopilot verdict: `Autopilot: fixed in <sha>` or `Autopilot: not changed`.
+// The last of the replies, in order, that is an autopilot verdict: `Autopilot: fixed in <sha>`, or `Autopilot: not changed`
+// or `Autopilot: nothing to change`, which project-template v0.57.0's commands post on a finding they judge needs no change
+// (issue #168).
 function autopilotVerdict(replies: Evidence['replies']): { fixedIn: string } | 'not changed' | undefined {
   let verdict: { fixedIn: string } | 'not changed' | undefined;
   for (const reply of replies) {
     const fixed = /^\s*Autopilot:\s*fixed in\s+([0-9a-f]{7,40})\b/i.exec(reply.body);
     if (fixed?.[1]) verdict = { fixedIn: fixed[1].toLowerCase() };
-    else if (/^\s*Autopilot:\s*not changed\b/i.test(reply.body)) verdict = 'not changed';
+    else if (/^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(reply.body)) verdict = 'not changed';
   }
   return verdict;
 }
@@ -87,8 +89,9 @@ export function isDeclining(reply: string): boolean {
 }
 
 // The first rule that holds, in this order:
-// - a writer's latest autopilot verdict: `Autopilot: not changed` is dismissed, and `Autopilot: fixed in <sha>` is fixed
-//   when the pull request gained a commit that <sha> prefixes after the finding's review (issue #97).
+// - a writer's latest autopilot verdict: `Autopilot: not changed` or `Autopilot: nothing to change` is dismissed, and
+//   `Autopilot: fixed in <sha>` is fixed when the pull request gained a commit that <sha> prefixes after the finding's
+//   review (issue #97).
 // - fixed: the finding's lines changed afterwards, or its thread is outdated and resolved.
 // - dismissed: a writer's 👎, a resolved thread without a change, or a writer's reply that declines it.
 // - acknowledged: a writer's 👍 or reply, without a change.

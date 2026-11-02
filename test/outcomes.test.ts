@@ -92,6 +92,21 @@ test("a writer's Autopilot: not changed is dismissed even when the line changed"
   assert.equal(classify({ ...none, linesChanged: true, replies: [{ body: 'Autopilot: not changed. It is intended.', writer: true }] }), 'dismissed');
 });
 
+test("a writer's Autopilot: nothing to change is dismissed, as not changed is, even when the line changed", () => {
+  const replies = [{ body: 'Autopilot: nothing to change. The caller already checks it.', writer: true }];
+  assert.equal(classify({ ...none, replies }), 'dismissed');
+  assert.equal(classify({ ...none, linesChanged: true, replies }), 'dismissed');
+});
+
+test('a later Autopilot: nothing to change outweighs an earlier fixed in', () => {
+  const sha = '5d49e7e0123456789abcdef0123456789abcdef0';
+  const replies = [
+    { body: 'Autopilot: fixed in 5d49e7e.', writer: true },
+    { body: 'Autopilot: nothing to change.', writer: true },
+  ];
+  assert.equal(classify({ ...none, replies, commitsAfter: [sha] }), 'dismissed');
+});
+
 test('the latest autopilot verdict decides', () => {
   const sha = '5d49e7e0123456789abcdef0123456789abcdef0';
   const replies = [
