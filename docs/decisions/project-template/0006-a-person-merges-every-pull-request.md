@@ -76,3 +76,5 @@ a pull request that updates anything else, and every other pull request are stil
   only through pull requests that pass CI.
 - [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md): pull requests merge with a merge commit
   or by rebasing.
+- [ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md): every pull request
+  discussion is remediated and replied to before it merges.
