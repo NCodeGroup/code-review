@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The repository follows project-template v0.61.2 (from v0.59.0): the `Commit attribution` check and the `commit-msg` hook catch attribution from any AI agent or model, and the check's remedy for an attribution line in a commit message runs the hook, as `CONTRIBUTING.md` now says; the workflow commands remove an agent footer a session appends to what they post, `/run-issues` and `/run-feedback` ask the maintainer for `/review` when their own `/review` comment came back with one, and the commands that call `gh` use its REST forms in a session that refuses GitHub's GraphQL API, such as a Claude Code cloud session.
+
 ## [1.1.2] - 2026-11-02
 
 ### Fixed
