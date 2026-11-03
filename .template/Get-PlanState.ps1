@@ -6,7 +6,7 @@
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, protected, ahead, behind, landed,
     pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
-    "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
+    "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
@@ -151,13 +151,20 @@ function Get-IssueState([string]$Ref, [string]$HostName) {
     if ($HostName -in 'github', 'gitlab' -and $numbers.Count -gt 0) {
         $issueNumber = $numbers[$numbers.Count - 1].Value
         $repoArgs = @()
-        if ($Ref -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#\d+') { $repoArgs = @('--repo', $Matches['r']) }
-        elseif ($Ref -match '^https?://[^/\s]+/(?<r>.+?)/(?:-/)?issues/\d+') { $repoArgs = @('--repo', $Matches['r']) }
+        $apiRepo = '{owner}/{repo}'
+        if ($Ref -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#\d+') { $repoArgs = @('--repo', $Matches['r']); $apiRepo = $Matches['r'] }
+        elseif ($Ref -match '^https?://[^/\s]+/(?<r>.+?)/(?:-/)?issues/\d+') { $repoArgs = @('--repo', $Matches['r']); $apiRepo = $Matches['r'] }
         $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
         if (Get-Command $cli -ErrorAction SilentlyContinue) {
             if ($HostName -eq 'github') {
-                $out = (& gh issue view $issueNumber @repoArgs --json state --jq .state 2>$null | Out-String).Trim()
-                if ($LASTEXITCODE -eq 0 -and $out) { $issueState = $out.ToUpperInvariant() }
+                $out = & gh api "repos/$apiRepo/issues/$issueNumber" 2>$null | Out-String
+                if ($LASTEXITCODE -eq 0) {
+                    try {
+                        $s = "$(($out | ConvertFrom-Json -ErrorAction Stop).state)"
+                        if ($s) { $issueState = $s.ToUpperInvariant() }
+                    }
+                    catch { $issueState = 'unknown' }
+                }
             }
             else {
                 $out = & glab issue view $issueNumber @repoArgs --output json 2>$null | Out-String
@@ -381,10 +388,12 @@ try {
     if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
     $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
     if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
-        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('pr', 'list', '--head', $branch, '--state', 'all', '--limit', '100', '--json', 'number,state,mergeCommit,headRefOid,baseRefName') }
+        # The colon is written %3A: gh api fills :owner, :repo and :branch as well as {owner}, so a branch such as repo-x would lose its name.
+        # One page of 100, as gh pr list --limit 100 read before: a branch's own pull requests are far fewer.
+        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls?head={owner}%3A$([uri]::EscapeDataString($branch))&state=all&per_page=100") }
         else { Start-Concurrent $folder 'glab' @('mr', 'list', '--source-branch', $branch, '--all', '--output', 'json') }
     }
-    $releaseArgs = @('release', 'view', $release) + $(if ($hostName -eq 'github') { @('--json', 'tagName') } else { @() })
+    $releaseArgs = if ($hostName -eq 'github') { @('api', "repos/{owner}/{repo}/releases/tags/$release") } else { @('release', 'view', $release) }
     if ($hasCli -and $releasePolicy -eq 'tag+release' -and $release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
@@ -437,8 +446,10 @@ try {
                     $requests = @(foreach ($item in $items) {
                         if ($hostName -eq 'github') {
                             [pscustomobject]@{
-                                Number = "$($item.number)"; State = "$($item.state)".ToUpperInvariant()
-                                Merge = "$($item.mergeCommit.oid)"; Head = "$($item.headRefOid)"; Base = "$($item.baseRefName)"
+                                Number = "$($item.number)"
+                                State = if ($item.merged_at) { 'MERGED' } else { "$($item.state)".ToUpperInvariant() }
+                                Merge = if ($item.merged_at) { "$($item.merge_commit_sha)" } else { '' }
+                                Head = "$($item.head.sha)"; Base = "$($item.base.ref)"
                             }
                         }
                         else {
