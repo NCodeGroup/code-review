@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The repository follows project-template v0.61.2 (from v0.59.0): the `Commit attribution` check and the `commit-msg` hook catch attribution from any AI agent or model, and the check's remedy for an attribution line in a commit message runs the hook, as `CONTRIBUTING.md` now says; the workflow commands remove an agent footer a session appends to what they post, `/run-issues` and `/run-feedback` ask the maintainer for `/review` when their own `/review` comment came back with one, and the commands that call `gh` use its REST forms in a session that refuses GitHub's GraphQL API, such as a Claude Code cloud session.
+- The repository follows project-template v0.68.4 (from v0.59.0): the `Commit attribution` check and the `commit-msg` hook catch attribution from any AI agent or model, and the check's remedy for an attribution line in a commit message runs the hook, as `CONTRIBUTING.md` now says; the workflow commands remove an agent footer a session appends to what they post, except on a `/review` comment, which `/run-issues` and `/run-feedback` leave as posted because NCode Review reads the command from its first line; the commands that call `gh` use its REST forms in a session that refuses GitHub's GraphQL API, such as a Claude Code cloud session; `/address-feedback` and `/run-feedback` also run in Copilot Chat and Copilot CLI and finish a run that stopped, also one the other tool started; `.template/Update-Project.ps1` stages only the files an update changes; and `AGENTS.md`'s Landing section sets `pre-release: tracked`, the template's new key, as it is for a project with releases.
 
 ## [1.1.2] - 2026-11-02
 

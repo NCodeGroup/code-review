@@ -60,6 +60,9 @@ override in `AGENTS.md`.
 
 ## Index
 
+One row per record of code-review's own, numbered from 1000; an empty table means it has none. The template's
+records are indexed in [project-template/](project-template/README.md).
+
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [1000](1000-template-owned-files-come-from-the-templates-copier-yml.md) | In a template adoption or update, the template-owned files are the ones the template's tree renders at the head's _commit and its copier.yml neither writes once nor merges | Accepted |

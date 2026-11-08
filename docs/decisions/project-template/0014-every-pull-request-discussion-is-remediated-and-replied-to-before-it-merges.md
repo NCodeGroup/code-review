@@ -9,8 +9,8 @@ A pull request collects discussions from people, from NCode Review, from CodeQL 
 conversation rule blocks a merge until every thread is resolved, but a thread that is resolved without a reply leaves no
 record of what was done, or why nothing was. GitHub can require resolution; it cannot require a reply.
 
-Before this record, the agents left nits, findings on protected paths and threads that others started without a reply,
-so the person who resolved them had to read the code again to learn what had happened to each one.
+An agent that replies only to the threads it acts on leaves nits, findings on protected paths and threads that others
+started without a reply, and the person who resolves them reads the code again to learn what became of each one.
 
 ## Decision
 
@@ -47,8 +47,9 @@ it.
 
 ## Consequences
 
-- There are more replies: one for each nit thread, and at most two for a thread that a bot started.
-- Rulesets that an owner shaped gain this one parameter on the next baseline run.
+- Every nit thread gets a reply, and a thread that a bot started gets at most two.
+- `tools/Set-RepositoryBaseline.ps1` turns on conversation resolution in a ruleset that an owner shaped, and changes
+  nothing else in it.
 - A project that wants otherwise writes a record that supersedes this one.
 
 ## References
