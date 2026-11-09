@@ -1,4 +1,4 @@
-name: Release
+name: Release (manual)
 
 # Tags the tip of main as an exact version and publishes its notes. Run it by hand, from main, with the version to
 # release. The "Protect release tags" ruleset forbids updating or deleting a v* tag, so a tag made here can never be

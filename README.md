@@ -226,10 +226,10 @@ Releases are immutable from v0.3.1 on, and the "Protect release tags" ruleset fo
 the tag in the comment always names the commit it sits beside.
 
 To release, add the version's section to `CHANGELOG.md`, `## [0.2.0] - 2026-10-30` with its entries, in a pull request,
-then run the Release workflow from `main` with the version, such as `0.2.0`. It checks that the version is
-`MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, and that `CHANGELOG.md` has a dated section with entries
-for it (`tools/release-notes.ts`), runs the typecheck and tests on the commit, then creates the tag and a GitHub
-release whose notes are that section. Versions below 1.0.0 are marked as pre-releases. A tag can't be deleted
+then run the Release (manual) workflow, `release.yml`, from `main` with the version, such as `0.2.0`. It checks that the
+version is `MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, and that `CHANGELOG.md` has a dated section
+with entries for it (`tools/release-notes.ts`), runs the typecheck and tests on the commit, then creates the tag and a
+GitHub release whose notes are that section. Versions below 1.0.0 are marked as pre-releases. A tag can't be deleted
 afterwards, so a mistake is fixed by releasing the next version.
 
 ### Dependabot and pre-releases
