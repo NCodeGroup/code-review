@@ -56,9 +56,10 @@ Every external input is pinned exactly, and on GitHub Dependabot moves the pins 
 - Pins in merged files, such as the CI workflow and the `.github/actions/install-dotnet` action it calls, are moved by
   the project's Dependabot, whose `github-actions` entry, for .NET, reads `.github/actions/*` as well as the workflows;
   a template release that moves the same pin can conflict on that line, and the newer version wins.
-- Some inputs of the template's CI float: the Node.js and Python runtimes follow a release line (`lts/*`, `3.x`), the
-  PowerShell job installs the newest Pester and PSScriptAnalyzer, and GitLab CI images use tags such as `python:3`. A
-  project that needs one of them fixed pins it in its CI file.
+- Some inputs of the template's CI float: the Python runtime follows a release line (`3.x`), the Node.js runtime
+  follows the major version `.node-version` names (ADR-0200), the PowerShell job installs the newest Pester and
+  PSScriptAnalyzer, and GitLab CI images use tags such as `python:3` and `node:lts`. A project that needs one of them
+  fixed pins it in its CI file.
 - The .NET SDK follows `global.json`'s `rollForward` policy: the template's `latestFeature` gives CI the newest SDK of
   the pinned major and minor version once Microsoft releases it, and Dependabot moves the pinned version on GitHub. A
   project that needs one exact SDK in CI removes `rollForward` or sets it to `disable`.
