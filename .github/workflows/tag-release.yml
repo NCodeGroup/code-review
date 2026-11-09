@@ -1,0 +1,50 @@
+name: Release
+
+# Tags and publishes each release as its pull request merges. .template/Publish-Release.ps1 takes the version from the
+# newest section of CHANGELOG.md or, in a pre-release project, from the `Release:` line /ship-plan writes in the pull
+# request's description. It tags the commit this push made main point to and publishes the GitHub release with that
+# section as its notes.
+#
+# It runs on every push to main because the script does nothing when the tag and the release exist. For a .NET library,
+# the script starts publish.yml through workflow_dispatch after it publishes the release, because the workflow's token
+# starts no other workflow.
+#
+# The template owns this file, so a template update replaces it. To retry a run that failed, choose Re-run failed jobs
+# on that run in the Actions tab: it tags the same commit. Run workflow tags the commit main points to at that time, which
+# has a pre-release project's Release: line only when its pull request merged as that commit.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time, and a run is never cancelled partway, between its tag and its release.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+    steps:
+      # Keeps checkout's token in the clone's git config: the tag push uses it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Tag and publish the newest release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA

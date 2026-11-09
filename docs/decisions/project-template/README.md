@@ -30,3 +30,10 @@ never brings a number the project already uses
 | [0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md) | A pull request merges with a merge commit or by rebasing; a project that squash-merges supersedes this record alone |
 | [0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md) | Every pull request discussion is fixed, or answered with why not, and replied to before the merge; the person resolves it |
 | [0015](0015-a-pre-release-project-describes-the-product-as-it-is.md) | Until its first stable release, a project with `pre-release: untracked` describes the product as it is, in its changelog too, and keeps no compatibility |
+| [0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) | On GitHub, CI tags and publishes a release when its pull request merges, from the changelog or the pull request's `Release:` line; `/ship-plan` is the fallback |
+
+## Node.js
+
+| ADR | Decision |
+| --- | --- |
+| [0200](0200-nodejs-comes-from-nvs-and-a-node-version-file.md) | A project that needs Node.js selects it with nvs and a `.node-version` file; scripts put it on `PATH` for agents |
