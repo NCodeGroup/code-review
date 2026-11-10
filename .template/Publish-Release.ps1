@@ -3,10 +3,11 @@
     Tag and publish the release the changelog's newest section names, once the remote has no tag for it.
 
 .DESCRIPTION
-    .github/workflows/release.yml runs this on each push to main that changes the changelog, so a plan's release is tagged
-    and published as soon as its pull request merges, with nothing left for a person or an agent to run. That includes a
-    plan landed from a Claude Code cloud session, whose GitHub proxy refuses a tag push and GitHub's GraphQL API, which
-    `gh release create` uses. It reads and publishes the release through GitHub's REST API, so it runs in such a session too.
+    .github/workflows/tag-release.yml, the Tag and publish release workflow, runs this on each push to main when
+    AGENTS.md's Landing section says release: tag or tag+release, so a plan's release is tagged and published as soon as
+    its pull request merges, with nothing left for a person or an agent to run. That includes a plan landed from a
+    Claude Code cloud session, whose GitHub proxy refuses a tag push and GitHub's GraphQL API, which `gh release create`
+    uses. It reads and publishes the release through GitHub's REST API, so it runs in such a session too.
 
     It reads the release, changelog and pre-release lines of the ## Landing section of AGENTS.md, as Get-PlanState.ps1
     does. release: none publishes nothing, tag pushes the tag alone, and tag+release also publishes the GitHub release.
@@ -38,33 +39,43 @@
 .PARAMETER Gh
     The gh command that reads and publishes the release; the tests pass a stand-in.
 
+.PARAMETER Policy
+    Print the release policy, none, tag or tag+release, from the release line of the ## Landing section of AGENTS.md,
+    none when AGENTS.md or the line is missing, and exit without reading the changelog, calling gh or tagging. It fails
+    on any other value. .github/workflows/tag-release.yml runs it in a job that can only read, and runs the job that
+    tags and publishes only for tag or tag+release.
+
 .EXAMPLE
     ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA
 
 .EXAMPLE
     ./.template/Publish-Release.ps1 -WhatIf
+
+.EXAMPLE
+    ./.template/Publish-Release.ps1 -Policy
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$Commit = 'HEAD',
     [string]$Remote = 'origin',
-    [string]$Gh = 'gh'
+    [string]$Gh = 'gh',
+    [switch]$Policy
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 # The value of each `- <key>: <value>` line in the ## Landing section of AGENTS.md, without the quotes around a value.
 function Get-LandingPolicy([string[]]$Lines) {
-    $policy = @{}
+    $landing = @{}
     $inLanding = $false
     foreach ($line in $Lines) {
         if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
         if ($inLanding -and $line -match '^## ') { break }
         if ($inLanding -and $line -match '^- (?<key>[a-z-]+):\s*(?<value>.*?)\s*$') {
-            $policy[$Matches.key] = $Matches.value -replace '^"(.*)"$', '$1'
+            $landing[$Matches.key] = $Matches.value -replace '^"(.*)"$', '$1'
         }
     }
-    $policy
+    $landing
 }
 
 # The changelog's newest release section: its number and its notes, without the heading and the blank lines around them.
@@ -114,26 +125,27 @@ function Get-RemoteTag([string]$Name) {
 $root = (& git rev-parse --show-toplevel)
 if ($LASTEXITCODE) { throw 'Run this in a clone of the repository.' }
 $agents = Join-Path $root 'AGENTS.md'
-if (-not (Test-Path -LiteralPath $agents)) { 'AGENTS.md is missing, so there is no release policy: nothing to publish.'; exit 0 }
-$policy = Get-LandingPolicy @(Get-Content -LiteralPath $agents)
-$release = if ($policy.ContainsKey('release')) { $policy['release'] } else { 'none' }
+if (-not (Test-Path -LiteralPath $agents)) { if ($Policy) { 'none' } else { 'AGENTS.md is missing, so there is no release policy: nothing to publish.' }; exit 0 }
+$landing = Get-LandingPolicy @(Get-Content -LiteralPath $agents)
+$release = if ($landing.ContainsKey('release')) { $landing['release'] } else { 'none' }
 if ($release -notin 'none', 'tag', 'tag+release') { throw "AGENTS.md's Landing section says release: $release; use none, tag or tag+release." }
+if ($Policy) { $release; exit 0 }
 if ($release -eq 'none') { "AGENTS.md's Landing section says release: none: nothing to publish."; exit 0 }
 
-$changelogName = if ($policy.ContainsKey('changelog') -and $policy['changelog']) { $policy['changelog'] } else { 'CHANGELOG.md' }
+$changelogName = if ($landing.ContainsKey('changelog') -and $landing['changelog']) { $landing['changelog'] } else { 'CHANGELOG.md' }
 $changelog = Join-Path $root $changelogName
 if (-not (Test-Path -LiteralPath $changelog)) { "$changelogName is missing: nothing to publish."; exit 0 }
 $lines = @(Get-Content -LiteralPath $changelog)
 $sha = (& git rev-parse --verify --quiet "$Commit^{commit}")
 if ($LASTEXITCODE -or -not $sha) { throw "$Commit isn't a commit in this clone." }
 $planned = Get-PlannedRelease $sha
-$untracked = $policy.ContainsKey('pre-release') -and $policy['pre-release'] -eq 'untracked'
+$untracked = $landing.ContainsKey('pre-release') -and $landing['pre-release'] -eq 'untracked'
 
 $newest = Get-NewestRelease $lines
 if ($newest) {
     if ($newest.Number -notmatch '^\d+\.\d+\.\d+$') { "$changelogName's newest release, $($newest.Number), isn't shaped like 1.2.3: tag it with /ship-plan."; exit 0 }
     if ($planned -and ($planned.Version -replace '^v') -ne $newest.Number) {
-        throw "Pull request #$($planned.Number) says Release: $($planned.Version), but $changelogName's newest release is $($newest.Number): make them agree, then run the Release workflow again."
+        throw "Pull request #$($planned.Number) says Release: $($planned.Version), but $changelogName's newest release is $($newest.Number): make them agree, then run the workflow again."
     }
     $number = $newest.Number
     $notes = $newest.Notes

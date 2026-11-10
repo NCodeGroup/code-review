@@ -4,7 +4,7 @@
 #
 # This project's scripts and commands run with `pwsh`, and a cloud session's
 # container doesn't have it, so a session would stop and ask to install it.
-# The SessionStart hook in .claude/settings.json runs this file instead.
+# session-start.sh in this folder runs this file instead, from the SessionStart hook in .claude/settings.json.
 #
 # It does nothing outside a cloud session (CLAUDE_CODE_REMOTE is not "true"),
 # so it never installs software on a developer's own machine, and nothing when

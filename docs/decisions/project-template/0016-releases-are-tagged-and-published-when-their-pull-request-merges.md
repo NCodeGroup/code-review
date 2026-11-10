@@ -14,8 +14,10 @@ API. The version lives in `PLAN.md`, which is gitignored and never reaches the d
 
 ## Decision
 
-On GitHub, `.github/workflows/tag-release.yml` runs `.template/Publish-Release.ps1` on each push to `main` and by hand,
-with `contents: write`, `actions: write` and `pull-requests: read`.
+On GitHub, `.github/workflows/tag-release.yml`, named Tag and publish release, runs on each push to `main` and by hand.
+Its first job, with only `contents: read` and a checkout that keeps no token, reads `release` from `AGENTS.md`'s Landing
+section with `.template/Publish-Release.ps1 -Policy`. Only for `tag` or `tag+release` does its second job run
+`.template/Publish-Release.ps1` with `contents: write`, `actions: write` and `pull-requests: read`.
 
 1. The version is the newest release heading `## [x.y.z]` of the changelog, whatever `pre-release` says. In a project
    with `pre-release: untracked` and no such heading, it is the `Release:` line in the description of the pull request
@@ -40,15 +42,20 @@ with `contents: write`, `actions: write` and `pull-requests: read`.
 - A GitHub App token. Rejected: each project needs an app and a secret to keep.
 - A version file in the repository. Rejected: it is a second source of truth beside the changelog and the plan.
 - A `paths: [CHANGELOG.md]` filter. Rejected: it misses a pre-release plan that does not touch the changelog.
+- Naming the workflow Release. Rejected: a project's own release workflow is often named Release too, and the Actions
+  tab then lists two workflows of one name that both offer Run workflow.
+- One job that reads the policy and holds the write permissions. Rejected: with `release: none` it would hold
+  `contents: write` and `actions: write`, and keep checkout's token in the clone, on every push for nothing.
 - A workflow that reads the version from the changelog or the pull request and tags and publishes with the workflow's
   token (chosen). No credential is stored, and nobody runs anything after the merge.
 
 ## Consequences
 
-- A short run starts on every push to `main`; it ends at once when the tag and release exist.
+- A short run starts on every push to `main`. With `release: none`, only the read-only first job runs; otherwise the
+  second job ends at once when the tag and release exist.
 - "Protect release tags" refuses only updating and deleting a `v*` tag, so the token creates one and cannot move it.
-- A release made with the workflow's token starts no other workflow. A .NET library's package publishing needs an
-  explicit start, which ADR-0137 records.
+- A release made with the workflow's token starts no other workflow, so after it publishes a release, the script starts
+  the project's `.github/workflows/publish.yml`, when it has one, through `workflow_dispatch`.
 - A failed run is retried with Re-run failed jobs on that run in the Actions tab, which keeps its commit; Run workflow uses the commit
   `main` points to at that time.
 - Smell: a release whose tag a person pushed by hand, or a `Release:` line that differs from the changelog's newest

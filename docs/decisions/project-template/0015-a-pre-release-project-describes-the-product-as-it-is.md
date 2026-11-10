@@ -47,9 +47,8 @@ stable release.
    rewriting or deleting the entry its change touches. It has no release section and no link reference definitions, its
    preamble says so, and a release's notes are that section. Version tags below 1.0.0 need no section.
 4. No compatibility is kept: a breaking change needs no deprecation step, compatibility shim, migration path or major
-   version, in the public API, settings, wire formats, stored documents or the database schema. The .NET records
-   ADR-0108, ADR-0131, ADR-0136 and ADR-0143 say how their rules apply. Commit subjects and pull request titles carry no
-   conventional-commit `!` marker and no `BREAKING CHANGE:` footer.
+   version, in the public API, settings, wire formats, stored documents or the database schema. Commit subjects and pull
+   request titles carry no conventional-commit `!` marker and no `BREAKING CHANGE:` footer.
 5. Decision records keep their `Status` and `Supersedes` lines: relating decisions is not change tracking.
 6. The first stable release ends it: the plan whose `Release:` line names the first stable version moves the catalog
    into that version's section, the first release's notes, and from then on Keep a Changelog records every change and

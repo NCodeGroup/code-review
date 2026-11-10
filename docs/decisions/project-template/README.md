@@ -3,7 +3,7 @@
 These records hold the decisions behind the project template's rules: why its instruction files, build settings,
 workflow and repository setup are the way they are. They are template-owned: every template update replaces this
 folder, so never edit a file in it. A project that decides otherwise writes its own record in `docs/decisions/` that
-supersedes the template's by number (for example, "Supersedes: project-template ADR-0102"), and lists the override in
+supersedes the template's by number (for example, "Supersedes: project-template ADR-0004"), and lists the override in
 `AGENTS.md`, so every agent follows the project's decision instead of the template's.
 
 Their numbers are below 1000: 0001–0099 for every project and 0100–0999 for the records of a stack or an option. A
@@ -16,7 +16,7 @@ never brings a number the project already uses
 | ADR | Decision |
 | --- | --- |
 | [0001](0001-conventions-and-lessons-live-in-the-repository.md) | Conventions, decisions and lessons live in versioned files in the repository, not in an agent's memory |
-| [0002](0002-commits-are-attributed-to-people-not-agents.md) | A commit records the people who wrote it; an AI agent is never an author, committer or co-author |
+| [0002](0002-commits-are-attributed-to-people-not-agents.md) | A commit records the people who wrote it; an AI agent is never an author, committer or co-author (superseded by [0018](0018-agent-attribution-is-avoided-not-enforced.md)) |
 | [0003](0003-agent-work-is-planned-on-a-frontier-model-and-executed-on-a-cheaper-one.md) | A frontier model plans and re-plans; a cheaper model executes one verified step at a time and escalates |
 | [0004](0004-trunk-based-development-on-the-default-branch.md) | One trunk, `main`, with short-lived branches; no long-lived integration branch |
 | [0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md) | The default branch takes changes only through pull requests whose required checks pass |
@@ -31,6 +31,8 @@ never brings a number the project already uses
 | [0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md) | Every pull request discussion is fixed, or answered with why not, and replied to before the merge; the person resolves it |
 | [0015](0015-a-pre-release-project-describes-the-product-as-it-is.md) | Until its first stable release, a project with `pre-release: untracked` describes the product as it is, in its changelog too, and keeps no compatibility |
 | [0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) | On GitHub, CI tags and publishes a release when its pull request merges, from the changelog or the pull request's `Release:` line; `/ship-plan` is the fallback |
+| [0017](0017-cloud-sessions-bootstrap-their-tools-through-ensure-scripts.md) | A Claude Code cloud session bootstraps its tools through `.claude/hooks/ensure-*.sh` scripts that `session-start.sh` runs; a project adds a tool by adding a script |
+| [0018](0018-agent-attribution-is-avoided-not-enforced.md) | Agents avoid adding attribution to commits and pull requests, and nothing enforces it: no hook, CI check or read-back fails, rewrites or reports work over it (supersedes 0002, amends 0005 and 0013) |
 
 ## Node.js
 

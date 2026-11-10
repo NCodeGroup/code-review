@@ -1,13 +1,15 @@
-name: Release
+name: Tag and publish release
 
 # Tags and publishes each release as its pull request merges. .template/Publish-Release.ps1 takes the version from the
 # newest section of CHANGELOG.md or, in a pre-release project, from the `Release:` line /ship-plan writes in the pull
 # request's description. It tags the commit this push made main point to and publishes the GitHub release with that
 # section as its notes.
 #
-# It runs on every push to main because the script does nothing when the tag and the release exist. For a .NET library,
-# the script starts publish.yml through workflow_dispatch after it publishes the release, because the workflow's token
-# starts no other workflow.
+# Named for what it does, so it never shares its name with a release workflow of the project's own. The policy job, with
+# only contents: read and a checkout that keeps no token, reads release: from AGENTS.md's Landing section; the release
+# job, the only one that can write, runs only for release: tag or tag+release. It runs on every push to main because the
+# script does nothing when the tag and the release exist. For a .NET library, the script starts publish.yml through
+# workflow_dispatch after it publishes the release, because the workflow's token starts no other workflow.
 #
 # The template owns this file, so a template update replaces it. To retry a run that failed, choose Re-run failed jobs
 # on that run in the Actions tab: it tags the same commit. Run workflow tags the commit main points to at that time, which
@@ -27,9 +29,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  policy:
+    name: Read the release policy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.policy.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read release from AGENTS.md's Landing section
+        id: policy
+        shell: pwsh
+        run: |
+          $release = ./.template/Publish-Release.ps1 -Policy
+          "release=$release" >> $env:GITHUB_OUTPUT
+          "AGENTS.md's Landing section says release: $release."
+
   release:
     name: Tag and publish
-    if: github.ref == 'refs/heads/main'
+    needs: policy
+    if: needs.policy.outputs.release == 'tag' || needs.policy.outputs.release == 'tag+release'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

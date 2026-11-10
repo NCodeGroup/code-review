@@ -56,20 +56,23 @@
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
     hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs
-    the template's hooks, or says nothing when core.hooksPath names a .githooks folder, or when
-    .pre-commit-config.yaml runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says
-    how to run .githooks/pre-push there.
+    the template's hooks, or says nothing when core.hooksPath names a .githooks folder. With protect: hook in
+    AGENTS.md's Landing section, it also says how to run .githooks/pre-push there.
 
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
 
     For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
-    major was built with a higher one than build/ProjectTemplate.props pins (ADR-0136). It leaves
+    major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
     trigger, it says what to add.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+
+    On Windows it stops before it changes anything when the project's template version has a path Git for Windows
+    refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
+    copier recopy at that version; it names the path and says to update once from Linux, macOS or WSL.
 
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
@@ -191,6 +194,20 @@ function Get-NewestTag([string]$Repo) {
         Sort-Object { $v = $_ -replace '^v'; if ($v -notmatch '\.') { $v += '.0' }; [version]$v } | Select-Object -Last 1
 }
 
+# Whether Windows can hold a file or folder name, by the rules tests/Test-WindowsFileNames.ps1 checks this repository's paths with; change both together.
+function Test-WindowsName([string]$Name) {
+    $Name -notmatch '[\x00-\x1F<>:"|?*\\]' -and $Name -notmatch '^(?i:CON|PRN|AUX|NUL|COM[0-9\xB9\xB2\xB3]|LPT[0-9\xB9\xB2\xB3]|CONIN\$|CONOUT\$)(\..*)?$' -and $Name -notmatch '[. ]$'
+}
+
+# The first path of the template at a version that Git for Windows refuses to check out, or nothing.
+function Get-WindowsCheckoutProblem([string]$Repo, [string]$Version) {
+    $listing = (git -C $Repo ls-tree -r -z --name-only $Version 2>$null) -join "`n"
+    if ($LASTEXITCODE) { return }
+    foreach ($path in $listing -split "`0" | Where-Object { $_ }) {
+        if (@($path -split '/' | Where-Object { -not (Test-WindowsName $_) }).Count) { return $path }
+    }
+}
+
 function Get-Change {
     foreach ($line in git status --porcelain --untracked-files=all) {
         $code = $line.Substring(0, 2)
@@ -252,8 +269,7 @@ function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
 }
 
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
-# Note to warn with. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
-# a clone that uses pre-commit gets a local pre-commit hook to add instead, and no note once its config runs it.
+# Note to warn with. A hooks path turns off the hooks in .git/hooks.
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
 # template's hooks, and any other, such as husky's or a global hooks folder, gets a note naming the command to run.
 # With "- protect: hook" in AGENTS.md's Landing section, it also says how to run .githooks/pre-push until something does.
@@ -281,9 +297,8 @@ function Get-GitHooksSetup {
     $current = git config --get core.hooksPath
     if ($current) {
         if ((Split-Path -Leaf $current.TrimEnd('\', '/')) -eq '.githooks') { return [pscustomobject]@{ HooksPath = $false; Note = $null } }
-        $push = if ($protect -eq 'hook') { ', or .githooks/pre-push, which refuses a push to the default branch as AGENTS.md''s Landing section says (protect: hook)' } else { '' }
-        $call = if ($protect -eq 'hook') { "call .githooks/commit-msg from $current/commit-msg and .githooks/pre-push from $current/pre-push" } else { "call .githooks/commit-msg from $current/commit-msg" }
-        return [pscustomobject]@{ HooksPath = $false; Note = "Git hooks: .githooks not enabled. core.hooksPath is already $current (git config --show-origin core.hooksPath says where it's set), so Git never runs .githooks/commit-msg, which strips AI agent attribution from commit messages$push. To run both, $call. To run the template's hooks instead, run: git config core.hooksPath .githooks" }
+        $push = if ($protect -eq 'hook') { ' as AGENTS.md''s Landing section says (protect: hook)' } else { ' when AGENTS.md''s Landing section says protect: hook' }
+        return [pscustomobject]@{ HooksPath = $false; Note = "Git hooks: .githooks not enabled. core.hooksPath is already $current (git config --show-origin core.hooksPath says where it's set), so Git never runs .githooks/pre-push, which refuses a push to the default branch$push. To run both, call .githooks/pre-push from $current/pre-push. To run the template's hooks instead, run: git config core.hooksPath .githooks" }
     }
 
     # True when the clone's pre-push hook, or the pre-push.legacy that pre-commit runs first, calls .githooks/pre-push.
@@ -294,12 +309,8 @@ function Get-GitHooksSetup {
     }
 
     $parts = @()
-    if ($preCommit -and -not ((Test-Path -LiteralPath $config) -and (Select-String -LiteralPath $config -SimpleMatch '.githooks/commit-msg' -Quiet))) {
-        $parts += @('Git hooks: .githooks not enabled. This clone uses pre-commit, which won''t install its hooks while core.hooksPath is set. To run .githooks/commit-msg through pre-commit, add this hook to the repos list in .pre-commit-config.yaml, then run: pre-commit install --hook-type commit-msg',
-            '  - repo: local', '    hooks:', '      - id: strip-agent-attribution', '        name: strip agent attribution', '        entry: .githooks/commit-msg', '        language: script', '        stages: [commit-msg]') -join "`n"
-    }
-    elseif (-not $preCommit -and $ownHooks) {
-        $parts += "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($(($ownHooks | ForEach-Object Name) -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/commit-msg from your commit-msg hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks"
+    if (-not $preCommit -and $ownHooks) {
+        $parts += "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($(($ownHooks | ForEach-Object Name) -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/pre-push from your pre-push hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks"
     }
     if (($preCommit -or $ownHooks) -and $protect -eq 'hook' -and -not $pushRuns) {
         $pushHook = Join-Path $hooksDir 'pre-push'
@@ -320,6 +331,22 @@ function Get-GitHooksSetup {
         }
     }
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
+}
+
+# What a project does after an update removes the Commit attribution check (the template's ADR-0018): a ruleset that still
+# requires the check blocks every pull request, and a config or hook that still calls the removed commit-msg hook fails every commit.
+function Get-AttributionCheckNote([object[]]$Changes) {
+    if (-not ($Changes | Where-Object { $_.Kind -eq 'deleted' -and $_.File -eq '.template/Test-CommitAttribution.ps1' })) { return }
+    ''
+    'The template no longer has the Commit attribution check or the .githooks/commit-msg hook (the template''s ADR-0018). If the default branch''s ruleset or branch protection requires a check named "Commit attribution", remove it from the required checks, or every pull request waits for a check that never reports: on GitHub in Settings > Rules > Rulesets, or for a "Protect main" ruleset tools/Set-RepositoryBaseline.ps1 made, by running it again from the template''s clone with -RequireChecks naming the checks to keep, such as -RequireChecks ''build-and-test''.'
+    $hooksDir = git rev-parse --path-format=absolute --git-path hooks
+    $hooksRel = git rev-parse --git-path hooks
+    $callers = @()
+    if ((Test-Path -LiteralPath .pre-commit-config.yaml) -and (Select-String -LiteralPath .pre-commit-config.yaml -SimpleMatch '.githooks/commit-msg' -Quiet)) { $callers += '.pre-commit-config.yaml' }
+    $callers += @(Get-ChildItem -LiteralPath $hooksDir -File -ErrorAction SilentlyContinue | Where-Object Extension -NE '.sample' |
+            Where-Object { Select-String -LiteralPath $_.FullName -SimpleMatch '.githooks/commit-msg' -Quiet } |
+            ForEach-Object { "$hooksRel/$($_.Name)" })
+    if ($callers) { "These files still call .githooks/commit-msg, which this update removed, so every commit fails until you delete that call: $($callers -join ', ')" }
 }
 
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
@@ -439,6 +466,13 @@ try {
             & $next -Path $project -Ref $to -Data $Data -NoCommit:$NoCommit -TemplateClone $TemplateClone -HandedOff
             exit $LASTEXITCODE
         }
+    }
+
+    # copier recopy and the renders below check out the project's version, which Git for Windows refuses when a name
+    # in it is one Windows can't hold, such as the uses_node file names of v0.69.0 to v0.75.0: stop before any of them runs.
+    if ($IsWindows) {
+        $badPath = Get-WindowsCheckoutProblem $TemplateClone $from
+        if ($badPath) { throw "This project is on template $from, which Git for Windows can't check out: it refuses the path $badPath. The update starts by resetting the template-owned files to $from, so it can't run on Windows. Update once from Linux, macOS or WSL, such as with pwsh ./.template/Update-Project.ps1 in WSL; later updates run on Windows again." }
     }
 
     $skipFrom = @(Get-TemplateList $TemplateClone $from '_skip_if_exists')
@@ -564,7 +598,6 @@ try {
     if (-not $conflicts) {
         Add-UpdateChange $scratch
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
-        if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     }
     else {
@@ -576,7 +609,7 @@ try {
         Add-NewFile $scratch
     }
     # Enable the template's versioned hooks in this clone, unless it already has a hooks path or runs hooks another way
-    # (Get-GitHooksSetup): then warn, because without them nothing strips AI agent attribution before a push.
+    # (Get-GitHooksSetup): then warn with how to run them.
     if (Test-Path -LiteralPath .githooks) {
         $hooksSetup = Get-GitHooksSetup
         if ($hooksSetup.HooksPath) { git config core.hooksPath .githooks }
@@ -679,8 +712,10 @@ try {
     # A library's publish.yml without the trigger tag-release.yml starts it with: a release that workflow publishes would ship no packages.
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
         ''
-        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (ADR-0137).'
+        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+
+    Get-AttributionCheckNote $changes
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
     $backfill = Get-ChangelogBackfill

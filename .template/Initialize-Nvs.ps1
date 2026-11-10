@@ -3,16 +3,17 @@
     Sets up the Node.js version selector nvs in the bash and PowerShell profiles, once per PC.
 
 .DESCRIPTION
-    From the project template; template updates replace this file. Needs nvs installed (Windows: winget install --id
-    jasongin.nvs -e; elsewhere: git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install)
-    and throws that command when the nvs home holds no nvs.ps1. Then adds a block, between the markers
+    From the project template; template updates replace this file. First makes sure nvs is installed: when the nvs
+    home holds no nvs.ps1, it runs install-nvs.sh in this folder on Linux and macOS, which installs nvs pinned to a
+    release's commit, and on Windows it throws the winget command for the same release (winget install --id
+    jasongin.nvs -e --version 1.7.1). Then adds a block, between the markers
     "# >>> nvs (project-template) >>>" and "# <<< nvs (project-template) <<<", to ~/.bashrc (bash, including Git Bash)
     and to the PowerShell profile for all hosts. A file that already holds the marker is left alone, and so is a
     PowerShell profile that already names nvs.ps1 (the Windows installer's own line), so running it again changes
     nothing. Last, it installs the Node.js version named in the project's .node-version and links it as the default.
     Each step prints one line saying what it did or that it was already set up.
-    Use-Node.ps1 and use-node.sh in this folder carry the same nvs home lookup and install text, because each
-    script runs on its own; change all three together.
+    Use-Node.ps1, use-node.sh and install-nvs.sh in this folder share the nvs home lookup, because each script runs on
+    its own; change them together. The winget --version and install-nvs.sh's NVS_TAG name the same nvs release.
 
 .PARAMETER NvsHome
     The nvs home. Defaults to $env:NVS_HOME when set, else $env:LOCALAPPDATA\nvs on Windows, else ~/.nvs.
@@ -52,10 +53,19 @@ $marker = '# >>> nvs (project-template) >>>'
 $markerEnd = '# <<< nvs (project-template) <<<'
 $nvsScript = Join-Path $NvsHome 'nvs.ps1'
 
-# 1. nvs itself.
+# 1. nvs itself: install-nvs.sh installs it, pinned to a release's commit, on Linux and macOS; on Windows, winget does.
 if (-not (Test-Path -LiteralPath $nvsScript)) {
-    $install = if ($IsWindows) { 'winget install --id jasongin.nvs -e' } else { 'git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install' }
-    throw "nvs is not installed: $nvsScript does not exist. Install it with: $install"
+    if ($IsWindows) {
+        throw "nvs is not installed: $nvsScript does not exist. Install it with: winget install --id jasongin.nvs -e --version 1.7.1"
+    }
+    $installer = Join-Path $PSScriptRoot 'install-nvs.sh'
+    $env:NVS_HOME = $NvsHome
+    bash $installer
+    if ($LASTEXITCODE -or -not (Test-Path -LiteralPath $nvsScript)) {
+        $global:LASTEXITCODE = 0
+        throw "nvs is not installed: $nvsScript does not exist, and $installer could not install it."
+    }
+    "Installed nvs in $NvsHome."
 }
 
 # 2. Appends a block to a file unless the file already holds the marker; says which.
