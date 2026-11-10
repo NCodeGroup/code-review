@@ -5,12 +5,12 @@ Issues and pull requests are welcome. [README.md](README.md) explains the projec
 ## Prerequisites
 
 - Git, and PowerShell 7 (`pwsh`): every command here runs from the repository root in PowerShell 7.
-- Node.js 24, the version `.node-version` names, and npm. With nvs, `. ./tools/Use-Node.ps1` switches the shell to it; after installing nvs, run `./.template/Initialize-Nvs.ps1` once per PC: it loads nvs in the bash and PowerShell profiles and installs that version. Install the dependencies with `npm ci`.
+- Node.js 24, the version `.node-version` names, and npm. `. ./.template/Use-Node.ps1` puts it on `PATH` in the shell, through nvs when the `node` already there is another version; after installing nvs, run `./.template/Initialize-Nvs.ps1` once per PC: it loads nvs in the bash and PowerShell profiles and installs that version. Install the dependencies with `npm ci`.
 - On Windows, `git config --global core.longpaths true`, once: a Claude Code plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
 
 ## Set Up
 
-Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.githooks/commit-msg`, which strips AI attribution from commit messages, and `.githooks/pre-push`, which refuses a push to the default branch when the Landing section of `AGENTS.md` says `protect: hook`. When the clone already runs another tool's hooks, such as pre-commit, leave its hooks path alone: the rules below still apply, and CI still checks them.
+Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.githooks/pre-push`, which refuses a push to the default branch when the Landing section of `AGENTS.md` says `protect: hook`. When the clone already runs another tool's hooks, such as pre-commit, leave its hooks path alone.
 
 ## Build and Test
 
@@ -32,7 +32,7 @@ CI runs the same commands on every pull request.
 
 ## Commit Attribution
 
-Commits record the people who wrote them. Never add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer or a "Generated with" line; say which tools helped in the pull request instead. The `commit-msg` hook strips them, and the `Commit attribution` check fails a pull request with a commit authored, committed or co-authored by an AI agent. To fix one, run the command the check prints, then `git push --force-with-lease`: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"` re-authors a commit by an AI agent account, and `git rebase <base> --exec "git -c core.hooksPath=.githooks commit --amend --no-edit"` runs the `commit-msg` hook on each commit message, which strips the attribution lines `--no-edit` alone keeps. The check also reads the pull request's title and description, which a squash merge can copy into the default branch: when it finds such a line there, edit the pull request. [The decision](docs/decisions/project-template/0002-commits-are-attributed-to-people-not-agents.md) says why.
+Commits record the people who wrote them, so avoid AI agent attribution: don't add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer or a "Generated with" line; say which tools helped in the pull request instead. Nothing checks for it or blocks a commit, push or pull request that has it, so one a tool adds anyway needs no fix. [The decision](docs/decisions/project-template/0018-agent-attribution-is-avoided-not-enforced.md) says why.
 
 ## Conventions
 
