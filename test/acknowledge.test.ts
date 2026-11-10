@@ -209,6 +209,15 @@ test('ignoredCommentId gives nothing for a command, a comment that does not star
   assert.equal(ignoredCommentId({ pull_request: own } as never), undefined);
 });
 
+test('ignoredCommentId gives nothing on a closed pull request', () => {
+  const on = (state: string) => ({
+    issue: { number: 7, state, pull_request: {} },
+    comment: { id: 99, body: '/review explainer', author_association: 'OWNER' },
+  });
+  assert.equal(ignoredCommentId(on('closed')), undefined);
+  assert.equal(ignoredCommentId(on('open')), 99);
+});
+
 test('ignoredOutputs passes on only a well-formed comment id', () => {
   assert.equal(ignoredOutputs(99), 'acknowledge=ignored\ncomment-id=99\n');
   for (const id of [0, -1, 1.5, NaN]) assert.equal(ignoredOutputs(id), undefined, String(id));
