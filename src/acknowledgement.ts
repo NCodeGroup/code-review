@@ -9,9 +9,13 @@
 // "Code review" check run in progress, gives the check run's id to the publish and finish steps as a step output, and
 // revokes the token before it returns, whether or not it succeeded, so no app token is alive while the review step and
 // its agents run. `revokeAcknowledgementToken` revokes it again in a step that runs whatever happened to `post`.
+//
+// The decide step has a third outcome: a writer's comment that starts with /review but isn't a command gets the outputs
+// `acknowledge=ignored` and its id, with no API call. `reactToIgnoredComment` holds a token of its own, minted for it
+// alone: it adds 😕 to that comment and revokes the token before it returns, whether or not it succeeded.
 
-import { acknowledge, decisionOutputs, isSha } from './checks.ts';
-import { decideReview, type CommentEvent } from './command.ts';
+import { acknowledge, decisionOutputs, ignoredOutputs, isSha } from './checks.ts';
+import { decideReview, ignoredCommentId, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments } from './comments.ts';
 import { required } from './env.ts';
 import { fetchPullRequest, GitHubError, runUrl, type Api, type PullRequestRef } from './github.ts';
@@ -25,6 +29,11 @@ export async function decideAcknowledgement(
   log: (line: string) => void = writeLog,
 ): Promise<string | undefined> {
   const { event, repository, token } = input;
+  const ignored = ignoredCommentId(event);
+  if (ignored !== undefined) {
+    log("No review: the comment starts with /review but isn't a command (/review, /review explain <finding> or /review teach <rule>); reacting 😕 to it.");
+    return ignoredOutputs(ignored);
+  }
   const decision = await decideReview(
     event,
     repository,
@@ -64,6 +73,21 @@ export async function postAcknowledgement(
       log,
     );
     io.output(`check-run-id=${id}\nhead-sha=${headSha}\n`);
+  } finally {
+    await revokeAcknowledgementToken(api, log);
+  }
+}
+
+// Adds 😕 to the comment the decide step passed on through `env`, and revokes the token `api` holds.
+export async function reactToIgnoredComment(
+  api: Api,
+  env: NodeJS.ProcessEnv,
+  log: (line: string) => void = writeLog,
+): Promise<void> {
+  try {
+    const commentId = Number(env['CODE_REVIEW_COMMENT_ID'] || NaN);
+    if (!Number.isSafeInteger(commentId) || commentId <= 0) throw new Error('CODE_REVIEW_COMMENT_ID is not a comment id.');
+    await api('POST', `/repos/${required('GITHUB_REPOSITORY', env)}/issues/comments/${commentId}/reactions`, { content: 'confused' });
   } finally {
     await revokeAcknowledgementToken(api, log);
   }

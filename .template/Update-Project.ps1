@@ -20,7 +20,9 @@
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
                       .gitattributes and .editorconfig are set aside while Copier merges, so they never
-                      conflict.
+                      conflict. A catch-all text rule among .gitattributes' kept lines, such as * text eol=lf,
+                      is left out, as the template's Adopt-Project.ps1 leaves it out, and the script says so: it came after
+                      the template's binary rules and overrode them.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
@@ -45,8 +47,9 @@
 
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
     instead. Either way it exits 0, as it does when there is nothing to update. With a conflict it commits nothing,
-    says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
-    staged as it is in the working tree. On any other failure the project is reset to where it was.
+    says how to finish or abandon the update, and exits 1; every change outside the conflicting files is then staged
+    as it is in the working tree, deletions included, so staging the resolved files stages the whole update. On any
+    other failure the project is reset to where it was.
 
     It stages only what the update changed: the tracked files with git add -u and each file it added by name, never
     with git add -A. From the reset to the end of the run, .git/info/exclude holds a copy of the project's whole
@@ -550,6 +553,7 @@ try {
         # The template's Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
         # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
         $keptLines = @{}
+        $droppedTextRules = @()
         foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
             if ($file -notin $merged -or $file -in $ownedFiles -or -not (Test-Path -LiteralPath $file)) { continue }
             $text = [IO.File]::ReadAllText((Join-Path $project $file))
@@ -557,9 +561,16 @@ try {
             if (-not $match.Success) { continue }
             $templatePart = $text.Substring(0, $match.Index).TrimEnd("`r", "`n")
             $keptLines[$file] = $text.Substring($templatePart.Length)
+            # The template's Adopt-Project.ps1 leaves a catch-all text rule, such as "* text eol=lf", out of the lines it keeps (Merge-AdoptedFile in the template's
+            # tools/adopt/Adoption.psm1), because Git uses the last rule that matches and the rule would override the template's binary rules. A project
+            # adopted before it did still has the rule: leave it out here too, and say so below. A deliberate copy of that pattern; change both together.
+            if ($file -eq '.gitattributes') {
+                $keptSplit = $keptLines[$file] -split "`n"
+                $catchAll = @($keptSplit | Where-Object { $_ -match '^\*\s+text(?:=auto)?(?:\s+eol=lf)?\s*$' })
+                if ($catchAll) { $keptLines[$file] = ($keptSplit | Where-Object { $_ -notin $catchAll }) -join "`n"; $droppedTextRules = @($catchAll | ForEach-Object Trim) }
+            }
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
-        $resetFiles = @()
         Add-UpdateChange $scratch
         $resetCommitted = [bool](git diff --cached --name-only)
         if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
@@ -583,11 +594,8 @@ try {
             if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
-        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree. The index keeps the reset's version of each file it changed, such as a .gitignore without its kept lines, so note them.
-        if ($resetCommitted) {
-            $resetFiles = @(git -c core.quotePath=false diff --name-only --no-renames $head HEAD)
-            git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' }
-        }
+        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
+        if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }
     }
     catch {
         git reset -q --hard $head; git clean -fdq
@@ -601,10 +609,16 @@ try {
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     }
     else {
-        # git add -A would mark the conflicted files resolved, conflict markers and all, so stage only each file the reset changed that doesn't conflict, as the update left it. Otherwise the index keeps the reset's version: a file the update left as it was is listed as modified, and a commit that doesn't stage it again takes that version.
-        $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
-        $restage = @($resetFiles | Where-Object { $_ -notin $unmerged })
-        if ($restage) { git --literal-pathspecs add -u -- $restage }
+        # git add -A or git add -u would mark the conflicted files resolved, conflict markers and all, so stage every other change to a tracked file by name, as the update left it: the files the reset changed, whose index otherwise keeps the reset's version, and the files Copier changed or deleted, whose deletion a commit that stages only the files that still exist would otherwise leave out. A list file, as in Add-NewFile, so a long list can't overflow Windows' command line.
+        $unmerged = @((git -c core.quotePath=false diff --name-only --diff-filter=U -z) -split "`0" | Where-Object { $_ })
+        $restage = @((git -c core.quotePath=false diff --name-only --no-renames -z) -split "`0" | Where-Object { $_ -and $_ -notin $unmerged } | Select-Object -Unique)
+        if ($restage) {
+            New-Item -ItemType Directory -Force $scratch | Out-Null
+            $list = Join-Path $scratch 'restage.txt'
+            [IO.File]::WriteAllText($list, ($restage -join "`0"), [Text.UTF8Encoding]::new($false))
+            git --literal-pathspecs add -u --pathspec-from-file=$list --pathspec-file-nul
+            if ($LASTEXITCODE) { throw 'Staging the update around its conflicts failed.' }
+        }
         # The files the update added are staged too, so git add -u after the conflicts are resolved stages the whole update.
         Add-NewFile $scratch
     }
@@ -633,6 +647,7 @@ try {
     $restored = @($reset | Where-Object Kind -EQ 'added' | ForEach-Object File)
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
+    if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
     if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.

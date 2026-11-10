@@ -86,7 +86,7 @@ export function parseCommand(body: string): Command | undefined {
 
 export interface CommentEvent {
   action?: string;
-  issue?: { number?: number; pull_request?: unknown };
+  issue?: { number?: number; state?: string; pull_request?: unknown };
   comment?: { id?: number; body?: string; author_association?: string; html_url?: string; user?: { login?: string } };
   repository?: { private?: boolean };
 }
@@ -96,6 +96,22 @@ export function commandFromEvent(event: CommentEvent): { command: Command; numbe
   if (!writerAssociations.has(event.comment?.author_association ?? '')) return undefined;
   const command = parseCommand(event.comment?.body ?? '');
   return command ? { command, number: event.issue.number } : undefined;
+}
+
+// The id of a writer's top-level comment on a pull request that starts with /review but is not a command, such as
+// `/review please`, so the run can tell its author with a reaction that no review started. `/reviewer` and `/reviewed`
+// are no attempt at a command and get nothing. The raw body is read, not trimmed, as the workflow's `startsWith` reads it.
+// A closed pull request gets nothing either (the workflow admits only `/review explain` and `/review teach` there); an
+// absent state counts as open.
+export function ignoredCommentId(event: CommentEvent): number | undefined {
+  if (!event.issue?.pull_request || typeof event.issue.number !== 'number') return undefined;
+  if (typeof event.issue.state === 'string' && event.issue.state !== 'open') return undefined;
+  if (!writerAssociations.has(event.comment?.author_association ?? '')) return undefined;
+  const id = event.comment?.id;
+  if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) return undefined;
+  const body = event.comment?.body ?? '';
+  if (!/^\/review(?=\s|$)/i.test(body)) return undefined;
+  return parseCommand(body) ? undefined : id;
 }
 
 // A pull request whose head is in another repository, or in none (a deleted fork), is not reviewed: its author has no

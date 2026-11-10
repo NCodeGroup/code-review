@@ -47,10 +47,11 @@ runs:
   steps:
     # The acknowledgement: a sign on the pull request within seconds, before setup-node and npm ci, which are most of the
     # wait. It runs with the runner's own node and no npm package, and continues on error: without it, the review runs
-    # as before. This step holds only the read-only token and makes the review step's own decision, so a comment that
-    # isn't a /review command from a writer, a fork, an automatic run on a commit already reviewed, or a closed pull
-    # request gets nothing. Neither does /review explain or /review teach: they answer with a comment, not the "Code
-    # review" check run.
+    # as before. This step holds only the read-only token and makes the review step's own decision, so a fork, an
+    # automatic run on a commit already reviewed and a closed pull request get nothing, and a writer's
+    # comment that starts with /review but isn't a command gets a 😕 from a token of its own that holds only the pull
+    # requests permission. /review explain and /review teach get no check run: they answer with a comment, not the
+    # "Code review" check run.
     - name: Decide whether to acknowledge
       id: ack-decide
       continue-on-error: true
@@ -96,6 +97,43 @@ runs:
       shell: bash
       env:
         CODE_REVIEW_APP_TOKEN: ${{ steps.ack-token.outputs.token }}
+      run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" revoke
+
+    # A token for the 😕 reaction alone, able to write only pull requests: a comment that isn't a command never gets the
+    # check-run token above. The React step revokes it before it exits, and the step after it revokes it again.
+    - name: Get the app's token to react to a comment that isn't a command
+      id: ack-ignored-token
+      if: steps.ack-decide.outputs.acknowledge == 'ignored'
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        repositories: ${{ github.event.repository.name }}
+        permission-pull-requests: write
+        skip-token-revoke: true
+
+    # 😕 on a writer's /review comment that isn't a command, so its author can tell no review started. Its token never
+    # goes into the review step's environment.
+    - name: React to a comment that isn't a command
+      id: ack-ignored
+      if: steps.ack-ignored-token.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        CODE_REVIEW_APP_TOKEN: ${{ steps.ack-ignored-token.outputs.token }}
+        CODE_REVIEW_COMMENT_ID: ${{ steps.ack-decide.outputs.comment-id }}
+      run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" ignored
+
+    # Revokes the reaction's token again, whatever happened to the React step. A token revoked already answers 401, which
+    # counts as done.
+    - name: Revoke the reaction's token
+      id: ack-ignored-revoke
+      if: always() && steps.ack-ignored-token.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        CODE_REVIEW_APP_TOKEN: ${{ steps.ack-ignored-token.outputs.token }}
       run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" revoke
 
     # No cache: setup-node would restore npm's cache by itself when a package.json in the workspace names npm as its package

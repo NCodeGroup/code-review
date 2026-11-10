@@ -15,14 +15,18 @@ environment holds no secret: model calls go through a localhost proxy that adds 
 reaches only the steps that mint its token: one before the review, whose token only the acknowledgement uses, revoked by
 the acknowledgement and again by a step that always runs, both before the review step starts, and one after the agents
 exit. Each token can write check runs and pull request comments on the one repository under review, and neither is ever
-in the review step's environment. A `/review teach` run also mints one after the agents exit that can write only issues,
-in the one repository its issue opens in. Results and the trace are scanned for secrets before they're written.
+in the review step's environment. A `/review` comment that isn't a command gets one more, before the review, that
+can write only pull request comments and reactions and is revoked the same way. A `/review teach` run also mints one
+after the agents exit that can write only issues, in the one repository its issue opens in. Results and the trace are
+scanned for secrets before they're written.
 
 Within seconds of the event, before setup-node and `npm ci`, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
-takes a few minutes", linked to the run. It decides exactly as the review step does, so a comment that isn't a
-`/review` command from someone with write access, a pull request from a fork, an automatic run on a commit already
-reviewed, and a closed pull request get nothing. `/review explain` and `/review teach` get nothing either: they aren't
+takes a few minutes", linked to the run. It decides exactly as the review step does, so a pull request from a fork, an
+automatic run on a commit already reviewed, and a closed pull request get nothing, and a comment from someone without
+write access gets nothing. A comment from someone with write access that starts with `/review` and then a space or its
+end but isn't a command, such as `/review please`, gets 😕 instead, so its author can tell that no review started; the
+run's log lists the commands. `/review explain` and `/review teach` get nothing either: they aren't
 reviews, and they answer with a comment, not the check run. The acknowledgement runs with the runner's own `node` and
 no npm package, and the review goes on without it if it fails. The publish step completes that same check run with the
 review, so there's never a second. When there's no review to publish, a last step completes it with why, so it never
@@ -282,7 +286,9 @@ you to the repository as a collaborator.
 
 A command is the comment's first line, in any case. `/review` followed by more lines is a review, while `/review please`
 isn't a command. For explain and teach, the question or rule may go on over several lines, and everything from a `---`
-line on, such as a signature or an agent's footer, is ignored.
+line on, such as a signature or an agent's footer, is ignored. A writer's comment that starts with `/review` and then a
+space or its end, such as `/review please`, but isn't a command gets a 😕 reaction and starts no review; `/reviewer` and
+other text that merely begins with those letters get nothing.
 
 `/review explain` finds an id among the bot's inline finding comments of the newest review; a finding that went in a
 review's body instead has no comment to point at. An id or link it can't find gets a short comment listing the newest
