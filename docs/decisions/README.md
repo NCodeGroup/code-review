@@ -69,3 +69,4 @@ records are indexed in [project-template/](project-template/README.md).
 | [1001](1001-a-review-command-is-the-comments-first-line.md) | A /review command is the comment's first line, and only a plain one can cancel a review | Accepted |
 | [1002](1002-tools-use-node-is-the-nodejs-selector-and-prelude.md) | tools/Use-Node.ps1 is the Node.js selector and the prelude, because it also runs where nvs isn't installed; supersedes item 4 of project-template ADR-0200 | Superseded by 1003 |
 | [1003](1003-the-templates-use-node-is-the-nodejs-selector-and-prelude.md) | The template's .template/Use-Node.ps1 is the Node.js selector and the prelude, as project-template ADR-0200 says; supersedes 1002 | Accepted |
+| [1004](1004-an-ignored-review-comment-gets-a-confused-reaction.md) | A /review comment that is not a command gets a 😕 from the acknowledgement, with a token of its own that holds only the pull requests permission | Accepted |
