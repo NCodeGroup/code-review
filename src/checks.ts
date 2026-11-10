@@ -51,6 +51,12 @@ export function decisionOutputs(decision: { pullRequest: { head?: { sha?: string
   return `${lines.join('\n')}\n`;
 }
 
+// The decide step's outputs for a /review comment that is not a command, which the reaction step reads: only the comment
+// id, checked for shape. None when the id is malformed.
+export function ignoredOutputs(commentId: number): string | undefined {
+  return Number.isSafeInteger(commentId) && commentId > 0 ? `acknowledge=ignored\ncomment-id=${commentId}\n` : undefined;
+}
+
 export function inProgressCheck(headSha: string, detailsUrl?: string) {
   return {
     name: checkName,
