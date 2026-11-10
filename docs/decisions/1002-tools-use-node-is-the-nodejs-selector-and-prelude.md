@@ -41,7 +41,7 @@ isn't. The rest of ADR-0200 holds: nvs on a PC, `.node-version` as the one place
 
 ## References
 
-- [tools/Use-Node.ps1](../../tools/Use-Node.ps1)
-- [test/use-node.test.ts](../../test/use-node.test.ts)
+- [tools/Use-Node.ps1](https://github.com/NCodeGroup/code-review/blob/060f72116ca81f00dc03725be80362d7b8af0d04/tools/Use-Node.ps1), removed by [ADR-1003](1003-the-templates-use-node-is-the-nodejs-selector-and-prelude.md)
+- [test/use-node.test.ts](https://github.com/NCodeGroup/code-review/blob/060f72116ca81f00dc03725be80362d7b8af0d04/test/use-node.test.ts), removed by [ADR-1003](1003-the-templates-use-node-is-the-nodejs-selector-and-prelude.md)
 - [project-template ADR-0200](project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)
 - [NCodeGroup/project-template#307](https://github.com/NCodeGroup/project-template/issues/307)
