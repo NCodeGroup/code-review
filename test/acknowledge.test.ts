@@ -22,7 +22,7 @@ import {
   stoppedRecord,
   stoppedStatus,
 } from '../src/checks.ts';
-import { decideAcknowledgement, postAcknowledgement, revokeAcknowledgementToken } from '../src/acknowledgement.ts';
+import { decideAcknowledgement, postAcknowledgement, reactToIgnoredComment, revokeAcknowledgementToken } from '../src/acknowledgement.ts';
 import { decideReview, decideRun, ignoredCommentId } from '../src/command.ts';
 import type { AnthropicTokenSource } from '../src/credentials.ts';
 import { required, take } from '../src/env.ts';
@@ -475,6 +475,14 @@ test('decideAcknowledgement passes on nothing, and says why, for a run that will
   assert.match(lines[1] ?? '', /no head commit to acknowledge/);
 });
 
+test("decideAcknowledgement passes on the comment of a writer's /review that is not a command, with no API call", async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({});
+  assert.equal(await decideAcknowledgement({ event: comment('/review please'), repository, token: 'read-only' }, fetched.fn, (line) => lines.push(line)), 'acknowledge=ignored\ncomment-id=99\n');
+  assert.equal(fetched.requests.length, 0);
+  assert.match(lines[0] ?? '', /^No review: the comment starts with \/review but isn't a command/);
+});
+
 const postEnv = { GITHUB_REPOSITORY: repository, CODE_REVIEW_HEAD_SHA: sha, CODE_REVIEW_COMMENT_ID: '99', GITHUB_SERVER_URL: 'https://github.com', GITHUB_RUN_ID: '5' };
 
 test('postAcknowledgement acknowledges, writes exactly the check run id and head, and revokes its token', async () => {
@@ -517,6 +525,25 @@ test('postAcknowledgement only warns when the token cannot be revoked', async ()
   assert.match(lines.at(-1) ?? '', /^::warning::Couldn't revoke the acknowledgement's token/);
 });
 
+test('reactToIgnoredComment reacts with 😕 to the comment and revokes its token', async () => {
+  const { calls, api } = recordingApi();
+  await reactToIgnoredComment(api, { GITHUB_REPOSITORY: repository, CODE_REVIEW_COMMENT_ID: '99' }, () => {});
+  assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), [`POST /repos/${repository}/issues/comments/99/reactions`, 'DELETE /installation/token']);
+  assert.deepEqual(calls[0]?.body, { content: 'confused' });
+});
+
+test('reactToIgnoredComment revokes its token when the reaction fails, and when the comment id is malformed', async () => {
+  const failing = recordingApi((_, url) => (url.endsWith('/reactions') ? new Error('GitHub refused: HTTP 500') : {}));
+  await assert.rejects(reactToIgnoredComment(failing.api, { GITHUB_REPOSITORY: repository, CODE_REVIEW_COMMENT_ID: '99' }, () => {}), /HTTP 500/);
+  assert.equal(failing.calls.at(-1)?.method, 'DELETE');
+  assert.equal(failing.calls.at(-1)?.url, '/installation/token');
+  for (const id of ['', 'x', '0', '-1', '99\nacknowledge=false']) {
+    const { calls, api } = recordingApi();
+    await assert.rejects(reactToIgnoredComment(api, { GITHUB_REPOSITORY: repository, CODE_REVIEW_COMMENT_ID: id }, () => {}), /CODE_REVIEW_COMMENT_ID is not a comment id/);
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['DELETE /installation/token'], JSON.stringify(id));
+  }
+});
+
 test('revokeAcknowledgementToken counts a 401 as revoked already, and only warns on another failure', async () => {
   const revoked = fakeFetch({ 'api.github.com': { status: 204 } });
   const lines: string[] = [];
@@ -537,9 +564,10 @@ test('revokeAcknowledgementToken counts a 401 as revoked already, and only warns
 const fetchStub = `data:text/javascript,${encodeURIComponent(
   'globalThis.fetch = async (url, init) => { console.log(`fetch ${init.method} ${url} ${init.headers.authorization}`); return new Response(null, { status: 204 }); };',
 )}`;
-function runAcknowledge(mode: string, token?: string): { status: number | null; lines: string[] } {
+function runAcknowledge(mode: string, token?: string, extra: Record<string, string> = {}): { status: number | null; lines: string[] } {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'CODE_REVIEW_APP_TOKEN' && !name.startsWith('NODE_TEST')));
   if (token) env['CODE_REVIEW_APP_TOKEN'] = token;
+  Object.assign(env, extra);
   const run = spawnSync(process.execPath, ['--import', fetchStub, path.join(root, 'src', 'acknowledge.ts'), mode], { env, encoding: 'utf8' });
   return { status: run.status, lines: run.stdout.split('\n').filter(Boolean) };
 }
@@ -553,6 +581,20 @@ test('acknowledge.ts revoke revokes the token in CODE_REVIEW_APP_TOKEN', () => {
 
 test('acknowledge.ts revoke warns and fails without CODE_REVIEW_APP_TOKEN', () => {
   const { status, lines } = runAcknowledge('revoke');
+  assert.equal(status, 1);
+  assert.deepEqual(lines, ["::warning::The review couldn't be acknowledged: CODE_REVIEW_APP_TOKEN isn't set."]);
+});
+
+test('acknowledge.ts ignored reacts with the token in CODE_REVIEW_APP_TOKEN and revokes it', () => {
+  const { status, lines } = runAcknowledge('ignored', 'placeholder-token', { GITHUB_REPOSITORY: repository, CODE_REVIEW_COMMENT_ID: '99' });
+  assert.equal(status, 0);
+  assert.equal(lines.length, 2, lines.join('\n'));
+  assert.match(lines[0] ?? '', /^fetch POST https:\/\/api\.github\.com\/repos\/NCodeGroup\/code-review\/issues\/comments\/99\/reactions \S+ placeholder-token$/);
+  assert.match(lines[1] ?? '', /^fetch DELETE https:\/\/api\.github\.com\/installation\/token \S+ placeholder-token$/);
+});
+
+test('acknowledge.ts ignored warns and fails without CODE_REVIEW_APP_TOKEN', () => {
+  const { status, lines } = runAcknowledge('ignored');
   assert.equal(status, 1);
   assert.deepEqual(lines, ["::warning::The review couldn't be acknowledged: CODE_REVIEW_APP_TOKEN isn't set."]);
 });
