@@ -734,8 +734,13 @@ test('action.yml gives the app key only to the token steps, and each token only 
 test('action.yml acknowledges before setup-node and npm ci, and never lets the acknowledgement stop the review', () => {
   const steps = actionSteps();
   const index = (id: string) => steps.findIndex((s) => s.id === id);
-  assert.deepEqual(['ack-decide', 'ack-token', 'ack', 'ack-revoke', 'setup-node', 'install', 'review'].map(index), [0, 1, 2, 3, 4, 5, 6]);
-  for (const id of ['ack-decide', 'ack-token', 'ack', 'ack-revoke']) assert.equal(steps[index(id)]?.continueOnError, true, id);
+  assert.deepEqual(
+    ['ack-decide', 'ack-token', 'ack', 'ack-revoke', 'ack-ignored-token', 'ack-ignored', 'ack-ignored-revoke', 'setup-node', 'install', 'review'].map(index),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  );
+  for (const id of ['ack-decide', 'ack-token', 'ack', 'ack-revoke', 'ack-ignored-token', 'ack-ignored', 'ack-ignored-revoke']) {
+    assert.equal(steps[index(id)]?.continueOnError, true, id);
+  }
   // The acknowledgement revokes its own token, and a step that always runs revokes it again, before the review step.
   assert.equal(steps[index('ack-token')]?.with['skip-token-revoke'], 'true');
   const revoke = steps[index('ack-revoke')];
@@ -744,6 +749,31 @@ test('action.yml acknowledges before setup-node and npm ci, and never lets the a
   assert.ok(revoke?.text.includes('acknowledge.ts" revoke'));
   assert.equal(steps[index('ack-decide')]?.env['CODE_REVIEW_GITHUB_TOKEN'], '${{ inputs.github-token }}');
   assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
+});
+
+test('action.yml mints the reaction\'s token with the pull requests permission alone and keeps it out of the review step', () => {
+  const steps = actionSteps();
+  const byId = (id: string) => steps.find((s) => s.id === id);
+  const minted = byId('ack-ignored-token');
+  assert.equal(minted?.if, "steps.ack-decide.outputs.acknowledge == 'ignored'");
+  assert.equal(minted?.with['skip-token-revoke'], 'true');
+  const permissions = Object.keys(minted?.with ?? {}).filter((k) => k.startsWith('permission-'));
+  assert.deepEqual(permissions, ['permission-pull-requests']);
+  assert.equal(minted?.with['permission-pull-requests'], 'write');
+  // A comment that isn't a command never gets the check-run token.
+  assert.equal(byId('ack-token')?.if, "steps.ack-decide.outputs.acknowledge == 'true'");
+  assert.deepEqual(steps.filter((s) => s.text.includes('steps.ack-ignored-token.outputs.token')).map((s) => s.id), ['ack-ignored', 'ack-ignored-revoke']);
+  const react = byId('ack-ignored');
+  assert.deepEqual(Object.keys(react?.env ?? {}).sort(), ['CODE_REVIEW_APP_TOKEN', 'CODE_REVIEW_COMMENT_ID']);
+  assert.ok(react?.text.includes('acknowledge.ts" ignored'));
+  const revoke = byId('ack-ignored-revoke');
+  assert.equal(revoke?.if, "always() && steps.ack-ignored-token.outcome == 'success'");
+  assert.deepEqual(Object.keys(revoke?.env ?? {}), ['CODE_REVIEW_APP_TOKEN']);
+  // The review, publish and finish steps never see that token.
+  for (const step of steps.slice(steps.findIndex((s) => s.id === 'setup-node'))) assert.doesNotMatch(step.text, /ack-ignored/, step.name || step.id);
+  const reviewEnv = Object.keys(byId('review')?.env ?? {});
+  assert.ok(!reviewEnv.includes('CODE_REVIEW_APP_TOKEN'));
+  assert.ok(!reviewEnv.includes('CODE_REVIEW_COMMENT_ID'));
 });
 
 test('action.yml restores no cache into the job that holds the model credentials', () => {
