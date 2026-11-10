@@ -1,6 +1,6 @@
 # 1002. tools/Use-Node.ps1 is the Node.js selector and the prelude
 
-- **Status:** Accepted
+- **Status:** Superseded by 1003
 - **Date:** 2026-11-08
 - **Deciders:** Marcin Polewski
 - **Supersedes:** project-template ADR-0200, its item 4 only: the script the prelude runs

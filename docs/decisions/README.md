@@ -67,4 +67,5 @@ records are indexed in [project-template/](project-template/README.md).
 | --- | --- | --- |
 | [1000](1000-template-owned-files-come-from-the-templates-copier-yml.md) | In a template adoption or update, the template-owned files are the ones the template's tree renders at the head's _commit and its copier.yml neither writes once nor merges | Accepted |
 | [1001](1001-a-review-command-is-the-comments-first-line.md) | A /review command is the comment's first line, and only a plain one can cancel a review | Accepted |
-| [1002](1002-tools-use-node-is-the-nodejs-selector-and-prelude.md) | tools/Use-Node.ps1 is the Node.js selector and the prelude, because it also runs where nvs isn't installed; supersedes item 4 of project-template ADR-0200 | Accepted |
+| [1002](1002-tools-use-node-is-the-nodejs-selector-and-prelude.md) | tools/Use-Node.ps1 is the Node.js selector and the prelude, because it also runs where nvs isn't installed; supersedes item 4 of project-template ADR-0200 | Superseded by 1003 |
+| [1003](1003-the-templates-use-node-is-the-nodejs-selector-and-prelude.md) | The template's .template/Use-Node.ps1 is the Node.js selector and the prelude, as project-template ADR-0200 says; supersedes 1002 | Accepted |
