@@ -1,6 +1,6 @@
 # 0002. Commits are attributed to people, not agents
 
-- **Status:** Accepted
+- **Status:** Superseded by 0018
 - **Date:** 2026-10-31
 
 ## Context
