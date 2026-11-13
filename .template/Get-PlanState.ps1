@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, push-branch, pr-branch, default, host, plan, issue, refs, feedback, release, steps, reviewed, landing, pre-release, protected, ahead, behind, landed,
-    pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
+    pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans, analyses and next. A fact that does not apply prints
     "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD, or has HEAD's tree while HEAD changes a file since it left the default branch, so a new plan's empty commits on top of an earlier request's merge don't count. pr names that request, or else the newest one.
@@ -29,6 +29,7 @@
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
     changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none. With pre-release untracked, a tag below 1.0.0 doesn't count. changelog-duplicates names each Keep a Changelog heading (### Added, Changed, Deprecated, Removed, Fixed or Security) that a section of the changelog has more than once, as <section> <heading> joined by ", ", such as [Unreleased] Changed, or - when every section has at most one of each; two pull requests that each add the same heading to a section leave it twice once both merge.
     unfiled counts the lines of PLAN.md's ## Follow-ups section, up to the next ## heading, that start with "- " or "* " and don't end with a mark /ship-plan appends: an em dash, then "filed as #<number>" or "already tracked as #<number>", either with <owner/repo> before the #, or "dropped". A line that says only None or Nothing doesn't count. It is 0 without the section and - without a plan. next is ship-plan rather than finish-plan for a landed plan while unfiled is above 0 and the Landing section's follow-ups isn't none, so /ship-plan files them.
+    analyses names the other worktrees under .claude/worktrees/ that hold no PLAN.md but an ANALYSIS.md, or whose newest commit's subject starts with "Record decision: ", as <name>=<title> sorted by name and joined by "; ", or -. The title is ANALYSIS.md's first # heading without an "Analysis:" prefix, else the subject after "Record decision: ". Without a plan, next names the open plans and analyses.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -624,21 +625,39 @@ try {
 
     # Other plan worktrees
     $others = @()
+    $analysisList = @()
     foreach ($line in (& git worktree list --porcelain 2>$null)) {
         if ("$line" -match '^worktree (.+)$') {
             $wtPath = $Matches[1] -replace '\\', '/'
             if ($wtPath -match '/\.claude/worktrees/([^/]+)$') {
                 $name = $Matches[1]
                 $wtPlan = Join-Path $wtPath 'PLAN.md'
-                if ($name -ne $worktree -and (Test-Path -LiteralPath $wtPlan)) {
-                    $title = '-'
-                    foreach ($l in (Read-Lines $wtPlan)) { if ($l -match '^# Plan:\s*(.+)$') { $title = $Matches[1].Trim(); break } }
-                    $others += "$name=$title"
+                if ($name -ne $worktree) {
+                    if (Test-Path -LiteralPath $wtPlan) {
+                        $title = '-'
+                        foreach ($l in (Read-Lines $wtPlan)) { if ($l -match '^# Plan:\s*(.+)$') { $title = $Matches[1].Trim(); break } }
+                        $others += "$name=$title"
+                    }
+                    elseif (Test-Path -LiteralPath $wtPath) {
+                        $title = $null
+                        $wtAnalysis = Join-Path $wtPath 'ANALYSIS.md'
+                        if (Test-Path -LiteralPath $wtAnalysis) {
+                            $title = '-'
+                            foreach ($l in (Read-Lines $wtAnalysis)) { if ($l -match '^#\s+(?:Analysis:\s*)?(.+)$') { $title = $Matches[1].Trim(); break } }
+                        }
+                        if (-not $title -or $title -eq '-') {
+                            $subject = (& git -C $wtPath log -1 --format=%s 2>$null | Out-String).Trim()
+                            if ($subject -match '^Record decision: (.+)$') { $title = $Matches[1].Trim() }
+                        }
+                        if ($title) { $analysisList += "$name=$title" }
+                    }
                 }
             }
         }
     }
     $plans = if ($others) { $others -join '; ' } else { '-' }
+    $analysisSorted = @($analysisList | Sort-Object)
+    $analyses = if ($analysisSorted) { $analysisSorted -join '; ' } else { '-' }
 
     # Next command
     $next = $null
@@ -667,9 +686,11 @@ try {
     }
     else {
         if ($branch -ne '-' -and $branch -ne $default -and $landed -eq 'yes') { $next = 'finish-plan' }
-        elseif ($plans -ne '-') {
-            $names = $others | ForEach-Object { ($_ -split '=', 2)[0] }
-            $next = "none no plan in this folder; open plans: $($names -join ', ')"
+        elseif ($plans -ne '-' -or $analyses -ne '-') {
+            $parts = @()
+            if ($plans -ne '-') { $parts += "open plans: $(($others | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')" }
+            if ($analyses -ne '-') { $parts += "open analyses: $(($analysisSorted | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')" }
+            $next = "none no plan in this folder; $($parts -join '; ')"
         }
         else { $next = 'none no plan in this folder' }
     }
@@ -710,6 +731,7 @@ try {
     Write-Output "unfiled: $unfiled"
     Write-Output "dirty: $dirty"
     Write-Output "plans: $plans"
+    Write-Output "analyses: $analyses"
     Write-Output "next: $next"
 }
 finally {

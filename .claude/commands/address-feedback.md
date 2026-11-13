@@ -43,7 +43,7 @@ An item is one open review thread, one top-level comment or one review summary o
 
 ## Resume
 
-An earlier run on this pull request stopped and left its checkout, with its commits and its `PLAN.md`, as Checkout says: a worktree when Claude Code made it, or a `feedback-<number>` branch when Copilot did. Checkout item 5 moves the other tool's run into this tool's checkout before anything else, so either tool finishes it. This run finishes that run from the stage where it stopped, and writes no plan of its own.
+An earlier run on this pull request stopped and left its checkout, with its commits and its `PLAN.md`, as Checkout says: the worktree `.claude/worktrees/feedback-<number>`, which either tool finishes, or a `feedback-<number>` branch, which a Copilot run of an earlier version left. Checkout item 5 moves such a branch into the run's worktree before anything else, so either tool finishes it too. This run finishes that run from the stage where it stopped, and writes no plan of its own.
 
 1. Enter the earlier run's checkout, as Checkout item 5 says, and run `pwsh -NoProfile -File .template/Get-PlanState.ps1` there. Stop when `dirty` is `yes`, and list what `git status --porcelain` prints. Stop when `feedback` isn't `<number>`: the checkout holds no plan for this pull request, and Checkout item 6 discards it; give its commands.
 2. `<start>` is the commit on the `Start:` line of `PLAN.md`. When the pull request isn't open, the run can't push to it or reply: show the commits the run made, `git log --oneline "<start>..HEAD"`, ask me once whether to discard the run, and wait for my answer. When I say yes, discard it as Checkout item 6 says and go on with Report; otherwise stop.
