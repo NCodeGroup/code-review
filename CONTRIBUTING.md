@@ -6,7 +6,7 @@ Issues and pull requests are welcome. [README.md](README.md) explains the projec
 
 - Git, and PowerShell 7 (`pwsh`): every command here runs from the repository root in PowerShell 7.
 - Node.js 24, the version `.node-version` names, and npm. `. ./.template/Use-Node.ps1` puts it on `PATH` in the shell, through nvs when the `node` already there is another version; after installing nvs, run `./.template/Initialize-Nvs.ps1` once per PC: it loads nvs in the bash and PowerShell profiles and installs that version. Install the dependencies with `npm ci`.
-- On Windows, `git config --global core.longpaths true`, once: a Claude Code plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
+- On Windows, `git config --global core.longpaths true`, once: a plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
 
 ## Set Up
 
