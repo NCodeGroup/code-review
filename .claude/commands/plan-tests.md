@@ -16,7 +16,7 @@ Each plan lives in its own git worktree, so several Claude Code sessions can pla
 
 From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout.
 
-`PLAN.md` stays untracked in the worktree and is never committed or pushed. After writing it, run `git commit --allow-empty -m "Plan: <the plan's title>"` in the worktree: the commit makes Claude Code treat the worktree as holding work, so it asks before removing it on exit. End your reply with the worktree's name and branch, and how to continue: `/orchestrate-plan` in this session; from a new session, `/orchestrate-plan <name>`; or from a terminal, `claude --worktree <name>` and then `/orchestrate-plan`. If Claude Code asks on exit whether to keep the worktree, keep it.
+`PLAN.md` stays untracked in the worktree and is never committed or pushed. After writing it, run `git commit --allow-empty -m "Plan: <the plan's title>"` in the worktree: the commit makes Claude Code treat the worktree as holding work, so it asks before removing it on exit. When the worktree's branch already holds commits that aren't on the default branch, such as a `Record decision:` commit an analysis made there, list them under Context for the executor, so the review counts them as the plan's work. End your reply with the worktree's name and branch, and how to continue: `/orchestrate-plan` in this session; from a new session, `/orchestrate-plan <name>`; or from a terminal, `claude --worktree <name>` and then `/orchestrate-plan`. If Claude Code asks on exit whether to keep the worktree, keep it.
 
 ## Task
 

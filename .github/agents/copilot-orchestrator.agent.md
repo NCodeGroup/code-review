@@ -12,6 +12,19 @@ handoffs:
     send: true
     model: 'Claude Sonnet 5.5 (copilot)'
 ---
+## Work in the plan's worktree
+
+Each plan lives in its own git worktree, so several Copilot sessions, or Copilot and Claude Code sessions, can work on different plans in one clone at once. Before anything else, find the plan's folder, `<plan folder>`:
+
+1. When the task names the plan's folder, as `/run-issues` and `/address-feedback` do, that folder is `<plan folder>`.
+2. Otherwise run `git rev-parse --show-toplevel`. When the path contains `/.claude/worktrees/`, or `git rev-parse --path-format=absolute --git-dir` and `git rev-parse --path-format=absolute --git-common-dir` print different paths, and the folder has a `PLAN.md`, that folder is `<plan folder>`: go on with the task.
+3. Otherwise list the plan worktrees: run `git worktree list --porcelain`, keep each `worktree` path under `.claude/worktrees/` that has a `PLAN.md`, and read each plan's title from its first line.
+4. Choose the plan, in this order: the worktree whose folder name the command's arguments give; else the only plan worktree; else, when there is no plan worktree, the `PLAN.md` in the current checkout, worked on where it is — a plan written without a worktree, such as one Copilot's cloud agent or an earlier template version wrote. With several plan worktrees and none named, list them with their titles and stop to ask which one. With no plan anywhere, stop and say so.
+
+From here on, `<plan folder>` is the repository root: run every command there, Done-when commands included, and never edit files, commit or switch branches in the main checkout; reading it, such as `git worktree list`, is fine. A Copilot session can't change the folder its shell starts in, so start every command with `Set-Location -LiteralPath '<plan folder>';`, give file tools absolute paths under `<plan folder>`, and search with `git -C '<plan folder>' grep` or by path, because a workspace search skips the ignored `.claude/worktrees/`. When you delegate to a subagent, give it `<plan folder>` and these rules, and tell it to work only there.
+
+## Task
+
 Execute `PLAN.md` as its coordinator. You are the strong reasoning model: you verify every result and do all re-planning. A cheaper, faster subagent makes every edit.
 
 Extra instructions (may be empty): any extra instructions in my message
