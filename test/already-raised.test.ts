@@ -216,6 +216,21 @@ test('settleAlreadyRaised keeps the verdict when a named repeat matches a dismis
   assert.equal(settled.verdict, 'comment');
 });
 
+test('settleAlreadyRaised keeps a re-review verdict at its floor when a repeat of a dismissed thread leaves', () => {
+  const reReview = { changedLines: {}, earlier: [], verdictFloor: 'comment' as const };
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat], reReview }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.findings, []);
+  assert.equal(settled.alreadyRaised!.length, 1);
+  assert.equal(settled.alreadyRaised![0]!.earlier.dismissed, true);
+  assert.equal(settled.verdict, 'comment');
+});
+
+test('settleAlreadyRaised lowers a verdict without a floor when a repeat of a dismissed thread leaves', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.findings, []);
+  assert.equal(settled.verdict, 'approve');
+});
+
 test('settleAlreadyRaised lists a named repeat as already raised when its thread is not listed', () => {
   const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [], []);
   assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);

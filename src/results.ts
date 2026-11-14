@@ -10,7 +10,7 @@ import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { earlierThread, type PostedThread } from './threads.ts';
-import { settleVerdict } from './verdict.ts';
+import { settleVerdict, verdictRank } from './verdict.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
@@ -91,8 +91,9 @@ export interface Results {
   // For a re-review: what it found of each earlier finding, by the URL of its thread's first comment, and the lines
   // changed since the last review, so the publish step can resolve the threads of fixed findings and answer the
   // autopilot once. Each earlier finding comes with its id and the URL of its thread's first comment, so the summary
-  // comment can keep its link live.
-  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[] };
+  // comment can keep its link live. The verdictFloor is the verdict the re-review's earlier findings and completeness
+  // call for, which settling never goes below.
+  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[]; verdictFloor?: Verdict };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
 }
@@ -102,7 +103,7 @@ export interface Results {
 // the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
 // problem is still in the code. A finding that names the earlier finding it repeats is listed as already raised even when
 // no listed thread matches it, with the id and URL it carries, and it never settles the verdict, because a re-review gave
-// its verdict without it.
+// its verdict without it. A re-review's verdict never settles below its verdictFloor.
 export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
   const findings: ReviewedFinding[] = [];
   const raised: RaisedFinding[] = [];
@@ -113,12 +114,14 @@ export function settleAlreadyRaised(results: Results, posted: PostedThread[], di
     else findings.push(finding);
   }
   if (!raised.length) return results;
+  const settled = settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict;
+  const floor = results.reReview?.verdictFloor;
   return {
     ...results,
     findings,
     alreadyRaised: raised,
     // A re-review gave its verdict without the findings it says repeat earlier ones, so they never settle it.
-    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict,
+    verdict: floor && verdictRank[floor] > verdictRank[settled] ? floor : settled,
   };
 }
 

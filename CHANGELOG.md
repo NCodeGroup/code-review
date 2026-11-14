@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A re-review whose changed hunks are more than one part of a first review holds (160,000 characters) is a full review, in parts and under the run's cost ceiling, and the check run names the files it couldn't fit, instead of one reviewer call that stops at its $1 budget and reviews nothing ([#194](https://github.com/NCodeGroup/code-review/issues/194), [ADR-1007](docs/decisions/1007-a-re-review-larger-than-one-part-is-a-full-review.md)).
 - A re-review that raises an earlier finding again in new words lists it under "Already raised", with a link to the earlier thread, instead of posting it again: its reviewer names the earlier finding it repeats, and the re-review leaves it out of its verdict ([#192](https://github.com/NCodeGroup/code-review/issues/192), [ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md)).
+- A re-review whose verdict is Comment, because an earlier finding is still waiting or the re-review was incomplete, keeps it when the publish step lists a finding that repeats a dismissed thread as already raised, instead of turning to Approve.
 
 ## [1.2.0] - 2026-11-14
 

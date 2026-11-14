@@ -405,6 +405,9 @@ export interface EarlierStatus {
 
 export interface ReReview extends Review {
   earlier: EarlierStatus[];
+  // The verdict the earlier findings and the re-review's completeness call for without any new finding; the publish step
+  // never settles the verdict below it.
+  verdictFloor?: Verdict;
 }
 
 const reReviewSchema = {
@@ -694,13 +697,15 @@ export async function reReview(
     const verifiedAway = Boolean(verified?.trace.length);
     // Deep only when a reviewer ran on the changes to a sensitive file.
     const deep = outcomes.length > 0 && roster.sensitiveFiles.length > 0;
+    // Whether the re-review left something unchecked, which keeps its verdict from being an approval.
+    const incomplete = Boolean(error) || plan.earlierUnread || unseen || verifiedAway;
     return {
       reviewers: outcomes,
       shadow: [],
       shadowSkipped: [],
       shadowPrompts: [],
       summary: deep ? `${depthLabel.deep}: ${summary}` : summary,
-      verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
+      verdict: reReviewVerdict(findings, statuses, incomplete),
       findings: [...findings, ...repeated],
       upstream: upstream.upstream,
       upstreamOmitted: upstream.omitted,
@@ -714,6 +719,7 @@ export async function reReview(
       depth: deep ? 'deep' : 'standard',
       sensitiveFiles: deep ? roster.sensitiveFiles : [],
       earlier: statuses,
+      verdictFloor: reReviewVerdict([], statuses, incomplete),
     };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
@@ -803,7 +809,7 @@ export interface ReviewRun {
   // The head the summary records as reviewed: see recordedHead.
   recordedHead: string;
   // What the trace adds for a re-review.
-  trace: { reReview?: { lastHead: string; changedLines: Record<string, number[]>; earlierUnread: boolean; earlier: { id: string; url: string; resolved: boolean; status: EarlierState; note: string }[] } };
+  trace: { reReview?: { lastHead: string; changedLines: Record<string, number[]>; earlierUnread: boolean; earlier: { id: string; url: string; resolved: boolean; status: EarlierState; note: string }[]; verdictFloor?: Verdict } };
 }
 
 // A re-review when there's a plan for one, the full review otherwise, and the head the run's summary records.
@@ -824,6 +830,6 @@ export async function runReview(options: {
   return {
     outcome,
     recordedHead: recordedHead(outcome.reviewers, headSha, lastHead),
-    trace: { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlierUnread: plan.earlierUnread, earlier } },
+    trace: { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlierUnread: plan.earlierUnread, earlier, ...(outcome.verdictFloor ? { verdictFloor: outcome.verdictFloor } : {}) } },
   };
 }

@@ -844,6 +844,16 @@ test('reReview lists a finding that repeats an earlier one apart and leaves it o
   assert.match(outcome.summary, /1 finding repeats an earlier one, so it is listed as already raised and not posted again\./);
 });
 
+test('reReview gives a verdict floor from the earlier findings it finds waiting', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const output = { findings: [], earlier: [{ key: 'E1', status: 'open', note: 'Still there.' }] };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.equal(outcome.verdictFloor, 'comment');
+});
+
 test('reReview posts a finding whose repeats names no earlier finding', async () => {
   const { repo, reviewed, main, head } = editedRepo();
   const gathered = gather(pullRequest(main, head), repo, repo);
