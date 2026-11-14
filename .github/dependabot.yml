@@ -11,9 +11,11 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
+    # This repository's own reviews run NCode Review (NCodeGroup/code-review), whose releases this repository makes itself, so its bump isn't held back (ADR-1006). The cooldown still holds back every other action.
     cooldown:
       default-days: 3
+      exclude: ["NCodeGroup/code-review"]
     groups:
       # Dependabot puts an update in the first group that matches it, so this one comes before the catch-all group:
       # .github/workflows/code-review-auto-merge.yml merges only a pull request whose one change is the NCode Review pin.
