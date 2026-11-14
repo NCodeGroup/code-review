@@ -177,6 +177,11 @@ export function maintainerComments(comments: PullComment[], repoName: string, ma
   }));
 }
 
+// How much of a finding's body and of each reply a review-outcomes source keeps, and what separates its threads.
+const maxOutcomeFindingChars = 1_500;
+const maxOutcomeReplyChars = 1_000;
+const threadSeparator = '\n\n---\n\n';
+
 // One review comment as GitHub's REST API lists it for a repository's pull requests.
 export interface PullComment { id: number; in_reply_to_id?: number; user?: { login?: string }; body?: string; path?: string; line?: number | null; original_line?: number | null; diff_hunk?: string; pull_request_url?: string }
 
@@ -199,9 +204,9 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
     const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last) ? 'fixed' : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last) ? 'declined' : 'answered';
     const thread = [
       `Finding ${finding.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
-      findingBody(body).slice(0, 1_500),
+      findingBody(body).slice(0, maxOutcomeFindingChars),
       `Outcome: ${verdict}`,
-      ...answers.map((r) => `Maintainer: ${(r.body ?? '').slice(0, 1_000)}`),
+      ...answers.map((r) => `Maintainer: ${(r.body ?? '').slice(0, maxOutcomeReplyChars)}`),
     ].join('\n');
     const pull = String(c.pull_request_url).split('/').pop()!;
     byPull.set(pull, [...(byPull.get(pull) ?? []), thread]);
@@ -211,11 +216,11 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
     const pieces: string[] = [];
     let current = '';
     for (const thread of threads) {
-      if (current && current.length + 7 + thread.length > size) {
+      if (current && current.length + threadSeparator.length + thread.length > size) {
         pieces.push(current);
         current = '';
       }
-      current = current ? `${current}\n\n---\n\n${thread}` : thread;
+      current = current ? `${current}${threadSeparator}${thread}` : thread;
     }
     if (current) pieces.push(current);
     pieces.forEach((piece, i) => sources.push({

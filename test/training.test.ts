@@ -26,6 +26,12 @@ test('outcomeSources reads the verdict of a fixed and a declined finding with th
   assert.match(source!.text, /Finding F1 \(nit, by tests\) on a\.cs, line 4: Two\nThe problem\.\nOutcome: declined\nMaintainer: Autopilot: not changed\. It is intended\./);
 });
 
+test('outcomeSources calls an Autopilot nothing-to-change reply declined', async () => {
+  const { outcomeSources } = await import('../training/run.ts');
+  const [source] = outcomeSources([bot(1), reply(11, 1, 'Autopilot: nothing to change. The sibling does the same.')], 'Repo', 'polewskm');
+  assert.match(source!.text, /Outcome: declined\nMaintainer: Autopilot: nothing to change\./);
+});
+
 test('maintainerComments keeps only the maintainer top-level comments with their replies, one source per pull request', async () => {
   const { maintainerComments } = await import('../training/run.ts');
   const other = 'https://api.github.com/repos/o/r/pulls/8';
