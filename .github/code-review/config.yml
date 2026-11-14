@@ -1,0 +1,5 @@
+# NCode Review's settings for this repository. The engine reads them from the default branch only.
+skip:
+  # The rules `npm run train` extracts from each source, written by a model and regenerated on every training run.
+  # A review of a training run reads the guidance/ they generalize into instead.
+  - "training/extracted/**"
