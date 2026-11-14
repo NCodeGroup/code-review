@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-14
+
+### Added
+
+- Synthesis merges one problem found in several files, such as one rule broken the same way in three of them, into one finding: its one thread, the review's body and the check run list the other places under "Also at", so the author answers it once. A reviewer's finding in another file counts as merged only when the finding names its place, within three lines; any other is posted on its own ([#193](https://github.com/NCodeGroup/code-review/issues/193), [ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md)).
+
+### Fixed
+
+- A re-review whose changed hunks are more than one part of a first review holds (160,000 characters) is a full review, in parts and under the run's cost ceiling, and the check run names the files it couldn't fit, instead of one reviewer call that stops at its $1 budget and reviews nothing ([#194](https://github.com/NCodeGroup/code-review/issues/194), [ADR-1007](docs/decisions/1007-a-re-review-larger-than-one-part-is-a-full-review.md)).
+- A re-review that raises an earlier finding again in new words lists it under "Already raised", with a link to the earlier thread, instead of posting it again: its reviewer names the earlier finding it repeats, and the re-review leaves it out of its verdict ([#192](https://github.com/NCodeGroup/code-review/issues/192), [ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md)).
+
 ## [1.2.0] - 2026-11-14
 
 ### Added
@@ -227,7 +238,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NCodeGroup/code-review/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/NCodeGroup/code-review/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/NCodeGroup/code-review/compare/v1.1.0...v1.1.1
