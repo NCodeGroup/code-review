@@ -106,8 +106,21 @@ function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: bool
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
 }
 
-// The thread a finding repeats, a dismissed one first, by the rule `repeats` gives.
+// The comment id in a thread's link; GraphQL and REST link a thread's first comment the same way.
+function discussionId(url: string | undefined): string | undefined {
+  return /#discussion_r(\d+)$/.exec(url ?? '')?.[1];
+}
+
+// The thread a finding repeats, a dismissed one first: the thread a finding names as the one it repeats matches first, then
+// the rule `repeats` gives.
 export function earlierThread(finding: ReviewedFinding, posted: PostedThread[], dismissed: PostedThread[] = []): { thread: PostedThread; dismissed: boolean } | undefined {
+  const named = discussionId(finding.repeatsEarlier?.url);
+  if (named) {
+    const namedDismissed = dismissed.find((p) => discussionId(p.url) === named);
+    if (namedDismissed) return { thread: namedDismissed, dismissed: true };
+    const namedPosted = posted.find((p) => discussionId(p.url) === named);
+    if (namedPosted) return { thread: namedPosted, dismissed: false };
+  }
   const dismissedThread = dismissed.find((p) => repeats(finding, p, true));
   if (dismissedThread) return { thread: dismissedThread, dismissed: true };
   const postedThread = posted.find((p) => repeats(finding, p, false));
@@ -125,11 +138,12 @@ export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>,
   return nearby(a, b) && fingerprint({ ...a, severity: 'nit' }) === fingerprint({ ...b, severity: 'nit' });
 }
 
-// `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed.
+// `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed. A finding that names
+// the earlier thread it repeats is never posted again, even when that thread isn't listed.
 export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
   const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
   for (const finding of findings) {
-    if (earlierThread(finding, posted, dismissed)) {
+    if (finding.repeatsEarlier || earlierThread(finding, posted, dismissed)) {
       placement.alreadyPosted.push(finding);
       continue;
     }

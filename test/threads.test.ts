@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ReviewedFinding } from '../src/review.ts';
-import { earlierThread, findingBody, findingTitle, parseFindingComment, parsePosted, reviewBody, threadBody } from '../src/threads.ts';
+import { earlierThread, findingBody, findingTitle, parseFindingComment, parsePosted, placeFindings, reviewBody, threadBody } from '../src/threads.ts';
 
 const finding = (overrides: Partial<ReviewedFinding> = {}): ReviewedFinding => ({
   id: 'F1', severity: 'should-fix', file: 'src/a.ts', line: 12, title: 'Overlapping runs race', problem: 'Two runs write the file.', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['correctness'], ...overrides,
@@ -46,6 +46,18 @@ test('earlierThread names a dismissed thread a finding repeats at another severi
 test('earlierThread names a thread posted nearby at the same severity as not dismissed', () => {
   assert.deepEqual(earlierThread(finding({ title: 'Another wording', line: 14 }), [thread!], []), { thread, dismissed: false });
   assert.equal(earlierThread(finding({ title: 'Another wording', line: 16 }), [thread!], []), undefined);
+});
+
+test('earlierThread names the thread a re-review finding says it repeats, whatever its words and place', () => {
+  const named = finding({ title: 'Totally different words', file: 'src/z.ts', line: 90, repeatsEarlier: { id: 'F7', url } });
+  assert.deepEqual(earlierThread(named, [thread!], []), { thread, dismissed: false });
+  assert.deepEqual(earlierThread(named, [thread!], [thread!]), { thread, dismissed: true });
+});
+
+test('placeFindings never posts a finding that names an earlier thread', () => {
+  const placement = placeFindings([finding({ repeatsEarlier: { id: 'F7', url: 'https://github.com/o/r/pull/1#discussion_r99' } })], { 'src/a.ts': [12] }, [], []);
+  assert.equal(placement.alreadyPosted.length, 1);
+  assert.equal(placement.inline.length, 0);
 });
 
 test('reviewBody neutralizes mentions in a finding that is not on a changed line', () => {

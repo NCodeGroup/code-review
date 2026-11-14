@@ -54,6 +54,8 @@ export interface ReviewedFinding extends Finding {
   reviewers: string[];
   // The places in other files that have the same problem, which synthesis merged into this finding; its one thread lists them.
   places?: Place[];
+  // The earlier finding that a re-review's reviewer said this one repeats, with the URL of its thread's first comment; the finding is listed under "Already raised" and never posted again.
+  repeatsEarlier?: { id: string; url: string };
   // The open issue that already tracks the problem, which synthesis named: the finding isn't posted as a new thread.
   tracked?: number;
 }
