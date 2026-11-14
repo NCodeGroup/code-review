@@ -461,7 +461,7 @@ of review converge:
   files on Opus. A re-review is never light. Each reviewer gets the earlier findings and the replies in their threads
   (from people with write access) and checks each unresolved finding against the code now (fixed, still open, or
   answered); when they disagree, still open counts over answered, and answered over fixed. It doesn't raise again
-  what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+  what was fixed or answered with a reason, or ask to undo what an earlier finding asked for. A finding a reviewer says repeats an earlier one, in whatever words, names it: it is listed under "Already raised" with a link to the earlier thread, isn't posted again, and doesn't count toward the re-review's verdict ([ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md));
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
 - when `correctness` and `security` report the same problem, in the same file within three lines and with the same title
   words, it posts it once, at the higher severity, with both reviewers; the log counts these and the findings of the two
