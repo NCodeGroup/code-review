@@ -27,13 +27,13 @@ isn't posted again, and isn't counted in the re-review's verdict.
 
 ## Options considered
 
-For #193:
+For [#193](https://github.com/NCodeGroup/code-review/issues/193):
 
 1. One thread per file. The author answers the same thing several times.
 2. A reply in each file's thread pointing to the first. It adds comments, and more for the autopilot to answer.
 3. One thread that lists the other places.
 
-For #192:
+For [#192](https://github.com/NCodeGroup/code-review/issues/192):
 
 1. Looser fuzzy matching of titles. It matches distinct problems in one file wrongly, and matches nothing across files.
 2. The reviewer naming the key. It has every earlier finding and its replies in the prompt.
@@ -52,7 +52,7 @@ the reviewers reported or against a real earlier finding.
 
 - [#193](https://github.com/NCodeGroup/code-review/issues/193)
 - [#192](https://github.com/NCodeGroup/code-review/issues/192)
-- #189
+- [#189](https://github.com/NCodeGroup/code-review/pull/189)
 - `src/review.ts` (`mergeSynthesis`, `synthesisSchema`)
 - `src/threads.ts` (`earlierThread`, `threadBody`)
 - `src/rereview.ts` (`reReview`, `repeatedFindings`)

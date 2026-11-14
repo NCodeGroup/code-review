@@ -11,9 +11,9 @@ at `budgets.specialist` for its tier: $1 on Sonnet and $2 on Opus (`src/config.t
 splits its diff into parts of up to `maxChunkChars` (160,000 characters), at most `maxChunks` (6), with a cost ceiling
 of $8 plus $4 per part (`runCeiling`).
 
-On pull request #189, at 97e9334, the changes since fe1cc13 were 835 files and about 81,000 lines. The re-review
-stopped in 16 s at "Reached maximum budget ($1)", cost $1.06 and reviewed nothing
-([#194](https://github.com/NCodeGroup/code-review/issues/194)).
+On [#189](https://github.com/NCodeGroup/code-review/pull/189),
+a re-review of a large change since the last review used up its one call's $1 budget and reviewed
+nothing ([#194](https://github.com/NCodeGroup/code-review/issues/194) has the run's figures).
 
 ## Decision
 
@@ -40,7 +40,7 @@ The full review wins: it already does what a re-review in parts would have to bu
 ## References
 
 - [#194](https://github.com/NCodeGroup/code-review/issues/194)
-- #189
+- [#189](https://github.com/NCodeGroup/code-review/pull/189)
 - `src/rereview.ts` (`planReReview`)
 - `src/config.ts` (`maxChunkChars`, `runCeiling`)
 - `src/gather.ts` (`chunkDiff`)
