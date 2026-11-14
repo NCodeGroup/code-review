@@ -65,8 +65,9 @@ function arg(name: string): string | undefined {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-// The source labels the eval cases draw on: the review of each pull request a case names, and each decision record its
-// source cites. Labels look like "Identity review of #341" and "Identity ADR-0266".
+// The source labels the eval cases draw on: the review and the answered bot findings of each pull request a case names,
+// and each decision record its source cites. Labels look like "Identity review of #341", "Identity outcomes of #341"
+// and "Identity ADR-0266".
 export function holdoutLabels(cases: { id: string; repository: string; pullRequest?: number; source?: string }[]): Set<string> {
   const labels = new Set<string>();
   for (const c of cases) {
@@ -74,7 +75,10 @@ export function holdoutLabels(cases: { id: string; repository: string; pullReque
     const text = `${c.id} ${c.source ?? ''}`;
     const pulls = new Set<number>(c.pullRequest ? [c.pullRequest] : []);
     for (const m of text.matchAll(/(?:\/pull\/|#|^comments-)(\d+)/g)) pulls.add(Number(m[1]));
-    for (const pull of pulls) labels.add(`${repo} review of #${pull}`);
+    for (const pull of pulls) {
+      labels.add(`${repo} review of #${pull}`);
+      labels.add(`${repo} outcomes of #${pull}`);
+    }
     for (const m of text.matchAll(/ADR-(\d{4})/g)) labels.add(`${repo} ADR-${m[1]}`);
   }
   return labels;
