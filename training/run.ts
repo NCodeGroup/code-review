@@ -152,10 +152,17 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
   return sources;
 }
 
-// Every review comment on a repository's pull requests, as GitHub's REST API lists them.
+// Every review comment on a repository's pull requests, as GitHub's REST API lists them. It asks for each page by number
+// instead of following GitHub's next-page links, which name the repository by its numeric id, a path that some
+// proxies refuse, such as a Claude Code cloud session's.
 function fetchPullComments(repository: string): PullComment[] {
-  const raw = execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repository}/pulls/comments?per_page=100`], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  return (JSON.parse(raw) as PullComment[][]).flat();
+  const comments: PullComment[] = [];
+  for (let page = 1; ; page++) {
+    const raw = execFileSync('gh', ['api', `repos/${repository}/pulls/comments?per_page=100&page=${page}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const batch = JSON.parse(raw) as PullComment[];
+    comments.push(...batch);
+    if (batch.length < 100) return comments;
+  }
 }
 
 // The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
