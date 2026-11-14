@@ -1,0 +1,139 @@
+{
+  "hash": "277f07c7ace7bdbe",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1273",
+  "rules": [
+    {
+      "statement": "Take the hash function for `at_hash`, `c_hash` and `s_hash` from the signing algorithm's defined token hash function (such as `SignatureAlgorithm.GetTokenHashFunction`), never from the digest named by the `alg` suffix.",
+      "why": "The `alg` suffix names the wrong digest for Ed25519 and Ed448, so a hash derived from the name doesn't match what the issuer computed.",
+      "check": "Look for code that parses `alg` (for example a `256`/`384`/`512` suffix) or switches on the algorithm name to pick SHA-256/384/512 for token hashes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute and verify OpenID Connect token hash claims through the one shared token-hash helper, on both the issuing side and the validating side, rather than reimplementing the left-most-half encoding.",
+      "why": "The server that issues the hash claims and the client that checks them must compute them the same way for every algorithm, so the encoding has a single implementation.",
+      "check": "Look for new code that hashes a value, takes half of the digest and base64url-encodes it by hand instead of calling the shared `Compute`/`Verify` helper.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Verify a token hash claim with a constant-time comparison (`CryptographicOperations.FixedTimeEquals`) over the ASCII octets of the value: report a mismatch for non-ASCII input when verifying, and throw `ArgumentException` for it when computing.",
+      "why": "The hash covers the ASCII octets of the value (OIDC Core §3.1.3.6), and comparing a security value must not leak timing.",
+      "check": "Look for token hash checks that use `==`, `string.Equals` or `SequenceEqual`, that encode with UTF-8 instead of ASCII, or that accept non-ASCII input without failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In ID-token validation for the authorization code flow, accept a missing `at_hash`, `c_hash` or `s_hash`. When the claim is present and the caller supplied the matching value, the claim must verify or validation fails.",
+      "why": "These claims are optional in the code flow (OIDC Core §3.1.3.6, §3.1.3.8), so requiring them would reject valid tokens from conforming providers.",
+      "check": "Look for validation that fails when a hash claim is absent, or that skips verifying a hash claim that is present while the caller holds the value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an invalid ID token as a validation result that carries a failure code and a failure reason, rather than throwing an exception.",
+      "why": "The caller needs the outcome as a value, as it does for an OAuth error response.",
+      "check": "Look for ID-token validators that throw on a failed claim, signature or hash check instead of returning a failed result with a code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare the ID-token `nonce` and the expected `sub` to the caller's values ordinally, and fail with a distinct failure code for each mismatch.",
+      "why": "OIDC Core requires an exact match for nonce and for the subject (§12.2), and the caller needs to know which check failed.",
+      "check": "Look for culture-aware or case-insensitive comparisons of nonce or sub, or for mismatches reported under a generic code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating an ID token, require `iss` to equal the discovered issuer, `aud` to contain the client id, and both `exp` and `iat` to be present. When `azp` is present it must equal the client id, and when `typ` is present it must be `JWT`.",
+      "why": "OpenID Connect Core requires these checks before a client trusts the user's identity.",
+      "check": "Look for ID-token validation that leaves out any of these checks, treats `exp` or `iat` as optional, or ignores a present `azp` or `typ`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a `max_age` was requested, require `auth_time` to be a NumericDate and reject the ID token once the current time exceeds `auth_time + max_age` plus the allowed clock skew.",
+      "why": "OIDC Core requires the client to enforce the `max_age` it requested.",
+      "check": "Look for `max_age` handling that accepts a missing or non-numeric `auth_time` or leaves out the elapsed-time check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept ID tokens only under asymmetric signing algorithms: reject `none` and symmetric algorithms whatever the provider advertises, and reject blank, `none` or duplicate entries in a configured allow-list.",
+      "why": "An ID token is always signed, and a symmetric or `none` ID token must be refused.",
+      "check": "Look for ID-token algorithm lists or validation paths that allow `none` or HMAC algorithms, or allow-list setters that accept blank, `none` or duplicate entries.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure the accepted ID-token signing algorithms per client registration, not as a process-wide setting.",
+      "why": "Two clients in one process can register different `id_token_signed_response_alg` values with the provider.",
+      "check": "Look for ID-token algorithm restrictions placed on global or shared options instead of on the per-client registration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test every ID-token claim check together with its failure code, cover each token hash claim as present, absent and wrong, and round-trip the token-hash helper for every registered hash function, including non-ASCII input.",
+      "why": "The ADR sets this coverage as a consequence of the decision.",
+      "check": "Look for validator or token-hash changes whose tests leave out a failure code, one of the hash-claim states, or the non-ASCII case.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

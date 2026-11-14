@@ -1,0 +1,43 @@
+{
+  "hash": "f5a4c9b7fd288929",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #742",
+  "rules": [
+    {
+      "statement": "Don't ask a Vite build to set `build.assetsInlineLimit` to 0 so that icon or manifest links aren't inlined as data: URIs: Vite's HTML plugin never inlines `<link>` tags whose rel is icon, apple-touch-icon, manifest or similar, and setting the limit to 0 would also stop every other small asset from being inlined.",
+      "why": "Vite's `noInlineLinkRels` stops these links from being inlined before `assetsInlineLimit` applies, so icons are always emitted as hashed files. Changing the limit would affect unrelated assets.",
+      "check": "Before reporting a risk that an icon or manifest link gets inlined, check whether the asset is referenced from a `<link rel=\"icon\"|\"apple-touch-icon\"|\"manifest\">`. If it is, don't report it, and don't propose `assetsInlineLimit: 0`.",
+      "scope": "domain",
+      "domain": "frontend-vite",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.*",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test or a PR description claims that a host serves a resource (with a given content type or cache headers), request it through that host's own route in an integration test, not by calling the shared helper the route delegates to.",
+      "why": "A test that calls the helper directly still passes when the host stops routing the path to the helper, so the claim that the host serves the resource is only partly proven.",
+      "check": "Look for tests that are named or described as proving host behavior but call a serving helper (for example a static `ServeAsset`) directly. Check whether a host-level test requests the path through the mapped route and asserts the response.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy byte-identical test files or expected-value lists into several apps or projects: put the shared expectations in one shared test-support module that each copy imports, and keep only the parts each app must resolve locally.",
+      "why": "Copies have to be changed in every place and can drift apart without failing, so one app's test could keep asserting outdated values.",
+      "check": "Look for new test files that are identical, or nearly identical, across several apps or packages and that hard-code the same expected data. Suggest moving that data into the shared test-support package.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

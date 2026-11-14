@@ -1,15 +1,15 @@
 {
-  "hash": "79629ad9cfbe64d6",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "ac6bde4b15b679f9",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity project-template.instructions.md",
   "applyTo": [
     "**"
   ],
   "rules": [
     {
-      "statement": "Never commit `PLAN.md`. It is a local, gitignored handoff file between the planner and the executor.",
-      "why": "PLAN.md is local working state for the plan-then-execute workflow and must never be committed, staged or pushed.",
-      "check": "Flag any diff or commit that adds or changes `PLAN.md`.",
+      "statement": "Never commit the local PLAN.md working file; it must not appear in a diff or commit.",
+      "why": "PLAN.md is a gitignored local handoff file between planner and executor, never committed, staged or pushed.",
+      "check": "Look for PLAN.md added or modified in the diff or commit list.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -18,20 +18,20 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Never commit secrets, including `.env` files or the contents of the repository-root `secrets/` folder.",
-      "why": "Secrets must never enter the repository or a prompt. Those paths are gitignored for that reason.",
-      "check": "Look for added `.env` files, files under the root `secrets/` folder, or hard-coded credentials, keys or tokens in the diff.",
+      "statement": "Don't report AI agent attribution lines (Co-authored-by naming an agent, Claude-Session trailers, \"Generated with\" lines) in commits or pull requests, and never ask for history to be rewritten to remove them.",
+      "why": "The template says to leave such lines alone when a tool adds them anyway and not to report them; nothing checks for or blocks them.",
+      "check": "Before raising a finding about agent attribution in a commit message or PR text, don't raise it.",
       "scope": "general",
-      "topic": "security-and-crypto",
+      "topic": "documentation",
       "applies_to": [
         "**"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Save text files as UTF-8 without a BOM, with LF line endings, and follow `.editorconfig`.",
-      "why": "This is the repository-wide encoding and formatting convention.",
-      "check": "Flag files that start with a UTF-8 BOM, files with CRLF line endings, or formatting that goes against `.editorconfig`.",
+      "statement": "Files are UTF-8 without BOM with LF line endings and follow .editorconfig.",
+      "why": "Base template convention for every file.",
+      "check": "Look for BOMs, CRLF line endings or formatting contrary to .editorconfig in changed files.",
       "scope": "general",
       "topic": "text-and-encoding",
       "applies_to": [
@@ -40,50 +40,156 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not add a `Co-authored-by:` trailer naming an AI agent, a `Claude-Session:` trailer, or a \"Generated with\" line to commits or pull requests.",
-      "why": "Commits and pull requests record the people who wrote them. A commit-msg hook and a CI check enforce this.",
-      "check": "Look in commit messages and PR descriptions for AI co-author trailers, session trailers or generated-with lines.",
+      "statement": "When a change corrects outdated or insecure existing code, update the comments, docs and decision records it touches in the same change, rather than preserving the old shape because it already exists.",
+      "why": "Existing code is evidence of intent at the time it was written, not a constraint; leaving docs describing the old shape makes them wrong.",
+      "check": "See whether a behavior change leaves comments, docs or ADRs still describing the old behavior, or keeps an insecure pattern only for consistency with old code.",
       "scope": "general",
       "topic": "documentation",
       "applies_to": [
         "**"
       ],
-      "enforced_by_tools": true
+      "enforced_by_tools": false
     },
     {
-      "statement": "Do not edit files owned by the project template (`.template/`, `.template-version`, `.githooks/commit-msg`, `CLAUDE.md`, `build/ProjectTemplate.props`, `.github/instructions/csharp.instructions.md`, `.claude/rules/csharp.md`, the generated commands, prompts, skills and agents, and `.copier-answers.yml`). Override rules in `AGENTS.md` or in project instruction files instead.",
-      "why": "Template updates replace these files and throw away any local edits.",
-      "check": "Flag diffs that change template-owned files, unless the change comes from a template update.",
+      "statement": "Record each change in the changelog (default CHANGELOG.md) in Keep a Changelog 1.1.0 form: entries under `## [Unreleased]` (or the plan's release section) grouped as Added, Changed, Deprecated, Removed, Fixed or Security.",
+      "why": "Every plan's last step writes the changelog, which follows Keep a Changelog 1.1.0.",
+      "check": "Check that a change with user-visible effect adds a changelog entry under the right heading and group, newest release first.",
       "scope": "general",
-      "topic": "code-organization",
+      "topic": "documentation",
       "applies_to": [
-        ".template/**",
-        "build/ProjectTemplate.props",
-        ".githooks/commit-msg",
-        "CLAUDE.md",
-        ".template-version",
-        ".github/instructions/csharp.instructions.md",
-        ".claude/rules/csharp.md",
-        ".copier-answers.yml"
+        "**/CHANGELOG.md"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Change build settings in `Directory.Build.props` after its import of `build/ProjectTemplate.props`, not in the template props file and not before the import.",
-      "why": "Settings placed after the import override the template's shared defaults and survive template updates.",
-      "check": "Flag new MSBuild properties added to `build/ProjectTemplate.props`, or placed before its import in `Directory.Build.props`, when they are meant to override a shared setting.",
+      "statement": "Don't ask to convert a changelog kept in another format to Keep a Changelog; new entries follow that file's own style.",
+      "why": "A changelog in another format is left as it is unless a dedicated migration plan converts it.",
+      "check": "Before reporting changelog format, check whether the existing file already uses a different style that the entry follows.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, describe the product only as it is: no `**Breaking:**` labels, no wording like \"now\", \"no longer\", \"previously\", \"renamed\" or \"replaces\" against an earlier state, no names of removed members, and no migration or compatibility notes in changelogs, docs, comments, ADRs, test names, commits or PRs.",
+      "why": "Before the first stable release, nothing released has a reader that must keep working (ADR-0015), so text describes current state only.",
+      "check": "When the project is pre-release (Landing says `pre-release: untracked` and no tag ≥1.0.0), look for change-relative wording, breaking labels or migration notes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, don't add deprecation steps, compatibility shims or migration paths for breaking changes, and don't use the conventional-commit `!` marker or a `BREAKING CHANGE:` footer.",
+      "why": "Breaking changes before 1.0.0 need no compatibility handling (ADR-0015); compatibility rules bind only from the first stable release.",
+      "check": "In a pre-release project, look for [Obsolete] shims, fallback readers for old formats, migration code or breaking markers in commit/PR titles; also don't ask for them.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A change consumers can observe (public API, behavior, validation or security posture, stored data or wire formats) must have its decision recorded as an ADR in docs/decisions/ before or with the pull request that builds it.",
+      "why": "Consumer-observable decisions would otherwise be re-argued; the template requires an ADR for them.",
+      "check": "For a diff changing public API, wire/storage format or security behavior, check that an ADR is added or already exists.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Project ADRs are numbered from 1000, and an existing ADR is superseded by a new one rather than rewritten.",
+      "why": "Numbers below 1000 belong to the template's own decisions so an ADR number names one record; superseding preserves the decision history.",
+      "check": "Look for project ADRs numbered below 1000 or for substantive rewrites of an accepted ADR's decision.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Index every decision record in docs/decisions/README.md.",
+      "why": "The decision index must list every record; Test-AdrIndex.ps1 checks it in CI.",
+      "check": "A new ADR file without a README index entry.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Never edit template-owned files (project-template instructions, .template/, docs/decisions/project-template/, build/ProjectTemplate.*, build/BannedSymbols.txt, build/dod.ps1, generated commands/agents/prompts/skills, CLAUDE.md, the csharp instruction/rule files); override in AGENTS.md, Directory.Build.props, .editorconfig or a project-owned file instead.",
+      "why": "Template updates replace these files and discard any edit.",
+      "check": "Look for modifications to any template-owned path in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change build settings in Directory.Build.props after its import of build/ProjectTemplate.props, and analyzer severities in .editorconfig.",
+      "why": "The template props and globalconfig are template-owned; settings placed after the import, and .editorconfig severities, win over the template's.",
+      "check": "Look for build property overrides placed before the import or in template files, or severities set outside .editorconfig.",
       "scope": "general",
       "topic": "configuration-and-options",
       "applies_to": [
         "**/Directory.Build.props",
-        "build/ProjectTemplate.props"
+        "**/.editorconfig"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Put package versions in `<PackageVersion>` items in `Directory.Packages.props`. `<PackageReference>` items in project files must not have a `Version`.",
-      "why": "The repository uses central package management, and a version on a PackageReference fails the build with NU1008.",
-      "check": "Flag `<PackageReference ... Version=...>` in .csproj files, and new packages that have no matching `<PackageVersion>` entry.",
+      "statement": "Add project-specific banned APIs in a project-owned BannedSymbols.<name>.txt registered as an AdditionalFiles item in Directory.Build.props, not in build/BannedSymbols.txt.",
+      "why": "build/BannedSymbols.txt is template-owned and replaced on update.",
+      "check": "Look for edits to build/BannedSymbols.txt or a new banned-symbols file not registered as AdditionalFiles.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "build/**",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't block on tasks, call JsonDocument.Parse or use Newtonsoft.Json, and don't use the null-forgiving operator outside test projects.",
+      "why": "These are banned through RS0030 and the build configuration, which fail the build.",
+      "check": "Use of .Result/.Wait(), JsonDocument.Parse, Newtonsoft.Json, or `!` in production code.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Put production projects under src/ and test projects under tests/, name each test project after the project it tests with a .Tests suffix, and add every project to the root solution.",
+      "why": "So dotnet build and dotnet test at the repository root cover every project.",
+      "check": "A new project outside src/ or tests/, a test project not named <Project>.Tests, or a new project missing from the .sln.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.sln",
+        "**/*.slnx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep package versions in Directory.Packages.props as PackageVersion items; PackageReference items carry no Version.",
+      "why": "Central package management is used; a Version on PackageReference fails the build with NU1008.",
+      "check": "A PackageReference with a Version attribute in a .csproj.",
       "scope": "general",
       "topic": "configuration-and-options",
       "applies_to": [
@@ -93,15 +199,13 @@
       "enforced_by_tools": true
     },
     {
-      "statement": "Add every new project to the solution at the repository root.",
-      "why": "Then `dotnet build` and `dotnet test` at the root cover every project.",
-      "check": "When a diff adds a new .csproj, check that the root solution file is updated to include it.",
+      "statement": "A Dependabot `ignore` rule that holds an upgrade back carries a comment naming the issue that tracks lifting it.",
+      "why": "So the held-back upgrade is tracked and eventually lifted.",
+      "check": "A new ignore entry in .github/dependabot.yml without a comment referencing an issue.",
       "scope": "general",
-      "topic": "code-organization",
+      "topic": "configuration-and-options",
       "applies_to": [
-        "**/*.csproj",
-        "*.sln",
-        "*.slnx"
+        ".github/dependabot.yml"
       ],
       "enforced_by_tools": false
     }

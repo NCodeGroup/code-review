@@ -1,0 +1,51 @@
+{
+  "hash": "52a6a57d8c5c9f1a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #741",
+  "rules": [
+    {
+      "statement": "When a method has several optional inputs and must keep its CancellationToken as the last parameter, group the optional inputs into a defaultable readonly record struct with `init` properties rather than making each one a required parameter that every caller spells out as null.",
+      "why": "Putting the token last strips the defaults from the optional parameters, so call sites become long and repetitive and adding an optional input means editing every caller again.",
+      "check": "Look for methods (including test helpers) where several nullable or optional parameters come before a CancellationToken without defaults, and callers pass `x: null` for most of them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose a local IDisposable with a `using var` declaration rather than a `using (...) { }` block statement.",
+      "why": "The block form is style drift from the convention, even though the resource is still disposed.",
+      "check": "Look for `using (` statements wrapping a local resource such as an HttpResponseMessage or scope, in production or test code.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't pass an awaited call or another method call's result directly as an argument; hoist it into a named local first and pass the local, in test code as well as production code.",
+      "why": "Nesting calls such as `JsonElement.Parse(await response.Content.ReadAsStringAsync(ct))` or `calls.Add(GetAsync(...).AsTask())` hurts readability and makes the formatter split the call across lines, and the production code-style rules apply in tests.",
+      "check": "Look for `await` expressions or helper calls like `.AsTask()` written inside another call's argument list.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a collection parameter non-nullable and have callers pass an empty collection (`[]`) when null would only mean none; keep it nullable only when null has a meaning distinct from empty.",
+      "why": "Nullable collection inputs force the method to keep null-handling branches it wouldn't otherwise need.",
+      "check": "Look for `IReadOnlyDictionary<...>?`, `IEnumerable<...>?`, array or list parameters that callers pass `null` to, and check whether null means anything different from an empty collection before reporting.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

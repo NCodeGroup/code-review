@@ -1,0 +1,64 @@
+{
+  "hash": "bbf291fe62dc78d9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1182",
+  "rules": [
+    {
+      "statement": "In production code, don't build a URL or origin the server publishes to a client (an issuer, an API base, a discovery or bootstrap value) from the request's scheme, `Host` header or `HttpRequest` origin; take it from the stored, validated or configured value.",
+      "why": "A forged or proxied `Host`, or a shared cache that stores one host's response under another, would send the user to sign in at an authority nobody configured, or send the access token to another origin.",
+      "check": "Look for published URL fields assembled from `Request.Scheme`, `Request.Host`, `GetDisplayUrl`, `UriHelper.BuildAbsolute` or similar request-derived origins.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when no configured or stored issuer exists for a document that must publish one, fail with a problem response that names the setting to configure; don't fall back to the request origin.",
+      "why": "A missing issuer is a configuration error, and a request-origin fallback is an unvalidated second source of the same value.",
+      "check": "Look for null-coalescing or fallback branches that use the request's scheme and host when the configured issuer or tenant issuer is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, publish a same-origin API base to a browser as a root-relative path built from the host's path base (for example `/` or `/identity`), and use an absolute URL only when an explicit setting overrides it.",
+      "why": "The browser resolves a root-relative value against the origin that served the bundle, so the `Host` header contributes nothing and a path-base deployment works without configuration.",
+      "check": "Look for an API base URL default built as an absolute URL from the request, or one that ignores `PathBase`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a frontend's configured issuer must be exactly the serving tenant's stored issuer, the same value its OpenID discovery document publishes, or an explicit override; don't derive or normalize it separately.",
+      "why": "The issuer a bundle trusts has to equal the issuer its tokens carry, under every tenant-resolution strategy.",
+      "check": "Look for client bootstrap or config code that computes the issuer itself (string building, trailing-slash changes) instead of reading the tenant's stored issuer or the configured override.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, send `Cache-Control: no-store` on a response whose content depends on the serving tenant or host.",
+      "why": "A shared cache could otherwise serve one tenant's or host's values for another.",
+      "check": "Look for tenant- or host-dependent endpoints, such as bootstrap or config documents, that set no cache headers or set public caching.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

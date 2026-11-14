@@ -1,0 +1,126 @@
+{
+  "hash": "3c78018c6706fac1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1081",
+  "rules": [
+    {
+      "statement": "Persist end-user consent as its own durable aggregate keyed by (tenant, client, subject), not as a payload in the ephemeral grant store, and never delete or revoke it on logout or session termination.",
+      "why": "Grant-store records are single-use or expiring and are revoked in bulk when a session ends, so consent stored there would be swept away. Consent has to survive logout and be managed by the end user.",
+      "check": "Look for consent stored as a grant type or payload, or for logout and session-termination handlers or grant filters that remove consent records.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record consent as both the set of scopes the subject was asked to decide and the subset they granted, and treat a request as needing a prompt only when it contains a scope outside the decided set.",
+      "why": "A record of only the granted scopes can't tell a denied scope from one that was never asked, so a client that keeps requesting a declined scope would prompt the subject every time.",
+      "check": "Look for consent models or resolution logic that store or compare only granted scopes, or that prompt again for scopes the subject already denied.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When recording a consent decision, union the requested scopes into the decided set and replace the granted scopes only within the requested set, and never accept a granted scope that is outside the request.",
+      "why": "This lets re-consenting revoke a scope that was granted before, keeps decisions about scopes outside the request, and stops untrusted scopes from being granted.",
+      "check": "Look at consent upsert logic: check whether it overwrites decisions for scopes outside the request, or whether it accepts granted scopes that are not in the requested set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make `prompt=consent` force a fresh consent decision only on the initial authorization request, not on the continuation that resumes after the consent screen.",
+      "why": "The resumed continuation still carries prompt=consent, so without this rule it would loop back into the consent screen forever.",
+      "check": "Look for a consent-prompt condition that checks prompt=consent without also checking whether the request is a resumed continuation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization request with `prompt=none` would need a consent prompt, answer it with `consent_required` and audit the outcome instead of showing UI.",
+      "why": "OIDC prompt=none forbids interaction, and the decision has to appear in the audit trail.",
+      "check": "Look for consent-required paths that ignore prompt=none, return a different error, or skip the audit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Carry the consented (down-scoped) scope set in the persisted authorization request, so the authorization code and every token derived from it hold only consented scopes and the token endpoint can't re-expand them to the requested scopes.",
+      "why": "Down-scoping has to hold end to end, so that the token endpoint, introspection and the emitted claims see only consented scopes.",
+      "check": "Look for token issuance, the code exchange or claims emission that reads the originally requested scopes instead of the granted override, or for a granted override that is missing from the serialized request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In consent endpoints, resolve the pending authorization request again on the server and record the decision for the authenticated subject. Never trust scopes, client or subject posted by the browser, and never consume the continuation when you only read it to display details.",
+      "why": "The browser is untrusted input, and consuming the continuation during a GET would break the later resume.",
+      "check": "Look for consent POST handlers that use form-posted scope lists or subject ids directly, or for GET or details handlers that consume or delete the continuation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the subject denies consent, answer the parked authorization request with `access_denied` at the client's redirect URI.",
+      "why": "A denial ends the authorization request, and the client must receive the standard error at its redirect URI.",
+      "check": "Look for deny paths that return a local error page, that use a different error code, or that leave the authorization request unanswered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no interactive handler is registered for a consent challenge, degrade to `interaction_required` instead of failing.",
+      "why": "A host that enables consent enforcement without an interactive consent surface must degrade gracefully instead of failing.",
+      "check": "Look for consent challenge dispatch that throws or returns a server error when the challenge is unhandled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protect state-changing end-user endpoints, such as revoking an application's consent, with antiforgery validation.",
+      "why": "The revoke POST is cookie-authenticated, so it needs antiforgery protection.",
+      "check": "Look for cookie-authenticated POST endpoints that change state but have no antiforgery validation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

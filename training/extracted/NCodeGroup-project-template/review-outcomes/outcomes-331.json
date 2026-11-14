@@ -1,0 +1,55 @@
+{
+  "hash": "a49b866a44a8faad",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #331",
+  "rules": [
+    {
+      "statement": "When deciding whether an existing setting or policy already satisfies a requirement, test it against the same full set of requirements that the code's own setting is held to, not a narrower subset.",
+      "why": "A check that only tests one required item reports 'already set' while other required items, such as extra triggers a project added, stay blocked.",
+      "check": "Look for two code paths that judge the same kind of setting, such as the tool's own policy and policies others created, where one checks the full required list and the other checks only a single hard-coded item.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't map a failure to read, parse or decode input to an empty value that looks the same as valid empty content; return a distinct failure such as null or an error, and report which input couldn't be read.",
+      "why": "Callers can't tell an unreadable file from one that has nothing in it, so the result is built from incomplete data and reported as successful with no sign that anything went wrong.",
+      "check": "Look for catch blocks or fallbacks that return '' or an empty collection when JSON parsing, base64 decoding, a missing field or a size limit makes the input unreadable, and for callers that then go on without noting the failure in their output.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode UTF-8 from external input with a strict decoder that throws on invalid bytes, such as `new UTF8Encoding(false, true)`, instead of the default `Encoding.UTF8`, which replaces them silently.",
+      "why": "Silent replacement hides corrupt input and lets the code go on with wrong content.",
+      "check": "Look for `[Text.Encoding]::UTF8.GetString` or `Encoding.UTF8.GetString` used on untrusted or remote bytes when the code needs to detect bad input.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hand-written parser for a standard format such as YAML must accept every valid form of the construct it reads, for example a block sequence at the same indent as its key, and its tests must include a case for each form.",
+      "why": "A file written in a valid but unhandled style silently produces no results, and nothing reports it.",
+      "check": "In ad hoc line-based parsers, see whether indentation or layout assumptions reject valid spec forms, and whether the test cases cover those forms.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

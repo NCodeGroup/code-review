@@ -1,0 +1,42 @@
+{
+  "hash": "250ce4940db28269",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #586",
+  "rules": [
+    {
+      "statement": "Don't ask for a test that asserts hosted-service ordering guaranteed by the .NET Generic Host's lifecycle, such as every `IHostedLifecycleService.StartingAsync` running before any hosted service's `StartAsync`. A unit test that pins which lifecycle method the work runs in is enough.",
+      "why": "That kind of host-level test only checks the framework's documented lifecycle contract. What the code controls is which lifecycle method it runs in, and a unit test already pins that.",
+      "check": "Before reporting a missing ordering test, see whether the order follows from the Generic Host lifecycle (StartingAsync before StartAsync, whatever the registration order) and whether an existing test pins the lifecycle method the work runs in.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a test only for what it asserts: if the test checks only a registration, its name must not claim a runtime behavior.",
+      "why": "A name that claims more than the test checks misleads readers about what the test proves.",
+      "check": "Compare the expected-result part of each new test name with the test's assertions, and flag names that promise behavior the assertions never check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a decision record lists the members of a public type, such as its constants, a change that adds or removes a member updates that list in the same change.",
+      "why": "Otherwise the decision record and the public API disagree about which members the API exposes.",
+      "check": "For new or removed public constants or members, search the ADRs for a list of that type's members and confirm the change updates it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

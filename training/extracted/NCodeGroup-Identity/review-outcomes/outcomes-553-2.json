@@ -1,0 +1,128 @@
+{
+  "hash": "3265f3c27cb2e38f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #553",
+  "rules": [
+    {
+      "statement": "In a test project, don't report a stub, fake, fixture or sample type that only one test file needs for being nested in that file's test class: the test conventions make it a `private sealed` nested type there, and the no-nested-types rule covers production code only.",
+      "why": "The test rules ask for single-file stubs, fakes and samples to be private sealed nested types, so moving them out would break the convention.",
+      "check": "Before reporting a nested type in a test class, check whether it is private sealed and used by only that test file. If it is, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report the null-forgiving operator where a test passes `null` to a non-nullable parameter or receiver to prove it throws `ArgumentNullException`, because the build bans `!` outside test projects only. Elsewhere in tests, narrow nullable values with `?? throw new InvalidOperationException(...)` naming what is missing, or with `Assert.NotNull`, instead of `!`.",
+      "why": "Proving a null guard needs `!` to get past nullable analysis. Elsewhere, a missing value should fail with a clear message, not an unclear NullReferenceException.",
+      "check": "For `!` in test code, check whether it exists to pass null on purpose to a null-guarded API. If so, don't report it. Report `!` on lookup results such as `GetString()!` or `GetProperty(...)!`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose a local disposable that a method owns, such as an `HttpClient` created in a test, with a `using var` declaration, but don't ask for `using` on a disposable that a helper creates and returns to its caller.",
+      "why": "An owned disposable should be released when it goes out of scope, but a helper that hands its client to the caller doesn't own it and must not dispose it.",
+      "check": "Look for `var x = Create...()` locals of IDisposable types that are never disposed. Before reporting, check whether the method returns the value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put the `$` prefix on a string literal that has no interpolation holes.",
+      "why": "It suggests a value was meant to be interpolated, which misleads readers.",
+      "check": "Look for `$\"...\"` strings that contain no `{...}` placeholders.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive byte offsets and slice lengths into a binary format from the format's named size constants, or from a named constant whose comment explains how it follows from them, instead of hard-coded numeric literals, in tests as well as in production code.",
+      "why": "If the format changes, a literal offset can drift from it. A test could then compare the wrong bytes and still pass.",
+      "check": "Look for slices or offsets such as `[..15]` or `KeyIdSizeBytes + 60` whose numbers stand for sizes of format fields.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put an explanatory comment in the method whose behaviour it describes, not in a neighbouring helper that does something else.",
+      "why": "A misplaced comment misleads readers about which code does what.",
+      "check": "Check that each comment's claims match the code it sits in, for example a comment about creating rows inside a method that creates no rows.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report whitespace-only re-padding of a Markdown table when an added or changed row is wider than the table's column, because tables are kept aligned.",
+      "why": "An aligned table has to be re-padded when a new cell is wider than its column, so the whitespace change is needed.",
+      "check": "Before reporting table re-padding in a Markdown diff, check whether any new row is wider than the old column width. Report it only when no row needs the extra width.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a private method with a single call site for taking more than three data parameters, or for being one sequential body. The few-parameters rule exempts such helpers from needing a parameter object, and steps that share local state in a fixed order can stay in one method.",
+      "why": "The production conventions say a private single-call-site helper isn't worth a parameter object. Splitting a sequence whose steps share state would only pass that state across more boundaries.",
+      "check": "Before reporting parameter count or a long body, check whether the method is private and has one call site, and whether its steps share locals such as a buffer, a store manager or a token.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a private builder method for taking more than three parameters when those parameters are the fields of the object it builds, and splitting it into per-kind factories would repeat a large initializer.",
+      "why": "The arguments are the constructed object's own data, so grouping or splitting them only adds duplication.",
+      "check": "Check whether the parameters map directly to members of the object being constructed, and whether splitting the builder would copy the initializer for each caller.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report pure helpers in an Abstractions or contracts package when they belong to its value types or contracts, such as a `TryParse` that inverts the type's `ToString`, or an extension method composed only from the contract's members, with no dependencies or state.",
+      "why": "These helpers are part of the value type or contract itself, so they don't blur the contracts-only boundary.",
+      "check": "Before reporting behaviour in an Abstractions package, check whether it needs any dependency or state beyond the package's own types. Report it only if it does.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `*Manager` type name as a catch-all when the type owns one well-defined concept, such as the lifecycle of one kind of entity or a unit-of-work seam.",
+      "why": "The naming rule targets catch-all types. A manager with one cohesive responsibility follows established naming such as `IStoreManager`.",
+      "check": "Before reporting a Manager suffix, list the type's members and check whether they all serve a single concept.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

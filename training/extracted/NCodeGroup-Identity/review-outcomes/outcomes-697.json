@@ -1,0 +1,29 @@
+{
+  "hash": "a39c67115746be86",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #697",
+  "rules": [
+    {
+      "statement": "In a test project, when several helpers in one test file need the same deadline or polling wait loop, write the loop once and have the other helpers delegate to it (for example by passing in an action to run between polls) instead of copying it.",
+      "why": "Copies of a wait loop drift apart in timeout, failure message or poll interval, and any change to the wait strategy has to be repeated in every copy.",
+      "check": "Look for two or more methods in the same test file that each contain their own Stopwatch or deadline polling loop with Assert.Fail on timeout, where one could call the other.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a small wait or polling helper that is repeated across separate test projects to be moved into a shared cross-project helper when those projects share no test-support project.",
+      "why": "Adding a new shared test dependency just for a five-line loop isn't worth it. Keeping a small copy in each project is acceptable.",
+      "check": "Before reporting duplication across test projects, check whether the projects already reference a common test-support project. If they don't, and the duplicated code is small, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

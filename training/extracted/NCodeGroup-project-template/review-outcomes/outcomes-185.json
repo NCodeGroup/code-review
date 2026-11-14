@@ -1,0 +1,19 @@
+{
+  "hash": "6e9c1f26e98d240b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #185",
+  "rules": [
+    {
+      "statement": "In test scripts, don't ask for a small setup/restore block copied across standalone test suites to be moved into a shared dot-sourced helper when each suite is self-contained by convention and a test or CI check already requires every copy to match exactly.",
+      "why": "The suites are standalone scripts that define their own helpers. The exact-match check means the copies can't drift without failing CI, and a shared helper would give suites that have no dot-sourced dependency today a new one.",
+      "check": "Before reporting duplication across test scripts, see whether the sibling suites define their own helpers instead of dot-sourcing a shared file, and whether a runner or meta-test already matches the copied lines exactly. If both are true, don't raise the finding.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

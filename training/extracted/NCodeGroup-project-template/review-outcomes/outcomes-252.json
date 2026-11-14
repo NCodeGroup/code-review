@@ -1,0 +1,34 @@
+{
+  "hash": "d9f893a3475ddf0b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #252",
+  "rules": [
+    {
+      "statement": "When a template change removes or renames a recorded answer, don't ask for a migration or compatibility shim; require instead that the update script check the recorded answers before it changes any file, and stop with exit 1 and a message giving the exact `-Data` argument to supply the missing value.",
+      "why": "The template is pre-release and greenfield, so removed answers get no compatibility shims, but an update must not fail partway through or render empty values. It should stop cleanly and say how to proceed.",
+      "check": "In a diff that removes or makes required a Copier answer, confirm the update script validates the answer before any Copier run or file write, exits non-zero with a present-tense message and the `-Data @{ name = '...' }` fix, and has a test that the tree and HEAD stay unchanged when it stops. Don't report a missing `_migrations` entry.",
+      "scope": "domain",
+      "domain": "copier-project-templates",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "copier.yml",
+        "**/Update-Project.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the template update script gains conditional behavior, such as excluding a file or printing a notice, add an update test that runs the script against rendered fixture projects and covers each branch, not only tests of the helper functions on their own.",
+      "why": "If the condition or exclusion breaks, an update could silently add a file, such as a second NuGet publish workflow that pushes every package twice, and tests of the helpers alone would not catch it.",
+      "check": "For new branches in an update or adoption script, look for a test that runs the whole script on a fixture and asserts which files end up present or absent and which notices are printed for each case, and that the test runs in CI.",
+      "scope": "domain",
+      "domain": "copier-project-templates",
+      "topic": "testing",
+      "applies_to": [
+        "**/Update-Project.ps1",
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

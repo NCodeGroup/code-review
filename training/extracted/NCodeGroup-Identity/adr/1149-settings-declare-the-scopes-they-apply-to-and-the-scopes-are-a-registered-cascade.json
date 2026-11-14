@@ -1,0 +1,95 @@
+{
+  "hash": "002656bf8cd490e7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1149",
+  "rules": [
+    {
+      "statement": "Reject a configuration entry that is valid by name and value but sits at a scope that never reads it, at every entry point; don't accept and store it, skip it on load, or drop it on write.",
+      "why": "A setting stored where nothing reads it fails silently. Skipping it on load hides configuration someone made, and dropping it on write reports success for input that was thrown away.",
+      "check": "Look for settings or configuration parsing that ignores, filters out or silently drops entries that don't apply to the current scope or entity, or that returns success after discarding them.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every setting descriptor declares a required, non-empty `AppliesTo` list naming the registered scopes whose effective settings read it, and every setting advertised in discovery includes the tenant scope.",
+      "why": "No default means 'everywhere'. A setting that names no registered scope applies nowhere, and discovery advertises a tenant's effective settings.",
+      "check": "Look for a new or changed SettingDescriptor whose AppliesTo is empty, names an unregistered scope, or leaves out the tenant scope on a discoverable setting.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A setting's `AppliesTo` lists only the scopes that read the setting, not the ancestor scopes that may carry it; whether a document may carry the setting comes from the registered scope cascade (`AppliesWithin`).",
+      "why": "Restating the cascade in each descriptor lets the descriptor and the topology contradict each other. For example, listing a client but not its tenant would silently make a tenant default impossible.",
+      "check": "Look for descriptors that list parent scopes such as tenant, team or platform only so that ancestor documents accept the setting, or for acceptance checks that test AppliesTo directly instead of walking the cascade.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Settings deserialization, validation, security-profile expansion and effective-settings resolution take the name of a registered scope and throw an argument error for an unregistered one; each source validates at its own scope.",
+      "why": "Configuration is read at the platform scope, management writes at the written resource's scope, and dynamic registration and seeders at the client scope. Validating at the wrong scope or an unknown one would accept settings the scope never reads.",
+      "check": "Look for calls to the settings serializer, profile catalog or effective-settings resolver that pass a hard-coded wrong scope, an unvalidated string, or no scope, and for an unknown scope name that doesn't produce an ArgumentException.",
+      "scope": "repository",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A package that stores settings for an entity of its own registers that entity's scope, beneath the scope it inherits from, through `ICollectionDataSource<SettingScopeDescriptor>`, and declares the entity's settings through `ICollectionDataSource<SettingDescriptor>`, without editing the settings framework.",
+      "why": "Scopes are registered data and the settings framework names no entity, so vocabularies stay open to extension.",
+      "check": "Look for framework code that hard-codes an entity-specific scope, or for a package that adds entity settings without registering a scope descriptor.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject `security_profiles` on a resource-server settings document, and make every setting that applies to resource servers merge with a lattice operation.",
+      "why": "A security profile's requirements run against a client's request and its ceilings bound settings a resource server never reads. A resource server's own settings combine with the client's at issuance through lattice merges.",
+      "check": "Look for a descriptor that adds the resource_server scope to security_profiles, or for a resource-server setting whose merge isn't a lattice merge such as min, max, intersection or union.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An effective-settings preview lists only the settings that apply within the previewed scope, not every setting of the merged collection.",
+      "why": "Otherwise an operator is shown inherited settings that have no effect on that scope, as if they governed it.",
+      "check": "Look for preview or effective-settings listing code that returns the whole merged collection without filtering by AppliesWithin for the scope.",
+      "scope": "repository",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a setting is rejected for its scope, the error names the scopes the setting applies to, and a management-API write answers `400` keyed by the setting name.",
+      "why": "The operator needs to know where the setting belongs.",
+      "check": "Look for scope-rejection errors that don't name the applicable scopes, or management endpoints that return a status other than 400 or don't key the error by the setting name.",
+      "scope": "repository",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "hash": "0d62f7961b6b53c2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1255",
+  "rules": [
+    {
+      "statement": "In a single-page web app, keep navigation state (the active scope, surface or tab) in the URL path rather than in component state, so that each view has its own address and every tab change is a history entry.",
+      "why": "A view held only in component state cannot be bookmarked, linked or restored on reload, and the browser's back button leaves the app.",
+      "check": "Look for new tabs, surfaces or scope selections held in useState or similar local state instead of being derived from the current route, and for page components that keep their own active-tab state.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive the current scope or context from the parsed route each time it is needed, and never store it separately, so the UI cannot disagree with the address bar.",
+      "why": "A scope stored separately from the route can drift from the URL. Deriving it means every address shows its boundary.",
+      "check": "Look for a scope or context value stored in state or a context provider alongside the route instead of being computed from the route, for example with a routeScope(route) function.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode an identifier placed in a URL path as a single segment with encodeURIComponent when formatting and decodeURIComponent when parsing, and treat a blank id or a malformed encoding as matching no route.",
+      "why": "Identifiers are readable names that can contain any character, so they must round-trip safely, and invalid input must not resolve to a route.",
+      "check": "Look for ids interpolated into paths without encodeURIComponent, parsing without decodeURIComponent or without handling its exception, and blank ids that are still accepted.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a post-sign-in return URL or deep link through the app's route resolver, and navigate only to the canonical same-origin path that the resolver builds, never to the raw value supplied.",
+      "why": "Resolving the value to a canonical in-app path means the sign-in round trip cannot become an open redirect, whatever was sent.",
+      "check": "Look for returnUrl or redirect values that are used for navigation or passed to a login endpoint without first being mapped to a canonical route path.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rewrite a non-canonical path (a trailing slash, a missing default segment, an unknown path) to its canonical form with history.replaceState, not pushState, so that back never returns to it.",
+      "why": "Pushing the canonical path would leave the non-canonical entry in history, and back would return to it.",
+      "check": "Look at route normalisation code that uses pushState or a push-style navigate when canonicalising, and at unknown paths that don't fall back to the default route.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key a view that is scoped to an entity (a team, a tenant and so on) by that entity's id, so that moving between entities through history remounts it and no open detail state crosses the boundary.",
+      "why": "Without a key, React reuses the component instance and stale detail state leaks from one entity into another.",
+      "check": "Look for scope-level page components rendered for a route id without key={id}.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a SPA's route grammar as UI-free parse and format functions with unit tests, kept separate from the history binding, and don't add a router library dependency for it.",
+      "why": "A short, unit-tested parse/format pair covers the grammar without adding a dependency and a second vocabulary.",
+      "check": "Look for a new router package dependency, route parsing embedded in components, or route grammar changes without matching unit tests.",
+      "scope": "domain",
+      "domain": "frontend-spa",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

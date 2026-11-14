@@ -1,0 +1,122 @@
+{
+  "hash": "a4f01c4d24c060d4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1500",
+  "rules": [
+    {
+      "statement": "Keep an `.Abstractions` package to contracts and data only: put no logic (helpers with behavior, default implementations) in it.",
+      "why": "Abstractions hold no logic so that a consumer can take the contracts without an implementation; a helper with logic belongs in an implementation or foundation package.",
+      "check": "Look for new types in an `*.Abstractions` project that contain method bodies with real logic, extension helpers that compute something, or default service implementations.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a capability's implementation package the same namespace as its `.Abstractions` package, so the pair is one namespace across two assemblies.",
+      "why": "A pair is meant to be one namespace across two assemblies, so consumers find contracts and implementation together.",
+      "check": "Compare the root namespace of new types in an implementation project with the namespace of the contracts they implement in the matching `.Abstractions` project.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let an implementation project reference another implementation project; collaborate through the other capability's abstractions resolved from DI, leaving only composition roots, hosts and a documented layered framework reference (such as an Entity Framework slice referencing the EF framework it plugs into) as exceptions.",
+      "why": "Implementation-to-implementation references bring transitive dependencies, make the package boundary meaningless and lose independent replaceability.",
+      "check": "Inspect `.csproj` `ProjectReference`/`PackageReference` changes in implementation projects for references to non-`.Abstractions`, non-foundation implementation projects that are not composition roots or hosts.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a package's default services with `TryAdd*` so a consumer can replace them.",
+      "why": "Consumers implement, decorate or replace a capability; `TryAdd*` lets a prior registration win.",
+      "check": "Look for `services.AddSingleton/AddScoped/AddTransient` calls in a library's registration extension where `TryAdd*` should be used.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't name a package for who uses it (`.Common`, `.Shared`, `.Utilities`, `.Helpers`); name it for the capability it provides.",
+      "why": "A package named for its users mixes capabilities and cannot be taken or replaced as one capability.",
+      "check": "Check new project, package or assembly names for suffixes like `.Common`, `.Shared`, `.Utilities`, `.Helpers`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.sln",
+        "**/*.slnx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Share code between packages through a public package, never through linked source files.",
+      "why": "Linked shared source makes every consumer compile its own copy, and the copies drift.",
+      "check": "Look for `<Compile Include=\"..\\...\" Link=...>` items in `.csproj` files that pull source from another project.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a type public once it is public, and place it in the package whose capability it is, rather than moving it to internal or into an unrelated package.",
+      "why": "Package IDs and public surface are permanent once published; a type belongs with its capability so consumers take one pair to get it.",
+      "check": "Look for public types made internal or moved into a package of a different capability.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a `Microsoft.AspNetCore.App` `FrameworkReference` to a contract package unless its contracts are HTTP types.",
+      "why": "Contracts that carry a heavy framework dependency force every consumer of the contract to take that framework too.",
+      "check": "Inspect `.Abstractions` `.csproj` changes for a new `FrameworkReference Include=\"Microsoft.AspNetCore.App\"` where the public contracts expose no ASP.NET Core/HTTP types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions.csproj",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a new shared foundation package only when a second package consumes it, and let it reference only other foundation packages; a capability only one package uses stays in that package.",
+      "why": "A foundation package that only one package consumes is a sign the split was wrong.",
+      "check": "For a new shared/foundation project, verify at least two packages reference it and it references no capability implementation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Truncate times that round-trip through a JWT `NumericDate` to whole seconds using the shared whole-second helpers, not with inline truncation at each call site.",
+      "why": "Inlined copies drift, and then a stored time differs from the `NumericDate` it round-trips through a JWT.",
+      "check": "Look for ad-hoc truncation such as `AddTicks(-(x.Ticks % TimeSpan.TicksPerSecond))` or `FromUnixTimeSeconds(ToUnixTimeSeconds())` on token times instead of the shared `WithPrecisionInSeconds()`/`GetUtcNowWithPrecisionInSeconds()` helpers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

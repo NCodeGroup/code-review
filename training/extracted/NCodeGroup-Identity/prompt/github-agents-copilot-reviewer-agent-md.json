@@ -1,24 +1,23 @@
 {
-  "hash": "a49eeb595918f15a",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "07ab41fa30374d12",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity .github/agents/copilot-reviewer.agent.md",
   "rules": [
     {
-      "statement": "Do not skip, disable, or weaken existing tests (e.g. adding Skip attributes, deleting assertions, loosening expected values) to make a change pass.",
-      "why": "The source treats skipped or weakened tests as a shortcut that hides real failures; that makes it a review finding even when the checks pass.",
-      "check": "Look for tests that were newly skipped or ignored, removed or commented-out assertions, broadened expectations, or deleted test cases in the diff that have no stated reason.",
+      "statement": "Don't skip, disable or weaken a test (loosened assertions, removed cases, added skip attributes) to get a change's checks to pass.",
+      "why": "A weakened test is a shortcut that hides a behavior the change was supposed to deliver, even when the checks pass.",
+      "check": "Look in the diff for removed or loosened assertions, deleted test cases, new Skip/Ignore attributes, or expected values changed to match new output with no reason given.",
       "scope": "general",
       "topic": "testing",
       "applies_to": [
-        "**/*Tests/**/*.cs",
-        "**/*.Tests/**/*.cs"
+        "**/*Tests/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not swallow exceptions or errors; a caught error must be handled, rethrown, or reported, never silently ignored.",
-      "why": "The source names swallowed errors as a shortcut that hides failures and must be flagged.",
-      "check": "Look for empty catch blocks, catch blocks that only return a default value, or ignored error results that are not logged, rethrown, or turned into a meaningful outcome.",
+      "statement": "Don't swallow exceptions or errors: a catch block must handle, translate or rethrow the error, not silently discard it.",
+      "why": "Swallowed errors are a shortcut that hides failures the change should surface.",
+      "check": "Look for empty catch blocks, catch-all handlers that only return a default, or ignored error results added in the diff.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
@@ -27,9 +26,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not leave TODO or placeholder comments in place of required behavior in a finished change.",
-      "why": "The source names leftover TODOs as a shortcut showing the work was not done as written.",
-      "check": "Search the added lines for TODO, FIXME, HACK, or NotImplementedException placeholders that stand in for behavior the change was meant to deliver.",
+      "statement": "Don't hard-code values in place of the real computation or configuration, and don't leave TODO comments for unfinished work in a change.",
+      "why": "Hard-coded values and leftover TODOs are shortcuts that mean the work wasn't done as specified.",
+      "check": "Look for new literal values standing in for computed or configured ones, and for new TODO/FIXME/HACK comments in the diff.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -38,13 +37,25 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not hard-code values that should come from inputs, configuration, or computation just to satisfy a test or a specific case.",
-      "why": "The source names hard-coded values as a shortcut that makes a change look correct without implementing the real behavior.",
-      "check": "Look for literal values in production code that copy test expectations, special-case one particular input, or replace a value that should come from configuration or parameters.",
+      "statement": "In a pre-release project, describe the product as it is: add no compatibility shims, migration notes, `**Breaking:**` labels, or wording set against an earlier state, in code, docs or the changelog.",
+      "why": "ADR-0015: a pre-release product has no released earlier state to stay compatible with or migrate from.",
+      "check": "In a pre-release project, look for obsolete forwarding members, compatibility overloads, 'previously'/'now'/'no longer' wording, migration sections, or Breaking labels in docs and changelog entries.",
       "scope": "general",
-      "topic": "configuration-and-options",
+      "topic": "documentation",
       "applies_to": [
-        "**/*.cs"
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep the changelog's `## [Unreleased]` section a catalog under only `### Added` and `### Security` headings.",
+      "why": "ADR-0015: before release there is nothing to be Changed, Deprecated, Removed or Fixed relative to; the changelog catalogs the product as it is.",
+      "check": "In a pre-release project's CHANGELOG.md, look for `### Changed`, `### Removed`, `### Fixed`, `### Deprecated` or other headings under `## [Unreleased]`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
       ],
       "enforced_by_tools": false
     }

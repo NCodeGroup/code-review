@@ -1,0 +1,126 @@
+{
+  "hash": "b27ad0cd4f82ae87",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #149",
+  "rules": [
+    {
+      "statement": "When a user-supplied value is spliced into a larger command or script template, validate the fully composed string (parse it and require no errors) or reject tokens such as comments that can swallow the template's surrounding syntax; don't validate only the bare value.",
+      "why": "A value like `./env.ps1 # note` passes a bare-value check but comments out the closing brace of the wrapper, so the command fails with a parse error that bypasses the intended failure handling.",
+      "check": "Look for validation functions that parse or inspect only the inserted value while the value is later embedded in a `try { . <value> } ...` or similar template; check that comment tokens, statement separators and stray braces are rejected or the composed string is parsed.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run the same validation on a value at every entry point that consumes it; don't validate the copy read from one source and execute an equivalent copy from another source unchecked.",
+      "why": "Otherwise a value that one path reports as invalid runs as written through another path, which breaks the one-rule-for-every-entry-point design.",
+      "check": "Find every place that reads and executes or splices the value (config file, plan file, alternative runner) and check that each calls the shared validation before use.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a directive line is present but malformed (wrong quoting, empty value), fail with an error that names the line instead of silently treating the directive as absent.",
+      "why": "Silently ignoring it runs later commands without the intended setup, and they fail for reasons that point nowhere near the real cause.",
+      "check": "Look for regex or parser matches on an optional directive where a non-matching but present line just falls through to the no-directive behaviour.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that loads a function or type dynamically (by parsing another file, reflection or lookup by name) must throw a clear error naming what it expected when the lookup finds nothing, rather than proceeding with a null result.",
+      "why": "A lookup that returns null after a rename or a missing file otherwise loads nothing without error, or fails later with an unclear null-reference error.",
+      "check": "Look for `Find`/`GetType`/`GetMethod`-style lookups whose result is used without a null check and a descriptive throw.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests must exercise the production loader or startup path that wires up the code under test, not a test-only reimplementation of that wiring.",
+      "why": "If the test extracts the functions itself, a broken production loader makes the real script fail at startup while the test stays green.",
+      "check": "Compare how the test obtains the code under test with how production code loads it; flag tests that duplicate the loading logic instead of calling it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test every branch of a failure-detection or validation condition, including the success path and a control case that must not be classified as the failure, not only one failing input.",
+      "why": "A regression in an untested half of the condition could let a failure through as success or misclassify an ordinary failure, and the suite would stay green.",
+      "check": "For each guard (compound conditions, operator checks, path checks such as `..`, backslash, absolute or directory paths), check that the tests include an input that hits each branch plus a passing control case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a new configuration key, add a test that the existing configuration without the key still produces the documented default.",
+      "why": "Existing projects won't have the key, and a bug that treats it as invalid or empty when missing would break every one of them.",
+      "check": "For a newly introduced config/setting key, look for a test case where the key is absent and the default value is asserted.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a behaviour test runs its own literal copy of a shipped command when the same test also requires that exact full string, verbatim, in every shipped copy.",
+      "why": "The verbatim check means the shipped command can't drift from the tested one without the test failing, so extracting it from the document adds nothing.",
+      "check": "Before reporting, check whether the test asserts the whole literal (not just a phrase) is contained in each shipped file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An error or stop message that states a rule must not contradict its own example; name the forbidden construct precisely (for example 'a leading `.` or `&` operator') rather than an ambiguous character.",
+      "why": "A message saying 'without a leading `.`' next to the example `./build/env.ps1` can make users strip a correct `./` path prefix.",
+      "check": "Read new or changed validation messages next to the examples they give and check that the examples satisfy the rule as worded.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an instruction or check detects a condition by matching command output (for example 'ends with X'), match against the output exactly as the invoking wrapper produces it, including any lines the wrapper appends.",
+      "why": "If the wrapper always appends an exit-code line, an 'ends with X' rule can never match, so the intended immediate stop never happens.",
+      "check": "Compare the output-matching condition with the exact command line that produces the output and look for appended lines like `exit=$LASTEXITCODE`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

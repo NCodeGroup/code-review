@@ -1,0 +1,18 @@
+{
+  "hash": "71884c863f251732",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #328",
+  "rules": [
+    {
+      "statement": "Don't report a changelog entry for naming a setting the way users write it in their configuration rather than the way an internal script or tool prints it; the changelog is written for users and should use the form they set.",
+      "why": "The changelog's readers set the option in its user-facing form. An internal output format that only tooling reads is not what they see, and other entries already name options in the user-facing form.",
+      "check": "Before reporting a mismatch between a changelog entry and how code or scripts spell a setting, check whether the entry uses the form from the user-facing configuration or docs, and whether other changelog entries name options the same way. If both are true, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "hash": "7bc4c56414cef3fa",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #446",
+  "rules": [
+    {
+      "statement": "Don't ask a pull request to edit, delete or disable a file the shared project template owns; when it has a defect, ask for an upstream issue on the template repository, and first check whether one is already tracked.",
+      "why": "The next template update restores any local edit or deletion of a template-owned file, so the fix belongs upstream.",
+      "check": "Before reporting a defect in a file, check whether the project template owns it (for example, it is managed through .copier-answers.yml or the template's instructions). If it does, phrase the fix as an upstream report. Don't report it when the pull request or the file already references an upstream issue.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/**",
+        "**/.editorconfig",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pull request description mentions every configuration change that alters behavior contributors will notice, such as a new .editorconfig file-header template or a new analyzer severity.",
+      "why": "Otherwise readers aren't told that their editors will start offering or flagging something new, for example a license header on every new C# file.",
+      "check": "Compare the changes to .editorconfig, analyzer severities and template answers in the diff against the pull request description and changelog. Report any change with a visible effect that neither one mentions.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/.editorconfig",
+        "**/.copier-answers.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap Markdown prose at the width the file already uses (about 120 columns), and indent a list item's continuation lines under it.",
+      "why": "Inconsistent wrapping is harder to read and makes diffs harder to review.",
+      "check": "Look for added or edited Markdown lines that run well past the wrap width of the surrounding lines.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

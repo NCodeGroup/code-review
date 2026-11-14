@@ -1,0 +1,162 @@
+{
+  "hash": "5116f2fe05f5e985",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1481",
+  "rules": [
+    {
+      "statement": "Serve an OpenAPI document and its reference UI page only when a host configuration switch turns each one on, with both switches off by default in every environment and no environment checks inside the library.",
+      "why": "Publishing an API description is the operator's choice, and a deployment that doesn't want it must get neither the document nor the page from the defaults. Environment decisions belong in one place, not in library defaults.",
+      "check": "Look for MapOpenApi/MapScalarApiReference (or a wrapper around them) that is mapped unconditionally, options that default to true, or IHostEnvironment.IsDevelopment() checks inside a library's mapping extension.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When one option needs another (for example, a reference page that renders a document needs the document enabled), enforce it with an options validator that fails when the host starts.",
+      "why": "The page renders the document, so enabling the page without the document is a misconfiguration that should fail at startup rather than at request time.",
+      "check": "Look for new dependent option flags that have no IValidateOptions validator, or no ValidateOnStart, to reject an invalid combination.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pre-fill client credentials or any secret into a served OpenAPI document or API reference UI configuration only in Development. Elsewhere, leave the operator to type them into the Authorize dialog.",
+      "why": "A pre-filled secret is baked into served configuration where anyone who reaches the page can read it, which breaks the rule that no secret material appears on the public surface.",
+      "check": "Look for client ids, secrets, or tokens that come from configuration and are passed to Scalar or Swagger authentication pre-fill, or to OpenAPI examples, without a Development-only guard.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure an API reference UI page to load nothing from a third party: disable the renderer's telemetry, AI agent, MCP integration and CDN fonts, and keep authentication state in memory rather than enabling persistent authentication.",
+      "why": "The renderer's defaults reach third-party services from the visitor's browser, and persisted authentication keeps credentials beyond the session.",
+      "check": "Look at the Scalar (or other renderer) options for telemetry, agent, MCP, or CDN font settings left at their defaults, and for EnablePersistentAuthentication.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve a server-rendered API reference page under the strict Content-Security-Policy, using a fresh nonce per response that is passed to the renderer's scripts and exposed to its stylesheet, plus connect-src 'self', frame-ancestors 'none' and no-store.",
+      "why": "The reference page is a page the server writes, so it falls under the strict CSP that applies to every such page.",
+      "check": "Look for a reference UI endpoint that skips the shared HTML page security helper, reuses a nonce across responses, or loosens script-src, style-src, or connect-src.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an enabled OpenAPI document being served anonymously as an exposure that needs a token gate.",
+      "why": "The document is the same for every deployment of a version and derives from open-source code, so a gate hides nothing. The reference page's browser fetch carries no token, so a gate would break it. Turning the document off is the control.",
+      "check": "Before reporting, confirm the document is served behind an off-by-default configuration switch. If it is, don't ask for authorization on the document endpoint.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Shape form-urlencoded request bodies in the OpenAPI document itself: mark each field that must be pre-filled `required` and give its schema a `Default`, and don't rely on a renderer applying a named example.",
+      "why": "Renderers leave optional form properties unchecked and leave them out of the request, and they don't apply named examples to form fields.",
+      "check": "Look for document transformers that add a named example for an application/x-www-form-urlencoded body when they should set required and a schema default.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every error status an endpoint declares a description that says when that status occurs, never a bare reason phrase such as \"Conflict\" or \"Not Found\".",
+      "why": "A client author reads the description to decide how to handle the answer, and a bare reason phrase only says that the route can fail, not when.",
+      "check": "Look for declared Produces/ProducesProblem statuses whose XML `<response>` is missing or only restates the HTTP reason phrase.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a minimal API handler's XML documentation, use `<response code=\"N\">` only for the route's own reasons (what it validates, which resource a 404 names, its own conflicts). Write status meanings shared by a route group once, in a group-level operation transformer, and don't repeat them on each route.",
+      "why": "A shared sentence written on every route repeats and drifts, so a change to one shared meaning would miss routes.",
+      "check": "Look for `<response>` text on a handler that duplicates a shared meaning (missing token, lacking authority, If-Match mismatch, non-JSON body, service unavailable) already supplied by the group transformer.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each status code at most one `<response>` element in a handler method's XML documentation.",
+      "why": "The Microsoft.AspNetCore.OpenApi source generator reads only one `<response>` per status code.",
+      "check": "Look for a status code that appears in two `<response code>` elements on the same method.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put minimal API response descriptions in the handler's XML `<response>` documentation, not in endpoint metadata such as IProducesResponseTypeMetadata.",
+      "why": "ApiExplorer drops a description set on a minimal API's response metadata, so it never reaches the OpenAPI document.",
+      "check": "Look for custom metadata or Produces calls that try to carry a response description string.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make each project that maps documented API routes reference Microsoft.AspNetCore.OpenApi and call AddOpenApi, so the source generator carries its handlers' XML documentation into the document.",
+      "why": "The generator runs only in projects that reference the package and call AddOpenApi. Without it, the handlers' descriptions never reach the document.",
+      "check": "Look for a new package or project that maps API endpoints with `<response>` docs but doesn't reference Microsoft.AspNetCore.OpenApi or call AddOpenApi.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register OpenAPI document contributions that describe a library's endpoints (tags, security schemes, examples) in the library's own registration, not in each host's Program.cs.",
+      "why": "The document describes the server's own endpoints, and hosts that re-declare its contributions drift from one another.",
+      "check": "Look for hosts adding document transformers, security schemes, or tag groups for endpoints that a library owns.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, include a test asserting that every status each API route declares has a description in the handler's XML docs or in the shared set, and that no error response in the generated document keeps its bare reason phrase.",
+      "why": "Tests pin the descriptions, so a route that declares a status its handler doesn't describe fails until its XML documentation explains it.",
+      "check": "When a diff adds routes or declared statuses, check that they are covered by the description theory or document test, and that those tests aren't weakened.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

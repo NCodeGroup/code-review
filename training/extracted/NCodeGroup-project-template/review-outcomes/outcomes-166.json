@@ -1,0 +1,19 @@
+{
+  "hash": "bde0299ef84df3eb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #166",
+  "rules": [
+    {
+      "statement": "A comment that says a step always runs or runs only under some condition must match the conditions the code actually checks for that step.",
+      "why": "A comment that names the wrong step as unconditional leads readers to misjudge the script's control flow and which runs depend on earlier results.",
+      "check": "For comments that say a step 'always' runs, 'only' runs, or 'follows' another, check them against the surrounding if/guard conditions. Flag a comment that names the wrong step or leaves out the condition it runs under.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

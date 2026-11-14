@@ -1,0 +1,87 @@
+{
+  "hash": "3e6df7ab081eebde",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1382",
+  "rules": [
+    {
+      "statement": "Middleware that supplies default security headers writes them in `Response.OnStarting` with `TryAdd`, so a header that an endpoint or static-file handler already set keeps its own value.",
+      "why": "The application owns its pages. A page with a nonce- or hash-based Content-Security-Policy has to be able to send that policy without the default replacing it.",
+      "check": "Look for a headers middleware that assigns `Response.Headers[...] = ...` or writes before the response starts instead of using `OnStarting` with `TryAdd`, overwriting headers set further down the pipeline.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate HTTP header values that come from configuration in the options validator at startup: reject a missing section, a blank value and any character outside printable ASCII.",
+      "why": "A configured value then can't break the header or inject another header.",
+      "check": "Look for options whose values are written into response headers but whose validator doesn't reject blank values or control and non-ASCII characters, or that are checked only at request time.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map an optional endpoint, such as a JWKS or other key-publishing endpoint, only when a configuration flag turns it on, and make that flag default to `false`.",
+      "why": "Most deployments don't use the endpoint, and a host should expose no endpoint it doesn't use.",
+      "check": "Look for a newly mapped optional endpoint with no enabling option, or with an enabling option that defaults to `true`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an option turns on a feature, its options validator requires the settings that feature depends on, such as the key ring a JWKS endpoint publishes.",
+      "why": "A misconfiguration then fails at startup, not when the first request arrives.",
+      "check": "Look for a new `Enabled` flag whose validator doesn't check that the settings it depends on are present when the flag is `true`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A client's JWKS endpoint exports each key through its descriptor's public-key export, leaves out symmetric keys, includes the decryption keys' public halves alongside the signing keys, and never publishes DPoP keys.",
+      "why": "Only public parameters may leave the process. The OP needs the decryption keys' public halves to encrypt to the client. A DPoP proof carries its own key, so publishing DPoP keys gains nothing and ties DPoP-bound tokens to a published key.",
+      "check": "Look for JWKS-building code that serializes keys directly rather than through the public export, that includes symmetric keys, or that adds keys from the DPoP key ring.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWKS endpoint answers `application/json; charset=utf-8` with `Cache-Control: no-store`, and if it allows cross-origin reads it sends `Access-Control-Allow-Origin: *` without allowing credentials or any other header.",
+      "why": "A shared cache must not keep a key set that a key rotation has replaced. A set of public keys read without credentials reveals nothing that a direct request wouldn't.",
+      "check": "Look for a JWKS response that is missing `no-store`, that has a different content type, or whose CORS policy allows credentials or extra headers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put `form-action 'self'` in a default Content-Security-Policy for pages whose form posts redirect to another origin, such as a logout that redirects to the OP's end-session endpoint.",
+      "why": "A browser may apply `form-action` to the redirects that follow a form submission, so logout would stop before it reaches the OP.",
+      "check": "Look for default CSP strings that add `form-action 'self'` for pages that post to logout or other redirecting endpoints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

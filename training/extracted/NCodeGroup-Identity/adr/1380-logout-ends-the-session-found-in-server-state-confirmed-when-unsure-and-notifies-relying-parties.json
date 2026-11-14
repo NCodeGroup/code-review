@@ -1,0 +1,161 @@
+{
+  "hash": "b5fa07cd3d3dee0e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1380",
+  "rules": [
+    {
+      "statement": "In logout handling, never read or reverse the `sub` claim of an `id_token_hint`. Take only its `sid` and client (`azp`/`aud`), and resolve the stable subject and the participating clients from server-owned state: the persisted session grant matched forward by `sid`, or the login cookie.",
+      "why": "For a pairwise client, the hint's `sub` is a per-sector pseudonym. It matches no grant and no relying party, and reversing it would need a reversible map that a store compromise could use to de-anonymize users.",
+      "check": "Look for logout or end-session code that reads `sub` from the hint and uses it for revocation, session lookup or back-channel fan-out.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a stored, reversible mapping (table, entity or cache) from a pairwise subject identifier back to the principal. Match pairwise values forward by projecting the principal instead.",
+      "why": "A reversible map is a standing de-anonymization liability: one store compromise re-links every pairwise `sub`. It also contradicts the system's one-way posture.",
+      "check": "Look for new persistence or lookups keyed by a pairwise `sub` that return a principal id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An OpenID Connect end-session endpoint must ask the end user to confirm whenever an OP login is present and the request carries no valid `id_token_hint` whose `sid` ordinally equals the login's `sid`. It must not sign the user out unprompted in that case.",
+      "why": "OpenID Connect RP-Initiated Logout 1.0 section 2 requires the prompt, and it closes logout CSRF from cross-site links and forms.",
+      "check": "Check end-session changes for a path that ends the session without a matching-`sid` hint and without confirmation, and for `sid` comparisons that are not ordinal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an OP login is present during logout, the session to end comes from the login's `sid`, not the hint's. Use the hint's `sid` only when no login is present.",
+      "why": "A confirmed logout must end the session the end user is actually signed in to, so a validly signed hint can't steer the logout to a different session or subject.",
+      "check": "Look at session resolution in logout code for a hint `sid` that overrides the authenticated login's `sid`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement logout confirmation through a one-time, unguessable continuation URL that the server keeps. Never use a 'confirmed' flag or parameter posted back to the endpoint.",
+      "why": "Anyone can forge a posted confirmation flag. The one-time continuation's unguessable state acts as the CSRF secret.",
+      "check": "Look for confirmation logic that trusts a request parameter such as `confirmed=true` instead of redeeming a server-held continuation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When resuming a parked logout continuation, resolve the current session again and refuse with `invalid_request` when its session id differs from the parked one. Treat the continuation as spent and send nothing to the relying party.",
+      "why": "Otherwise a continuation obtained in one browser could end another browser's session.",
+      "check": "Look for continue or resume handlers that proceed without comparing the parked session id with the current one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a logout resolved no subject and no session (no login was seen), don't call `SignOutAsync` and don't clear browser state in the response.",
+      "why": "A cross-site POST doesn't carry the `SameSite=Lax` login cookie, so its response must not be able to clear the login through `Set-Cookie`.",
+      "check": "Look for logout handlers that sign out or clear cookies unconditionally, even when no subject or session was resolved.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Redirect after logout only to a `post_logout_redirect_uri` that ordinally and exactly matches one of the client's registered `post_logout_redirect_uris` and passes the redirect-URI kind check. Otherwise render a confirmation page and don't redirect.",
+      "why": "Exact matching against the registered URIs prevents open redirects from the end-session endpoint.",
+      "check": "Look for redirect URI comparisons in logout code that are case-insensitive, prefix-based or normalized, or that redirect when no registered URI matches.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a back-channel `logout_token` a signed JWT with `typ` `logout+jwt` and the claims `iss`, `aud`, `iat`, `jti`, `events` and `sid` and/or `sub`. Project `sub` per receiving client so it matches the `sub` that client saw in its ID token.",
+      "why": "Back-Channel Logout 1.0 defines this token. A pairwise relying party only recognizes the `sub` projected for its own sector.",
+      "check": "Look for logout tokens that are missing `typ` or required claims, or that reuse one `sub` across all clients instead of projecting it per client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Back-channel logout must follow the tenant's discovery metadata. Send nothing while `backchannel_logout_supported` is false, and omit `sid` while `backchannel_logout_session_supported` is false.",
+      "why": "The OP must not behave differently from what its discovery document advertises.",
+      "check": "Look for notifier code that sends logout tokens or includes `sid` without checking the corresponding discovery setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deliver back-channel logout notifications to relying parties out of band through a deferred job dispatcher, not inline in the logout request.",
+      "why": "A failed delivery can then be retried out of band, and the notification doesn't depend on the browser.",
+      "check": "Look for logout code that makes HTTP calls to `backchannel_logout_uri` directly inside the request pipeline.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a security-relevant decision on a replaceable handler's result type (such as whether confirmation is required) a positional record member, so every replacement handler has to state it explicitly in order to compile.",
+      "why": "A defaulted or optional member would let a replacement handler silently pick the insecure behavior, for example logging out without a prompt.",
+      "check": "Look for security-decision properties on extensible result records that are optional, have defaults or are init-only rather than positional.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When logging a refused or mismatched session continuation, don't include the session id or the continuation URL or state in the log.",
+      "why": "Session identifiers and one-time continuation secrets are credentials, and logs must not leak them.",
+      "check": "Look for log messages in session or continuation code that interpolate session ids, continue URLs or `state` values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

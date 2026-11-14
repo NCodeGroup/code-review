@@ -1,0 +1,40 @@
+{
+  "hash": "0a1abe3419c0a876",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #335",
+  "rules": [
+    {
+      "statement": "Don't ask for a test that compares generated PNG or other compressed image files byte for byte with committed copies; when you suggest such a drift check, compare decoded pixels with a tolerance of one level.",
+      "why": "Encoded PNG bytes depend on the zlib build inside the imaging library, and pixels at exactly half coverage can move by one level when the order of summation changes, so a byte comparison fails for no real reason.",
+      "check": "Before reporting a missing test or suggesting one for generated image assets, make sure the suggested comparison works on decoded pixels with a small tolerance, not on raw file bytes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that writes a binary file format by hand, packing headers or masks itself, must read its output back with an independent decoder and stop if the decoded content differs from what it meant to write.",
+      "why": "Otherwise a wrong header field or a malformed row shows up only when a consumer fails to load the file.",
+      "check": "Look for hand-built binary writers (headers, struct packing, bitmap rows) that return bytes without decoding them back and comparing them with the source data.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a numeric limit or threshold a named constant next to the related settings, and don't repeat it as a bare literal expression such as `200 * 1024`.",
+      "why": "With bare literals, changing the limit means editing every place it appears, and the number isn't explained where it's used.",
+      "check": "Look for the same magic size or limit expression appearing more than once, or appearing unexplained while similar limits have names.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

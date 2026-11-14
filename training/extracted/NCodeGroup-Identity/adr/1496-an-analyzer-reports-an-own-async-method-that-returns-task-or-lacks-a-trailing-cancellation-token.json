@@ -1,0 +1,87 @@
+{
+  "hash": "d1a4736e71ee8c87",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1496",
+  "rules": [
+    {
+      "statement": "An async method the code declares returns `ValueTask` or `ValueTask<T>` and takes a `CancellationToken` as its last parameter, in production and test code alike; only a shape a framework contract fixes may differ, such as an xUnit test method, an ASP.NET Core middleware `Invoke`/`InvokeAsync`, an override or implementation of a member a foreign package declares, `DisposeAsyncCore()`, an entry point, or a method group handed directly to an ASP.NET Core API.",
+      "why": "A method the family declares has the family's shape; `Task` is allowed only where a framework fixes it, and a test project that follows another shape teaches the wrong one.",
+      "check": "Look for own methods returning `Task`/`Task<T>`, or async methods whose last parameter is not a `CancellationToken`, that are not one of the framework-fixed shapes.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Exempt a method from the async-shape rule only with `[SuppressMessage]` carrying a justification at type or method level, never with a marker attribute, `#pragma` or an `.editorconfig` severity change.",
+      "why": "The justified `[SuppressMessage]` records the reason where the method is; other suppression routes hide the reason or weaken the rule everywhere.",
+      "check": "Look for `#pragma warning disable` of the async-shape diagnostics, `.editorconfig` severity changes for them, or a `[SuppressMessage]` with no or an empty `Justification`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A method whose work follows a committed change or is deliberately uncancellable takes no `CancellationToken` parameter and runs its awaited work on its own bounded token or on `CancellationToken.None`, rather than accepting a token it ignores.",
+      "why": "A caller's abort must not drop such work, and a token parameter the method ignores would misstate its cancellation.",
+      "check": "Look for post-commit or uncancellable methods that accept a token and then ignore it, or that pass the caller's token into work that must complete.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a shared stored `Task<T>` that several callers await as a property or keep it private, creating it with `.AsTask()` from the `ValueTask` that produces it, instead of declaring a method that returns `Task`.",
+      "why": "A `ValueTask` must be awaited only once, so a multiply-awaited result needs a `Task`, but it is state, not a method with the async shape.",
+      "check": "Look for a `ValueTask` stored and awaited by multiple callers, or a method returning `Task` just to share a cached result.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Await a `ValueTask` exactly once, and call `.AsTask()` when handing an own `ValueTask` method's result to an API that takes a `Task`.",
+      "why": "A `ValueTask` may be backed by a pooled source that is invalid after its first await; conversion keeps the own method's shape while satisfying a `Task` API.",
+      "check": "Look for a `ValueTask` awaited twice, stored and awaited later by several consumers, or own methods changed to return `Task` to fit a `Task`-taking API.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write ASP.NET Core endpoint handlers as `ValueTask` methods that take a `CancellationToken` last, and have the mapping pass `httpContext.RequestAborted`, rather than keeping a `Task`-returning handler because it takes an `HttpContext`.",
+      "why": "Handlers convert cleanly to the convention; only a method group handed directly to an ASP.NET Core API has its shape fixed by the framework.",
+      "check": "Look for new endpoint handlers returning `Task` or lacking a token, and mappings that don't pass `RequestAborted` to the handler.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an analyzer test project, compile test snippets with Roslyn against `TRUSTED_PLATFORM_ASSEMBLIES` instead of downloading reference assemblies.",
+      "why": "No test should depend on downloading a reference assembly.",
+      "check": "Look for analyzer tests that use reference-assembly packages fetched at test time (e.g. `ReferenceAssemblies` resolving from NuGet) instead of the trusted platform assemblies.",
+      "scope": "domain",
+      "domain": "roslyn-analyzers",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

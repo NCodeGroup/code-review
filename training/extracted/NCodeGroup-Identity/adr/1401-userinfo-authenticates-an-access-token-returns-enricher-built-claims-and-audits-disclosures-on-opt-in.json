@@ -1,0 +1,79 @@
+{
+  "hash": "9acd15a20cfc427c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1401",
+  "rules": [
+    {
+      "statement": "An audit event that records a disclosure of personal data names the kinds of data disclosed (claim names) and never writes the claim values, a hash of them, or the token itself.",
+      "why": "The audit store would otherwise become a second copy of the personal data, with its own retention and erasure obligations, and a hash of a low-entropy value such as a birth date can be reversed.",
+      "check": "Look at audit event payloads and details built on personal-data read paths for claim values, hashed values, or raw tokens instead of just claim/type names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a data-disclosure audit event only after the response has been fully built, including any signing or encryption, not inside a pipeline stage or enricher that runs before the response can still fail.",
+      "why": "A response that cannot be protected must not be recorded as a disclosure, and an enricher sees only its own claims, not the full set disclosed.",
+      "check": "Check where the disclosure audit call sits: flag it if it comes before JWT signing/encryption or response serialization, or if it is made from a claims enricher handler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't record a second audit event for a request whose credential failed to authenticate when the authentication handler already audits that failure.",
+      "why": "A failed authentication is already audited once as a subject-authentication event, so recording it again duplicates the trail.",
+      "check": "In endpoint code after authentication, look for audit calls on the unauthenticated branch that duplicate the authentication handler's failure event.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An endpoint that accepts an access token issued by the server authenticates it through the shared, replaceable subject-authentication command seam, not by validating the bearer token inline or in a bespoke service or a pre-routing authentication scheme.",
+      "why": "Credential handling is shared with the interactive endpoints, applications must be able to replace it through one seam, and the tenant's keys, issuer and audience are known only after the request's environment resolves.",
+      "check": "Look for endpoints that parse an Authorization Bearer/DPoP header or call a token validator directly, or that register an ASP.NET Core authentication scheme that runs before environment resolution, instead of sending the authenticate command.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build the claims an endpoint returns through an extensible enricher/command pipeline rather than a fixed claims DTO assembled inside the endpoint.",
+      "why": "The disclosed claims depend on scopes and the account store, and sibling packages and hosts add claims by registering enrichers, which a fixed shape forbids.",
+      "check": "Flag endpoint code that hard-codes the set of returned claims into a fixed-property response type or populates them directly instead of dispatching to the enricher pipeline.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A compliance opt-in setting (such as turning on an audit trail) that applies at several scopes merges with Or, not Replace, so a narrower scope cannot turn off what a broader scope turned on.",
+      "why": "With Replace, a client could opt out of the trail its tenant requires.",
+      "check": "For new boolean audit or compliance settings, check the declared merge behavior and flag Replace (or a default replace merge) where a lower scope could disable the requirement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

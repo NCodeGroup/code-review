@@ -1,0 +1,51 @@
+{
+  "hash": "6adce9e16109ba1b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #460",
+  "rules": [
+    {
+      "statement": "Don't ask for a value that is not a credential (such as a lease-ownership nonce) to be encoded into a rented, zeroed buffer instead of a plain byte[] when the same bytes are already stored elsewhere and the code receiving them copies them into an array it owns anyway.",
+      "why": "Renting and zeroing the caller's encoding across an await keeps a rental alive for the whole lease and doesn't remove any copy of the value, so there's no secrecy gained.",
+      "check": "Before reporting an unpooled or unzeroed encoding, confirm the value is actually secret, and check whether it is stored in plaintext elsewhere or copied by the code that receives it.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `ToArray()` copy of caller-supplied memory passed to a client command that can be abandoned (for example through `WaitAsync` or cancellation) while the client may still send it later; that copy has to stay so the command never reads memory the caller has released or reused.",
+      "why": "An abandoned command may be sent after the caller's buffer is returned or reused, so the adapter has to pass an array it owns. Sibling writes in the same adapter do the same.",
+      "check": "Look for a comment explaining the copy, for abandonment through WaitAsync or cancellation, and for sibling methods in the adapter that also pass freshly built arrays before flagging the allocation.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing or changed `InnerException` as a compatibility break when the thrown exception type is unchanged, there is no underlying exception left to wrap, and the exception message itself carries the diagnostic details.",
+      "why": "Callers catch the exception by type, which still works, and the message names the request and the limit that was exceeded, so nothing is lost.",
+      "check": "Check whether the thrown type changed and whether a real underlying exception still exists that could be wrapped, before flagging the missing inner exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that edited Markdown lines run past the document's wrap width, measure the added lines in the diff against the document's column limit (for example 120 columns).",
+      "why": "A long sentence in the rendered or quoted text may already be wrapped across several source lines, and reporting it without measuring gives a false finding.",
+      "check": "Measure the length of the added lines in the diff itself and compare it with the wrap column of the surrounding paragraphs.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

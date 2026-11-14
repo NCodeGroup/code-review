@@ -1,0 +1,62 @@
+{
+  "hash": "928f9c24d3baec08",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #724",
+  "rules": [
+    {
+      "statement": "Define a shared domain predicate (such as a by-name lookup plus a capability flag) and its user-facing refusal message once, as a helper or extension member next to the abstraction it reads, and call it from every consumer instead of copying the lookup or the message literal into each class.",
+      "why": "Separate copies can drift, so components such as a generator, an API validator and a background job could disagree about the same fact, and an API's error detail could stop matching the exception text.",
+      "check": "Look for the same LINQ lookup or filter (for example `Any(p => p.Name == name && p.Flag)`) or the same error string literal repeated across classes. If you find it, ask for one shared extension or constant that all of them call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an options validator as breaking the rule that validators read only dependency-free registrations just because it resolves a service that reads other options, as long as those other options are bound strictly and checked by validators with no dependencies, and no path leads back to the options being validated or to that service.",
+      "why": "The validator rule is about services that read the options under validation. Reading unrelated options that are validated independently cannot create a cycle.",
+      "check": "Before reporting, trace which options the resolved service reads at construction, and check whether their validators take dependencies or lead back to the options being validated. Report only when you find such a path.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't cite a decision record or convention as the basis of a finding until you have confirmed it exists and says what you claim. For example, don't ask for `required` on an optional `init` property whose default the library supplies on purpose: the public API convention makes required inputs constructor parameters and optional inputs `init` properties with library defaults.",
+      "why": "A finding was declined because the ADR it cited does not exist. The real convention lets optional inputs keep a default the library supplies.",
+      "check": "Before citing an ADR number or rule, look it up in the repository's decisions folder. Before asking for `required`, check whether the property is meant to be optional with a recorded default.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In decision records, mark a numbered decision `superseded by` only when a later record replaces all of it. When a later record replaces only some clauses, mark it `amended by` and name the replaced clauses, and don't ask for `supersedes` wording in that case.",
+      "why": "The decision index uses `superseded by` only for full replacement. A partial change is recorded as an amendment that names the replaced part, so readers can find it.",
+      "check": "When an ADR says it amends or supersedes another, check whether it replaces the whole earlier decision or only some clauses, and whether the earlier record's Status line names the replaced clauses.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, check request values for null or empty and answer with a 400 validation problem before passing them to helpers that throw `ArgumentNullException`. A `required` member in System.Text.Json only checks that the property is present, so it can still arrive as null unless `RespectNullableAnnotations` is enabled.",
+      "why": "Otherwise a body with an explicit null reaches a guard clause, throws an unhandled exception, and the client gets a 500 for bad input instead of a 400.",
+      "check": "When a refactor replaces a null-tolerant comparison (such as `string.Equals`) with a helper that runs `ArgumentNullException.ThrowIfNull`, check whether request-bound values can reach it as null without first being checked.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "hash": "93577e497e5b26b3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #642",
+  "rules": [
+    {
+      "statement": "In a test project, add a direct ProjectReference to every test support project whose types the tests use, rather than reaching it transitively through another support project.",
+      "why": "If the intermediate support project stops referencing it, the test project stops compiling. The rule to reference a project directly from the project that uses its types applies to test support projects too.",
+      "check": "Look at test code that uses a type from a test support project. Check that the test .csproj has a ProjectReference to that support project itself, and doesn't rely on some other support project referencing it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*Tests/**/*.csproj",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

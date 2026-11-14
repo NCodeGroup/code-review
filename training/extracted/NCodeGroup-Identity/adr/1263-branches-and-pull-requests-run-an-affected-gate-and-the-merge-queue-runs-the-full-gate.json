@@ -1,0 +1,72 @@
+{
+  "hash": "f96f71aa6dadc40d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1263",
+  "rules": [
+    {
+      "statement": "Every CI workflow whose job reports a required status check must trigger on `merge_group` and on pushes to and pull requests into the `release/**` branches.",
+      "why": "A required check whose workflow does not run in the merge queue or on a release line stays pending, so the queue and the release-line pull requests wait for it forever.",
+      "check": "In a new or changed `.github/workflows/*.yml` that reports a required check, confirm the `on:` block includes `merge_group` and `push`/`pull_request` for `release/**`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add `paths`/`paths-ignore` filters to a workflow that reports a required check; narrow the work inside the job instead.",
+      "why": "A required check whose workflow is filtered out never reports and stays pending forever, and a path filter cannot follow `ProjectReference` edges to the tests a change reaches.",
+      "check": "Look for `paths:` or `paths-ignore:` under the triggers of a workflow whose jobs are required checks.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A change-detection step that skips work in a required-check workflow must skip only on `pull_request` events and run the full job for every other event, including `merge_group`.",
+      "why": "The merge queue must run the full gate on the merged result, so that `main` only gets commits that passed the full gate.",
+      "check": "In workflows with a job that detects changed files and gates a later job on the result, confirm the gating condition runs the job unconditionally when `github.event_name != 'pull_request'`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Skip Codecov coverage uploads on `merge_group` runs.",
+      "why": "The queue's run duplicates the coverage that the push to `main` uploads.",
+      "check": "In a CI workflow that triggers on `merge_group`, confirm the coverage upload step has a condition that excludes `merge_group` events.",
+      "scope": "domain",
+      "domain": "ci-coverage",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a new repository-wide build input (for example a new `Directory.*`, `.runsettings`, analyzer config or build-tool file), add it to the affected-test selector's global trigger pattern so that it selects all tests.",
+      "why": "A global input missing from the pattern makes a pull request run too few tests, and only the merge queue's full gate would catch the break.",
+      "check": "For newly added root-level or build-wide config files, check that the affected-tests selector's global-input pattern matches them.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "build/**",
+        "**/Directory.*",
+        "**/*.runsettings",
+        "**/.editorconfig",
+        "global.json",
+        "nuget.config"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

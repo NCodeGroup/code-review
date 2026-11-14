@@ -1,0 +1,55 @@
+{
+  "hash": "fca0f694d2424d95",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #203",
+  "rules": [
+    {
+      "statement": "Define a rule or pattern (such as a regex) once within a script or file and call it from every place that needs it, rather than declaring copies of it in separate functions or loops.",
+      "why": "Copies kept in step only by a comment drift apart, so one code path accepts input that another rejects.",
+      "check": "Look for the same regex, filter condition or exclusion list declared more than once in one file under different names or inline in several functions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same rule must be duplicated across components that can't share code (for example a script that ships alone and can't import a module), add a parity test that runs both copies over the same real input and fails if they disagree.",
+      "why": "Without a test comparing them, the copies drift silently and the two components disagree, for example one accepts a name the other then rejects.",
+      "check": "Look for logic copied between two files, with a comment such as 'keep in sync', and no test comparing the outputs of both copies.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a behaviour such as deduplication is added to a specific code path, cover it with a test that runs that path end to end, not only with a unit test of a helper on another path.",
+      "why": "If the behaviour regressed on the untested path, no test would fail.",
+      "check": "For new logic like `Select-Object -Unique` or `Distinct()` on an input path, check that some test feeds that path input that triggers it (such as a duplicate) and checks the result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap help text and documentation comment paragraphs to the width of the surrounding lines, with no line longer than 120 characters.",
+      "why": "One line running far past the paragraph's width makes the help text harder to read.",
+      "check": "Look in rewrapped or edited comment-based help (.DESCRIPTION and similar) or doc comments for a line much longer than its neighbours or over 120 characters.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

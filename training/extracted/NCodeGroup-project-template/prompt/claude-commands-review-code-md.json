@@ -1,0 +1,51 @@
+{
+  "hash": "f9a2e5c1dbef7844",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template .claude/commands/review-code.md",
+  "rules": [
+    {
+      "statement": "Don't report a style preference as a finding when the codebase's existing code doesn't follow that style; report only issues you can point to in specific lines of the change.",
+      "why": "The review prompt limits findings to concrete issues in the code and excludes style preferences the codebase doesn't follow, so reviews stay actionable.",
+      "check": "Before raising a style finding, look at sibling files and the surrounding code. If they already use the pattern being flagged, drop the finding. Every finding must cite a file and line.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "New code must not duplicate a helper, type or logic that already exists in the codebase; reuse the existing one.",
+      "why": "The review checks whether the change fits existing patterns and whether anything it adds already exists.",
+      "check": "For each new helper, extension method or utility in the diff, search the repository and its shared packages for an existing equivalent. Flag it if one exists.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Changed code must handle edge cases: empty and null inputs, large inputs, concurrent access and off-by-one boundaries. It must also dispose or release every resource it acquires.",
+      "why": "The review prompt lists these as the correctness checks every change must pass.",
+      "check": "Look for collection or string parameters used without empty or null handling, loop and index bounds, shared state touched without synchronization, and disposables or handles that aren't released on every path.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A change to a public API or to the format of stored data must stay backward compatible, or include an explicit migration.",
+      "why": "The review prompt flags backward compatibility of public APIs and stored data, and migrations, as risks to check.",
+      "check": "Look for removed or renamed public members, changed signatures, and changes to serialized or persisted shapes that have no compatibility shim or migration.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "hash": "27ea68e5194f2fa8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1416",
+  "rules": [
+    {
+      "statement": "When a broadcast subscription reports that messages may have been missed, revalidate the cache by comparing each cached entry's row concurrency token with the store's current token, and evict only the entries whose token differs or whose row no longer exists, instead of clearing the whole cache.",
+      "why": "Clearing everything on every missed message re-materializes everything the replica serves, with its store reads and key collections, mostly for changes that never happened. An equal token proves the cached copy is unchanged.",
+      "check": "Look at missed-message handlers (e.g. HandleMissedMessagesAsync). Flag one that clears every cache without first comparing revisions, or one that compares something other than the row's concurrency token.",
+      "scope": "domain",
+      "domain": "distributed-caching",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When cache revalidation cannot read the current tokens, or an eviction fails, log a dedicated event and fall back to clearing every affected cache entry and its dependent material (such as keys).",
+      "why": "A full clear is always safe. Without the fallback, a failed revalidation would leave stale entries in service.",
+      "check": "In the revalidation code, check that the catch path for a token read or an eviction logs a named event and then clears the caches. Flag a path that swallows the error or keeps the cached entries.",
+      "scope": "domain",
+      "domain": "distributed-caching",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Evict a stale entry found during revalidation exactly as a received change announcement would, including its dependents such as child entities, their tenants and their keys.",
+      "why": "A partial eviction during revalidation would leave dependent cached state that a normal announcement would have removed.",
+      "check": "Compare the revalidation eviction path with the announcement handler's eviction path. Flag any case where revalidation evicts less, for example only the entry itself.",
+      "scope": "domain",
+      "domain": "distributed-caching",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A cached object materialized from a store row carries that row's concurrency token, and a cached object that depends on another entity's settings records that entity's revision too, so that its staleness can be detected.",
+      "why": "Revalidation needs the token each cached copy was built from. A dependent object can outlive the cache entry of the entity it was built over.",
+      "check": "Flag a new cached domain object that drops the row's concurrency token, and a revision report that leaves out the parent or ancestor entities the object was materialized over.",
+      "scope": "domain",
+      "domain": "distributed-caching",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read current concurrency tokens for revalidation in bounded batches, with one query per batch that filters by identifier in the DBMS, not one query per row and not by loading all rows and filtering in memory.",
+      "why": "This keeps a restored connection's cost to one indexed query per batch of served rows.",
+      "check": "Look for store methods that read tokens one identifier at a time in a loop, load the whole table, or take an unbounded identifier list without batching.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every change that is announced on a cache-invalidation channel must also change the entity's row concurrency token, and a change that doesn't touch the row must explicitly regenerate the token before the announcement is sent; send the announcement even if regenerating the token fails.",
+      "why": "Token-based revalidation can only detect changes that the row token commits to. Sending the announcement anyway still lets the replicas that receive it evict the entry.",
+      "check": "For each code path that sends a change announcement, verify that the row token is bumped first, for example by a save or a mark-changed call. Flag an announcement that is skipped when the bump throws.",
+      "scope": "domain",
+      "domain": "distributed-caching",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

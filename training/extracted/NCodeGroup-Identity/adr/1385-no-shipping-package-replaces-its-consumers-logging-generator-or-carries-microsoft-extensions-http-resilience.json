@@ -1,0 +1,79 @@
+{
+  "hash": "de55ac489efaedf5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1385",
+  "rules": [
+    {
+      "statement": "A shipping (packable) package must not reference Microsoft.Extensions.Http.Resilience, or any dependency that brings Microsoft.Extensions.Telemetry.Abstractions, or set DisableMicrosoftExtensionsLoggingSourceGenerator, because that replaces its consumers' [LoggerMessage] source generator.",
+      "why": "Microsoft.Extensions.Telemetry.Abstractions' buildTransitive targets swap Microsoft.Extensions.Logging.Generators for Microsoft.Gen.Logging in every consuming project, which changes the logged-state type of the consumers' own logging code.",
+      "check": "Look in packable project files and Directory.Packages.props for new PackageReferences to Microsoft.Extensions.Http.Resilience, Microsoft.Extensions.Resilience, Microsoft.Extensions.Http.Diagnostics, Microsoft.Extensions.Telemetry(.Abstractions), Polly.Extensions or Polly.RateLimiting, for calls to AddResilienceHandler, or for DisableMicrosoftExtensionsLoggingSourceGenerator being set.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Packages.props",
+        "**/Directory.Build.props",
+        "**/Directory.Build.targets"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In shipping packages, bound outbound HTTP calls with a Polly.Core ResiliencePipeline referenced directly (total timeout, then jittered exponential retry, then per-attempt timeout) instead of the Microsoft.Extensions.Http.Resilience extensions.",
+      "why": "The pipelines need nothing the extension packages add, and those packages are what swap the consumers' logging generator.",
+      "check": "Check that new outbound-call resilience code in a shipping package uses Polly.Core pipelines in a DelegatingHandler rather than AddResilienceHandler or AddStandardResilienceHandler, and that the strategies are ordered total timeout, retry, per-attempt timeout.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A resilience pipeline that times out an outbound HTTP call must surface the timeout as a TaskCanceledException with a TimeoutException inner exception, as HttpClient.Timeout does, and must read time from the registered TimeProvider.",
+      "why": "Callers handle the guarded client's timeouts the same way as HttpClient's own, and the registered TimeProvider keeps time testable.",
+      "check": "Look for timeout handling that throws Polly's TimeoutRejectedException or another exception type to callers, or pipelines built without the TimeProvider from DI (for example using TimeProvider.System or the default).",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not fix a defect that a dependency causes in consumers by packing a buildTransitive .targets file that rewrites consumers' analyzers or depends on another package's private target names, or by relying on a repository-only Directory.Build.targets override; remove the dependency instead.",
+      "why": "A packed targets file rewrites every consumer's analyzer set and breaks when the other package changes, and a repository-only override is not packed, so it protects no consumer.",
+      "check": "Look for new buildTransitive/*.targets or build/*.targets packed into a package that change analyzers or properties, or for repo-level targets added to undo a dependency's transitive effect rather than dropping the dependency.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.targets",
+        "**/*.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test project that brings Microsoft.Extensions.Telemetry.Abstractions transitively (for example through Microsoft.Extensions.Diagnostics.Testing) as swapping the logging generator, as long as it declares no [LoggerMessage].",
+      "why": "The ban only protects consumers of shipping packages, and a test project that declares no [LoggerMessage] isn't affected by the swap.",
+      "check": "Before reporting, confirm whether the project is packable and whether it declares any [LoggerMessage] methods.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.csproj",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Central package management (Directory.Packages.props) must not pin package versions that no project references.",
+      "why": "Stale pins for removed dependencies like Microsoft.Extensions.Http.Resilience invite them back and hide what the build actually depends on.",
+      "check": "When a diff removes a PackageReference, check whether its PackageVersion entry in Directory.Packages.props is still used by another project, and remove it if not.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Directory.Packages.props"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

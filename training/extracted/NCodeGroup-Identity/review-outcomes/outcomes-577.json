@@ -1,0 +1,106 @@
+{
+  "hash": "0beb7844434d93a7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #577",
+  "rules": [
+    {
+      "statement": "Keep a try block around only the operation its catch's log message names; run follow-up work such as per-item cache evictions outside it, or give that work its own try with a log message that names it.",
+      "why": "A broad try logs a failure in follow-up work under the wrong message, which points operators at the wrong component, and it stops the loop at the first failing item.",
+      "check": "Look for a catch whose log message describes one operation (e.g. reading data) while its try also wraps other calls such as removals or a loop over items; check whether one failing item aborts the rest.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a loop applies a best-effort operation to each item, handle each item's failure on its own, log it naming the item, and continue with the remaining items instead of aborting the loop.",
+      "why": "Stopping at the first failure leaves the other items unprocessed, and a fallback that runs afterwards hides the real error.",
+      "check": "Look for loops over items whose per-item call can throw and whose exception escapes to an outer catch, ending the loop early without logging which item failed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a Dictionary, List or HashSet with an initial capacity when the maximum number of entries is known up front, such as the count of the source collection.",
+      "why": "Without a capacity the collection may resize several times while it is filled.",
+      "check": "Look for `new Dictionary<...>()`, `new List<...>()` or `new HashSet<...>()` filled from a collection whose Count is available, without passing that count as the capacity.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a change deletes a test for a failure path, add a test that still covers that path, such as every fallback call throwing at once.",
+      "why": "Without it, a regression where that failure starts escaping would leave the suite passing.",
+      "check": "Compare deleted test methods with the added ones; flag a removed failure-case test (e.g. both clears failing) whose scenario no new test covers.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't prove that an async operation is still waiting by sleeping with `Task.Delay` and then asserting it hasn't completed; assert it is pending right after it starts, or use a deterministic gate, then trigger completion and await it under the test's deadline.",
+      "why": "A timing check proves little about the wait and makes the test slower and flaky.",
+      "check": "Look for `Task.Delay(...)` or `Thread.Sleep` in tests followed by an assertion that a task is not completed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, end every Moq `Setup`/`SetupGet` on a strict mock with `.Verifiable()`, including setups in helper methods, and create mocks from the test's MockRepository when there is one.",
+      "why": "Otherwise, if the code under test stops using a setup, no verification catches the unused setup.",
+      "check": "Look for `Setup(...)`/`SetupGet(...)` chains without `.Verifiable()`, and `new Mock<T>(MockBehavior.Strict)` created outside the test's MockRepository.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Re-wrap an XML doc comment paragraph to the file's usual 120-column width after editing it, keeping its words unchanged.",
+      "why": "Inserted sentences leave lines unevenly wrapped and running past the paragraph's wrap width.",
+      "check": "Look for edited `///` comment paragraphs where one line runs well past 120 columns or the wrapping is uneven.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't cite an ADR or coding rule as binding in a finding unless it exists in this repository's decision records or instruction files; check that it is there before reporting a violation of it.",
+      "why": "The maintainer declined a finding that cited an ADR and a bounded-channel rule that the repository does not have.",
+      "check": "Before citing an ADR number or named rule, confirm it exists in the repository's docs/decisions folder or its C# instruction files.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag an in-memory coalescing set used as a work queue as an unbounded queue when its size is bounded by the number of distinct keys, not by the request rate, it drops nothing, and its documentation says so.",
+      "why": "Its memory is bounded by the number of distinct keys, so the concern about an unbounded queue does not apply.",
+      "check": "Check whether the collection deduplicates by key, so that repeated requests for the same key coalesce, and whether the class summary explains the bound.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

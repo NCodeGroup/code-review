@@ -1,0 +1,98 @@
+{
+  "hash": "c2bdb2ab55f9bb0b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #590",
+  "rules": [
+    {
+      "statement": "In a test project, don't ask for a private nested record or other stub type that only one file needs to move to its own file, even when the file is test infrastructure rather than a test class.",
+      "why": "The test conventions require a stub, fake or sample type that one test file needs to be a `private sealed` nested type in that file. Deserialization shapes used by one infrastructure file in the test project fall under the same rule.",
+      "check": "Before reporting a nested-type or one-type-per-file violation in test code, check whether exactly one file uses the type. If it does and the type is private sealed, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask async test helpers to return `ValueTask` or to take a `CancellationToken`. The ValueTask-and-token convention applies only to production code.",
+      "why": "Test helpers compose `Task`-based framework APIs such as Playwright, which take no token. xUnit 2.x gives a test no cancellation token to pass, so a token parameter would only ever receive `CancellationToken.None`.",
+      "check": "If an async-convention finding targets a helper under a test project, check whether the production-only async rule is the one being applied. If so, don't report it.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code too, write OAuth/OpenID protocol names such as parameter names, grant types, PKCE methods and JOSE algorithm codes with the shared protocol constants, not string literals. Leave literals inside static JSON fixtures such as a realm export.",
+      "why": "Duplicated protocol literals can drift away from the shared vocabulary. The maintainer confirmed that the rule covers test code.",
+      "check": "Look in C# test code for literals like \"grant_type\", \"client_credentials\", \"S256\" or \"ES256\" where a shared protocol or algorithm constant exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass `contentEncoding: SecureEncoding.UTF8` to every `Results.Content`/`Results.Text` (and `TypedResults` equivalent) call, including in test-only hosts.",
+      "why": "Otherwise the response uses the framework's default encoding instead of the required strict UTF-8. The maintainer confirmed that the rule also covers test hosts.",
+      "check": "Look for `Results.Content`, `Results.Text`, `TypedResults.Content` or `TypedResults.Text` calls without a `contentEncoding` argument, in test code as well as production code.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy a value the code under test defines as a constant, such as a header name, into a test script or literal. Pass the constant in. Define a literal that several test files share, such as a page body, once in a shared constant.",
+      "why": "If the default changes, the server follows it but the copied literal doesn't, and tests fail for a reason that is hard to trace. Duplicate copies also drift apart.",
+      "check": "Look in tests and embedded scripts for string literals that match an existing library constant, and for identical const literals defined in more than one file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When documentation describes a required check or gate whose enforcement still needs a manual step after merge, link a tracking issue for that step from the document.",
+      "why": "If the step is forgotten, the gate is never enforced even though the docs say it is.",
+      "check": "Look for docs or ADRs that list required checks while the PR description says the ruleset or branch-protection update is still pending, with no linked issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Indent Markdown list continuation lines the same way as the item's other continuation lines, without extra indentation.",
+      "why": "An over-indented continuation line can render as an indented code block instead of continuing the paragraph.",
+      "check": "In Markdown lists, look for continuation lines indented more than their sibling continuation lines, for example 8 spaces where the others use 4.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In build scripts, don't hard-code a project's target framework in output paths. Read it with `dotnet msbuild -getProperty:TargetFramework`, and fail with a clear message when it is empty.",
+      "why": "After a target-framework bump, a hard-coded path fails with a missing-file error that doesn't point to the TFM.",
+      "check": "Look in build scripts for paths containing literal TFM folders such as `net10.0` under `bin/`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

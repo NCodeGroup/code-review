@@ -1,0 +1,31 @@
+{
+  "hash": "2a65ba02ec711769",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #258",
+  "rules": [
+    {
+      "statement": "In test scripts, don't copy the same helper function into several stand-in or fake scripts; put it in one shared helper file that each stand-in dot-sources (and that the fixture copies beside every stand-in it places).",
+      "why": "A later fix, such as to locking, would otherwise have to be repeated in every copy, and the copies drift apart.",
+      "check": "Look for a function body that is identical or nearly identical in two or more test stand-in scripts instead of being dot-sourced from one shared file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1",
+        "**/*Tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code, when several concurrent processes or runspaces append to a shared log file under a named mutex, catch AbandonedMutexException around WaitOne and continue, and derive the mutex name from a hash (such as SHA-256) of the log file's full path so every writer to the same file shares one mutex.",
+      "why": "If a holder dies while it holds the mutex, a bare WaitOne throws on the next call and writers handle the same case differently. A name taken from the path makes sure writers to one file use the same lock.",
+      "check": "Look for WaitOne calls on a named mutex without an AbandonedMutexException handler, and for mutex names that are hard-coded or not derived from the full path of the file they guard.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "tests/**/*.ps1",
+        "**/*Tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

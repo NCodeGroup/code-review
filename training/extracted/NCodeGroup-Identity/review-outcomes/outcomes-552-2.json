@@ -1,0 +1,29 @@
+{
+  "hash": "e03c2bd974dd9666",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #552",
+  "rules": [
+    {
+      "statement": "In a test project, don't report the null-forgiving operator when it is `null!` (or `[null!]`) used to pass a deliberate null argument or null entry to the code under test in an argument-validation test.",
+      "why": "The C# conventions make this the one exception to the ban on the `!` operator: tests have to pass a deliberate null to check null-argument validation.",
+      "check": "Before reporting a `!` in test code, check whether it is `null!` passed directly as an argument or collection entry to the method or constructor under test in a test that asserts it rejects null. If so, don't report it. Any other `!` in tests is still a violation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two components carry near-identical logic, such as reading a protocol parameter, applying its default and looking it up in a catalog, move it into one shared helper or extension method on the shared abstraction and call it from both.",
+      "why": "If each component keeps its own copy, the copies can drift apart and the components could resolve the same input differently.",
+      "check": "Look for private methods in different classes of the diff that repeat the same read, default and lookup steps. Flag them and ask for one shared helper or extension.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

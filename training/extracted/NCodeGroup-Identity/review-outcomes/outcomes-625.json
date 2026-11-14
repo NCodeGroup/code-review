@@ -1,0 +1,51 @@
+{
+  "hash": "8f866607b8cc980d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #625",
+  "rules": [
+    {
+      "statement": "In a test project, when a code path runs more than one authorization check and the test's capture helper records only the last call, give each check its own test, pinning an earlier check by refusing it with strict mocks and no store setup so any later read fails the test.",
+      "why": "Otherwise no test fails if the earlier check (for example Read before reading the resource) is dropped or moved after the read.",
+      "check": "Look for a test renamed or changed to assert a later authorization operation where the capture helper keeps only the last call, leaving no test that asserts the earlier check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't declare or document a CancellationToken parameter that the method body never uses or passes on; remove it and update the callers and tests.",
+      "why": "Readers assume the method honors cancellation, and every caller passes a token that does nothing.",
+      "check": "Look for methods whose CancellationToken parameter is never passed on, for example when they call an API like IAuthorizationService.AuthorizeAsync that takes no token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, keep each test to one behavior: split a test that checks several endpoints or cases with different expected results into one test per case, each named for its result.",
+      "why": "When a combined test fails, its name doesn't say which case broke, and the assertions after the failing one are skipped.",
+      "check": "Look for a test that calls more than one endpoint or scenario and asserts opposite or independent outcomes, often with 'But' or 'And' in its name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a parameter-count limit on a shared template helper that many routes call when each parameter is a distinct input, such as the request, the target node, the role, a lookup delegate and an authority delegate, and a descriptor type would only carry them for that one call.",
+      "why": "Wrapping distinct inputs in a single-use descriptor adds a type without making anything clearer. With the parameters, each caller stays one call that names its inputs.",
+      "check": "Before raising the limit, see whether the method is the one template shared by several callers, whether each parameter varies independently per caller, and whether a grouping type would be built only to make that call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

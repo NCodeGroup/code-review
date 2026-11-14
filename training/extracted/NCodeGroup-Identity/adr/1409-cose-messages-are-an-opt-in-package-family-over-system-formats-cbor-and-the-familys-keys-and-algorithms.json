@@ -1,0 +1,221 @@
+{
+  "hash": "ba1b1dd90e028735",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1409",
+  "rules": [
+    {
+      "statement": "Implement COSE messages over System.Formats.Cbor and the family's JOSE algorithms and SecretKey model; do not use System.Security.Cryptography.Cose or write a hand-rolled CBOR codec or COSE-specific cryptography.",
+      "why": "System.Security.Cryptography.Cose only signs and binds to platform key objects, the platform codec is strict on request, and duplicate cryptography drifts from the JOSE algorithms.",
+      "check": "Look for references to System.Security.Cryptography.Cose, custom CBOR byte parsing, or new signing/MAC/encryption code in COSE code instead of a call to the matching JOSE algorithm.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every CBOR reader of peer input uses CborConformanceMode.Strict, checks the input size against a configured maximum before parsing, and refuses trailing bytes after the root item, indefinite lengths, map labels that are not integers or text strings, nesting past a configured depth, and more signatures or recipients than configured.",
+      "why": "A COSE message comes from a peer, so its size, nesting, signatures and recipients bound the work it can make the receiver do.",
+      "check": "Check new CborReader construction for Strict mode, a length check before parsing, a trailing-bytes check after the root, and depth/count limits on nested structures and arrays.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a COSE reader fails to enforce deterministic map order on received input, or ask it to re-encode protected headers: authenticate protected header bytes exactly as received.",
+      "why": "RFC 9052 §9 requires deterministic encoding only for structures the library builds, and protected bytes are signed as received.",
+      "check": "Before raising a map-order or canonicalization finding on a reader, confirm the code is parsing received data, not building it.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "CBOR/COSE writers produce the core deterministic encoding of RFC 8949 §4.2.1 (definite lengths, shortest integers, map keys ordered bytewise by encoded label) and do not rely on CborConformanceMode.Canonical for that ordering.",
+      "why": "Canonical mode orders keys by length first, not bytewise, so it doesn't produce the required deterministic encoding.",
+      "check": "Look for writers using Canonical mode, indefinite-length writes, or map entries written in insertion order without bytewise sorting of the encoded labels.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write an empty COSE protected header bucket as a zero-length byte string, and have readers accept both that and an encoded empty map.",
+      "why": "RFC 9052 requires the zero-length form when writing, and peers may send either form.",
+      "check": "Check that writers emit an empty bstr, not an encoded empty map, for empty protected headers, and that readers don't reject either form.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A COSE reader requires `alg` to be in the protected bucket and checks it against the caller's permitted algorithm list before it looks up the algorithm catalog or selects any key.",
+      "why": "RFC 9052 §3.1 requires `alg` to be authenticated where it can be, and the algorithm decides what the receiver does with the message.",
+      "check": "Look for reading `alg` from unprotected headers, or for catalog lookup or key resolution that happens before the permitted-list check.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A COSE reader refuses a header label present in both protected and unprotected buckets, a `crit` that is unprotected, empty, lists unprotected labels, or names a label it doesn't understand, and a `Partial IV`.",
+      "why": "Critical headers decide how the receiver processes the message, and the family's keys carry no Base IV for a Partial IV.",
+      "check": "Check header validation code for the duplicate-label, `crit` and `Partial IV` checks; flag new header handling that skips them or silently ignores unknown critical labels.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A COSE serializer sets `alg` and `IV` itself and refuses caller-supplied headers that set `alg`, `IV` or `Partial IV`.",
+      "why": "The serializer must bind the algorithm it actually used and generate a random IV, not trust a caller's value.",
+      "check": "Look for encoder paths that copy caller headers containing `alg`, `IV` or `Partial IV` into the message.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a signed, MACed or encrypted message's content only from the verify or decrypt operation; an inspect operation returns headers only.",
+      "why": "Exposing unverified content was rejected: content is readable only after verification.",
+      "check": "Look for public APIs or result types that return payload bytes or claims from a message before its signature, MAC or decryption succeeds.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare MAC tags in fixed time, for example with CryptographicOperations.FixedTimeEquals.",
+      "why": "The ADR requires a MAC to be compared in fixed time.",
+      "check": "Look for SequenceEqual, == or loop comparisons of MAC tags or truncated HMAC outputs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not register weak algorithms such as truncated HMAC 256/64, RSAES-OAEP with SHA-1 or RSASSA-PKCS1-v1_5 by default; an application must add each one explicitly by name.",
+      "why": "Weak algorithms by default were rejected; each is opt-in.",
+      "check": "Check default algorithm registration lists for weak or legacy algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A COSE failure is thrown as the library's COSE exception with a fixed message and a failure code, and never includes the message bytes.",
+      "why": "Messages come from peers and may carry sensitive data; fixed messages and codes keep failures uniform and safe to log.",
+      "check": "Look for exception messages that interpolate input bytes, header values or payload content, or failures thrown without a failure code.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hold an unwrapped or generated content encryption key in a sensitive pooled buffer that is cleared on return, not in a plain byte array.",
+      "why": "The ADR requires the random content key of a key wrap or key transport recipient to be held in a sensitive pooled buffer.",
+      "check": "Look for content keys allocated as new byte[] or rented without clearing in key-unwrap and encryption paths.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a message names a key identifier, try matching keys first, then keys with no identifier, and never keys with a different identifier; only try keys that are unexpired (allowing clock skew), meant for the operation and fit for the algorithm.",
+      "why": "The ADR selects keys only by what the caller supplies, so a message can't steer verification to an unrelated key.",
+      "check": "Check key resolution for fallbacks to all keys when a kid doesn't match, or missing expiry, usage or algorithm checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a binary COSE `kid` to a text key identifier as UTF-8 when it is valid UTF-8 text that doesn't begin with `h'`, and otherwise as RFC 8949 §8 diagnostic `h'...'` notation, through one shared mapping; don't refuse binary kids or base64url-encode every kid.",
+      "why": "RFC 8747's example kid is binary, a text kid such as `key-1` must stay UTF-8, and one rule must be applied alike by every component.",
+      "check": "Look for ad hoc kid conversions (base64url, hex, Encoding.UTF8.GetString without validation) instead of the shared key-identifier mapping.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse an untagged COSE message unless the caller explicitly names the expected message type.",
+      "why": "Without a tag or a caller-named type, the receiver can't safely tell which structure it is processing.",
+      "check": "Look for decoders that guess the message structure of untagged input.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured input limits such as maximum message size, nesting depth and element counts when the host starts.",
+      "why": "The ADR requires limits to be validated at host start, not at first use.",
+      "check": "Check that new limit options have validation registered with ValidateOnStart or an equivalent startup validator.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Converting a COSE_Key to a JWK handles public keys only: refuse private parameters, symmetric keys, a Base IV, and empty or mixed `key_ops`, and have a key set skip unregistered key types, curves or algorithms.",
+      "why": "The ADR limits COSE_Key conversion to public keys and keeps key sets usable when they contain entries the deployment doesn't support.",
+      "check": "Look for converter code that accepts private or symmetric key material, or that fails a whole key set over one unregistered entry.",
+      "scope": "domain",
+      "domain": "cose-cbor",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "hash": "645c459d113c1e83",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1055",
+  "rules": [
+    {
+      "statement": "Never spread the keys of a free-form or user-writable metadata object into top-level token or UserInfo claims; emit the whole object as one nested JSON claim (`JsonClaimValueTypes.Json`) under a reserved claim type.",
+      "why": "Flattening owner-writable keys lets an end user inject trusted claims such as `role` or `email_verified`, lets stray keys like `sub` or `aud` shadow registered claims, loses the provenance boundary on the wire, and turns arbitrary JSON into lossy string claims.",
+      "check": "Look for code that iterates a metadata JsonElement/dictionary and adds each property as its own `Claim` in token, ID token or UserInfo claim building, especially for user-writable data.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a claim type or name that one component emits and another reads a constant, not a setting that can be overridden at a different scope (such as per client versus per tenant).",
+      "why": "Producers and consumers read settings at different scopes, so a configurable name lets one site emit under one name while another looks under a different one and silently finds nothing.",
+      "check": "Look for new settings that configure a claim type or similar correlation key that is written in one place and read in another; such names should be shared constants.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Settings that put personal or authorization-relevant subject data into tokens or UserInfo must be opt-in and default to `false`.",
+      "why": "Nothing should be in a token until it is deliberately surfaced; defaulting on risks leaking personal or authorization data by accident.",
+      "check": "Look at the default value of any new setting that controls emitting subject data into access tokens, ID tokens or UserInfo; it should be `false`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A claim-projection handler must not emit a claim for an empty value and must not add a claim type that another handler in the pipeline already supplied.",
+      "why": "Empty claims add noise to tokens, and duplicating a claim type already produced produces conflicting or repeated claims.",
+      "check": "In subject-claims handlers, check that empty objects/values are skipped and that the handler checks the existing claim collection for the type before adding.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve subject data for tokens at issuance through a provider keyed by the resolved principal ID, rather than stamping it onto the subject at one authentication site.",
+      "why": "Data stamped in one flow (such as the password grant) never reaches interactive login, external-IdP login or refresh; resolving at issuance makes every grant flow and connection kind project identically.",
+      "check": "Look for code that adds token-bound subject data in a specific grant or login handler instead of in the issuance-time claims pipeline/provider.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't cache authorization-relevant subject data in a per-node `IMemoryCache`; read it fresh from the store, or cache it through a distributed-cache decorator keyed by tenant and principal.",
+      "why": "A per-node cache serves one node a stale snapshot while another reloads, so the same principal's authorization data differs by node and an administrator's edit doesn't take effect on the next token everywhere.",
+      "check": "Look for `IMemoryCache` or static/in-process caching around lookups of principal metadata or other authorization-relevant data used at token issuance.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Server-owned (system) subject metadata must only be writable through administrator-authorized endpoints, never through any end-user-facing write path.",
+      "why": "System metadata may carry authorization-relevant data that verifiers treat as server-vouched; letting an end user write it is privilege escalation.",
+      "check": "Look at new endpoints or self-service profile updates that write system/app metadata and confirm they require administrator authorization.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put host-specific claim emission, transformation or per-key flattening in a command handler registered on the subject-claims pipeline, and never surface owner-writable keys as top-level claims there either.",
+      "why": "The mediator pipeline is the claim-shaping seam that every claim flows through; namespaced flattening is a deliberate act that belongs in such a handler.",
+      "check": "Look for claim shaping hooked in ad hoc places outside the subject-claims command handlers, or custom handlers that promote user-writable keys to top-level claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

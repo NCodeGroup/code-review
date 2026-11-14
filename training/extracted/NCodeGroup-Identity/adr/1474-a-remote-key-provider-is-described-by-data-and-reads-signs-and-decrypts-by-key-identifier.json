@@ -1,0 +1,195 @@
+{
+  "hash": "f1a645bae0748950",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1474",
+  "rules": [
+    {
+      "statement": "In production code, a remote key provider's constructor does no I/O, reads no option and creates no client, and its type's documentation says so.",
+      "why": "Validators and capability readers can end up resolving providers, so a constructor that reads options, builds a client or calls the network would run during plain validation.",
+      "check": "Look in a provider's constructor for IOptions access, SDK client construction, network calls or option reads, and check that the type's XML doc states it does no I/O.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that validates settings or reports capabilities reads provider descriptor data and never resolves or constructs a provider instance.",
+      "why": "Keeping descriptors in a catalog separate from the providers means validators never construct providers or touch their dependencies.",
+      "check": "Look for validators, policies or capability endpoints that inject or resolve the provider catalog or provider instances when they only need names, algorithms or capability flags.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Turn off SDK retries for a remote key-creation call so it is made exactly once, keep an explicit SDK retry policy for repeatable calls (read, sign, decrypt, destroy), and add no retry layer of your own.",
+      "why": "A retried creation can create two keys, and a key that no record names is never destroyed. Repeatable calls are safe to retry.",
+      "check": "Look at how KMS clients are configured for creation (for example MaxErrorRetry = 0, MaxRetries = 0, one attempt) and for other operations, and look for any custom retry loop wrapped around these calls.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A remote key creation returns the created key's identifier as soon as the service reports the key, before any check runs, and the caller hands that key to one central destroyer when anything after creation fails, cancellation included.",
+      "why": "A provider that creates a key and then fails a check or is cancelled loses the identifier of a key it created, and that key is never destroyed.",
+      "check": "Look for checks (usage, spec, public key, size, curve) or awaits between the service creating a key and its identifier being returned. Also look for caller paths, including OperationCanceledException, that exit after creation without passing the key to the destroyer.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A remote key provider never destroys a key it refuses itself, because destruction happens only in the one central, bounded and logged destroyer.",
+      "why": "Copies of destruction logic in each provider would drift, and a provider cancelled after creation would still lose the identifier.",
+      "check": "Look for a provider calling its own destroy or delete API on a failure path inside its create or check logic.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw IOException for a KMS response that fails an integrity check (a checksum mismatch, or a response that names a key, version or algorithm other than the one requested), CryptographicException for a key or ciphertext the provider refuses, and ArgumentException for an unreadable key identifier.",
+      "why": "The exception type must tell callers whether a retry is worth trying (an integrity failure) or not (a refusal).",
+      "check": "Look at the exception types thrown on checksum or identity mismatches compared with usage, spec, algorithm or key-type refusals and malformed public keys or identifiers.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remote sign, decrypt and key-agreement operations write into a Memory<byte> the caller supplies and return ValueTask<int>, and public keys are read into the caller's IBufferWriter<byte>. They do not return a new array.",
+      "why": "Returning an array allocates for every signature, and the caller then copies it into its own buffer.",
+      "check": "Look for provider methods that return byte[] or Task<byte[]> for signatures, plaintexts, shared secrets or public keys.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Convert a DER ECDSA signature to fixed-width r‖s (each half (KeySizeBits + 7) / 8 bytes) with a strict parser built on AsnDecoder, and hash signing input into a BufferFactory rental with explicit sensitivity.",
+      "why": "Strict parsing rejects malformed signatures, and rented buffers keep signing off the allocation path.",
+      "check": "Look for hand-rolled or lenient DER parsing, the wrong half width, or a digest allocated as a new array instead of a rental with isSensitive given explicitly.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass array-backed input to an SDK that takes arrays through MemoryMarshal.TryGetArray without copying, and copy only when the SDK needs an array of exactly the data's length.",
+      "why": "This avoids a needless copy for every call.",
+      "check": "Look for ToArray() on ReadOnlyMemory<byte> handed to an SDK where TryGetArray would give the segment directly.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An abstractions package holds only contracts and data, so put computations such as hashing in an implementation package. A value type's own text form (parse, format, name check) may stay as data.",
+      "why": "Abstractions packages hold only contracts and data. A hash is a computation, not part of the contract.",
+      "check": "Look for hashing or other computation added to a *.Abstractions project.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A provider that does not support an operation throws NotSupportedException, and a provider that lacks a key-creation location throws InvalidOperationException from its create and list operations.",
+      "why": "These exceptions tell an operation the provider never offers apart from one it cannot run in its current configuration.",
+      "check": "Look at stub or unsupported operations and at create or list calls made without a location, and check the exception types they throw.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every consumer that creates, lists or sweeps remote keys checks the provider's CreatesKeys descriptor first and refuses a provider without a key-creation location using the one shared refusal message.",
+      "why": "A provider without a location works only by key identifier, and every consumer must know whether the provider can create keys.",
+      "check": "Look for new creation, listing or sweep paths that call a provider without checking CreatesKeys, or that build their own refusal text.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an optional location option that is null or empty as unset, validate it only when it is set, and derive the capability from it instead of adding a separate Enabled switch.",
+      "why": "A second switch next to the location can disagree with it, and a required value that only satisfies a validator can disagree with the actual keys.",
+      "check": "Look for Enabled flags added beside a location option, and for validators that require the location or reject an empty string when it is meant to be unset.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A descriptor catalog fails at construction on an invalid name, a duplicate name or two rows with the same selector, and compares names ordinally.",
+      "why": "Configuration errors surface at startup instead of when a key is used.",
+      "check": "Look at catalog constructors for missing validation of names, duplicates or selector collisions, and for culture-sensitive name comparison.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A remote key destroy operation completes without error when the key is missing, disabled or already scheduled for deletion.",
+      "why": "Destruction must be safe to repeat during sweeps and rollback.",
+      "check": "Look for destroy implementations that throw on not-found, disabled or pending-deletion responses.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Vendor provider registration binds its configuration section strictly with ValidateOnStart and reuses the existing client factory, and a host that would reach the service with the deployment's identity registers the vendor only when its section exists.",
+      "why": "An existing section is the operator's consent to reach that service, and strict binding with start-up validation surfaces configuration errors early.",
+      "check": "Look at Add<Vendor>... extensions for loose binding, a missing ValidateOnStart, a new client factory, or unconditional registration in a host that creates keys.",
+      "scope": "domain",
+      "domain": "key-management-services",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

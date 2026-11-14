@@ -1,0 +1,136 @@
+{
+  "hash": "f775ad709744a780",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1472",
+  "rules": [
+    {
+      "statement": "Expose signing and content-key unwrapping only through asynchronous members that take a `CancellationToken` and return a `ValueTask`, all the way up through every caller, and don't add synchronous twins beside them.",
+      "why": "A key held in a key management service signs or decrypts over a network call that can wait, fail and be cancelled. A synchronous twin would work for local keys and fail for remote ones, so callers would face two paths that behave differently depending on the key.",
+      "check": "Look for new or changed sign, encode, issue, proof-creation or decode members that are synchronous or have no CancellationToken, or for a synchronous `Encode`/`Sign` overload added next to an async one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never block on a task (`.Result`, `.Wait()`, `GetAwaiter().GetResult()`) to make an asynchronous operation look synchronous.",
+      "why": "It ties up a thread for each network call and can deadlock under a synchronization context. The banned-API analyzer RS0030 forbids it.",
+      "check": "Look for sync-over-async calls on Task or ValueTask.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When data built in a span has to survive an `await`, copy it into a pooled buffer that is held across the await and returned to the pool once the operation finishes. Don't restructure the code to try to keep a span alive across the await.",
+      "why": "A span cannot be held across an `await`. One pooled copy per operation keeps the asynchronous path cheap.",
+      "check": "Look in async methods for span-based data used after an await. Check that the pooled buffer holding it is returned (for example in a using or finally block) after the awaited call completes.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a `ValueTask`-returning method's common path finishes synchronously (for example, signing with a local key), return a completed `ValueTask` from that path without an async state machine, and await only on the path that is truly asynchronous.",
+      "why": "Local keys then pay no allocation for the asynchronous seam.",
+      "check": "Look for an `async` method whose synchronous branch still goes through the state machine when it could return `new ValueTask<T>(result)` or `ValueTask.FromResult`.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a signature produced by a remote key before using it: check that the key is compatible with the algorithm, that the signature has exactly the algorithm's expected length, and that it verifies against the key's stored public key. Throw a JOSE exception if any check fails.",
+      "why": "The remote service is outside the algorithm's control, and the algorithm's own checks and verification must not be bypassed.",
+      "check": "Look for remote or KMS signing code that writes the returned signature without checking its length and verifying it against the public key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route the choice between local and remote signing through the algorithm's async signing seam. Don't add a signing delegate or callback to signing credentials, and don't compute signatures outside the encoder.",
+      "why": "A callback on the credentials would push the local-or-remote choice into every credentials object and skip the algorithm's checks and its verification of the signature. Signing ahead of the encoder would make callers duplicate the header and payload encoding.",
+      "check": "Look for Func or delegate signing hooks on credentials types, or for callers that precompute signatures and pass them to the encoder.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE content-key unwrap fails with a `CryptographicException`, `JoseException` or `ArgumentException`, substitute a random content key. Let any other exception (transport errors, `IOException`, cancellation) propagate.",
+      "why": "RFC 7516 section 11.5 requires that a failed decryption reveals no cause. Transport failures and cancellations are not decryption results and must not be hidden.",
+      "check": "Look at unwrap error handling. Flag a catch-all that also swallows cancellation or IO exceptions, and flag cryptographic failures that propagate or reveal their cause.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode and validate every part of a token (all binary segments, and the size of the encrypted key) before making any remote key-service call.",
+      "why": "A malformed token should never reach a key management service.",
+      "check": "Look for remote decrypt or unwrap calls made before all segments are decoded or before the encrypted key length is checked.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a token header's `kid` matches eligible decryption keys, try only those keys rather than every candidate key.",
+      "why": "A well-addressed token then costs at most one service call per key.",
+      "check": "Look at the decryption key selection loop to see whether it falls back to all keys even when a `kid` matches.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a JSON-serialized JWS with multiple signatures, compute every signature first and write the JSON afterwards.",
+      "why": "Signing is asynchronous, so the JSON writing must not be interleaved with awaits.",
+      "check": "Look for awaits on signing inside a block of Utf8JsonWriter calls.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep COSE MAC and encryption recipient unwrapping on the synchronous unwrap primitive, which refuses remote keys, so that COSE never sends a key to a remote service.",
+      "why": "The decision keeps COSE MAC and encryption local and synchronous, so callers that only authenticate or encrypt with COSE do not await.",
+      "check": "Look for COSE recipient code that calls an async or remote unwrap.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

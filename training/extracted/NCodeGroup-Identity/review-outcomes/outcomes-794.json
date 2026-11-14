@@ -1,0 +1,142 @@
+{
+  "hash": "e0b6e47d559e37f0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #794",
+  "rules": [
+    {
+      "statement": "When an end-to-end or CI check verifies that a request gate (such as a required proxy client certificate) is wired, request at least one path the gate does not exempt, not only exempt probe or health paths.",
+      "why": "A probe path that the middleware exempts returns 200 whether or not the gate's prerequisite is met, so the check passes even when every real request would be refused with 403.",
+      "check": "Look at CI or integration steps that turn on a requirement and then only request health or readiness endpoints the middleware exempts. A non-exempt path should also be requested, and the step should fail on the refusal status.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A positive check in a test or CI step asserts the specific expected status code, not merely that the response is not the refusal code.",
+      "why": "A check that accepts any code other than 403 or 000 passes when the service fails for an unrelated reason with 500 or 404.",
+      "check": "Look for curl or HTTP assertions written as 'status != 403' or 'any code except X'. They should require the exact expected status on an endpoint whose status is known.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A validation failure test asserts the specific failure message, and each distinct failure cause has its own test case.",
+      "why": "A test that only asserts the option name passes for any of the path's failure messages, so a regression that reports the wrong cause or drops a check goes unnoticed.",
+      "check": "Look at validator tests that only check that validation failed or which option failed. They should assert the exact message and cover separate cases such as an empty file and an unparsable file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't redo per-request certificate verification work on a hot path: cache the verdict per certificate (for example by thumbprint plus anchor generation, with an expiry bounded by the certificate's validity), parse configured values once, and check backing files for changes at most once per interval, outside any global lock.",
+      "why": "Rebuilding an X509Chain, re-parsing options and statting a file under a lock on every request adds syscalls, allocations and lock contention to the hottest path, even though a keep-alive connection presents the same certificate on every request.",
+      "check": "Look at middleware or per-request verifiers that create an X509Chain, re-parse options, or call File.GetLastWriteTimeUtc inside a lock on each request. Any cache should be bounded in size and in expiry.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When certificate chain validation uses a custom trust store that may hold intermediate (non-self-issued) anchors, either accept a PartialChain result only when the chain's last element is one of the anchors and no other status flag is set, or split self-issued anchors into CustomTrustStore and the rest into ExtraStore.",
+      "why": "With only an intermediate in the anchor file, chain.Build fails with PartialChain, so every request is refused while health probes still pass.",
+      "check": "Look at X509Chain code that uses TrustMode = CustomRootTrust with operator-supplied anchors. Check how it handles PartialChain and whether a root → intermediate → leaf test exists, including the case where only the intermediate is anchored.",
+      "scope": "domain",
+      "domain": "x509-certificates",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a deprecated alias, compatibility shim, migration note or upgrade note for a renamed setting, key or API when the repository's standing direction allows untracked breaking changes and the item is unreleased.",
+      "why": "Nothing deployed reads the old name, and the standing direction rules out compatibility shims and upgrade notes and asks for text that describes the product as it is.",
+      "check": "Before reporting a rename as breaking, read the repository's instructions (for example repository.instructions.md, 'Standing direction from the project owner') and check whether the item has been released.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a changelog, README or pull request description to mention an old or removed name, or to describe a change from what came before, when the repository's standing direction requires text to describe the product as it is.",
+      "why": "The standing direction forbids removed names and delta phrasing in these texts. Mapping an issue's older key to the new one would break that.",
+      "check": "Before reporting a missing 'X was renamed to Y' sentence, check the repository instructions on how documentation and changelogs are worded.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a private sealed stub, fake or helper type that one test file needs, nested in that file, as breaking the no-nested-types rule.",
+      "why": "The test conventions make a private sealed nested type in the test file the expected form for a fake one test file needs. This is an exception to the production no-nested-types rule.",
+      "check": "Before reporting a nested type in test code, check that it is private sealed and used only by that test file, and read the test conventions (csharp-tests / csharp-testing instructions).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a component to dispose a replaced cached certificate collection on rotation when operations still in flight on other threads may be using it.",
+      "why": "Disposing the old collection on rotation would break a chain build that is in flight on another request. The certificates hold nothing that their finalizers don't release, and rotation is rare.",
+      "check": "Before reporting a leaked cached X509Certificate2Collection on reload, check whether concurrent readers can still hold the old reference without any reference counting.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a duplicated idempotent configuration call as redundant when each call site serves a code path that the other doesn't always reach.",
+      "why": "Both calls can be needed, for example when one host configures it for another feature and a different host relies on the shared extension to make the call. The call is idempotent, so behaviour is unaffected.",
+      "check": "Before reporting, trace every host or caller and check whether removing either call would leave some path without it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a host Program.cs for reading an options section from configuration inside its single ConfigureKestrel(k => k.ConfigureHttpsDefaults(...)) call, when the read and the wiring are package extension methods.",
+      "why": "Kestrel's HTTPS-defaults callback runs before the DI container exists, so the options have to be read from configuration there. That one call is the sanctioned exception to Program.cs being composition-only.",
+      "check": "Check whether the Program.cs code is inside the Kestrel HTTPS-defaults callback and only calls package extensions, rather than containing inline startup logic.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for internal type names that repeat their feature namespace's noun to be shortened when the short names would be generic (such as Log, Verifier, Feature) or would collide with other types.",
+      "why": "Naming internal types after their feature under a feature namespace is an established package pattern, and the naming rule about redundant nouns is about public interface names.",
+      "check": "Before reporting, check whether the type is internal, whether sibling types in the package follow the same feature-prefix pattern, and whether the shortened name would collide or read badly at call sites.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

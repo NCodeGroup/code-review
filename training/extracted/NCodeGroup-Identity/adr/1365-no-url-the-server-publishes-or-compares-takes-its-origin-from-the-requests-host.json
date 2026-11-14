@@ -1,0 +1,88 @@
+{
+  "hash": "b95e3c8810f4ab2d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1365",
+  "rules": [
+    {
+      "statement": "Never take the scheme or host of a URL the server publishes (redirects, callbacks, links) or compares against client input from the incoming request (`HttpRequest.Host`, `HttpRequest.Scheme`, `UriHelper.BuildAbsolute` over the request, etc.); take the origin from configuration or from the tenant's configured issuer.",
+      "why": "A forged or proxied `Host` header would otherwise choose where a published URL points, or which audience and URL values the server accepts.",
+      "check": "Look for absolute URLs built from `Request.Scheme`/`Request.Host`/`GetDisplayUrl`/`GetEncodedUrl` or similar in redirects, OAuth parameters, discovery documents or validation comparisons.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a redirect to the same site root-relative (for example `/account/login?ReturnUrl=...`) instead of making it absolute with the request's host.",
+      "why": "A same-origin relative link lets the `Host` header contribute nothing to the redirect.",
+      "check": "Look for login and other same-site redirects that put an absolute URL built from the request's scheme and host where a root-relative path would work.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build an OAuth client's absolute `redirect_uri` and `post_logout_redirect_uri` from a required, configured public origin, and validate that origin at startup: it must be absolute, `https` outside Development, have no user info, query, fragment or trailing `/`, and be in canonical form. The app must fail to start when it is invalid.",
+      "why": "RFC 6749 §3.1.2 requires an absolute redirect URI. The provider's authority is not the client's origin, and an app that fails at startup can't publish a wrong callback.",
+      "check": "Look for redirect URIs derived from the request or from the authority's URL, configured-origin options without a startup validator, or validators that miss any of these constraints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a configured origin once at startup instead of adding per-request runtime checks (such as a `https` check that depends on `IHostEnvironment`) to the handlers that use it.",
+      "why": "Startup validation is the single place that guarantees the constraint. Runtime checks repeat it and add needless dependencies.",
+      "check": "Look for handlers that re-check scheme or format, or that inject `IHostEnvironment` only to recheck a configured URL that an options validator already covers.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When checking a client assertion's `aud` or a DPoP proof's `htu`, compare it with the endpoint URL the tenant publishes. Its authority is the tenant's issuer base address or its mutual-TLS endpoint alias (RFC 8705 §5), and only the routed path comes from the request. Build it the same way discovery builds the endpoint URLs.",
+      "why": "If the URL came from the request's Host, an assertion or proof minted for another server's endpoint would be accepted. Building it like discovery means the compared URL is the one clients read.",
+      "check": "Look for `aud` or `htu` comparisons against a URL built from the request's scheme and host, or against a URL built differently from the discovery endpoint URLs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare a DPoP proof's `htu` with exactly one published URL: the one under the mTLS alias authority when the request was sent to that alias's host and port, and otherwise the one under the base address. Never accept a match against any of the published URLs.",
+      "why": "RFC 9449 §4.3 binds a proof to the URL the request was sent to, so a proof for the alias host must not be accepted on the base host, or the reverse. The Host header only selects among the tenant's own origins and never adds one.",
+      "check": "Look for `htu` validation that checks a set of candidate URLs, or that lets the request's Host add an origin the tenant doesn't publish.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "By default, accept a client assertion `aud` that is the issuer, the endpoint's URL under the base address or the endpoint's URL under the mTLS alias authority. Restrict it to the issuer only when a security profile (such as FAPI) requires that.",
+      "why": "OpenID Connect Core §9 allows the endpoint URL as the audience and many clients send it, while FAPI already narrows it to the issuer.",
+      "check": "Look for default audience validation that rejects the endpoint URL, or that accepts audiences outside the tenant's published URLs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

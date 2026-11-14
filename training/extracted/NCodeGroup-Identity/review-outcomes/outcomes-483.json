@@ -1,0 +1,18 @@
+{
+  "hash": "cd3c61964ed2ae0c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #483",
+  "rules": [
+    {
+      "statement": "In a test project, when a test claims a response property (such as no-store caching headers) holds for every route or method, exercise each HTTP method mapped to that endpoint, including methods that share one route mapping.",
+      "why": "If the shared mapping is later split and one method loses the behavior, CI still passes, and the claim that each route is proven does not hold for the untested methods.",
+      "check": "Compare the HTTP methods a mapping such as MapMethods registers for a route against the methods the new tests send; flag methods with no test asserting the behavior, or a description claiming coverage the tests don't provide.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

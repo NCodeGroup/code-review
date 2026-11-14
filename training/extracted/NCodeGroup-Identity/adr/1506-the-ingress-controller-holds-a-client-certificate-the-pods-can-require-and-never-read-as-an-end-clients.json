@@ -1,0 +1,116 @@
+{
+  "hash": "9e8c9b632e17cd45",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1506",
+  "rules": [
+    {
+      "statement": "Never give a TLS-terminating proxy or ingress controller the Secret that holds the backend pods' serving certificate and private key, not even as a fallback. Give it a separate Secret that holds the CA plus its own client certificate and key.",
+      "why": "A controller that reads the serving Secret receives the private key of every pod it fronts. The controller's own Secret means no pod's key ever reaches it.",
+      "check": "Look at Helm templates and manifests (ServersTransport, BackendTLSPolicy, Ingress annotations) that point the controller at a Secret. Flag any reference to, or fallback to, the pods' serving-certificate Secret.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a connection's client certificate has been verified as a fronting proxy's certificate, never treat it as an end client's certificate for mutual-TLS client authentication or certificate-bound tokens. Report no end-client certificate, and take the end client's certificate only from the configured forwarding header.",
+      "why": "A connection has one client-certificate slot. Reading the proxy's certificate as the client's, or letting a header override it, leaves no rule for which certificate is the client's.",
+      "check": "Look at client-certificate resolvers that read HttpContext.Connection.ClientCertificate. Check that they first check whether the connection was authenticated as the proxy, and that they never mix connection and header sources.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To require a client certificate on a host that also serves health probes or a loopback startup check, set Kestrel to ClientCertificateMode.AllowCertificate and accept any certificate in the handshake. Enforce the requirement in a middleware placed first in the pipeline that exempts exactly the liveness and readiness paths and answers 403 to everything else.",
+      "why": "With RequireCertificate, the kubelet's probes and the loopback handshake, which cannot present a certificate, are refused. A second probe-only endpoint adds a port to bind, expose and keep out of the ingress.",
+      "check": "Flag ClientCertificateMode.RequireCertificate on hosts that have health probes. Flag an enforcement middleware that is not registered first, or that exempts more than the exact probe paths.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept a certificate as the proxy's only when all four checks pass: it chains to the configured trust anchors, it has the client-auth extended key usage, it is inside its validity period, and its subject is on an explicit allow-list of distinguished names.",
+      "why": "These checks together decide that a connection's certificate authenticates the proxy to the pod.",
+      "check": "Look at proxy-certificate validation code and flag any of the four checks that is missing, for example chain building without an EKU check or without a subject allow-list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing revocation check when the proxy's client certificate is a short-lived certificate issued per release by cert-manager.",
+      "why": "The decision skips revocation on purpose: cert-manager's short validity and renewal are the control.",
+      "check": "Before reporting, check that the certificate comes from the chart's short-lived, per-release cert-manager issuance. Report only for long-lived or operator-supplied certificates with no renewal control.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reload trust anchors read from a mounted PEM file when the file's last-write time changes, instead of reading them only once at startup.",
+      "why": "A renewed ca.crt mounted from a Secret should take effect without restarting the pod.",
+      "check": "Look for code that loads CA or anchor files into a static or singleton once and never checks for changes to the file.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an options validator for a section enabled by a flag, refuse the dependent settings while the flag is false. Also refuse an enabled section when a required dependent setting is missing or invalid, such as a path to a file that does not exist or an empty allow-list.",
+      "why": "Settings left over while the feature is off, or an enabled feature with nothing to verify against, are configuration mistakes that should fail at startup.",
+      "check": "Look at new IValidateOptions implementations for flag-gated sections. Check both directions: settings while disabled, and missing or invalid values while enabled.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't enable proxy client-certificate enforcement on a deployment where end clients present their own certificates on the TLS connection directly to the pod.",
+      "why": "The proxy-certificate setting and end clients' certificates on the connection do not mix: the single certificate slot would be treated as the proxy's.",
+      "check": "In configuration or a chart that enables both direct mutual TLS for end clients and proxy-certificate enforcement on the same connection, flag the conflict.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/charts/**",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a Helm chart cannot know the CA that signed an operator-supplied serving certificate and no operator-supplied verification Secret is given, make the chart fail to render rather than render a controller configuration that cannot verify the pods.",
+      "why": "Without a known CA, the controller cannot verify the backend, and silently falling back would be unsafe.",
+      "check": "Look at chart templates with an existingSecret path and check that they call fail when neither an issuer nor an explicit verification Secret is set.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

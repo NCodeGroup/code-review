@@ -1,0 +1,29 @@
+{
+  "hash": "857eaeff2903702c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #550",
+  "rules": [
+    {
+      "statement": "Don't ask a private method to take a read-only collection interface such as `IReadOnlyList<T>` instead of `List<T>` when every caller passes a `List<T>`: CA1859 runs as an error and requires the concrete type there.",
+      "why": "The repositories build with the .NET analyzers as errors. CA1859 rejects an interface-typed parameter on a private method whose callers all pass the concrete type, so the indexer isn't called through an interface.",
+      "check": "Before reporting a concrete collection parameter, check whether the method is private or internal and whether every caller passes that concrete type. If so, CA1859 settles it, and the finding shouldn't be raised.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When a code comment or a design decision promises a behavior, such as service registrations of other kinds keeping their original position, add a test that exercises that case.",
+      "why": "If a later change broke the promised behavior, for example by moving or dropping those registrations, no test would fail, and hosts could silently change behavior.",
+      "check": "Look for comments or referenced decisions in changed production code that state a guarantee, especially about edge cases such as type- or factory-registered services. Confirm that a test in the diff or the test project covers it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

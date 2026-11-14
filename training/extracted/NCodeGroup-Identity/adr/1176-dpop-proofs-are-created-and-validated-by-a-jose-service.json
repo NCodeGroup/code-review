@@ -1,0 +1,115 @@
+{
+  "hash": "d7541d1b8e492a97",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1176",
+  "rules": [
+    {
+      "statement": "Create and validate DPoP proofs through the JOSE library's shared DPoP proof service; never hand-split a DPoP JWS or verify it with raw RSA/ECDsa built from the JWK's parameters.",
+      "why": "A second cryptographic path duplicates the JOSE library's verification, supports only the key types it spells out, and makes key types and algorithms the JOSE catalog registers fail as DPoP proofs.",
+      "check": "Look for DPoP-specific cryptography outside the JOSE DPoP service: manual splitting of a `dpop+jwt` string, base64url decoding of its parts, or constructing RSA/ECDsa from `jwk` parameters to verify a proof.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep stateful DPoP checks (nonce challenge, `jti` replay cache, mapping to `invalid_dpop_proof` and HTTP responses) in the caller, not in the stateless proof validation service.",
+      "why": "These checks need state and an HTTP response, while the proof service only checks what one proof proves on its own; a stateful check moving into it shows the design was chosen wrong.",
+      "check": "Look for replay-cache access, nonce issuance, or HTTP error and header handling added to the DPoP proof service. Also look for callers that skip the replay and nonce checks after a stateless validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating a DPoP proof, accept only an `alg` that is in the caller's allow-list and resolves to an asymmetric signature algorithm, and always reject MAC algorithms and `none`, whatever the allow-list says.",
+      "why": "A DPoP proof must be signed with a key the client holds. A symmetric or unsigned proof proves no possession.",
+      "check": "Check that the algorithm validation compares `alg` against the allow-list and also rejects symmetric or `none` algorithms on its own, without relying on the allow-list to exclude them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a DPoP proof whose protected header carries `crit`, since no JWS extension is understood.",
+      "why": "A `crit` header names extensions the verifier must understand, and none are supported.",
+      "check": "Check that DPoP header validation refuses any `crit` header instead of ignoring it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a DPoP proof whose embedded `jwk` contains private key material. Import the `jwk` through the key-type catalog descriptor for its `kty`, and require the algorithm's key type and legal key sizes to fit the imported key.",
+      "why": "Using the registered key-type descriptors lets every key type the stack knows serve as a DPoP key, and checking the key against the algorithm prevents mismatched keys being accepted.",
+      "check": "Look for `jwk` imports that skip the private-parameter check or don't verify that the key type and key size match the algorithm before verifying the signature.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before verifying a DPoP proof's signature with the algorithm's own verify routine, check that the signature has exactly the expected size.",
+      "why": "The source requires an exact signature-size check ahead of verification.",
+      "check": "Look for DPoP signature verification that doesn't first compare the decoded signature length with the size the algorithm and key expect.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating a DPoP proof, compare `htm` exactly to the request method. Compare `htu` to the request URI after removing the query and fragment from both, and require both to be absolute `http` or `https` URIs. Check `ath` when an access token is given, require `jti`, and require `iat` to lie within ±lifetime of the current time.",
+      "why": "These claims bind the proof to one request, one moment and one token. On Unix, a rooted path such as `/token` would otherwise parse as a `file:` URI.",
+      "check": "Look for `htu` comparisons that keep the query or fragment, don't check for an absolute http/https scheme, or parse relative paths with `Uri`. Also look for missing `ath`, `jti` or `iat` window checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When creating a DPoP proof, set the header to `typ: dpop+jwt`, `alg` and the exported public `jwk`, with no `kid`. Strip the query and fragment from `htu`, use a random 128-bit `jti`, take `iat` from `TimeProvider`, and sign through the asynchronous signing path.",
+      "why": "RFC 9449 proofs embed the public key, not a key reference. Using `TimeProvider` keeps time testable, and signing is asynchronous for every caller.",
+      "check": "Look for proof creation that adds a `kid`, includes private `jwk` members, keeps the query in `htu`, reads the clock with `DateTime.UtcNow` or `DateTimeOffset.UtcNow`, uses a short or non-random `jti`, or signs synchronously.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the shared JOSE constants for the DPoP vocabulary (`dpop+jwt`, `htm`, `htu`, `ath`) and the OpenID protocol constants for the `DPoP` and `DPoP-Nonce` HTTP header names, instead of redeclaring these string literals.",
+      "why": "The DPoP vocabulary should be declared once. The JOSE names belong to JOSE, and the HTTP header names are an OpenID transport concern.",
+      "check": "Look for new string literals or constants for `dpop+jwt`, `htm`, `htu`, `ath`, `DPoP` or `DPoP-Nonce` outside the shared token-type, claim-name and protocol constants.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "hash": "ddfab5920f4c71d1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #128",
+  "rules": [
+    {
+      "statement": "When a change alters how something is configured or behaves (for example, how a workflow pins an action), update every README, usage guide or other doc that describes the old behavior in the same change.",
+      "why": "Docs that contradict the code mislead maintainers into reverting the change. Here, docs that still described a tag pin could lead someone back to a tag pin, which brings back CodeQL's unpinned-tag alert.",
+      "check": "For each behavior or configuration the diff changes, search the README, USAGE and other docs for text that describes the old behavior. Report any statement the diff leaves stale.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin a third-party GitHub Action to a release's full commit SHA, with the release tag in a trailing comment, not to a tag alone.",
+      "why": "A tag pin triggers CodeQL's actions/unpinned-tag alert, because a tag can be moved.",
+      "check": "Look at `uses:` lines in workflow files. Report any that reference a tag or branch instead of a 40-character commit SHA followed by a tag comment.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a consumer-facing changelog entry to mention a test-only check or other internal test change that users of the package or template never see.",
+      "why": "The maintainer keeps test-only changes out of the changelog on purpose, because consumers aren't affected by them.",
+      "check": "Before reporting a changelog omission, check whether the omitted item only affects the repository's own tests or CI. If it does, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "hash": "cec2b3ae8f95726d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #819",
+  "rules": [
+    {
+      "statement": "Bind a configuration section strictly to a small options type that rejects unknown child keys, even when it is read before dependency injection is set up, instead of reading it key by key with `section[key]`.",
+      "why": "Reading keys one by one silently ignores a misspelled key, so the host falls back to defaults (wrong port, no credentials, no TLS, in-memory store) and no message names the bad key.",
+      "check": "Look for code that reads a configuration section with `section[\"Key\"]` or `GetValue` per key without strict binding or an unknown-key check; a misspelled key must stop startup with an error naming the section and the key, never the value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

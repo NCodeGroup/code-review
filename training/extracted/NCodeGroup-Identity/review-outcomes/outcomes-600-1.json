@@ -1,0 +1,277 @@
+{
+  "hash": "e2c628e62581fde2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #600",
+  "rules": [
+    {
+      "statement": "A background loop that periodically revalidates an authenticated session must fail closed: keep looping when the backing store is only temporarily unavailable, and on any other unexpected exception log it and sign the user out, never exit the loop and leave the user signed in.",
+      "why": "If one unexpected failure stops revalidation for good, a session that ends or is revoked stays signed in for the rest of the connection's life. Microsoft's RevalidatingServerAuthenticationStateProvider also fails closed.",
+      "check": "In revalidation loops, look for catch blocks that end the loop or swallow exceptions without changing the auth state, and for an OperationCanceledException that is not the loop's own cancellation being treated as shutdown.",
+      "scope": "domain",
+      "domain": "authentication-sessions",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client probes a server for the current session or user, treat a success status whose body is malformed or describes no user as an unknown answer: log it and keep the current state, don't treat it as signed out.",
+      "why": "A transient bad response, such as a proxy error page served with 200, would otherwise sign the user out silently.",
+      "check": "Look for JsonException or unreadable-document handling in probe or reader code that returns null or a signed-out result, or that logs nothing.",
+      "scope": "domain",
+      "domain": "authentication-sessions",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a property of a public contract type becomes nullable, or starts being null in a new call path, say when it is null in the contract's XML remarks and in the CHANGELOG.",
+      "why": "Implementers written against the old non-null contract would dereference it and throw NullReferenceException.",
+      "check": "Look for public contract properties changed from T to T? (or newly passed null) without matching remarks and a changelog entry.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For options a Blazor WebAssembly library uses, don't rely on ValidateOnStart(): validate them when the consuming service is created, and say so in the registration method's remarks.",
+      "why": "A WebAssembly host runs no startup validation, so bad settings would otherwise only show up at first use, possibly as a faulted background loop.",
+      "check": "In WebAssembly client registrations, check that the options are validated in the consuming service's constructor and that the AddX remarks say this. Don't treat a chained ValidateOnStart() as enough.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A service registration that keeps per-user state in a singleton must say in its remarks that it belongs to the WebAssembly (single-user) host only, and must name what serves the server or prerendering side.",
+      "why": "If the client registration also runs on a server host for prerendering, the singleton is shared across users, and one user's principal could be returned to another.",
+      "check": "Look for AddSingleton of types that hold the current user or session, and check for remarks that limit the registration to the browser host.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Design docs, CHANGELOG entries and XML docs that describe a behavior must match what the code implements, such as the full list of HTTP methods treated as safe.",
+      "why": "Readers otherwise expect behavior the code does not have, such as expecting OPTIONS and TRACE to need an antiforgery token.",
+      "check": "When a diff changes a set of accepted values or methods, compare it with the lists in docs, the changelog and XML comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An ADR's status line and its README index row must list every record it amends or supersedes, matching the 'amended by' notes in those records.",
+      "why": "Otherwise the records contradict each other, and a reader starting at the newer ADR never learns what it amends.",
+      "check": "For each ADR that says 'amended by ADR-X', check that ADR-X's status line and README row name it, and the other way round.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, tests of a threshold or comparison in a validator must include the exact boundary value as well as values on either side.",
+      "why": "Without a boundary case, an off-by-one change in the comparison would reject a valid configuration and go unnoticed.",
+      "check": "For validator tests of limits (for example interval ≤ half of a timeout), check that one case uses exactly the limit.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't call a method only for its side effect and discard the result without explanation: use the returned value, or add a comment that names the side effect the call is there for.",
+      "why": "Someone could remove the call as redundant and break behavior that depends on the side effect.",
+      "check": "Look for `_ = await XAsync(...)` or ignored results whose only purpose is to fill some state used later.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an async helper takes a trailing CancellationToken parameter from its caller, rather than reading HttpContext.RequestAborted or ConnectionAborted itself.",
+      "why": "Reading the token from the context leaves the cancellation contract implicit.",
+      "check": "Look for new async methods without a CancellationToken parameter that read RequestAborted or ConnectionAborted inside.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same guard-or-throw expression, message included, appears in more than one place, move it into one shared helper (for example an internal extension method) and call that.",
+      "why": "The copies, including the message, can drift apart.",
+      "check": "Look for identical `?? throw new InvalidOperationException(\"...\")` expressions repeated across classes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options validation failure messages must name the setting (its configuration key path) and the value that was rejected.",
+      "why": "Otherwise an operator can't tell which key to fix.",
+      "check": "In IValidateOptions implementations, check that each failure message includes the option name and path and the actual value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the client and the server both validate the same anti-forgery header name, both must reject the same names, including CORS-safelisted and credential-bearing header names.",
+      "why": "A safelisted name lets requests skip the CORS preflight that the guard relies on.",
+      "check": "Compare the client validator's header-name checks with the server validator's. A check only for blank is not enough.",
+      "scope": "domain",
+      "domain": "web-security-antiforgery",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A registration method that removes services the host registered (for example RemoveAll<T>() followed by Add) must say in its remarks that it replaces them, and why.",
+      "why": "A host that registered its own implementation earlier would otherwise lose it without notice.",
+      "check": "Look for RemoveAll or Replace calls in AddX extension methods with no matching remarks.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A private async helper returns ValueTask, and keeps Task only when a framework delegate or contract requires Task.",
+      "why": "This keeps the helper consistent with the async convention. Task stays only where an API such as a Func<Task> callback demands it.",
+      "check": "Look for private or internal async methods that return Task and are not passed to an API that takes a Task-returning delegate.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't pass a pre-built interpolated string to a log method. Give each value, such as a status code or an exception, its own typed parameter on the log message.",
+      "why": "An interpolated string is formatted even when the log level is disabled, and the value is lost as a structured field.",
+      "check": "Look for `$\"...\"` arguments passed to logger calls or LoggerMessage methods.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every added member gets an XML doc comment. A member that implements an interface uses `/// <inheritdoc />`.",
+      "why": "The convention is that every added member is documented, and sibling validators already use inheritdoc.",
+      "check": "Look for new public or interface-implementing members without a `///` comment.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a middleware-level or integration test of a value list or branch when a unit test of the helper already pins it and an existing middleware test shows the branch uses that helper's answer.",
+      "why": "A change to the helper's list or loop already fails the unit test, so the extra test adds no protection.",
+      "check": "Before reporting, look for unit tests of the helper (such as IsSafeMethod or a CheckX method) that cover the case, and for a caller test that covers how its result is used.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test as asserting nothing when it runs against strict mocks: an unexpected call on a strict mock fails the test, so the test pins a 'touches nothing and does not throw' contract.",
+      "why": "The test conventions verify strict mocks automatically, so the test does protect behavior.",
+      "check": "Before reporting, check whether the test's dependencies are strict mocks (MockBehavior.Strict) and whether the contract says the method does nothing.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a single small per-call allocation or parse (for example a Uri parse, or an AsyncLocal restore scope) on a path that already does much more work, such as an HTTP round trip or framework per-invocation work, unless a measurement shows it matters.",
+      "why": "The cost is not measurable next to the surrounding work. Caching would add state to transient types, and per-flow restore scopes can't be shared.",
+      "check": "Before reporting, check the surrounding per-call cost, whether the work is needed for correctness on every call, and whether there is any measurement.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to make internal, or to move to an Abstractions package, a public registration marker type that a library's AddX() method returns.",
+      "why": "The production conventions give each registerable library layer a marker that its AddX method mints. It is a public return type, so it can't be internal.",
+      "check": "Before reporting, check whether the type is the return type of a public AddX registration method.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a one-line extension accessor over a contract's own types as logic that doesn't belong in an Abstractions package, when packages that reference only abstractions need it.",
+      "why": "Small read-only accessors beside the contract types are an accepted pattern in other Abstractions packages.",
+      "check": "Before reporting, check whether the extension only reads the contract's own types, and whether an abstractions-only consumer needs it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a per-call context value object that carries the HttpContext to a callee as storing ambient request context. The rule against storing request context applies to long-lived services.",
+      "why": "A value created for each call and passed along, like a validation context, does not outlive the request the way a long-lived service would.",
+      "check": "Before reporting, check the type's lifetime: whether a factory creates it per call or per request, or whether it is a registered long-lived service.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a stub or helper type that only one test file uses out of that file: the test conventions make it a private sealed nested type in that file.",
+      "why": "The test Isolation conventions require such single-file stubs to be nested, which is an allowed exception to one-type-per-file.",
+      "check": "Before reporting a nested type in a test class, check whether any other test file uses it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

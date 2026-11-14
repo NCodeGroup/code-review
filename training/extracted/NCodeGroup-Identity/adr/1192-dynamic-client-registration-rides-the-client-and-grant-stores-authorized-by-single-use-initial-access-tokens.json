@@ -1,0 +1,186 @@
+{
+  "hash": "c8716b249198bd95",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1192",
+  "rules": [
+    {
+      "statement": "Persist a server-issued bearer credential (such as a registration access token or an initial access token) only as a SHA-256 hash key, and return its plaintext once at creation, never again on read or update.",
+      "why": "The plaintext is never stored, so a leaked store leaks no usable bearers, and the server cannot return or rotate what it holds only as a hash.",
+      "check": "Look for token entities or grants storing the raw token value, or GET/PUT responses that echo a previously issued bearer token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Spend a single-use authorization token only after every other validation has passed and immediately before the protected write, and leave it spent (fail closed) if the write fails afterward.",
+      "why": "A request refused by an earlier check can be corrected and retried with the same token, while a failure after the spend must not reopen the token to reuse.",
+      "check": "Check where the consume/spend call sits: before metadata or authorization checks is a violation, as is code that un-spends or restores the token after a failed store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a single-use token already has a durable row, make the spend atomic through that row's concurrency token rather than recording single-use state in a second store such as an expiring key set.",
+      "why": "A second record would have to agree with the row, and the row's concurrency token already guarantees at most one of two concurrent spends succeeds across replicas.",
+      "check": "Look for a durable grant or token row whose single-use state is also tracked in a cache or expiring key set, or a spend done as read-then-write without a concurrency check.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a presented credential even on an endpoint that allows anonymous access, and refuse an invalid one with 401 instead of ignoring it.",
+      "why": "Ignoring a presented token would silently drop the scope or binding it carries, and nobody would be told.",
+      "check": "Look for branches that skip credential validation when anonymous access is enabled even though an Authorization header is present.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Merge a security-loosening boolean setting (one that enables anonymous or open access) across parent and child scopes with a logical AND and default it to false, so a child scope cannot re-enable what a parent disallows.",
+      "why": "An anonymous write endpoint is not a safe baseline; a deployment opts in and the merge lattice stops a child from loosening a parent.",
+      "check": "Check new allow-anonymous/open-access settings for a default of true or a merge that lets a child override a parent's false.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an issued token with no expiry as authorizing nothing, and bound the lifetime a caller may request when minting one (reject out-of-range values with 400).",
+      "why": "An initial access token must be short-lived, so a missing expiry must never mean unlimited authority.",
+      "check": "Look for validators that accept a grant whose expiry is null, or mint endpoints that accept unbounded or unvalidated lifetimes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a token carries authority over another resource (such as a resource server binding), check that resource again when the token is used, not only when it is minted, and refuse the token if the resource no longer qualifies.",
+      "why": "The resource can be deleted or change kind after the token is minted.",
+      "check": "Look for use-time code that trusts a resource id stored on the token without re-loading and re-checking that resource.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take the authority to bind a dynamically registered client to a resource server from the authorizing token, not from a member of the registration request.",
+      "why": "A request member carries no proof that its sender may act for the resource server.",
+      "check": "Look for registration handling that reads a resource server id or similar binding from the client metadata request body.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ignore, rather than reject, unrecognized or server-set client metadata members in a dynamic registration or update request, as RFC 7591 §2 requires.",
+      "why": "A client that echoes its read response, including server-set extension fields, in an update must not fail.",
+      "check": "Look for registration/update validation that returns an error for unknown or server-owned members.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer dynamic client registration failures with the RFC 7591 error codes `invalid_client_metadata` and `invalid_redirect_uri`, and an unusable initial access or registration token with `invalid_token` (401).",
+      "why": "Clients and the conformance harness rely on the RFC-defined error codes.",
+      "check": "Check registration endpoint error paths for generic error codes such as invalid_request or bare 400s without the RFC 7591 codes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require a self-registered `backchannel_logout_uri` to be an absolute `https` URI without a fragment, `post_logout_redirect_uris` to be absolute without a fragment, and `frontchannel_logout_uri` to be absolute without a fragment and to share scheme, host and port with a registered redirect URI.",
+      "why": "The server never sends a logout_token in clear, and front-channel logout must target an origin the client already registered.",
+      "check": "Check logout URI validation in dynamic registration for missing https, absolute, fragment or same-origin checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse with `invalid_client_metadata` a registration or update that would make a client bound to a resource server public (`token_endpoint_auth_method` `none`), and refuse introspection response algorithm metadata on a client that is not bound to a resource server.",
+      "why": "A resource-server client reads every access token for that resource server and must authenticate, and only bound clients receive JWT introspection responses.",
+      "check": "Look for registration and update paths that skip the confidentiality check for bound clients or accept `introspection_*` metadata on ordinary clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate encrypted-response client metadata so that an `*_enc` value requires its `*_alg`, an encrypted response requires the client's `jwks` or `jwks_uri`, and each value is among the server's advertised `*_values_supported`.",
+      "why": "Metadata the server cannot honor must fail at registration, not at runtime.",
+      "check": "Check validation of `*_signed_response_alg`, `*_encrypted_response_alg` and `*_encrypted_response_enc` for these three conditions.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store dynamically registered client metadata as typed client settings under their RFC names, not as an untyped metadata blob or extra keys beside the settings.",
+      "why": "A separate blob would duplicate the functional fields and create two sources of truth.",
+      "check": "Look for registration code that persists raw request JSON or unknown keys into the client's settings or a side document.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Delete a client together with its secrets and grants, including its registration access token, in one unit of work.",
+      "why": "Leftover grants would keep authorizing a client that no longer exists.",
+      "check": "Look for client deletion that removes only the client row, or removes owned data in separate saves.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

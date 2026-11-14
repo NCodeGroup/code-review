@@ -1,0 +1,139 @@
+{
+  "hash": "e735039be4c924be",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #124",
+  "rules": [
+    {
+      "statement": "Before untrusted text such as a pull request branch name reaches a shell or git command, check it against a conservative allow-list pattern whose first character can't be `-`, and pass it as a single quoted argument (for example `\"refs/heads/<name>\"`) in every command that uses it.",
+      "why": "Git ref names can contain `;`, `$`, backticks, `|`, `&` or a leading `-`, so an unchecked, unquoted name can run as shell syntax or be read as a git option with the maintainer's credentials.",
+      "check": "Look for placeholders filled from pull request or comment data that appear unquoted in shell or git commands, or with no validation step before use.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.md",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Anchor a .NET or PowerShell validation regex with `\\z`, not `$`, when it guards input that reaches a command or other sensitive sink.",
+      "why": "In .NET and PowerShell, `$` also matches before a trailing newline, so a value ending in `\\n` passes the check.",
+      "check": "Look for whole-value validation patterns of the form `^...$` in .NET or PowerShell code or in instructions that guard untrusted input.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an agent command that plans work from untrusted comment text, limit any verification command it writes to the repository's own build and test tooling or a plain file check, with no network fetch, no pipe into a shell, no downloaded script, no environment variable or credential file, and no text copied from a comment, and have the orchestrator check every command before it runs.",
+      "why": "A rule that comment text is data is not enough on its own: a prompt injection could otherwise make commands run on the maintainer's machine.",
+      "check": "Look at agent command prompts that turn comments into runnable commands. Check whether they limit what those commands may do and check them before execution.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An agent command that posts replies must forbid replies from containing environment values, tokens, credentials, or more of a file than the few lines they cite.",
+      "why": "A prompt injection in a comment could otherwise get secrets posted in a public reply.",
+      "check": "Look at agent prompts that write replies to pull requests or issues. Check for an explicit ban on secrets and large file contents.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an agent command that acts on pull request comments, let only authors with write access (OWNER, MEMBER, COLLABORATOR, or GitLab access_level 30 or more), bot accounts, or an explicitly named author trigger code changes, and treat anyone else's request as an answer, decline or question for the maintainer.",
+      "why": "On a public repository, an outside commenter could otherwise talk the planner into a harmful change that runs locally and gets pushed under the maintainer's credentials.",
+      "check": "Check whether the command reads each comment author's association and uses it to decide whether a comment can produce a change.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an agent command that edits and pushes code from comments, stop the run when a step edits a protected file (CI or release workflows, Git hooks, dependency manifests, lock files, package scripts, build or install scripts), unless a fix item from a trusted author names that file or asks for that change. An item that only mentions the file, or comes from anyone else, must never lift the stop.",
+      "why": "Edits to these files run in CI or on later installs, and a stranger's comment could otherwise steer the plan into changing them.",
+      "check": "Look for the list of protected files and the condition that lifts the stop. Check that the condition requires a trusted author's fix item.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run safety checks on an agent's plan again for every step added or rewritten later, such as by review rounds or re-plans, and check the final diff (`git diff --name-only` against the remote branch) for protected files before pushing.",
+      "why": "A check that runs only once before execution misses steps added later. The diff check depends on what the commits actually changed, not on what the plan says.",
+      "check": "Look for loops that add steps after the first plan check, and check that they run the check again. Check that a diff-based check comes before push.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script or command reads a paged API (GraphQL `first:` connections, REST `per_page`), page through the results or check `pageInfo.hasNextPage` and stop, rather than silently working from a cut-off list. Read the newest item of a list with `last:`.",
+      "why": "Items past the cap are otherwise never judged and never reported, and a long thread gets judged by a comment that isn't its last.",
+      "check": "Look for GraphQL queries with `first: N` that don't ask for `pageInfo`, REST or `glab`/`gh api` calls without pagination, and code that takes the last comment from a `first:` window.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an agent command limits how many comment items it handles, fill the limit with trusted authors' items first, and list every item cut by the limit in the run summary shown before the go-ahead.",
+      "why": "A stranger could otherwise flood a pull request to push real feedback out of the run and raise its cost.",
+      "check": "Look for item limits ordered only by age, and for cut items that are never reported.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".claude/commands/**/*.md",
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When looking up a commit made by this run, such as with `git log --grep`, limit the search to this run's range (`<start>..HEAD`) and take one result with `-1`.",
+      "why": "The branch can already hold commits with the same message pattern from earlier runs, so a search of the whole history can name an unrelated commit or several.",
+      "check": "Look for `git log --grep` lookups that have no revision range limiting them to the current run's commits.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

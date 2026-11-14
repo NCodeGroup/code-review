@@ -1,0 +1,44 @@
+{
+  "hash": "0a1100c6ca261adf",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #345",
+  "rules": [
+    {
+      "statement": "When a Claude Code permission ask/deny rule guards a sensitive root folder, cover every common way a command names it (quoted forms, after `(`, `;`, `&` or `|`, `./` and `../` prefixes, the bare folder as a standalone argument, and backslash forms for PowerShell) without relying on how Claude Code splits commands or strips quotes, but don't add a broad `*/name/*` pattern that would also match ordinary source folders.",
+      "why": "Narrow patterns let a careless or prompt-injected agent read the folder without a prompt through forms like `cd secrets && cat key` or `cat \"secrets/key\"`, while an over-broad pattern would prompt on source folders such as `src/Secrets/`.",
+      "check": "In a change to `.claude/settings.json` permission rules for a sensitive path, list the command forms (quoted, separator-adjacent, relative-prefixed, standalone argument, PowerShell backslash) and confirm each has a matching rule, and that no pattern also matches source paths.",
+      "scope": "domain",
+      "domain": "claude-code-configuration",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.claude/settings.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test that checks a configured list of rules or entries, assert the full expected set (every entry, or exact equality), not a subset.",
+      "why": "If the test requires only some entries, deleting one of the others still passes, so a regression goes unnoticed.",
+      "check": "Compare the test's required list with the entries the change adds to the configuration, and flag any entry that is missing from the assertion.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a dated CHANGELOG release section to be moved under `## [Unreleased]` when the repository dates the release section in the pull request that makes the release and its release workflow tags from the newest changelog section.",
+      "why": "In such repositories an entry left under `[Unreleased]` would not be tagged or released when the pull request merges.",
+      "check": "Before reporting, look at the release workflow (does it tag from the newest changelog section?) and at earlier releases (were their sections dated in the release pull request?).",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

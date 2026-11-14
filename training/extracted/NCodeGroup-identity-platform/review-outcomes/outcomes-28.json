@@ -1,0 +1,43 @@
+{
+  "hash": "5cb136ce6ca8db04",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform outcomes of #28",
+  "rules": [
+    {
+      "statement": "In a GitHub Actions workflow, don't put a job that must finish (such as one that records results on close) in the same concurrency group as a job that sets `cancel-in-progress: true`; give it its own group or make sure the cancelling job can't trigger while it runs.",
+      "why": "`cancel-in-progress: false` on a job only controls what that job cancels, not whether other runs cancel it. A newer run in the shared group can also take the group's single pending slot and replace the queued job, so its work is silently lost and nothing retries it.",
+      "check": "Look for jobs that share a `concurrency.group` expression where one sets `cancel-in-progress: true` and the other is expected to always complete. Also look for triggers, such as a comment command on a closed pull request, that could start the cancelling job while the other one runs.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In NCodeGroup's code-review workflow, don't report that a job reads `NCODE_REVIEW_APP_PRIVATE_KEY` without `environment: code-review`: the key is an organization secret limited to the opted-in repositories, and the `code-review` environment holds no secrets.",
+      "why": "The `code-review` environment exists only so that Anthropic's federation rule trusts the review job's OIDC token. A job without the environment and without `id-token: write` can already read the key, so leaving out the environment widens nothing. Moving the key into an environment is tracked as a separate hardening task.",
+      "check": "Before reporting a missing `environment:` on a job that uses the review app's key, check whether the job requests `id-token: write` or needs the federated identity. Only that case calls for the `code-review` environment.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/code-review.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change rewords a comment that explains how a workflow or script works, such as where secrets live, update every other comment in the same file that describes the same thing so that they agree.",
+      "why": "Comments that contradict each other give conflicting setup and debugging instructions, and one of them is wrong.",
+      "check": "When a diff adds or changes an explanatory comment, look for unchanged comments elsewhere in the file, such as setup notes or headers, that still describe the old behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "hash": "e688165024d38500",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #584",
+  "rules": [
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to the code under test to prove the `ArgumentNullException` guard of a non-nullable parameter.",
+      "why": "The testing conventions allow this one use of the null-forgiving operator; the maintainer declined the finding on that basis.",
+      "check": "Before flagging `null!` in a test, see whether it is an argument to the member under test in a test that asserts `ArgumentNullException`; flag only other uses, such as dereferencing a captured local or result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a stored tenant-supplied credential (access key, client secret, key file) to reach a tenant's cloud KMS key; access goes through the provider's recommended identity delegation, such as STS AssumeRole with an external ID, service account impersonation or a consented multi-tenant application.",
+      "why": "Delegation gives the same reach without a long-lived secret to protect, rotate or leak; a stored-credential option was considered and rejected.",
+      "check": "Look for new code or review suggestions that persist cloud credentials for tenant key access instead of assuming a granted identity.",
+      "scope": "domain",
+      "domain": "cloud-key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a policy that must wrap every call (such as confirm-on-success / release-on-failure of a cached client) in one shared, tested type that runs the operation, instead of repeating the try/catch at each call site.",
+      "why": "A repeated policy has to be changed at every site, and a site that forgets it leaves a broken entry cached or evicts a working one with nothing enforcing it.",
+      "check": "Look for the same try/catch-with-side-effects pattern copied across several adapters or call sites.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply `[ExcludeFromCodeCoverage]` only to pure passthrough code such as SDK construction and delegation; move real behavior (caching, eviction, state tracking) out of an excluded class into a tested type.",
+      "why": "Logic inside an excluded class is invisible to coverage, so its bugs would not show up in tests.",
+      "check": "For a class marked `[ExcludeFromCodeCoverage]`, see whether the diff adds branching, caching or state logic to it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose a disposable client or credential that a cache drops, whether it lost a creation race or was evicted or released, and don't dispose it while a call is still using it.",
+      "why": "Dropped clients that own channels, HTTP clients or refreshing credentials otherwise hold sockets until finalization, and repeated retries can exhaust connections.",
+      "check": "Look at `GetOrAdd` races, `TryRemove`, eviction and release paths on caches of disposable objects and check that the removed or losing instance is disposed safely.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound a cache whose keys come from tenant- or caller-controlled values, for example with idle expiry that disposes entries, instead of letting it grow for the process lifetime.",
+      "why": "Memory, connection pools and background refreshes otherwise grow with the number of distinct keys ever used, and tenants control that number.",
+      "check": "Look for long-lived dictionaries or caches keyed by tenant identities or input values that are only cleared on Dispose.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a cached lazy creation cache a failure: a `Lazy<T>` whose factory can fail transiently uses `LazyThreadSafetyMode.PublicationOnly`, or a failed creation removes its cache entry.",
+      "why": "The default `ExecutionAndPublication` mode caches the exception, so the entry stays broken until restart.",
+      "check": "Look for `Lazy<T>` or cache entries created with the default mode around factories that can throw, especially when the throw happens outside the caller's recovery path.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a selection rule that several packages need (such as first-translator-wins over registered handlers) in one public helper, such as an extension method next to the interface, and use it at every call site.",
+      "why": "Copies of the loop in different packages can drift apart.",
+      "check": "Look for the same loop over a set of services duplicated in another package or a private helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make `<exception>` doc entries name the exception types actually thrown, with one entry per type, and don't let the cref contradict the text.",
+      "why": "A caller that catches the documented type can miss the exception actually thrown.",
+      "check": "Compare `<exception cref>` entries with the prose and with the exceptions the member or the platform calls it makes can throw.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an event or record is built at several call sites from the same source object, have it take that object (or use a shared factory) instead of copying fields by hand at each site.",
+      "why": "A call site can forget a field and write incomplete records, such as audit entries without a new field.",
+      "check": "Look for a new field copied by hand onto the same type at several call sites.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare an optional member of a public record as a nullable `{ get; init; }` property, not a positional constructor parameter, consistent with sibling types.",
+      "why": "Positional optional parameters force callers to pass explicit nulls, and each later optional field breaks call sites.",
+      "check": "Look for nullable or optional positional parameters added to public records.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an edit form for an existing resource, prefill every stored field that the submission sends, so that changing one field doesn't silently clear the others.",
+      "why": "A missing prefill sent the request with no identity, silently moving the key to a different identity.",
+      "check": "Compare a dialog's initial values with the fields of its submitted request body and the stored resource.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, merge near-identical setup helpers into one helper with defaulted parameters instead of adding an overload that differs only in a matcher.",
+      "why": "Two near-identical helpers invite stubbing the wrong one or fixing only one.",
+      "check": "Look for new test helper overloads that duplicate an existing helper's body.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

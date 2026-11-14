@@ -1,0 +1,126 @@
+{
+  "hash": "311d46518b04c29f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1392",
+  "rules": [
+    {
+      "statement": "Decide whether a key fits a JOSE algorithm through the algorithm's own key-compatibility check, which covers the curve, and never by comparing only the key type and key size or by adding a separate curve check at the call site.",
+      "why": "Two curves can share a size (P-256 and secp256k1), so a size-only check lets a key sign under the wrong algorithm. Checks at each call site repeat the rule and cannot know the rules of a contributed algorithm.",
+      "check": "Look for credential selection, DPoP proof validation or alg/key validation code that compares key type or bit size, or tests the curve inline, instead of calling the algorithm's compatibility method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make ECDSA signing and verification check that the key's curve is the curve bound to the algorithm (ES256/P-256, ES384/P-384, ES512/P-521, ES256K/secp256k1), comparing by OID and then friendly name, and throw `ArgumentException` when they differ.",
+      "why": "RFC 7518 §3.4 and RFC 8812 bind each ES algorithm to one curve. Without the binding a P-256 key could sign as ES256K and a secp256k1 key as ES256.",
+      "check": "Look for ECDSA sign or verify paths that take the curve from the key without comparing it to the algorithm's curve, or that compare curves only by friendly name or key size.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Get the hash for OpenID Connect at_hash, c_hash and s_hash from the signing algorithm's token-hash function, never from the `alg` name or only from `HashAlgorithmName`.",
+      "why": "Ed448 uses SHAKE256 with 114 bytes of output, which `HashAlgorithmName` cannot name. Polymorphic EdDSA picks its hash by the key's curve, so the alg name alone gives the wrong hash.",
+      "check": "Look for token-hash code that switches on alg strings or maps `HashAlgorithmName` directly to compute at_hash, c_hash or s_hash.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the polymorphic JOSE `EdDSA` algorithm registered, selectable and advertised next to the fully-specified `Ed25519` and `Ed448`, and don't flag it just because RFC 9864 deprecates it.",
+      "why": "RFC 9864 deprecates EdDSA but does not prohibit it. Removing it breaks private_key_jwt and DPoP interop with the OpenID conformance suite and common libraries.",
+      "check": "Look for changes that remove or reject `EdDSA`, or that add Ed25519/Ed448 in place of it rather than beside it. Don't report code that keeps EdDSA for interop.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Limit FAPI 2.0 signing algorithms to `PS256`, `ES256` and `Ed25519` for every JWT the profile governs, DPoP proofs included, and exclude the polymorphic `EdDSA` and `Ed448`.",
+      "why": "FAPI 2.0 §5.4 permits only the Ed25519 variant of EdDSA, which `Ed25519` names exactly. Polymorphic `EdDSA` also accepts an Ed448 key.",
+      "check": "Look at FAPI 2.0 profile allow-lists for `EdDSA` or `Ed448`, and for JWT kinds such as DPoP proofs that skip the ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate contributed algorithm specifications all together when the algorithm collection is built, and fail on a null entry, an empty, whitespace or duplicate code, or a curve the curve catalog does not hold, compared by OID as well as by name.",
+      "why": "A key on a curve the catalog doesn't hold could not be generated, imported or named. Failing when the collection is built catches the misconfiguration before any key is used.",
+      "check": "Look for algorithm or curve registration that accepts specifications without checking for duplicates, empty codes or a matching curve in the catalog.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add an algorithm variant that differs only in parameters (such as a new ECDSA curve) by registering a data specification that the one existing implementation serves, not by copying the signing and verification code into a new class or package.",
+      "why": "Copies of the signing, verification and curve-check logic can drift apart. One parameterized implementation keeps a single source of truth.",
+      "check": "Look for new classes or packages that copy ECDSA or EdDSA sign/verify logic when only the curve, code or hash differs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use `TryAddEnumerable` to register several instances of one implementation type for an enumerable service. Register each instance with an instance-aware try-add instead.",
+      "why": "`TryAddEnumerable` keeps only one registration per implementation type, so it silently drops the application's other instances, such as other curves or algorithm specifications.",
+      "check": "Look for `TryAddEnumerable(ServiceDescriptor.Singleton(instance))` calls where other instances of the same concrete type may already be registered.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate the registration of a platform-dependent cryptographic algorithm or curve on a runtime probe that creates a key and signs and verifies with it, and register nothing when the probe fails.",
+      "why": "Support for curves such as secp256k1 depends on the platform, and on macOS `ECDsa.Create` throws for it. Gating at registration keeps discovery, the JWKS and the curve catalog from offering or accepting something the host cannot use.",
+      "check": "Look for optional crypto registrations that are unconditional, that check only the OS, or that are filtered only when algorithms are listed while the curve still reaches the catalog.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, skip a test that needs platform-dependent cryptography (secp256k1, `Shake256` for Ed448) when the platform doesn't support it, rather than letting it fail.",
+      "why": "Some platforms don't support secp256k1 or SHAKE256, and Ed448 signing and token hashing need `Shake256.IsSupported`.",
+      "check": "Look for tests of secp256k1, ES256K or Ed448 that run without checking the platform probe or `Shake256.IsSupported`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

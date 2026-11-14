@@ -1,0 +1,96 @@
+{
+  "hash": "c582bc2e2d512d26",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #757",
+  "rules": [
+    {
+      "statement": "A Try-pattern method that reports refusals as a false result must check whether the input is supported before calling anything that can throw for unsupported input, or must catch that exception type too. It must never let an exception escape for input the caller sent.",
+      "why": "An unknown key type made ComputeThumbprint throw NotSupportedException out of a Try method. An anonymous request then got a 500 instead of a 400 with a reason, which also broke the contract that callers rely on.",
+      "check": "In new Try* code, look for calls such as thumbprint or descriptor operations that run before the supported-type check. Also look for catch filters that leave out exceptions the callee documents, such as NotSupportedException.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test for new refusal behavior must assert the specific error text or condition of the new check, and must set up the input so that no other check could refuse it, so the test would fail under the old behavior.",
+      "why": "The duplicate-kid tests asserted only that the error contained \"'kid'\". The old 'must have a kid' refusal also matched that, so the tests proved nothing about the new duplicate detection.",
+      "check": "Look at the assertions in new negative tests. Flag a substring that an older or different error message would also match, and flag a setup where each input on its own isn't first shown to be accepted.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change moves a code path ahead of an existing validation, add tests for the inputs that now reach the moved path before that validation runs, such as an unsupported type combined with the condition that triggers the new path.",
+      "why": "The existing unsupported-type tests all used keys with a kid, so none of them reached the new naming path. The exception that escaped there went undetected.",
+      "check": "For reordered validation, check that tests combine the new trigger condition (for example, no identifier) with every input the later validation refuses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't change one member of a JSON document by round-tripping it through text and several representations (string to JsonNode to string to JsonElement). Build the modified copy in one pass with a dedicated helper, for example one that uses a Utf8JsonWriter, and remove the error branches that become unreachable.",
+      "why": "The round trips cost extra allocations and added a second construction path that had to be kept in step with the first. Their dead 'not an object' branches suggested failures that can't happen. A JsonObject built from untrusted JSON can also throw on duplicate members.",
+      "check": "Look for chains of ToJsonString/JsonNode.Parse/JsonElement.Parse used to add or replace one property. Look for error branches that run after the input was already validated.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a JSON null in an optional string member such as a JWK 'kid' the same as an absent or empty member, unless the governing specification or decision record says otherwise.",
+      "why": "Otherwise a client that serializes an absent kid as null is refused, while the same key with the member left out is accepted.",
+      "check": "Find where code tests whether an optional JSON member is present. Check whether null counts as present, and check the spec or decision record before reporting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code treats an empty string the same as a missing value, add a test that covers the empty-string case and expects the same result as the missing case.",
+      "why": "Without that test, a regression in the length check would go unnoticed.",
+      "check": "For new `{ Length: > 0 }` or IsNullOrEmpty branches, check that the tests include an empty-string input next to the absent or null input.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put an error message used in more than one place in a class into one private constant instead of repeating the literal.",
+      "why": "Repeated copies drift apart, so the same refusal would read differently depending on which check caught it.",
+      "check": "Look for identical error-message string literals at several sites in a file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a method that mixes levels of abstraction, such as checking a condition, computing a value and rebuilding a data structure, into small helpers that it composes.",
+      "why": "Small single-purpose steps are easier to read and test.",
+      "check": "Look for long new methods that combine low-level JSON or byte handling with higher-level decision logic.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "hash": "a234c044a1c9c2c9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #501",
+  "rules": [
+    {
+      "statement": "Make any counts or lists of changed members in a pull request description or changelog entry match the diff exactly, and name the members a count covers when it's ambiguous.",
+      "why": "When the numbers in a description don't match the diff, anyone checking one against the other can't tell what the description means. The maintainer fixed the count when the bot pointed this out.",
+      "check": "Count the items in the diff (for example, methods made static) and compare with any number in the PR description or CHANGELOG entry. Report a mismatch and ask which members the stated number covers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

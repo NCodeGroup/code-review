@@ -1,0 +1,122 @@
+{
+  "hash": "fca0e6d5eba9e201",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1222",
+  "rules": [
+    {
+      "statement": "Change a stored grant's payload only through the grant service's single read-modify-write operation, which applies a caller-supplied function to the grant as stored. Never compute a new payload from an earlier read and then replace the stored value.",
+      "why": "Replacing a value computed from an earlier read overwrites a write that landed in between. That can drop a client a concurrent request added to a session, or an approval that arrived during a poll.",
+      "check": "Look for code that reads a grant, changes or rebuilds its payload, and writes it back through a store update or save. It should instead pass an update function to the read-modify-write service method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the update function passed to a read-modify-write operation decide only from its argument, the value as stored, and give it no side effects. It may run several times when a save loses a race.",
+      "why": "A lost race reads the value again and calls the function again, up to three attempts. A function that captures state from an earlier read, or that has side effects, would act on stale data or act more than once.",
+      "check": "In update lambdas, look for captured values read before the call, I/O, notifications, logging of outcomes, deliveries, or mutation of outer state.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a save loses an optimistic-concurrency race, retry in a new unit of work that reads again. Allow a bounded number of attempts (three in total) and let the last concurrency exception propagate. Don't retry without bound or swallow the final failure.",
+      "why": "Each attempt sees every write committed before it, so three attempts are enough. Unbounded retries can livelock, and swallowing the failure hides it from the caller.",
+      "check": "Look at retry loops around a store-concurrency exception. Check for a fixed attempt limit, a fresh read on each attempt, and a rethrow after the last attempt.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the concurrency retry inside the shared service operation, not in each caller.",
+      "why": "Every caller would repeat the loop, and a caller that forgets it fails on a lost race.",
+      "check": "Look for endpoints or handlers that wrap a store call in their own loop that catches the concurrency exception, instead of calling a service method that already retries.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every revocation of grants go through the grant service, and make it retry by reading again when its save loses a concurrency race. Don't report success without revoking, and don't fail on the first lost race.",
+      "why": "A revocation is correct whatever state its caller read. Failing on a lost race answers 500 where RFC 7009 §2.2 requires 200 and leaves the token active. Reporting success without revoking leaves grants active after a logout.",
+      "check": "Look for revocation code that stamps revocation times directly through a store, or that catches the concurrency exception and returns success, or that doesn't retry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A state transition on a grant (an approval, a denial, adding a client to a session, recording a poll) checks its precondition on the stored value inside the update function. It also reports whether this call made the change, and only the call that made the change performs follow-up effects.",
+      "why": "Without this, two concurrent approvals both succeed and both deliver a ping or push tokens. A poll could also overwrite an approval that landed in between.",
+      "check": "Look for approvals or other transitions that check status on an earlier read rather than the stored value, that return void instead of whether they won, or whose callers deliver notifications or tokens without checking that result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A filtered bulk revocation or deletion throws ArgumentException when its filter is empty.",
+      "why": "This keeps an unscoped bulk revocation from happening by accident.",
+      "check": "Look at bulk revoke or delete methods that take a filter. Check for a guard that rejects an empty filter, and check that any new filter field counts toward the emptiness check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an operation revokes through a filter after reading the target for a 404 response or for audit details, write the audit record only when the revoked count is above zero.",
+      "why": "Another request may have revoked the grant between the read and the revocation, and it would otherwise be audited twice.",
+      "check": "Look for audit or log calls after a revocation that don't depend on the returned count or the returned boolean that says whether this call revoked.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't change rows that carry an interceptor-managed concurrency token with a set-based update such as ExecuteUpdate or ExecuteDelete. Load the rows and save them through the unit of work instead.",
+      "why": "A set-based update bypasses the interceptor-managed concurrency token, and the Entity Framework InMemory provider doesn't support it.",
+      "check": "Look for ExecuteUpdate or ExecuteUpdateAsync, ExecuteDelete or ExecuteDeleteAsync, or raw SQL updates against entities that have concurrency tokens.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't retry a spend-once operation, such as consuming a code or rotating a refresh token, after it loses a race. Treat the loss as a second spend or a reuse, because the operation's outcome depends on what it read.",
+      "why": "Unlike a revocation, a spend requires the grant to be active, so a retry after a lost race would wrongly spend it a second time.",
+      "check": "Look for consume-once, revoke-once or replace-once operations that wrap their save in a concurrency retry, instead of answering the lost race as a reuse.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

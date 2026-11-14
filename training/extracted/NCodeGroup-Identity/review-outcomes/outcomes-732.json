@@ -1,0 +1,40 @@
+{
+  "hash": "d27ff9ddd0474a20",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #732",
+  "rules": [
+    {
+      "statement": "Don't report a possible CS8603 or nullable warning when a `string?` is returned as non-null after `Assert.False(string.IsNullOrEmpty(x))` or `Assert.True(!string.IsNullOrEmpty(x))` in xUnit test code, and don't ask for a different assertion there.",
+      "why": "xUnit's `Assert.False` carries `[DoesNotReturnIf(true)]`, so the `[NotNullWhen(false)]` state of `string.IsNullOrEmpty` reaches the return and the build stays clean with warnings as errors.",
+      "check": "Before raising a nullable-flow finding after an xUnit assertion, check whether the assertion method has a `DoesNotReturnIf` annotation and the checked method has `NotNullWhen`. If both are there, the compiler already proves non-null and there is nothing to report.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test class passes the same string literal, such as a route or endpoint path, at several call sites, declare it once as a private const and use the const at each site.",
+      "why": "If the value changes, a repeated literal has to be updated by hand at every call site.",
+      "check": "Look for an identical string literal or interpolated constant that appears at several call sites in one class, and suggest a named private const.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest making a `CancellationToken` parameter optional (`= default`) to stop call sites passing `CancellationToken.None`. Async methods take the token as a required parameter, and root call sites with no token, including xUnit test methods that get none, pass `CancellationToken.None` explicitly.",
+      "why": "A required token means a call added inside a cancellable flow can't silently drop cancellation, so explicit `CancellationToken.None` at root call sites is intended, not noise.",
+      "check": "Before flagging repeated `CancellationToken.None` arguments or a required token parameter, check whether the caller is a root call site with no token in hand, such as a test method or an entry point. If it is, don't report it.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

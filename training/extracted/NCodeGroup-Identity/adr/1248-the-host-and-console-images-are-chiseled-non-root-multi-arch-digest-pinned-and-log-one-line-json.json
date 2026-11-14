@@ -1,0 +1,143 @@
+{
+  "hash": "80e3e97012c7c71f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1248",
+  "rules": [
+    {
+      "statement": "In a Dockerfile, every `FROM` names the base image by tag plus the digest of its multi-architecture index (`image:tag@sha256:…`), never by tag alone or by digest alone.",
+      "why": "A tag alone moves under the build and breaks reproducibility. A digest alone gets no operating-system fixes, while tag plus digest lets Dependabot move it on purpose in a reviewed pull request.",
+      "check": "Look for `FROM` lines that lack `@sha256:` or that lack a readable tag before the digest.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Dockerfile, don't build a `FROM` image reference from an `ARG` (for example `FROM node:${NODE_VERSION}`). Write the version as a literal.",
+      "why": "Dependabot can't update a `FROM` built from an argument, and a pinned digest overrides whatever version the argument names.",
+      "check": "Look for `ARG` values that are interpolated into a `FROM` line, such as a version argument placed beside a digest.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag a Dockerfile `FROM` line for being longer than the line-length limit when the length comes from a pinned digest.",
+      "why": "A digest can't wrap, so pinned `FROM` lines are expected to run past 120 columns.",
+      "check": "Before you report line length, check whether the long line is a `FROM` that carries an `@sha256:` digest.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The final stage of a production .NET container image uses a chiseled (distroless) ASP.NET runtime base and runs as the non-root app user by numeric id (`USER $APP_UID`).",
+      "why": "A production image has to be small, hold no shell or package manager an attacker could use after a compromise, and run without privilege.",
+      "check": "Look at the last stage of the Dockerfile. Report a full (non-chiseled) runtime base, a missing `USER` instruction, `USER root`, or a user named instead of given by numeric id.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make the final image build from a debug-only `base` stage that uses a full image with a shell. The final stage starts from the chiseled runtime image directly.",
+      "why": "The full-image `base` stage exists only for Visual Studio fast-mode debugging, which needs a shell. The shipped image must not carry that shell.",
+      "check": "Check that the final stage's `FROM` names the chiseled image and not a stage alias such as `base` that is built on a full image.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a Dockerfile `HEALTHCHECK` that runs a shell tool such as `curl` to a chiseled image. Health is probed by Kubernetes over the health endpoints.",
+      "why": "A chiseled image has no shell or curl, so such a health check can't run. Kubernetes probes `/health/live` and `/health/ready` over HTTPS instead.",
+      "check": "Look for `HEALTHCHECK CMD curl`, `wget` or shell commands in a Dockerfile whose final stage is chiseled.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a multi-arch Dockerfile, the SDK and Node build stages use `FROM --platform=$BUILDPLATFORM` and publish framework-dependent for `$TARGETARCH` with no app host, so that every target architecture builds without emulation.",
+      "why": "This lets `linux/amd64` and `linux/arm64` both build on an amd64 runner without QEMU emulation.",
+      "check": "Look for build stages that lack `--platform=$BUILDPLATFORM`, or a `dotnet publish` that doesn't pass the arch from `$TARGETARCH`, publishes self-contained, or keeps the app host.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a build file that the root imports (for example a new `Directory.*.props`/`.targets` or a script the build calls), re-admit it in the allow-list `.dockerignore` as well.",
+      "why": "`.dockerignore` excludes everything and re-admits only listed paths, so a build file that isn't listed is missing from the image build context and only the image checks catch it.",
+      "check": "Look for new root-level build inputs in the diff that have no matching `!` entry in `.dockerignore`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".dockerignore",
+        "Directory.*.props",
+        "Directory.*.targets",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set a host's console log format in its container image (`Logging__Console__FormatterName=json` with `UseUtcTimestamp=true` and `TimestampFormat=O`), not in the deployment chart. The chart sets no logging value and only lets an operator override it through extra environment variables.",
+      "why": "A log aggregator needs one JSON object per line, so a multi-line exception becomes a single entry. If the chart set the format, the image would write a different format when it runs another way.",
+      "check": "Look for a final image stage that is missing any of the three logging environment settings, or for a Helm chart or deployment manifest that hard-codes logging configuration values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/charts/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Keep the `simple` console formatter for local development (the debug `base` stage, the AppHost and `dotnet run`). Don't switch those to JSON.",
+      "why": "JSON logs are a contract of the shipped image only, and they are harder to read by eye during development.",
+      "check": "Look for JSON formatter settings added to `launchSettings.json`, AppHost configuration, `appsettings.Development.json` or the debug base stage.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/launchSettings.json",
+        "**/appsettings*.json",
+        "**/*AppHost*/**",
+        "**/Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write the Node major in the Dockerfile's Node base image as a literal that matches `.node-version`, and bump the two together.",
+      "why": "The Node toolchain version has one source, and the Dockerfile must agree with it.",
+      "check": "When `.node-version` or the Node `FROM` changes, check that the other changed to the same major.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/.node-version"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

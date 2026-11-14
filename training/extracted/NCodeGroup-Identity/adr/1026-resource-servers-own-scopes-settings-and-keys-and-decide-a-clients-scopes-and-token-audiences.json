@@ -1,0 +1,163 @@
+{
+  "hash": "2cd7537b42c83ac8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1026",
+  "rules": [
+    {
+      "statement": "Compare OAuth scope tokens case-sensitively and ordinally, and reject a requested scope outside the client's allowed set with the `invalid_scope` error.",
+      "why": "RFC 6749 defines scope tokens as case-sensitive, and the authorization and token request validators must refuse scopes the client may not request.",
+      "check": "Look for scope comparisons that use case-insensitive comparers or ToLower/ToUpper, and for out-of-set scopes that are dropped silently or answered with a different error code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set an access token's `aud` to the identifiers of the enabled resource servers that own its effective scopes, not to the client id. Fall back to the client id only for a scopeless token, so that no token is ever issued without an audience.",
+      "why": "An audience equal to the client id confuses the party that requested the token with the party that must accept it, so a resource server could not tell a token minted for it from any other token the client holds.",
+      "check": "Look for access-token minting code that sets `aud` to the client id while scopes are present, or that can emit a token with no `aud`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit the `aud` claim as a string when there is one audience and as an array when there are several, and validate a token by checking that `aud` contains the expected identifier, accepting the array form.",
+      "why": "RFC 7519 allows `aud` to be an array, and a resource server validates a token by finding its own identifier there.",
+      "check": "Look for audience validation that compares `aud` as one string with equality and would reject a valid multi-audience array, or for emission that always uses one form.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always set an ID token's `aud` to the client id.",
+      "why": "OpenID Connect requires it.",
+      "check": "Look for ID-token creation that derives `aud` from resource servers, scopes or `resource` parameters instead of the client id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat RFC 8707 `resource` values only as a narrowing of the audience derived from scopes: match them ordinally against known resource identifiers, never let them grant access to a resource the client holds no scope for, and reject every unknown, unauthorized or non-matching value with `invalid_target`.",
+      "why": "Taking the audience from `resource` alone would add a second source of truth and give an unbound token to a client that omits the parameter. Narrowing gives least privilege and the audience binding FAPI requires.",
+      "check": "Look for code that adds an audience or a scope because of a `resource` value, silently ignores an invalid `resource`, uses an error other than `invalid_target`, or uses a case-insensitive comparison or a URI-syntax check in place of matching known identifiers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At code redemption, refuse a `resource` value that the original authorization request did not authorize, with `invalid_target`.",
+      "why": "A token request may only narrow what the authorization granted, never widen it.",
+      "check": "Look at the authorization-code grant handler for missing checks that the token request's resources are a subset of those stored with the authorization code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce audience resolution and `resource` narrowing at one shared token-minting path that every grant type goes through, not separately in each grant handler.",
+      "why": "A single choke point gives the authorization code, refresh, client credentials, password and device code grants the same narrowing and enforcement.",
+      "check": "Look for a new grant type or token path that mints an access token without going through the shared token service and credential resolver, or that duplicates its audience logic.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add discovery metadata that advertises support for RFC 8707 resource indicators.",
+      "why": "Neither RFC 8707 nor RFC 8414 defines such metadata.",
+      "check": "Look for new discovery-document fields that advertise resource indicator support.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When working out the scopes a client may request, intersect the client grant's stored scope values with the resource server's current scopes at read time, and ignore stale values. Don't rely only on validation at write time.",
+      "why": "With only write-time validation, a scope removed from an API would stay honored until every grant is rewritten. Intersecting at read time keeps the resource server authoritative.",
+      "check": "Look for code that returns a grant's stored scope list directly as the allowed scopes without intersecting it with the resource server's current scope set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a client-grant write unless every granted scope value is one of the target resource server's scopes.",
+      "why": "A grant may only authorize scopes that the resource server defines.",
+      "check": "Look at create and update handlers for client grants that persist scope values without checking them against the resource server's scopes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't introduce a separate setting or flat list, such as a configured `scopes_supported` ceiling, that caps or decides a client's scopes alongside resource servers and client grants. Derive allowed scopes and discovery's `scopes_supported` from the resource servers alone.",
+      "why": "A second source of truth drifts from the resource-server and client-grant model and cannot express which client may call which API.",
+      "check": "Look for new options or settings that list allowed or supported scopes, or for discovery `scopes_supported` filled from configuration instead of from the enabled resource servers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a refresh token only when the client requested `offline_access` and `refresh_token` is among the supported grant types.",
+      "why": "The decision ties refresh-token issuance to both conditions.",
+      "check": "Look for token-response code that issues a refresh token without checking for the `offline_access` scope or without checking that the `refresh_token` grant is supported.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a management API, answer `409 Conflict` to deleting a system-owned resource or a resource that other entities still reference, rather than cascading the delete or failing with a server error.",
+      "why": "System resources such as the standard OpenID scopes must persist, and a referenced resource server must not disappear from under the grants and clients that use it.",
+      "check": "Look at delete endpoints for missing system-flag or reference checks, or for those cases returning 204, 400 or 500 instead of 409.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

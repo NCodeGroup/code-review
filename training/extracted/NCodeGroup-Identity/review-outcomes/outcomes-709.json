@@ -1,0 +1,151 @@
+{
+  "hash": "aeecc7b1e34eab54",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #709",
+  "rules": [
+    {
+      "statement": "When a change alters a startup, validation or error message that a decision record or guide quotes, update the quoted text in the same change.",
+      "why": "The decision record is meant to document the shipped messages; stale text means an operator searching for the printed message finds nothing and the record contradicts the code.",
+      "check": "Look for changed message strings in validators or exceptions and search the docs/ADRs touched by or relevant to the PR for the old text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a decision record changes behaviour that another accepted decision record describes, amend that record (its decision text and Status), list it among the records the new one amends, and update both index rows.",
+      "why": "Otherwise two accepted records describe the same behaviour differently.",
+      "check": "For a new or edited ADR, check whether earlier ADRs state the old behaviour and whether the amends list, Status and README rows reflect the amendment.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a service can only be resolved after a hosted service's start phase has run, document that ordering constraint in the registration's XML summary and guide, and make early resolution throw an InvalidOperationException naming what was not loaded.",
+      "why": "An undocumented ordering dependency makes a future early consumer (an eager singleton or ValidateOnStart code) fail at startup in a way that is hard to diagnose.",
+      "check": "Look for DI factories that return state populated by IHostedLifecycleService/IHostedService start methods and check the constraint is documented and the failure message is descriptive.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an object disposed by both the DI container and another owner as a defect when both dispose paths are idempotent and the second owner is needed to dispose instances that never pass through the container.",
+      "why": "Idempotent disposal cannot throw or release resources twice, and the extra owner disposes instances that the container never created.",
+      "check": "Before reporting, read the DisposeAsync/Dispose implementations (for example an IsDisposed guard) and check whether some instances bypass the container factory.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A second extension receiver shape for a library's registrations goes in a sibling static class named for the library it extends, not in the same class as the default registration and not in a class named after the feature.",
+      "why": "CA1708 allows only one extension receiver per static class, and the convention names a second receiver's class for the library it extends.",
+      "check": "Look for new registration classes holding an `extension` block, and check that each class has one receiver and is named for the library builder it extends.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a literal initial capacity passed to a growable pooled buffer writer (such as BufferFactory.CreatePooledBufferWriter) to become a named constant.",
+      "why": "The value is only a starting capacity that the writer grows past, not a limit, and the codebase passes literal initial capacities this way throughout.",
+      "check": "Before reporting a magic number, check whether it is an initial capacity argument of a growable buffer rather than a limit.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask options-validator failure messages to include the configured value; naming the full configuration key and the constraint is enough.",
+      "why": "The validation convention requires reporting each failure with its configuration key, not its value; a blank field has no value to show, and the key leads the operator to the value.",
+      "check": "Before reporting, check that the message names the full configuration key path and the constraint; only report if the key is missing.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report the null-forgiving operator when it passes a deliberate null to the code under test.",
+      "why": "The test conventions allow `null!` for deliberate nulls, and such tests can show how the code handles null input.",
+      "check": "Check whether the `!` sets up a deliberate null input (for example `Property = null!` or `builder = null!`) rather than silencing a real nullability warning.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that consumes validated options must read a null collection the validator accepts as empty as an empty collection, not iterate it unguarded.",
+      "why": "The validator accepts a null list as empty, so a consumer that iterates it throws on configuration that passed validation.",
+      "check": "Look for options collection properties that the validator treats as optional or empty and check that the consumers guard against null (for example `?? []`).",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert the exact count of calls or operations a flow produces, measured from a baseline, rather than a lower bound.",
+      "why": "A lower bound still passes when the code makes extra or unrelated calls, hiding regressions.",
+      "check": "Look for assertions such as `count >= n` or `count - baseline >= n` on call counters and ask for exact equality.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cover cleanup branches with tests: a partial failure that must dispose already-acquired resources, and a cancellation catch that must dispose and rethrow the OperationCanceledException unwrapped.",
+      "why": "Without tests, a regression that leaks resources on partial failure, or that reports a shutdown as a load failure, would go unnoticed.",
+      "check": "For new catch blocks that dispose resources or rethrow OperationCanceledException, check that a test triggers the branch and asserts the exception type and the disposal.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A catch that handles cancellation during an operation must dispose resources it acquired and rethrow the OperationCanceledException without wrapping it.",
+      "why": "Wrapping cancellation turns a shutdown during startup into a reported load failure.",
+      "check": "Look for catch blocks that wrap all exceptions in a domain exception and check that OperationCanceledException is excluded and rethrown after cleanup.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give defensive guard branches (such as a duplicate-add check) a direct unit test, even when the normal caller can't reach them.",
+      "why": "Otherwise removing the guard would go unnoticed.",
+      "check": "Look for new throw-guards in registries or holders and check for a test that calls the API directly to trigger them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

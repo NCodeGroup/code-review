@@ -1,0 +1,157 @@
+{
+  "hash": "2c557b9b3001e1c3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1140",
+  "rules": [
+    {
+      "statement": "Validate a configurable value against its domain (allowed vocabulary, numeric or duration range, URI or identifier shape, names of registered strategies), not only its type, so that a type-correct value the runtime cannot honor is rejected rather than silently accepted.",
+      "why": "A type-correct value outside its domain (a misspelled profile name, a negative lifetime, a non-https URI) is accepted without effect, the same silent failure as an unknown setting.",
+      "check": "Look for new settings or options whose validation only checks parsing or type, with no check on allowed values, range or shape, especially string names that must match a registered strategy.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the same domain validation at every entry point a value can come in through (configuration at startup and reload, management APIs, stored documents, registration endpoints, seeders), and reject an invalid value with the same outcome at each.",
+      "why": "Name, type and domain are checked together everywhere so that no entry point accepts a value the others would refuse.",
+      "check": "Check whether a new or changed validation is applied on only one path (for example config binding) while another path that writes or loads the same value (API, persistence, seeding) skips it, or whether stored values that fail validation are used instead of failing closed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give durations and numeric settings explicit ranges: a lifetime or interval of at least one second, a strictly positive timeout, a non-negative value where zero means disabled, and a size cap of at least one.",
+      "why": "A negative lifetime is a valid TimeSpan, and a zero timeout silently removes the bound on an outbound operation.",
+      "check": "Look for TimeSpan or integer settings for lifetimes, timeouts, intervals or size limits that accept zero, negative or unbounded values with no range validation.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a list-valued setting that contains a null element, and validate each element of a list against the element's domain.",
+      "why": "A misspelled or null entry in a ceiling list narrows it to nothing without any error.",
+      "check": "Look for list or collection settings that are validated as a whole but not element by element, or that allow null entries.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate URI-valued settings the way the runtime uses them: require a scheme and no whitespace, require https for URIs the server fetches (such as jwks_uri and sector_identifier_uri), require redirect URIs to be absolute with no fragment, and require host allow-list entries to be valid hosts that a parsed URI would report.",
+      "why": "A non-https jwks_uri is never fetched, a host entry like `10.0.0` never matches a parsed host, and a redirect URI written as a path is not absolute.",
+      "check": "Look for URI or host settings accepted as plain strings, or checked only with Uri.TryCreate, without checks on scheme, absoluteness, fragment or host form.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never accept `none`, `dir` or `RSA1_5` in a configurable JOSE algorithm list, and accept only registered algorithms of the list's kind.",
+      "why": "The server never offers these algorithms, and an unregistered name matches nothing.",
+      "check": "Look for algorithm-list settings or validators that would admit `none`, `dir`, `RSA1_5` or arbitrary strings.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow only asymmetric algorithms for signing tokens that cross a trust boundary (ID tokens, UserInfo, access tokens, introspection and authorization responses, DPoP proofs, CIBA requests). Request-object and client-assertion signing may keep symmetric algorithms for client_secret_jwt.",
+      "why": "A shared key cannot authenticate the issuer to anyone who holds it, and RFC 9449 forbids symmetric algorithms for DPoP.",
+      "check": "Look for signing-algorithm settings or defaults for these token types that admit HS256/HS384/HS512 or other symmetric algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not offer a refresh-token expiration policy that never expires: restrict the policy to absolute or sliding expiration.",
+      "why": "RFC 9700 §4.14.2 expects refresh tokens to expire.",
+      "check": "Look for refresh-token expiration options or enum values that allow an unlimited or never-expiring lifetime.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not accept the PKCE `plain` code challenge method; accept only registered transformation methods such as S256.",
+      "why": "The decision excludes `plain` from the PKCE methods it accepts.",
+      "check": "Look for code_challenge_methods settings, defaults or validators that admit `plain`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound the device-flow user_code length to between 8 and 32 characters.",
+      "why": "A short user code can be guessed (RFC 8628 §6.1), and a very large length can exhaust memory.",
+      "check": "Look for a user_code_length setting with no range check or a range outside 8 to 32.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate grant types as one of the server's named grants (authorization_code, implicit, password, client_credentials, refresh_token) or an absolute URI, instead of resolving grant handlers to build the domain.",
+      "why": "RFC 6749 §4.5 defines the domain and leaves extension grants open, and resolving handlers would tie validation to the whole token pipeline's construction graph.",
+      "check": "Look for grant-type validation that accepts arbitrary strings, or that resolves grant handler services just to validate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a setting value names a registered strategy (such as a security profile or client-authentication method), check it against the registered set when it is validated, and throw for an unknown name instead of silently applying nothing.",
+      "why": "An unknown profile name otherwise makes the client run without the requirements it was configured for, and nothing reports it.",
+      "check": "Look for lookups by configured name that return null, an empty result or a no-op when nothing matches, rather than rejecting the value or throwing.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not ask for code-set values (descriptor defaults, profile ceilings, default-settings providers) to be validated at the point where they are set. Instead, require a test that checks every registered default against its own rule.",
+      "why": "Values set in code are not input, and a ceiling may deliberately name a value outside the live domain, such as an algorithm from a package that is not installed.",
+      "check": "Before reporting missing validation in a Set call or a ceiling definition, check whether the value comes from code rather than input, and whether a test already checks the defaults against their rules.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "hash": "58405072599d19d8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1297",
+  "rules": [
+    {
+      "statement": "When a refresh token is rotated or reissued on retry, carry the rotation family's original start time forward to the new token, so the family keeps a fixed horizon of the configured refresh token lifetime counted from the grant that began it, and never reset that start on rotation.",
+      "why": "If each rotation renewed the window, an always-rotating public client's family would live as long as it is used, which breaks the meaning of an `absolute` expiration and removes the maximum a `sliding` policy promises (RFC 9700 §4.14.2 expects refresh tokens to expire).",
+      "check": "Look at refresh token issuance, rotation and retry paths. Flag any that set the family or lineage start to the current time instead of copying the presented token's value, or that extend the family's lifetime on use.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When token exchange issues a refresh token, start its family at the subject token's `auth_time`, not at the time of the exchange, and refuse the exchange with `invalid_grant` when the subject token has no `auth_time` or the horizon counted from it has already passed.",
+      "why": "Otherwise token exchange could renew a refresh token family past its fixed horizon.",
+      "check": "In token exchange handlers that issue refresh tokens, check where the family start comes from. Also check that a missing `auth_time` or an expired horizon is rejected with `invalid_grant`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under a sliding refresh token policy, set a token's expiry to the sliding lifetime counted from when it was issued or last used, capped at the family's fixed horizon. Under an absolute policy, set every token's expiry to the family's horizon.",
+      "why": "The sliding policy promises an extension only up to an absolute maximum, and `absolute` means a fixed point in time regardless of use.",
+      "check": "Look at refresh token expiry calculations. Flag sliding expiry that isn't capped at the family horizon, or absolute expiry that is computed per token from its issuance time.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a refresh token family's horizon at validation time from the stored family start and the client's current lifetime setting, rather than storing the computed horizon. Refuse a token whose family has passed its horizon with `invalid_grant` even when the store still marks it active, and treat a missing family start as expired so the check fails closed.",
+      "why": "A stored horizon would ignore a later change to the lifetime setting, so shortening the lifetime would not end existing families. Treating a missing start as expired fails closed.",
+      "check": "In refresh grant handling, look for persisted horizon or expiry values used as the family limit, for missing family-horizon checks when the store says the token is active, and for missing start values defaulting to accept.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every token response that carries a refresh token, from any grant (including refresh keep, rotate or retry, and CIBA push delivery), must include `refresh_token_expires_in` set to the whole seconds left until the family's fixed horizon, not the token's own expiry.",
+      "why": "Clients such as a BFF bound sessions by this value, which is sound only if it is a fixed horizon that never moves later. A token's own sliding expiry moves later with use and would end active sessions early.",
+      "check": "Find code paths that put a refresh token in a token response. Flag any that omit `refresh_token_expires_in`, or that compute it from the individual token's expiry instead of the family horizon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading `refresh_token_expires_in` from a token response on the client side, read it leniently: ignore a value that is not a positive whole number instead of failing the response.",
+      "why": "The member is advisory and not part of core OAuth 2.0, so a provider's odd value must not cause a token response to fail.",
+      "check": "Look at client token response parsing. Flag strict parsing of `refresh_token_expires_in` that throws or rejects the response on a missing, non-integer or non-positive value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Token introspection must report a refresh token as inactive once its family has passed its horizon, consistent with the refresh grant refusing it.",
+      "why": "Introspection must not report as active a token that the refresh grant would reject with `invalid_grant`.",
+      "check": "In introspection of refresh tokens, verify that the family horizon is checked, not just the stored status or the token's own expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

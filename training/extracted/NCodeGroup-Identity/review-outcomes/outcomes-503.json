@@ -1,0 +1,73 @@
+{
+  "hash": "3d55031c13bbd05e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #503",
+  "rules": [
+    {
+      "statement": "Don't ask for the body of an accepted ADR to be reworded when a later ADR supersedes part of it; accepted ADRs are immutable except their Status line, which should point to the newer ADR.",
+      "why": "An accepted ADR records the decision as it was made; later changes are recorded in a new ADR referenced from the old one's Status line.",
+      "check": "Before reporting stale content in an accepted ADR, check docs/decisions/README.md for the immutability rule and whether the ADR's Status line already references the superseding ADR; only report if the Status line is missing that reference.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An XML doc comment must not make claims about a type's behaviour that other members of the same type contradict, such as saying a secret is never a string while its readers return strings, or calling a file random bytes when callers use its text.",
+      "why": "An inaccurate comment misleads readers about how data (especially secrets) is handled and can lead a maintainer to misuse it, for example encoding a value twice.",
+      "check": "Compare the claims in <summary>/<remarks> against the signatures and bodies of the type's members and its callers; flag claims about representation or lifetime the code does not uphold.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't return the same value both from inside a catch and again right after the try/catch; restructure so the method has a single return for that case.",
+      "why": "Duplicate returns make readers check whether the two paths return different things.",
+      "check": "Look for a catch block ending in `return x;` immediately followed after the try/catch by the same `return x;`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report the same misconfiguration with the same wording everywhere it is detected (options validator and library runtime check), with a comment explaining any intentional difference in the rest of the message.",
+      "why": "Different messages for one condition confuse hosts and library callers, and the strings drift apart.",
+      "check": "When a diff adds a validation or exception message for a configuration condition, search for other messages reporting the same condition and compare their wording.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest sharing a message constant or other internal member across assemblies through InternalsVisibleTo; when the members live in different production assemblies, ask for matching wording instead.",
+      "why": "Cross-assembly InternalsVisibleTo between production assemblies is banned by the production C# conventions.",
+      "check": "Before suggesting a shared constant, check whether the two usages are in different production assemblies and whether the member would have to be internal.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A race-handling branch, such as the path where another process moves a file into place first, should be extracted behind a testable seam and covered by a test.",
+      "why": "A regression in the lost-race branch, such as overwriting the winner's file, causes divergent state that only shows up indirectly and is hard to diagnose.",
+      "check": "Look for catch/when branches handling concurrent writers (File.Move IOException, file already exists) with no test exercising them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "hash": "16e0f966c44c4820",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1439",
+  "rules": [
+    {
+      "statement": "When loading private key material from a file, read it into a sensitive buffer and decode it into a sensitive character buffer that goes straight to the secret-key factory, never into an ordinary string or array.",
+      "why": "How keys are loaded decides where the private key's bytes live in the process; ordinary strings and arrays leave copies that can't be cleared.",
+      "check": "Look for key-loading code that uses File.ReadAllText/ReadAllBytes, string or byte[] locals, or Encoding.GetString for PEM or other private key content instead of sensitive buffer types.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't accept a private key's text as a configuration value; load private keys from files (such as mounted PEM secrets) or a key provider that configuration only names.",
+      "why": "A private key in a configuration value ends up in logs and in dumps of the configuration.",
+      "check": "Look for options properties or configuration keys that hold PEM text, base64 key bytes or JWK private parameters directly.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check that a configured name refers to a registered resource (key ring, provider, keyed service) at startup and on every configuration change, not first at the request that uses it.",
+      "why": "A misspelled name that fails only on first use stays hidden until a user signs in, long after the host started or the configuration changed.",
+      "check": "Look for configuration that names a keyed service or named resource where nothing validates the name exists until a request resolves it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check whether a named resource exists through the abstraction that resolves it (for example a provider's Has… method), not by querying keyed dependency injection or the underlying store directly.",
+      "why": "A host can replace the provider with a source that isn't keyed DI, and a check that bypasses it would refuse names that the replacement source finds.",
+      "check": "Look for validation code that calls IServiceProviderIsKeyedService or GetKeyedService directly when a provider interface is the seam that resolves the resource.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an existence check that runs on every configuration change answer without loading the resource, for example without reading key files or decoding keys.",
+      "why": "Loading in the check reads every file on every change, and a load failure would refuse the configuration for a reason the name doesn't show.",
+      "check": "Look for configuration-change validators that call GetKeyRing, load keys or read files just to find out whether a name exists.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a key file fails to parse, throw an exception whose message names both the logical owner (such as the key ring) and the file path.",
+      "why": "The operator has to know which configured entry and which file are wrong to fix a failed key load.",
+      "check": "Look for key-loading failures that throw or rethrow without the ring or entry name and the path in the message.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an options validator report one failure message per problem found, such as a missing name, an empty entry, a missing file or a duplicate id, rather than stopping at the first one.",
+      "why": "Startup validation should show every configuration problem at once.",
+      "check": "Look for IValidateOptions implementations that return on the first failure or merge several problems into one generic message.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve a relative file path from configuration against the host's content root, and use an absolute path as given.",
+      "why": "Relative paths otherwise depend on the process's current directory.",
+      "check": "Look for configured file paths passed to file APIs without combining relative paths with IHostEnvironment.ContentRootPath.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "hash": "6e0edfe1af1201b3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1300",
+  "rules": [
+    {
+      "statement": "Bind a TLS client certificate to its own HTTP handler, such as one named `IHttpClientFactory` client per certificate keyed by a hash of the certificate's DER encoding. Never switch certificates per request on a shared handler.",
+      "why": "A client certificate belongs to the connection, and `SocketsHttpHandler` pools connections per host, not per certificate, so a connection opened with one certificate would serve a request that needs another.",
+      "check": "Look for code that sets or chooses a client certificate per request on a shared or pooled handler, or that reuses one named client for different certificates.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do the validation and selection that can fail, such as choosing a certificate or checking its private key, before asking `IHttpClientFactory` for a client, and only look up the results while the handler is being built.",
+      "why": "`IHttpClientFactory` caches an exception thrown while it builds a handler for a name, so a configuration error would outlive its fix.",
+      "check": "Look for throwing validation or configuration lookups inside `ConfigurePrimaryHttpMessageHandler` or `IConfigureNamedOptions<HttpClientFactoryOptions>` callbacks.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Present a TLS client certificate through `SslClientAuthenticationOptions.ClientCertificateContext` built with `SslStreamCertificateContext.Create(certificate, issuers, offline: true)`, so the issuer certificates are sent with it. Don't rely on the machine's certificate stores or on Authority Information Access downloads to complete the chain.",
+      "why": "A server that trusts only the root refuses a certificate sent without its intermediates. The machine stores lack intermediates in containers, and downloading them makes an outbound request during the handshake, which fails where egress is restricted.",
+      "check": "Look for client certificates set via `ClientCertificates` or a selection callback without their issuers, or a certificate context created with `offline: false`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let an extensible strategy declare a behavioural trait through a member, such as a `UsesMutualTls` property. Don't make callers infer the behaviour by comparing the strategy's method name against a fixed list.",
+      "why": "Vocabularies are open, so a closed list of names would stop a third-party implementation from getting the same behaviour.",
+      "check": "Look for switches or comparisons on a strategy's name or method string that decide transport or other behaviour.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When choosing a key ring's TLS client certificate, use only keys whose use is not `enc` and that hold a private key. Their certificate must allow client authentication: no EKU extension or one listing `1.3.6.1.5.5.7.3.2`, and no KeyUsage extension or one with `DigitalSignature`. The current time must fall within `NotBefore`..`NotAfter`. Take the first qualifying key in ring order, and throw `InvalidOperationException` when none qualifies.",
+      "why": "This keeps encryption keys from ever being presented, skips staged certificates until they are valid, and reports a missing credential as a configuration error.",
+      "check": "Look for client certificate selection that skips any of these checks or that picks a key in an order other than ring order.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When building a key from a certificate collection such as a loaded PKCS#12 file, identify the key's own certificate as the single certificate that holds a private key, never by its position. Treat the others, minus duplicates of it, as issuers in the given order. Throw `ArgumentException` when no certificate or more than one holds a private key.",
+      "why": "PKCS#12 does not order its bags, and the certificate with the private key is the one the key signs with, so zero or several private keys make the key's certificate ambiguous.",
+      "check": "Look for code that takes `collection[0]` or the first certificate as the leaf, or that accepts collections with zero or several private keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When probing for a private key with `ExportParameters(includePrivateParameters: true)`, treat a `CryptographicException` as \"public only\" and zero the exported private parameter arrays afterwards.",
+      "why": "Exported private key material must not linger in memory after the probe.",
+      "check": "Look for `ExportParameters(true)` calls whose private arrays (D, P, Q, DP, DQ, InverseQ) are not cleared, for example with `CryptographicOperations.ZeroMemory`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't evict or dispose a cached certificate while an HTTP handler may still use it. Keep it in a singleton cache that disposes it when the container is disposed.",
+      "why": "Disposing a certificate under a live handler breaks its handshakes.",
+      "check": "Look for certificates passed to handlers that are disposed in a `using` block, evicted from a cache, or left with no owner that disposes them.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On Windows, re-import a certificate with an ephemeral private key through PKCS#12 before using it for TLS client authentication.",
+      "why": "SChannel cannot use an ephemeral private key for TLS.",
+      "check": "Look for certificates combined with a private key in memory (for example with `CopyWithPrivateKey`) and used for TLS without a PKCS#12 round-trip on Windows.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client uses mutual TLS and the provider publishes an `mtls_endpoint_aliases` entry for the endpoint, send the request to the alias. Use that URL for the DPoP proof's `htu`, for the DPoP nonce cache key and for the authentication context's endpoint.",
+      "why": "RFC 8705 §5 directs mutual-TLS clients to the aliases, and DPoP values must match the URL actually called.",
+      "check": "Look for mTLS requests sent to the plain metadata endpoint despite an alias, or for DPoP `htu` and nonce lookups that use the original endpoint instead of the alias.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every `mtls_endpoint_aliases` URL with the same endpoint rule as the other discovered endpoints (https, or http only on loopback), and fail discovery when one doesn't pass.",
+      "why": "An alias is an endpoint the client sends credentials to, so it needs the same transport guarantee.",
+      "check": "Look for discovery parsing that accepts alias URLs without the https/loopback check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always send `client_id` in requests authenticated with `tls_client_auth` or `self_signed_tls_client_auth`.",
+      "why": "RFC 8705 §2 requires `client_id` for the mutual-TLS methods.",
+      "check": "Look for mTLS client authenticators that leave out `client_id` from the request parameters.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure the handlers that protocol clients use to call an authorization server with automatic redirects and cookies turned off.",
+      "why": "The handlers that present the client's credential to the provider must not follow redirects or carry cookie state.",
+      "check": "Look for `SocketsHttpHandler` or `HttpClientHandler` used for protocol calls without `AllowAutoRedirect = false` and `UseCookies = false`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, prove that a TLS client certificate reaches the wire with a real handshake against a `TcpListener` and `SslStream` server bound to the loopback address on an ephemeral port.",
+      "why": "It keeps the test hermetic, and `TestServer` terminates no TLS, so it cannot show the certificate is presented.",
+      "check": "Look for TLS client certificate tests that only check handler configuration, use fixed ports, bind to non-loopback addresses, or rely on `TestServer` to observe the certificate.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't persist or publish a key's issuer certificates or private key with its certificate: store private keys as PKCS#8 without a certificate, and publish JWK sets without `x5c`.",
+      "why": "Only a key built in memory from certificates can present a certificate, so stored issuers would serve no purpose and would leak into published key sets.",
+      "check": "Look for serialization of issuer certificates into the secrets store or for `x5c` added to published JWKs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

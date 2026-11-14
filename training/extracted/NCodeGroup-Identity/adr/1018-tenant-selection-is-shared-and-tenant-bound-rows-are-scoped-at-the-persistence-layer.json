@@ -1,0 +1,139 @@
+{
+  "hash": "bbcbc19d446789f1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1018",
+  "rules": [
+    {
+      "statement": "Scope tenant-bound data access in the query itself (an ambient tenant scope plus a global query filter), and don't load a row by identifier first and then compare its tenant to the request's tenant.",
+      "why": "A check made after the fetch has already loaded the row, sensitive material included. Any logging statement, early return or later refactor between the read and the comparison can leak another tenant's data, and every call site repeats the risk.",
+      "check": "Look for code that loads a tenant-bound entity and then compares its tenant ID to the current tenant, or that relies on authorization handlers running after the load, instead of on the query filter.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on per-call-site tenant-scoped lookups, where each query passes the current tenant explicitly, as the isolation mechanism. Apply tenant scoping once, by interface, as a global query filter on every tenant-bound entity.",
+      "why": "Per-call-site scoping is correct only while every call site remembers it, and one omission leaks. A filter applied by interface scopes new tenant-child entities automatically.",
+      "check": "Look for new tenant-bound queries that add their own tenant predicate instead of relying on the filter, and for new tenant-child entities that don't implement the tenant marker interface that the filter targets.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every tenant-child entity a denormalized, indexed normalized-tenant-ID column, so the tenant filter is a single indexed-column predicate.",
+      "why": "The global query filter compares this column to the ambient tenant, so each tenant-child table needs the column and an index on it.",
+      "check": "Look for new tenant-bound entities or migrations that lack the tenant ID column or an index on it, or whose filter reaches the tenant through a join.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When creating a tenant-bound resource, take the owning tenant from the ambient or route scope, never from the request body, and don't put a tenant identifier on the request contract at all.",
+      "why": "The owning tenant comes from the context, never from the request, so a caller can't create resources in another tenant.",
+      "check": "Look for create or update request DTOs with a tenant ID property, or handlers that read the owning tenant from the payload.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer `404` for a tenant-bound resource that belongs to another tenant, and give that answer before request validation runs, so the existence of resources in other tenants can't be probed.",
+      "why": "The filter never loads a cross-tenant row, so it must look like a row that doesn't exist. Running validation first would reveal that it exists.",
+      "check": "Look for handlers that return `403` or a validation error for a cross-tenant resource, or that validate the request body before loading the addressed resource through the scoped query.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hold the ambient tenant scope in an `AsyncLocal<T>`-backed accessor, not in DI-scoped state, so the scope reaches DbContexts that an `IDbContextFactory` creates from the root provider.",
+      "why": "Contexts created by `IDbContextFactory` live outside the current dependency-injection scope, so scoped state wouldn't reach them and their queries would run unscoped.",
+      "check": "Look for a tenant scope stored in a scoped service or in `HttpContext` that DbContext query filters read, where the context may come from `IDbContextFactory`.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the tenant scope accessor a required constructor dependency of the DbContext, with no optional or null default, so a missing registration fails at startup. Tests and tooling that construct the context directly pass an explicit unscoped accessor.",
+      "why": "Isolation has to fail closed. A missing registration must be a startup failure, never a silent loss of isolation.",
+      "check": "Look for a DbContext that takes the tenant accessor as optional or nullable or falls back to unscoped, and for tests that construct the context without an explicit accessor.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve and materialize a request's tenant with no scope open, then open the ambient tenant scope for the rest of the request, before any tenant-bound reads.",
+      "why": "Tenant resolution reads tenant rows unscoped. Every later read on the request has to be confined to the resolved tenant.",
+      "check": "Look for endpoint groups that serve tenant-bound data without the filter that opens the scope, or code that does tenant-bound reads before the scope opens.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a route addressed by tenant, open the tenant scope from the route's tenant value, and answer `404` when that segment is missing. Routes outside a tenant carry no tenant segment and run unscoped.",
+      "why": "A management request is scoped by its route's tenant, not by the tenant the request resolves to.",
+      "check": "Look for tenant-plane routes that take the scope from the resolved request tenant or from the body, or for control-plane routes that open a tenant scope.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the protocol runtime and the management API both depend on one shared tenant-resolution abstraction injected through DI, rather than each implementing or reusing the other's tenant provider.",
+      "why": "The two surfaces must never disagree on which tenant a request is. Reusing the runtime's provider would also pull the protocol runtime into the management API.",
+      "check": "Look for a second tenant-resolution implementation, or for a management component that references the runtime's tenant provider instead of the shared resolver abstraction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep unscoped reads of tenant-bound rows explicit and limited to tenant resolution, tenant management, control-plane routes and tooling.",
+      "why": "With no scope open the filter is a no-op and the code sees every tenant's rows.",
+      "check": "Look for new code paths that read tenant-bound entities with no scope open and outside those sanctioned paths.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "hash": "38f044d5425aad54",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1485",
+  "rules": [
+    {
+      "statement": "In a Helm chart, gate an optional feature section that stands for operator consent behind an explicit boolean `enabled` value defaulting to `false`, not behind whether some other value such as a location or identity is set.",
+      "why": "Every chart value has a default, so a value's presence can't stand for an absent section. A location or identity used as the switch would re-register a vendor the operator turned off, and would leave no way to enable a mode that has no location.",
+      "check": "Look for chart templates that render a configuration section only when a non-boolean value like a region, URI or identity is non-empty, where that section's existence changes behavior on its own.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/templates/**",
+        "**/charts/**/values.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, fail the render for a value that has no effect on its own, such as a location set on a feature that isn't enabled, or a credential configuration that is only half set.",
+      "why": "The chart refuses any release the host would refuse, and a setting that silently does nothing hides a misconfiguration.",
+      "check": "When a diff adds dependent chart values, check that the templates `fail` if the dependent value is set while its feature is disabled, or if only some fields of a multi-field identity are set.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In chart values, model a collection of entries identified by an id as a map keyed by that id, not as a list of objects with an id field.",
+      "why": "A map can't name one id twice, and a list can.",
+      "check": "Look for new list-valued chart values whose items carry an `id`/`kid`/`name` field that must be unique.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/values.yaml",
+        "**/charts/**/values.schema.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two chart components render the same credential or configuration shape, render it with one shared helper that takes a parameter dict, and define the shape once in the shared schema `definitions`, rather than copying the helper or the schema.",
+      "why": "Two renderings of one shape drift.",
+      "check": "Look for duplicated template helpers or duplicated values-schema objects that render or validate the same structure for different components.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/charts/**/templates/**",
+        "**/charts/**/values.schema.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each deployed component its own workload identity and mount a cloud vendor's credentials only into the pods of a component that uses that vendor; never reuse a more privileged component's identity.",
+      "why": "Least privilege: the server's identity creates and destroys keys and its federated credentials trust the server's ServiceAccount, so another component reusing it would get powers it doesn't need.",
+      "check": "Look for chart templates that mount one component's vendor credentials or ServiceAccount into another component's pods, or that mount them without a condition on that component using the vendor.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, don't recommend `extraEnv` or other raw passthrough values for settings the chart models directly.",
+      "why": "Passthrough bypasses the chart's refusals and its credential mounts.",
+      "check": "Look for docs, CI values or templates that set modeled configuration through `extraEnv` instead of the dedicated chart values.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Restrict user-supplied identifiers that become part of .NET configuration keys or environment variable names to a safe pattern, such as letters and digits separated by single `.`, `_` or `-`, with a length limit, and refuse ids that are equal when compared without case.",
+      "why": "An id containing `__` would split into separate configuration sections, the id must be a valid environment variable name, and .NET configuration keys are case-insensitive, so two ids that differ only in case collide.",
+      "check": "Look for values or inputs that are interpolated into `Section__<id>__*` env names or configuration paths without pattern validation or a case-insensitive uniqueness check.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

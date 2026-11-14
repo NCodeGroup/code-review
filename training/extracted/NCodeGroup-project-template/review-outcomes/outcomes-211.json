@@ -1,0 +1,43 @@
+{
+  "hash": "df2c499e4654a95b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #211",
+  "rules": [
+    {
+      "statement": "In a test project, when a test asserts that a filter excludes some kind of item, make the fixture actually produce such an item and assert it appears upstream of the filter, so a regression of the filter fails the test.",
+      "why": "If the fixture never produces the excluded case, the assertion passes whether or not the filter works, and a regression would go unnoticed.",
+      "check": "Look for tests asserting an output lists only certain items after a filter; verify the fixture creates an item the filter must remove and that a separate assertion confirms that item was actually encountered.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, give each distinct skip or graceful-exit branch of a script its own fixture and assertions (exit code and skip reason), not just one sibling branch.",
+      "why": "An untested skip branch can regress into an error, for example failing CI in shallow clones or unrelated histories, with nothing catching it.",
+      "check": "When a script has several conditions that lead to a skip (for example missing remote ref vs. no merge base), check that tests cover each one, asserting success exit and the specific skip message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test suite to dot-source or import another suite's shared fixture file just to reuse a small helper (such as a few-line git wrapper); suites keeping their own copy is intentional.",
+      "why": "Each suite should run on its own, and pulling in another suite's fixtures couples unrelated suites for a trivial helper.",
+      "check": "Before reporting a duplicated small helper in a test suite, check whether sibling suites follow the same per-suite copy pattern and whether the shared file belongs to a different suite group; if so, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

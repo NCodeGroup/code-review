@@ -1,0 +1,115 @@
+{
+  "hash": "3392f6520decdfe7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1301",
+  "rules": [
+    {
+      "statement": "Accept a UserInfo response only in the format the client registered: a client that registered `userinfo_signed_response_alg` accepts only an `application/jwt` response, a client that registered no signing accepts only JSON, it sets the `Accept` header to match, and it refuses a response in the other format as unsupported.",
+      "why": "A JSON response to a signing client is a downgrade to claims nobody signed, which lets an attacker strip the signature. A JWT sent to a JSON-only client uses no algorithm the client chose.",
+      "check": "Look at UserInfo response handling that branches on the response Content-Type rather than on the registration, that falls back to JSON when signing was registered, or that validates a JWT the client never asked for.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never accept an encrypted JWT whose content is not signed, such as a UserInfo response. Treat a registration that has encryption but no signing, or content encryption without a key management algorithm, as a configuration error that throws `InvalidOperationException` before any request is sent.",
+      "why": "Anyone holding the client's public key can produce a JWE, so encrypted-only content is unauthenticated. Supporting it would also need a second path around the validator's signed-only rule.",
+      "check": "Look for code paths that decrypt a JWE and use its payload without verifying a nested JWS. Look also for registration or options validation that allows encryption algorithms without signing algorithms, or `enc` without `alg`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every provider-issued JWT, such as a signed or nested UserInfo response, through the shared JWT validation core, and don't copy the ID-token checks. Validate it under the algorithms registered for that token type, not the ID-token algorithms. Require the algorithm to be asymmetric and, when the provider's metadata lists supported algorithms, to be one it advertises. Require `iss` to equal the issuer, `aud` to name the client, and `typ`, when present, to be `JWT`.",
+      "why": "Copies of the same security checks drift apart. Each token type has its own algorithm registration (RFC 8725 §3.1, §3.2).",
+      "check": "Look for a new JWT validation routine that re-implements signature, issuer or audience checks. Look also for UserInfo JWTs validated against the ID-token algorithm list, or validation that skips the asymmetric-algorithm, issuer, audience or `typ` checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a UserInfo JWT to require `exp`, `nbf` or `iat`. Honor them when present, but treat them as optional.",
+      "why": "OpenID Connect Core §5.3.2 requires none of them in a UserInfo response.",
+      "check": "Before reporting a missing lifetime-claim requirement on UserInfo JWT validation, confirm the token is a UserInfo response and not an ID token or logout token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use UserInfo claims only after checking that the response's `sub` exactly equals the ID token's `sub`, and fail with a subject-mismatch error otherwise.",
+      "why": "OpenID Connect Core §5.3.2 requires this check, because a response about another user must not be used.",
+      "check": "Look at UserInfo handling for a missing or loose comparison of `sub` (case-insensitive, trimmed, or skipped when absent) before the claims are used.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map JSON claims from any source, such as a UserInfo JSON body or a JWT payload, to `Claim`s through the shared JWT stack's claim mapping. Don't add a separate mapping.",
+      "why": "Then a claim with the same JSON value is the same `Claim` whatever its source, and a second mapping would drift from the JWT stack's.",
+      "check": "Look for new code that builds `Claim` objects from a `JsonElement` or JSON property by hand instead of calling the shared claims-identity factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Present an access token to a resource such as the UserInfo endpoint the way it was issued. Send a DPoP-bound token as `Authorization: DPoP` with a proof of its key, retry a `use_dpop_nonce` challenge exactly once with the nonce, and send other tokens as bearer tokens. Use the endpoint's mTLS alias when the client authenticates with mutual TLS.",
+      "why": "A DPoP-bound or certificate-bound token is accepted only with its proof of possession (RFC 9449 §7, §9; RFC 8705 §5).",
+      "check": "Look for calls to protected endpoints that always send `Bearer`, that ignore the token's DPoP binding, that retry a nonce challenge more than once or never, or that skip `mtls_endpoint_aliases` when mutual TLS is in use.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When merging UserInfo claims into a session, let each UserInfo claim type replace the ID token's claims of that type. Never take `iss`, `sub`, `sid`, `auth_time`, `acr`, `amr` or validation-only claims from UserInfo.",
+      "why": "UserInfo is the provider's current profile, but those claims anchor the session to the authentication. Two values from two sources would leave the app to guess which to trust.",
+      "check": "Look at claim-merge code that appends UserInfo values alongside the ID token's values, that only fills missing types, or that copies authentication-anchoring claims from UserInfo.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured JOSE algorithm lists at startup. Refuse blank entries, `none`, duplicates, content encryption without key management, encryption without signing, and encryption without a configured decryption key ring.",
+      "why": "The host should refuse to start on a configuration that would accept unsigned content or could never decrypt a response.",
+      "check": "Look at new algorithm options for missing startup validation of these cases.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

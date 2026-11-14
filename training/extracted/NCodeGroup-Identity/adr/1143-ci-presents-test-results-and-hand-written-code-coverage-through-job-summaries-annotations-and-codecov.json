@@ -1,0 +1,129 @@
+{
+  "hash": "61d8a8e7c0e50a81",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1143",
+  "rules": [
+    {
+      "statement": "In GitHub Actions workflows, every `actions/checkout` step sets `persist-credentials: false`, unless the job pushes with the job token.",
+      "why": "Otherwise the job token is written to `.git/config`, where build, test and third-party code can read it.",
+      "check": "Look for checkout steps in workflow files that lack `persist-credentials: false` in jobs that never push commits or tags.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give gate (build/test) jobs only `contents: read`. Run any step that needs `id-token: write` or another write permission, such as a coverage upload, in a separate job, never inside the gate job.",
+      "why": "Keeping an OIDC-minting permission or a token out of the gate job means third-party build and test code can't reach it.",
+      "check": "Look for gate jobs that grant `id-token: write` or other write permissions, or that run coverage or test-result upload steps inline.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate coverage-service uploads (such as Codecov) over OIDC, with the action pinned to a commit SHA, and don't store a long-lived upload token as a secret.",
+      "why": "A stored token is a long-lived secret that can leak. OIDC with a SHA-pinned action needs no secret and can't be swapped out from under the workflow.",
+      "check": "Look for Codecov or similar upload steps that use a `token:` secret, that don't set `use_oidc`, or whose action is referenced by tag instead of by full commit SHA.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep coverage-service checks informational and never let a coverage upload failure fail the CI run. The gate's own exit code stays the only required verdict.",
+      "why": "Codecov reports and never gates, so the required check stays the Definition of Done gate. Dependabot or fork runs without an OIDC token must not fail.",
+      "check": "Look for Codecov project or patch statuses that aren't `informational`, `fail_ci_if_error: true` on upload steps, or a coverage threshold added to the Codecov config.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "codecov.yml",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Exclude generated code from coverage once, at collection in the coverlet runsettings (`obj/`, `Migrations/`, `[GeneratedCode]`). Don't add separate ReportGenerator filters or Codecov `ignore` lists for it.",
+      "why": "Two filter lists in two syntaxes drift apart. Excluding at collection gives every presenter the same input, so the figures agree.",
+      "check": "Look for new `ignore` entries in codecov.yml, or assembly/file filters passed to ReportGenerator, that duplicate or diverge from the runsettings exclusions.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.runsettings",
+        "codecov.yml",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't exclude `[CompilerGenerated]` from code coverage.",
+      "why": "The compiler puts that attribute on async state machines, lambdas and iterators, so excluding it drops hand-written method bodies from the figure.",
+      "check": "Look for `CompilerGenerated` or `CompilerGeneratedAttribute` in coverlet `ExcludeByAttribute` settings.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.runsettings",
+        "**/Directory.Build.props",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep hand-written code out of `Migrations/` folders. Only scaffolded EF Core migrations belong there.",
+      "why": "Coverage excludes `Migrations/` as generated code, so hand-written code placed there silently drops out of the coverage figure.",
+      "check": "Look for new non-scaffolded classes (helpers, extensions, configuration) added under a `Migrations/` directory.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't exclude shipped hand-written projects, such as hosts, from the coverage figure to raise the number.",
+      "why": "Shipped code is in scope, so leaving it out hides a gap that matters.",
+      "check": "Look for assembly or project exclusions in coverage settings that target shipped, hand-written projects.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.runsettings",
+        "codecov.yml",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make CI test-result and coverage reporting steps presentation-only: they never change the verdict, which stays the test runner's exit code.",
+      "why": "The reporter only presents results. The gate decides pass or fail.",
+      "check": "Look for reporting scripts or steps that exit nonzero based on parsed results, or that swallow the runner's exit code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have each CI or gate run write test results and coverage into a freshly cleared directory, not into per-run accumulating folders merged by glob.",
+      "why": "Merging `**/coverage.cobertura.xml` across accumulated `TestResults/<guid>/` folders blends every past run into one misleading figure.",
+      "check": "Look for report-merging globs over `TestResults/**`, or output directories that the script doesn't clear before the run.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

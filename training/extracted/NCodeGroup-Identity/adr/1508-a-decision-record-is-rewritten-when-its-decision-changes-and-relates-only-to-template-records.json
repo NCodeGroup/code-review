@@ -1,0 +1,86 @@
+{
+  "hash": "40b53d7abf8f5d2c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1508",
+  "rules": [
+    {
+      "statement": "When a pull request changes a decision that a project decision record (numbered 1000 or above) holds, rewrite that record in place: update its text, title and file name so it reads as the current decision, keep its number, and don't add a new record that supersedes it.",
+      "why": "One current file per decision means a reader doesn't have to piece a decision together from a chain of partly outdated records, and the review sees the decision's text change next to the code. Git keeps the earlier text.",
+      "check": "Look for a diff that changes behaviour a project record decides but adds a new record that supersedes or amends it, or that leaves the old record's text, title or file name stating the old decision.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write a project decision record whose text describes how its decision differs from an earlier one; state only the decision as it holds in the code now.",
+      "why": "A record states its decision as if it had always been so, and history belongs to git. Text comparing it with an earlier version is a named smell.",
+      "check": "Look in added or edited record text for wording like 'previously', 'no longer', 'changed from' or 'unlike the earlier record'.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two project decision records come to decide the same thing, merge them into one that keeps the number of the more-cited record, retire the other number and never reuse it, and update every citation of the retired number in the repository to name the merged record.",
+      "why": "Two records stating the same rule is a named smell, and a citation must lead to the record that holds the decision.",
+      "check": "Look for a new or edited record that states a rule another record already states, a reused retired number, or citations still pointing at a retired number.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A project decision record cites another project record only in its text, as `ADR-NNNN`, where it relies on that record's rule, and doesn't restate that rule.",
+      "why": "Restating another record's rule creates a second copy that goes out of date when the first record is rewritten.",
+      "check": "Look for a record that cites `ADR-NNNN` and then repeats the cited record's rule in its own words.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A project decision record carries no relation line or relation wording (Amends, Amended by, Supersedes, Superseded by, Extends, Overrides) toward another project record, and its Status is exactly `Accepted` or `Proposed` with nothing after it.",
+      "why": "Relation chains between project records force readers to assemble one decision from several files.",
+      "check": "The ADR index build script already rejects these header lines and any text after Status, so a reviewer doesn't need to check them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "The only relation lines a project decision record carries name project-template records: `Refines` to add project specifics, `Supersedes` to decide otherwise (naming the overridden template decisions when only some are overridden, with the override listed in `AGENTS.md`), and `Conflicts with` for a template record the code doesn't yet follow, naming the issue that tracks it.",
+      "why": "Template records are never edited by the project, so a relation line is the only way to record how the project departs from them.",
+      "check": "Look for a template `Supersedes` line with no matching entry in `AGENTS.md`, a partial override that doesn't name which template decisions it overrides, or a `Conflicts with` line that names no tracking issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md",
+        "AGENTS.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the decision-record index (`docs/decisions/README.md`) grouped by area, with one table per area in number order, and add each new or renamed record to its area's table.",
+      "why": "Grouping by area lets a reader find a decision by its subject.",
+      "check": "Look for a new or renamed record that is missing from the index, filed under the wrong area, or listed out of number order.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/README.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "hash": "4086e6ca0c7de3de",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #795",
+  "rules": [
+    {
+      "statement": "When a Helm chart adds a render-time refusal (a `fail` in a validate template) or a new hook resource, add CI checks that render the refused combinations and expect failure, and that assert the key parts of the new resources' rendered output.",
+      "why": "A generic render loop over values files doesn't catch a refusal that stops firing, a dropped hook Job or a changed target, so regressions pass CI and fail only at runtime.",
+      "check": "For each new `fail` condition or new template in the diff, look in the CI workflow for a `refuse`-style render of that combination and `expect`-style assertions on the new resource (hook annotations, targets, resourceNames). Report it when there are none.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/**",
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, refuse at render time any combination of values that would make the workload verify TLS against a CA that did not sign its certificate, such as publishing a generated CA while the certificate comes from an operator-supplied Secret or issuer and no matching CA ConfigMap is named.",
+      "why": "Otherwise the release installs cleanly and then fails at runtime with 502s or handshake errors, when the chart could have refused it and told the operator what to set.",
+      "check": "Look at new TLS/CA options in chart templates. Each combination where the trusted CA can't match the certificate's source should hit a `fail` whose message names the value the operator must set.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "charts/**/templates/*.tpl",
+        "charts/**/templates/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Comments in CI workflows and values files must not claim a default that the chart doesn't have. Say which values file sets the option explicitly.",
+      "why": "A comment that calls an option the default misleads maintainers and contradicts the schema and the decision record.",
+      "check": "Compare any comment in the diff that says something is the default with the option's default in values.yaml and the schema.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        ".github/workflows/**",
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a chart's README documents a mode-selecting option, give a short values example for each supported mode, not only for one of them.",
+      "why": "Operators of the modes without an example have to work out the values from tables and the schema.",
+      "check": "In README sections that list several modes for an option, check that each mode has a values YAML example in the same style.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "documentation",
+      "applies_to": [
+        "charts/**/README.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a CI refusal check of an option value the product deliberately doesn't support (one a decision record rejects) as naming a removed member; report that only for checks that keep the name of a member that existed and was removed.",
+      "why": "The maintainer kept such a refusal because it pins a product decision, not a past state of the code. Unknown keys in general are already covered by a generic unknown-setting refusal.",
+      "check": "Before reporting, see whether the named value was ever a member of the chart, or whether a comment or decision record cites it as a mode the chart deliberately rejects.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "testing",
+      "applies_to": [
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

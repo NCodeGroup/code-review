@@ -1,0 +1,149 @@
+{
+  "hash": "bbc47d0699b05568",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1229",
+  "rules": [
+    {
+      "statement": "Every handler that issues tokens for a subject or approves a request for one (each grant type, CIBA approval, including grants added by other packages) must run the subject validation that includes the end user's standing (blocked, disabled or deleted), not just client- or request-specific checks.",
+      "why": "A refusal enforced only in some paths lets a blocked or disabled end user keep redeeming refresh tokens or getting tokens through another grant.",
+      "check": "Look for new or changed grant/approval handlers that issue tokens for a subject without sending the subject validation command that forwards to the standing check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An interactive sign-in must validate the end user's standing after resolving the principal and before it creates a session or issues a cookie, and a refusal must create neither.",
+      "why": "Validating only at token issuance leaves the interactive sign-in unprotected, so a blocked principal would still get a session.",
+      "check": "In sign-in flows, check that the standing check runs before session creation and cookie sign-in, and that its failure returns before either happens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a sign-in refusal or a consent denial belongs to a pending authorization request, answer that request at the client's redirect URI with `access_denied` and the request's `state`, rather than showing a local error page or redirecting to `/`.",
+      "why": "Otherwise the client never gets an answer to its request (RFC 6749 §4.1.2.1, OpenID Connect Core 1.0 §3.1.2.6).",
+      "check": "Look at refusal and consent-denial paths that redirect home or render an error even though the return URL names a pending authorization request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, decide whether a refused subject gets a challenge by checking the end user's standing explicitly, not by the error code. A refused standing is returned to the client as an error for every `prompt` value. Other refusals challenge, or return `login_required` for `prompt=none`.",
+      "why": "Every subject validation answers `access_denied`, including ones that a fresh login can fix. Challenging a blocked or disabled user, who can't be fixed by logging in again, causes a login loop.",
+      "check": "Check for authorization handlers that re-challenge every refused subject, or that branch on the error code to tell a curable refusal from a non-curable one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Blocking an end user, disabling or deleting their account, or an administrator's password reset must end all of the principal's sessions through the single session-termination seam, with a specific termination reason. Don't revoke grants or tokens directly outside that seam.",
+      "why": "Without the seam, refresh tokens keep working, relying parties never get back-channel logout, and nothing audits the termination (OWASP ASVS V3.3.3).",
+      "check": "Look at block, disable, delete and admin password-reset code paths that don't call the termination seam, that pass no reason, or that delete grants or sessions directly.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't treat rotating a security stamp as the way to invalidate a compromised account's sessions. End the sessions explicitly instead.",
+      "why": "Nothing reads the security stamp, so the sessions and refresh tokens of a compromised account would keep working.",
+      "check": "Look for credential-reset or compromise-handling code that only updates a security stamp and doesn't terminate sessions.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deleting an account or principal, end its sessions before removing any data, and pass the request's cancellation token to that termination.",
+      "why": "Deletion erases the grants and consents, so once data is removed the sessions can no longer be listed to notify their relying parties. Because the termination comes before the commit, cancelling it should also cancel the deletion.",
+      "check": "In delete paths, check that session termination comes before any store removal and isn't deferred to post-commit work.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run session termination that follows a committed change as post-commit work on its own bounded cancellation token, not the request's token, and log any failure instead of throwing.",
+      "why": "A client that disconnects after the change has committed must not leave the other sessions active.",
+      "check": "Look for post-commit termination calls that pass `HttpContext.RequestAborted` or the request's token, or that let failures propagate.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every interactive self-service endpoint must authenticate by checking that the cookie's session (via its `sid` claim) is still active and refresh its activity, and must sign the cookie out otherwise. Don't do this check in a cookie authentication event.",
+      "why": "Otherwise a cookie whose session has ended keeps working. The cookie handler caches the first authentication of a request, and the OpenID context exists only inside the endpoint filter.",
+      "check": "Look for self-service endpoints that accept a cookie principal without validating its session, or session checks placed in `CookieAuthenticationEvents`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store state that affects authorization, such as a blocked flag, as a typed persisted property that's mapped on add, read and update, and not in a free-form metadata bag.",
+      "why": "In a free-form bag, authorization state is untyped and nothing enforces it.",
+      "check": "Look for authorization-relevant flags written into metadata or extension dictionaries, or new entity properties that the store doesn't map on every operation.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a disabled account with a reason after its credential has been verified, rather than reporting it as invalid credentials. A lockout meant to stop password guessing still refuses without verifying the password, and the password grant answers a disabled account with `invalid_grant`.",
+      "why": "An end user who enters a correct password should learn why they can't sign in. A lockout must keep refusing without verifying so guessing isn't helped.",
+      "check": "Look for credential verifiers that return a failure for disabled accounts as if the password were wrong, or lockout paths that verify the password first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an end user's consents when the user is blocked, their account is disabled or their password is reset. Remove consents only when the principal itself is deleted, and don't restore revoked grants when the user is unblocked.",
+      "why": "Block, disable and reset are reversible or leave the end user's choices intact. Removing consents would make the user consent again, and after unblocking they're expected to sign in again.",
+      "check": "Look for consent removal in block, disable or reset handlers, or for grant restoration in unblock or enable handlers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

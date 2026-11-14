@@ -1,0 +1,42 @@
+{
+  "hash": "d5c297d52f6deb70",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1502",
+  "rules": [
+    {
+      "statement": "Spell every link to or reference of an NCodeGroup repository with its GitHub name, such as `https://github.com/NCodeGroup/identity` or `NCodeGroup/identity#760`, not with an invented or display name.",
+      "why": "A reference is only reliable when it uses the repository's actual GitHub name; GitHub resolves names case-insensitively, so capitalization alone is not a defect.",
+      "check": "Look for repository links or `owner/repo#number` references in docs, ADRs, AGENTS.md and PR text that use a name other than the real GitHub repository name; don't report capitalization differences alone.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark every npm workspace package in the product's frontend workspace `\"private\": true`, name it under the `@ncode/` scope, and never publish it.",
+      "why": "The frontend's packages are built into the console image and are not a published contract.",
+      "check": "Look for a new or changed `package.json` under the frontend workspace that lacks `\"private\": true`, uses a name outside `@ncode/*`, or adds publish configuration.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "frontend/**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name NuGet packages `NCode.Identity.*`, the host chart `ncode-identity-host`, and images under `ghcr.io/ncodegroup/ncode-identity-*`.",
+      "why": "A package ID or image name is permanent once published, so the naming scheme is fixed up front.",
+      "check": "Look for new package IDs, chart names or image names in project files, charts or workflows that don't follow the fixed scheme.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "charts/**",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

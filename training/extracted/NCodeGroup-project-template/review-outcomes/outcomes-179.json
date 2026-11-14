@@ -1,0 +1,53 @@
+{
+  "hash": "e43c83e3180f3c21",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #179",
+  "rules": [
+    {
+      "statement": "In test scripts, a catch block that swallows an exception and returns an empty result must first print the exception message, or let the exception propagate.",
+      "why": "Otherwise a broken script under test shows up only as confusing mismatch failures in later checks, and nothing points at the real error.",
+      "check": "Look for `catch { @() }`, `catch { $null }` or similar empty-result catches in test helpers that don't write the exception (`$_`) anywhere.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1",
+        "**/*Tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two test suites hardcode the same test case definitions, either share them from one source or put a comment in each place saying they must change together.",
+      "why": "Without that, one copy can change while the other silently keeps the old values, and the suite ends up testing something different from what its checks assume.",
+      "check": "Look for test case inputs or answers duplicated across test files with neither a shared source nor a cross-referencing keep-in-sync comment.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1",
+        "**/*Tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test suite that runs a tool with a user-level cache (such as Copier's `COPIER_CACHE_DIR`) must point that cache at a folder under its own work directory when the caller hasn't already set it, and restore the previous value afterwards.",
+      "why": "Otherwise running the suite on its own leaks cache entries into the developer's personal cache, even when the shared runner already isolates them.",
+      "check": "Look for test scripts that invoke cache-using tools without setting the cache environment variable to a work folder when it is unset, or that change it without restoring it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test script to add a `WaitForExit` timeout to a child process when the code it replaced had none, the CI job already has a `timeout-minutes` limit, and the script reads the process output synchronously, so a wait limit alone wouldn't stop a hang.",
+      "why": "It isn't a regression, the job timeout already limits how long a hang can last, and a real limit needs both output streams read asynchronously plus a process-tree kill, not just a wait timeout.",
+      "check": "Before reporting it, check whether the previous code had a timeout, whether the workflow job sets `timeout-minutes`, and whether synchronous `ReadToEnd()` calls on the output streams would block before `WaitForExit` is reached.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

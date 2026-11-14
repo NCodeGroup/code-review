@@ -1,0 +1,18 @@
+{
+  "hash": "988f79d24a5bae28",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #600",
+  "rules": [
+    {
+      "statement": "In a test project, don't report `null!` passed as an argument to the code under test in a null-guard or argument-validation test: passing a deliberate null to the code under test is the one allowed exception to the null-forgiving operator rule.",
+      "why": "The C# and test conventions make `null!` in a test the single exception to the null-forgiving rule when it passes a deliberate null to the code under test, as argument-validation and constructor null-guard tests do.",
+      "check": "Before flagging `null!` in a test, check whether it is the argument passed to the method or constructor under test to exercise its null guard. If it is, don't report it. Flag `null!` only when it is used elsewhere, for example to silence warnings on test setup or fixture state.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

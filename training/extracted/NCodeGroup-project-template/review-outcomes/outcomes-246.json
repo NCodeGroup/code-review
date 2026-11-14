@@ -1,0 +1,21 @@
+{
+  "hash": "0d3d9e8a250354de",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #246",
+  "rules": [
+    {
+      "statement": "In a test that claims each of several specific items was acted on (for example, each of several records was edited), check each item by its identifier instead of only checking that at least one matching call happened.",
+      "why": "A check that only counts one or more matching calls still passes when just one of the items was handled, so it doesn't prove what the test claims.",
+      "check": "Look for assertions that count calls or matches with a minimum of one (or fewer than the number of items) while the test description or name says every item was handled. Flag them unless each item's id is checked.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

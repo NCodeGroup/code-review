@@ -1,0 +1,91 @@
+{
+  "hash": "c5f2c4882ec7bf8e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1447",
+  "rules": [
+    {
+      "statement": "Don't register forwarded-header trust or Strict-Transport-Security middleware inside a library's `Add…`/`Use…` composition methods; leave each host to call them in its own pipeline.",
+      "why": "Whether a proxy terminates TLS is the deployment's decision, so a library that adds them for every host would decide it for the host.",
+      "check": "Look for library service-registration or pipeline extension methods that call `UseForwardedHeaders`, `UseHsts` or equivalent trusted-forwarded-header/HSTS helpers on behalf of the host.",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on the framework's `AddHsts`/`UseHsts` defaults; send Strict-Transport-Security from strictly bound, startup-validated options defaulting to `max-age=31536000; includeSubDomains` with preload off.",
+      "why": "The framework default max-age is 30 days and its options are neither bound strictly nor validated.",
+      "check": "Look for `AddHsts`/`UseHsts` with default options, or HSTS options that are not bound strictly and validated on start, or a max-age default shorter than 365 days.",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate HSTS options so that `Preload` without `IncludeSubDomains`, `Preload` with a max-age under 365 days, and a negative max-age are refused, while a max-age of 0 is allowed.",
+      "why": "Preload lists require includeSubDomains and at least a year, and `max-age=0` is how the policy is withdrawn (RFC 6797).",
+      "check": "Review HSTS options validators for missing preload/includeSubDomains/max-age checks or for wrongly rejecting max-age 0.",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate forwarded-header trust options so that known proxies are IP addresses with IPv4 in canonical four-decimal-octet form, known networks are CIDR whose address is the network's first address, and the forward limit is at least 1.",
+      "why": "The IP parser accepts shorthand and octal forms that denote another address, a non-aligned CIDR trusts a different network than written, and a limit below 1 consults no forwarded entry.",
+      "check": "Look at validators for forwarded-header trust options: do they reject non-canonical IPv4, non-network-address CIDR, and ForwardLimit < 1?",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't bind strictly bound options from a configuration section owned by another library, such as YARP's `ReverseProxy` section.",
+      "why": "Strict binding would refuse the other library's keys in that section.",
+      "check": "Look for options bound from section names used by convention by other libraries (e.g. `ReverseProxy`).",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never send Strict-Transport-Security in the Development environment or to loopback hosts (`localhost`, `127.0.0.1`, `[::1]`), and accept HSTS excluded-host entries only as DNS names, IPv4 or bracketed IPv6 addresses without a scheme or port.",
+      "why": "Pinning HTTPS on development and loopback origins breaks local work, and a host entry with a scheme or port never matches.",
+      "check": "Check that the HSTS middleware is not added in Development, that loopback is always excluded, and that excluded-host validation rejects schemes and ports.",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Call the trusted forwarded-headers middleware before the Strict-Transport-Security middleware, at the start of the host pipeline.",
+      "why": "Behind a TLS-terminating proxy the host sees HTTPS only via a trusted `X-Forwarded-Proto`, so HSTS decided before it would see plain HTTP and send no header.",
+      "check": "Check pipeline order in host startup: forwarded-headers middleware precedes HSTS and other middleware that reads scheme or host.",
+      "scope": "domain",
+      "domain": "aspnetcore-http-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

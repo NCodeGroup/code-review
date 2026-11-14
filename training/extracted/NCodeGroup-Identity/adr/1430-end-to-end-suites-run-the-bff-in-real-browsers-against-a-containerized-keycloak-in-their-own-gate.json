@@ -1,0 +1,88 @@
+{
+  "hash": "93035119b68d0815",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1430",
+  "rules": [
+    {
+      "statement": "In a test project, pin a container image used by a test fixture by digest, not by a floating tag, and let Dependabot keep it current.",
+      "why": "External inputs are pinned and kept current, so a version bump arrives as a pull request that the end-to-end check validates.",
+      "check": "Look for Dockerfiles or Testcontainers image references under tests/ that use a tag such as `:26` or `:latest` without an `@sha256:` digest.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/Dockerfile",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, keep no static secret in a fixture's checked-in provider config (for example a realm import file); fill in credentials and ports per run through placeholders such as environment variables.",
+      "why": "With per-run values, the repository holds no static secret.",
+      "check": "Look for client secrets, passwords or fixed ports written as literals in checked-in fixture config files or test code, where a per-run placeholder belongs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*Tests/**/*.json",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, start test containers from code with Testcontainers inside a fixture that owns the container's lifecycle and port wiring, not with Docker Compose files.",
+      "why": "The fixture owns the lifecycle and the port wiring, and Testcontainers expresses these in code.",
+      "check": "Look for docker-compose files or shell-launched containers that tests depend on, where a Testcontainers fixture belongs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*Tests/**/docker-compose*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a container must call back into a host running in the test process, expose the host port through `TestcontainersSettings.ExposeHostPortsAsync` and `host.testcontainers.internal`, and don't bind the host beyond loopback.",
+      "why": "The container can then reach the host for callbacks such as `jwks_uri` and back-channel logout without exposing the test host on external interfaces.",
+      "check": "Look for test hosts listening on `0.0.0.0`, `*` or a non-loopback address so that a container can reach them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project that uses a per-run self-signed certificate, make the server-side `HttpClient` trust exactly that certificate, not disable certificate validation.",
+      "why": "The provider `HttpClient` trusts exactly the per-run certificate, so TLS stays real end to end. Only browsers ignore certificate errors.",
+      "check": "Look for `ServerCertificateCustomValidationCallback` returning true unconditionally, or `DangerousAcceptAnyServerCertificateValidator`, in test hosts where the run's certificate could be pinned instead.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Playwright browser test, make a form submission wait for the response to its `POST`, not for a navigation.",
+      "why": "Firefox turns an error response with an empty body into a failed navigation, so a navigation wait cannot observe a refusal in every browser.",
+      "check": "Look for form submits followed by `WaitForNavigationAsync` / `WaitForURLAsync` / `RunAndWaitForNavigationAsync`, where `RunAndWaitForResponseAsync` on the POST belongs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a browser end-to-end test that checks browser-enforced behaviour (cookies, SameSite, CORS, Fetch Metadata), write it as a theory over Chromium, Firefox and WebKit, and skip WebKit on Windows.",
+      "why": "Playwright's Windows WebKit port does not use Safari's cookie stack and mishandles `SameSite` and `Secure`. CI on Linux covers all three engines.",
+      "check": "Look for browser-behaviour tests hard-coded to one browser, or WebKit cases that are not skipped on Windows. Tests that check the identity provider, not the browser, may use Chromium only.",
+      "scope": "domain",
+      "domain": "browser-end-to-end-testing",
+      "topic": "testing",
+      "applies_to": [
+        "**/*EndToEnd.Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

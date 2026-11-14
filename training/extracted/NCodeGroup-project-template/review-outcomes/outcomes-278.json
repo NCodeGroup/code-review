@@ -1,0 +1,40 @@
+{
+  "hash": "4cac0ab5435e14f3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #278",
+  "rules": [
+    {
+      "statement": "When a change adds behavior on a failure or conflict path, add a test whose fixture actually reaches that path and checks the new behavior, so that removing the new code makes the test fail.",
+      "why": "An untested branch can regress silently. Here, losing the staging call on conflict would leave new files untracked and out of the update commit.",
+      "check": "For each new statement in an error, conflict or fallback branch, look for a test fixture that drives execution into that branch and asserts its effect. A fixture that enters the branch but never triggers the new behavior (for example, one that adds no files) doesn't count.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When help text, comments, README or CHANGELOG state a guarantee that code never does something, make sure no code path in the change still does it, or narrow the documented wording to match.",
+      "why": "A false documented guarantee misleads users, and anyone auditing for that behavior has to check every path again.",
+      "check": "Search the changed scripts or code for the construct the docs say is never used (for example `git add -A`), including in rarely run branches such as conflict handling.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a CHANGELOG entry to move under `## [Unreleased]` when the repository cuts a release per plan or per PR: there, previous entries are written in dated version sections and `[Unreleased]` stays empty.",
+      "why": "Such repositories release every plan, so a dated section for the release the plan names is correct, not a release that doesn't exist.",
+      "check": "Before reporting, check whether earlier CHANGELOG sections were added the same way with `[Unreleased]` left empty, and whether the plan or PR names that version on a `Release:` line.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

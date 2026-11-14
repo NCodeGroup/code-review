@@ -1,0 +1,331 @@
+{
+  "hash": "957f5b17fc38dc2b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform opentofu.instructions.md",
+  "applyTo": [
+    "**/*.tf",
+    "**/*.tftest.hcl"
+  ],
+  "rules": [
+    {
+      "statement": "Keep an OpenTofu component to one concern with no platform-, environment- or vendor-account-specific defaults; make every such value an input variable.",
+      "why": "Components are reusable building blocks; baking platform specifics into them prevents reuse across environments and self-hosters.",
+      "check": "Look for hard-coded account IDs, regions, domain names, ARNs or environment names in a component module's resources or variable defaults.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Lay out an OpenTofu component as `versions.tf` (only the `terraform` block), `variables.tf`, `main.tf` (locals, data sources, resources), `outputs.tf`, a snake_case `tests/<component>.tftest.hcl`, and a `README.md`.",
+      "why": "A uniform file layout lets every component be read and reviewed the same way.",
+      "check": "Check a new or changed component for resources or variables placed outside their designated file, extra blocks in `versions.tf`, a missing test file or README, or a test file not in snake_case.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf",
+        "**/modules/**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the sole or primary resource of a type `this` and any other resource by its role in snake_case, and name module calls in a root by role in snake_case.",
+      "why": "Consistent naming makes resource addresses predictable across components and roots.",
+      "check": "Look for primary resources not named `this`, or secondary resources and module calls with generic, numbered or non-snake_case names instead of a role name.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In OpenTofu code, write comments that explain why (a provider quirk, a security choice, a constraint), never what the next line does.",
+      "why": "Comments restating the code add noise; the reasoning behind non-obvious choices is what readers need.",
+      "check": "Look for comments that merely paraphrase the following resource or attribute.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Format OpenTofu files with `tofu fmt` (two-space indent, aligned `=`).",
+      "why": "Canonical formatting keeps diffs minimal and consistent.",
+      "check": "Look for misaligned `=`, tabs or non-two-space indentation in .tf or .tftest.hcl files.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every OpenTofu variable an explicit `type` and a `description` that is a sentence ending in a period with literals in backticks, and give every output a `description`.",
+      "why": "Typed, documented inputs and outputs feed the generated docs and prevent misuse.",
+      "check": "Look for `variable` blocks missing `type` or `description`, descriptions without a trailing period or with unquoted literals, and `output` blocks without `description`.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make OpenTofu variable defaults the secure choice (deletion protection on, most restrictive data classification, longest deletion window), and give required inputs no default.",
+      "why": "Secure-by-default components protect callers who don't override settings.",
+      "check": "Look for defaults that weaken security or durability (e.g. `deletion_protection = false`, short deletion windows, permissive classification) or placeholder defaults on inputs that should be required.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Constrain every OpenTofu input whose valid values are narrower than its type with a `validation` block whose `error_message` names the variable and states what it must be.",
+      "why": "Invalid inputs should fail at plan time with a clear message instead of at apply or in the provider.",
+      "check": "Look for variables with restricted valid values (enums, formats, ranges, lengths) lacking `validation`, or error messages that don't name the variable and the requirement.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark a secret OpenTofu input `sensitive = true` and document that its value comes from an environment variable or a secret store, never a committed file.",
+      "why": "Secrets must not appear in plan output or be committed to the repository.",
+      "check": "Look for secret-looking variables (passwords, tokens, keys) without `sensitive = true`, or tfvars/committed files supplying secret values.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tfvars"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an OpenTofu component take a `tags` variable (`map(string)`, default `{}`), merge its own `component`, `role`, `data_classification` and `deletion_protection` tags over the caller's in `local.tags`, and apply `local.tags` to every taggable resource.",
+      "why": "One consistent tag set on every resource supports ownership, classification and protection visibility.",
+      "check": "Look for components without a `tags` input, a merge order that lets caller tags override the component's, missing standard tag keys, or taggable resources not using `local.tags`.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use snake_case tag keys with static values in OpenTofu resources, never timestamps, commit SHAs or other per-run values.",
+      "why": "Static tags keep plans from drifting; provenance comes from attestations and audit logs instead.",
+      "check": "Look for tag values computed from `timestamp()`, git SHAs, run IDs or other changing data, and for non-snake_case tag keys.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every stateful OpenTofu component a `deletion_protection` (`bool`, default `true`) input that drives the provider's own safeguards and a conditional `terraform_data` guard with `prevent_destroy = true` whose input is the primary resource's ID.",
+      "why": "`prevent_destroy` can't take a variable, so a count-gated guard resource makes any plan destroying the protected component fail.",
+      "check": "Look for stateful components (keys, buckets, databases, zones) lacking `deletion_protection`, lacking the count-gated `deletion_guard` resource, or enabling force-destroy/hard delete regardless of the flag.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a refactor moves or renames an OpenTofu resource or module, add a `moved` block so existing state follows it.",
+      "why": "Without a `moved` block the resource is destroyed and recreated instead of keeping its state.",
+      "check": "Look for changed resource or module addresses in a diff without a corresponding `moved` block.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In reusable OpenTofu components, set `required_version = \">= 1.13.0\"` and provider constraints `\">= <floor>, < <next major>\"`, where the floor is the first provider release supporting every resource and attribute used.",
+      "why": "Components should accept the widest compatible range without admitting provider versions that lack used features or break on a major release.",
+      "check": "Look for component provider constraints without a lower floor, without an upper major bound, with `~>` pins, or with a floor older than a used resource/attribute's introduction.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/modules/**/versions.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In live OpenTofu roots, use `required_version = \"~> <minor>\"` matching the repository's pinned OpenTofu version, `~>` provider constraints, and a committed `.terraform.lock.hcl` with checksums for every platform.",
+      "why": "Deployed roots need reproducible, exactly pinned toolchains across CI and developer platforms.",
+      "check": "Look for live roots with open-ended version constraints, a required_version that doesn't match the pinned OpenTofu version file, or a lock file missing or lacking multi-platform hashes.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/live/**/*.tf",
+        "**/.terraform.lock.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding or raising an OpenTofu or provider version, pin the latest upstream release as read from the registry or release feed at that moment.",
+      "why": "Pinning from memory or docs yields stale versions.",
+      "check": "Look for newly added or raised versions that are older than the latest release at the time of the change.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/.terraform.lock.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In live OpenTofu roots, consume components only by a git source pinned to a released tag (`?ref=vX.Y.Z`), never a local path or branch.",
+      "why": "The hosted platform must run only the published artifacts it offers self-hosters.",
+      "check": "Look for module `source` values that are local paths, lack `?ref=`, or reference a branch or commit instead of a release tag.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/live/**/*.tf"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Configure an OpenTofu `s3` backend with `use_lockfile = true` and an `encryption` block enforcing `aes_gcm` with a KMS key provider for both `state` and `plan`.",
+      "why": "State and plans contain sensitive data and must be locked and encrypted at rest.",
+      "check": "Look for backends without `use_lockfile = true`, or missing/partial `encryption` blocks that don't enforce encryption for both state and plan.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/live/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure OpenTofu providers in `providers.tf` with credentials from the environment only, with a comment naming the variable that supplies them and where CI reads it from.",
+      "why": "Credentials must never be committed, and readers need to know where they come from.",
+      "check": "Look for credentials or keys in provider blocks or tfvars, provider blocks outside `providers.tf`, or missing comments on credential sources.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate an OpenTofu `import` block for adopting existing infrastructure behind a variable that tests set to `false`.",
+      "why": "Mocked providers can't import, so ungated imports break plan-based tests.",
+      "check": "Look for `import` blocks without a controlling variable, or tests that don't disable it.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In OpenTofu tests, declare `mock_provider` for every provider, a top-level `variables` block with minimal valid inputs, and name each `run` in snake_case for the behavior it proves with `command = plan`.",
+      "why": "Tests must run offline without real credentials and read as a list of proven behaviors.",
+      "check": "Look for tests using real providers, runs using `command = apply`, missing top-level variables, or run names that don't describe a behavior.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In OpenTofu tests, write each `assert` `error_message` as the rule that broke, using \"must\".",
+      "why": "A failing assertion should state the violated requirement directly.",
+      "check": "Look for assert messages that describe the observed value or are vague instead of stating what must hold.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cover in an OpenTofu component's tests the secure defaults, the tag merge over caller tags, that `deletion_protection = false` removes the guard, and every `validation` block with an `expect_failures = [var.<name>]` run.",
+      "why": "These are the component's safety guarantees and must not regress silently.",
+      "check": "For each added validation, default or protection change, look for a corresponding run; flag validation blocks without an `expect_failures` run.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tftest.hcl",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When mocking an attribute of nested type in an OpenTofu test, supply every one of its fields.",
+      "why": "OpenTofu rejects partial nested mocks with \"Invalid mock/override field\".",
+      "check": "Look for `mock_resource`/`override_*` defaults setting nested-type attributes with only some fields.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tftest.hcl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every OpenTofu component and root a `README.md` with its purpose and rationale, a bullet list of behaviors and safeguards, and an `hcl` usage example whose `source` ends in `?ref=<version>`, followed by the terraform-docs section.",
+      "why": "Consistent docs explain each module and show how to consume it by released version.",
+      "check": "Look for new modules or roots without a README, or READMEs missing the purpose, behaviors list, or a version-pinned usage example.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "documentation",
+      "applies_to": [
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never hand-edit the section between `BEGIN_TF_DOCS` and `END_TF_DOCS`; regenerate it with terraform-docs when variables or outputs change.",
+      "why": "The section is generated and CI checks it matches the code.",
+      "check": "Look for manual edits inside the generated markers, or variable/output changes without a regenerated docs section.",
+      "scope": "domain",
+      "domain": "opentofu-infrastructure",
+      "topic": "documentation",
+      "applies_to": [
+        "**/README.md"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

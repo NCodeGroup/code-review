@@ -1,0 +1,29 @@
+{
+  "hash": "7096caec3e7c9bf6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #835",
+  "rules": [
+    {
+      "statement": "Keep a type's XML doc summary from restating its only member's summary: give the class a one-line summary of its purpose and put the detail in the method summary and parameter docs.",
+      "why": "Duplicate summaries drift apart when one is edited, and readers waste time on the repetition.",
+      "check": "Look at new or changed classes whose `<summary>` says nearly the same thing as the summary of the method they contain, such as a single-method helper.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a static helper to become an injectable service when it is a pure function of its arguments, it builds on sibling helpers that are also static, and the injected dependencies it uses (such as a logger) come from the caller, for example through a delegate.",
+      "why": "Static is intended in that case: callers' tests still check behavior through their own mocked dependencies, so turning the helper into a service adds nothing to testability.",
+      "check": "Before reporting a static class against the prefer-injectable-services rule, check whether it holds state or does I/O itself, whether the neighbouring helpers it calls are static, and whether side effects go through dependencies the caller passes in that tests can mock.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "hash": "52afc95ce0da5b02",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1499",
+  "rules": [
+    {
+      "statement": "Pass all Kestrel HTTPS defaults (protocol versions, cipher suite policy, client certificate settings) in a single `ConfigureHttpsDefaults` action, never in several calls.",
+      "why": "Kestrel keeps only the last action passed to `ConfigureHttpsDefaults`, so a second call silently discards the settings made by the first.",
+      "check": "Look for more than one `ConfigureHttpsDefaults` call on the same Kestrel options, or a new HTTPS setting added through a separate call instead of the existing shared configure method.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the server's `SslProtocols` explicitly to `SslProtocols.Tls12 | SslProtocols.Tls13` on every platform, and never enable `Tls`, `Tls11` or leave it to the operating system default.",
+      "why": "RFC 8996 deprecates TLS 1.0 and 1.1, and OS defaults vary between releases and deployments, which fails FAPI 1.0 Part 2 §8.5 and the conformance suite.",
+      "check": "Look for HTTPS configuration that omits `SslProtocols`, uses `SslProtocols.None`/`Default`, or includes `Tls`/`Tls11`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Restrict TLS cipher suites through `CipherSuitesPolicy` only to AEAD suites with forward secrecy (TLS 1.3 AES-GCM and ECDHE ECDSA/RSA AES-GCM), and apply the policy only where the platform supports it (Linux and macOS), setting no policy on Windows.",
+      "why": "FAPI 1.0 Part 2 §8.5 permits only AEAD suites with forward secrecy, and `CipherSuitesPolicy` is not supported on Windows, where SChannel takes cipher suites from system configuration.",
+      "check": "Look for a `CipherSuitesPolicy` that lists non-AEAD or non-ECDHE suites (CBC, RSA key exchange), or that is set without a platform guard so it would throw on Windows.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make TLS handshake settings (protocol versions, cipher suites) depend on the tenant or its security profile; apply them host-wide.",
+      "why": "The handshake happens before the request is read, so the host can't know which tenant the connection serves.",
+      "check": "Look for TLS or `SslServerAuthenticationOptions` configuration that reads tenant or per-request settings.",
+      "scope": "domain",
+      "domain": "multi-tenant-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

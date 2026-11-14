@@ -1,0 +1,55 @@
+{
+  "hash": "931aa35b14adef8c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #319",
+  "rules": [
+    {
+      "statement": "When a pinned tool version is changed, update every place that gives the install command or version, including usage docs, to the same pin, and have the pin-consistency test cover each of those places.",
+      "why": "Users who follow docs with an unpinned or stale command install a different version than the scripts pin, and the pin drifts with nothing to catch it.",
+      "check": "In a diff that adds or bumps a version pin, search the repository's docs and scripts for other install commands or version strings for the same tool that still lack the new pin, and check whether the pin test lists them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*Test*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a dated `## [<version>] - <date>` CHANGELOG section with `## [Unreleased]` left empty as a mistake when the repository's landing conventions have the pull request cut its own release section for the release workflow to tag on merge.",
+      "why": "In that release flow, a plan with a Release line writes its dated section in the PR, and the Release workflow tags and publishes from that section when the PR merges.",
+      "check": "Before reporting, read the repository's AGENTS.md or landing/release conventions and earlier release PRs to see whether release sections are written in the PR.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test scripts, don't report a check that skips only on a host whose environment can't be set up for it (for example, a base PATH that already holds the tool) when CI runs the check, unless working around the environment costs little.",
+      "why": "The skip keeps the suite honest on rare machines where the precondition can't be met. CI still runs the check, and building a fully isolated environment would add more fixture code than the rare case is worth.",
+      "check": "Before reporting, confirm from the CI workflow or a run log that the skipped checks run and pass in CI, and that another check covers the same code path.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/tests/**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask that test checks for bash scripts also run on Windows when they are deliberately restricted to non-Windows hosts and CI runs the suite on Linux.",
+      "why": "Those checks put Windows paths on a bash PATH, which neither WSL bash nor Git for Windows bash can read. On Windows they fail or test nothing, and Linux CI covers them.",
+      "check": "Before reporting, check the CI workflow's runner OS and whether the earlier change or ADR that restricted the checks to non-Windows hosts was deliberate.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

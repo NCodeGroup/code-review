@@ -1,0 +1,66 @@
+{
+  "hash": "a597005719ff5ed0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #354",
+  "rules": [
+    {
+      "statement": "When a file is generated from a template or shared partial, make the fix in the source template and regenerate every copy, rather than editing one generated copy by hand.",
+      "why": "The build regenerates the copies from the template, so an edit to a copy is overwritten and the other copies keep the bad wording.",
+      "check": "Look for a diff that changes generated prompt, skill, agent or command files without the matching change to their source template, or that changes the template without regenerating its copies.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Text in a shared partial must be true for every file that includes it: make a step that only some includers perform conditional (\"When you write X, …\"), or move it into the template that needs it.",
+      "why": "A shared sentence telling every includer to do something only one of them does leads a model to look for a file that doesn't exist or make a stray commit. Wording that fits only commands confuses users of agents that include the same partial.",
+      "check": "When a partial or included section changes, check each file that includes it and confirm that every instruction and phrase (\"run this command\", \"commit the record\") applies to that file.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/templates/**/*.md",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In agent or prompt instructions, state a condition in terms of a concrete value the tool or script prints (for example \"when the state script's `renumber` line names a version\"), not as a vague description that can be read either way round.",
+      "why": "Wording like \"when the entry before it landed with the version it expected\" can be read as inverted, so a model might skip a needed step or add one that isn't needed.",
+      "check": "Look for conditional instructions in prompts or skills that describe a state in prose when a script output line exists that decides it, and for wording whose trigger could be read backwards.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script adds a fallback value or an exclusion branch (a placeholder title, skipping an entry that doesn't match, keeping an entry out of a second list), add a test that asserts the output for that branch.",
+      "why": "An untested fallback or exclusion can regress without anyone noticing, for example a worktree listed twice or a missing placeholder.",
+      "check": "For new branches that substitute a placeholder, skip an item, or decide which of two lists an item goes in, look for a test case that covers each branch and asserts the resulting output lines.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `Test-Path` (or other existence check) on a worktree path reported by `git worktree list` as redundant: git still lists prunable worktrees whose folders were deleted.",
+      "why": "The maintainer kept the guard because `git worktree list` can report a prunable worktree whose directory no longer exists.",
+      "check": "Before flagging an existence check as redundant, see whether the path comes from `git worktree list` or a similar listing that can include stale entries.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

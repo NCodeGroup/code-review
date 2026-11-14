@@ -1,0 +1,139 @@
+{
+  "hash": "c2e4226aa95c1f9c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1154",
+  "rules": [
+    {
+      "statement": "Never accept an unsecured JWS (`alg` `none`) at any nesting level where a JWT is validated, and don't add any parameter or flag that opts into accepting one.",
+      "why": "RFC 8725 §3.2 forbids accepting an unsecured token where a signed one is expected, and an opt-in is one mistaken flag away from accepting forged tokens.",
+      "check": "Look for validation code paths, options or flags that allow `alg` `none` or skip signature verification, including inside an enclosing JWE.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept an encrypted JWT only when it is a JWE whose `cty` is `JWT` (compared as a media type) enclosing a signed JWS exactly one level deep, and refuse any JWE that encloses no JWS or nests deeper.",
+      "why": "Encryption to a recipient's public key authenticates nothing about the sender, and unbounded nesting is unbounded work for unauthenticated input.",
+      "check": "Check JWE validation for acceptance of encryption-only payloads, a case-sensitive or exact string comparison of `cty` instead of a media-type comparison, or recursive decoding without a depth limit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a token that is both signed and encrypted, emit a JWE with `cty` `JWT` enclosing the JWS (a Nested JWT per RFC 7519 §5.2).",
+      "why": "The validator accepts an encrypted token only when it is marked as and contains a signed nested JWT.",
+      "check": "Look for encoder code that encrypts a signed JWT without setting the `cty` header to `JWT`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate JWTs only in the compact serializations, and refuse the JWS/JWE JSON serializations.",
+      "why": "RFC 7519 §1 represents a JWT only in the compact serializations, and the JSON serializations carry multiple signatures or recipients with their own algorithms.",
+      "check": "Look for JWT validation paths that parse or accept JSON-serialized JWS or JWE input.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep signature verification keys and decryption keys as separate, explicitly supplied sets, and refuse an encrypted token when no decryption keys are given instead of falling back to the verification keys.",
+      "why": "The signer and the recipient are different parties, so a fallback either decrypts with the wrong party's key or hides a missing decryption policy. Failing closed makes the gap visible.",
+      "check": "Look for code that uses validation/verification keys to decrypt, or that infers decryption keys when none were configured.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When selecting a key for a JOSE operation, honor the key's declared `use` and `alg` so that it serves only that use and algorithm, and let a key that declares neither serve any.",
+      "why": "RFC 7517 §4.2 and §4.4 restrict a key to its declared use and algorithm.",
+      "check": "Look for key selection that ignores a JWK's `use` or `alg`, such as using an `enc` key to verify a signature or a key for a different algorithm than the one it declares.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check every JOSE header's algorithms (signature, key management, content encryption, compression) against the caller's allow-lists, both the enclosing JWE's and the enclosed JWS's, before a key is selected or any byte is decrypted or verified, treating a `null` list as unrestricted and an empty list as accepting nothing.",
+      "why": "RFC 8725 §3.1 and §3.3 require algorithm verification before any cryptographic operation, and a check after decoding comes too late.",
+      "check": "Look for algorithm checks done after decryption or signature verification, checks done in callers after validation, headers that skip the check, or an empty list treated as unrestricted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A caller validating a JWT at a trust boundary must pass explicit algorithm allow-lists and name its decryption keys, never `null` (unrestricted) algorithm lists.",
+      "why": "Library defaults are permissive only because the library can't know the caller's policy, so a caller at a trust boundary has to state that policy.",
+      "check": "Look for JWT validation calls on externally supplied tokens (client assertions, request objects, hints, access tokens) that leave the valid-algorithm lists unset or null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make library defaults for token validation never unsafe: no default may accept an unsigned token, decrypt with a verification key or skip a check the caller stated.",
+      "why": "Defaults may be permissive only where the caller's policy is unknown. They must never open a security gap.",
+      "check": "Look for new default values or fallbacks in validation parameters that weaken signing, key-role or caller-stated checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a token validation rule as a pure-data requirement record judged by a separately registered handler, keep validation logic out of the requirement record, and have fluent builders only construct and append records.",
+      "why": "This keeps the abstractions package free of logic, makes a validation an inspectable description instead of opaque closures, and lets third parties add rules by registering a handler.",
+      "check": "Look for requirement types that contain validation logic or closures, builders that do more than construct and append records, or new rules added by editing the validator instead of adding a handler.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a token as valid only when every validation requirement succeeded and no handler recorded a failure, and aggregate all failures into one exception on the result.",
+      "why": "Handlers vote on the requirements, so a requirement no handler judged must not pass silently.",
+      "check": "Look for result evaluation that passes when some requirement was never marked succeeded, or that throws on the first failure instead of aggregating.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

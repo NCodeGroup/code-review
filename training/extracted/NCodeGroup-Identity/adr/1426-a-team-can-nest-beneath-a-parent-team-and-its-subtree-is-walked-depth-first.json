@@ -1,0 +1,40 @@
+{
+  "hash": "8dfcb4fca1bf3af7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1426",
+  "rules": [
+    {
+      "statement": "Don't read a hierarchy with unbounded fan-out (every descendant of a node) as one list; walk it depth first, reading one bounded page of children per level, so memory is bounded by depth times page size.",
+      "why": "A node can have any number of children, so reading a whole subtree as one list grows without bound in memory and result size. A breadth-first walk has the same problem because one level can be arbitrarily wide.",
+      "check": "Look for store methods or queries that return all descendants of a tree node at once, or breadth-first walks that hold a whole level in memory, where a paged child read with a depth-first walk would work.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use keyset (seek) pagination over a string column whose sort order depends on the database collation; page by a key whose ordering the database guarantees to be stable.",
+      "why": "A collation-dependent order can make a page boundary skip or repeat a row.",
+      "check": "Look for paged queries that order by and filter `> lastValue` on a text column such as a path or name, and check whether the comparison and the ordering could disagree under the database collation.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a paged walk reads from a store, run each page read as its own untracked query in its own short unit of work, and don't hold one context or transaction open for the whole walk.",
+      "why": "Holding at most one page per level, each read in its own unit of work, keeps the walk's memory and tracked-entity state bounded no matter how large the tree is.",
+      "check": "Look for EF Core walks or loops that reuse one tracked DbContext across all pages, or that leave out `AsNoTracking` on read-only page queries.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "hash": "b8ddef6d888d8175",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1118",
+  "rules": [
+    {
+      "statement": "An ML-DSA (AKP) JWK writes `priv` as the 32-byte seed only, never the expanded private key, and writes `pub` as the raw public key.",
+      "why": "RFC 9964 defines the seed as the `priv` representation, and the seed is the compact, portable form.",
+      "check": "Look at AKP/ML-DSA JWK export or import code that writes or reads `priv` from the expanded private key (for example ExportMLDsaPrivateKey) instead of the private seed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Suppress a BCL `[Experimental]` diagnostic (such as SYSLIB5006) only with a `#pragma warning disable` around the individual call site, with a comment giving the reason or the decision record. Don't suppress it project-wide, and use the stable members wherever they exist.",
+      "why": "Narrow suppressions can be deleted with no other change once the BCL drops `[Experimental]`, and they keep experimental use visible and justified.",
+      "check": "Look for NoWarn entries in project files, file-wide or assembly-wide suppressions of experimental diagnostics, a pragma with no comment, or experimental members used where a stable equivalent exists (for example the raw-key and seed MLDsa members).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register an algorithm that depends on platform support (such as ML-DSA, gated on `MLDsa.IsSupported`) in the algorithm data source only when the running platform supports it, so that discovery metadata and the JWKS never advertise an `alg` that can't be signed or verified.",
+      "why": "Advertising an algorithm the platform can't fulfill is an interoperability bug.",
+      "check": "Look for platform-dependent algorithms added to the default algorithm registration without an `IsSupported` (or equivalent) guard.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always register a key-type descriptor whose primitive depends on the platform, and throw `PlatformNotSupportedException` only when it is used on a platform without support. Don't make the descriptor's registration conditional.",
+      "why": "The key type stays part of the seam everywhere. Only the use fails on platforms without support, and only the algorithms are gated.",
+      "check": "Look for key-type descriptor registration wrapped in a platform-support check, or descriptors that fail silently or throw a different exception type when the platform lacks support.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store asymmetric key material at rest as PKCS#8 (private) or SubjectPublicKeyInfo (public) DER, the same for every key family, not as raw key bytes or a JWK.",
+      "why": "The OID makes the parameter set self-describing, the encoding matches every other asymmetric family, and X.509 interoperability stays open.",
+      "check": "Look for new asymmetric key types whose serialization for storage writes raw keys, seeds or a custom format instead of PKCS#8 or SPKI DER.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a parameter-set catalog that the specification closes (such as the three FIPS 204 ML-DSA sets) internal, and have callers select a set by its `alg` name rather than by a public parameter-set type.",
+      "why": "Each set is a distinct `alg`, so a public catalog adds surface without adding any choice for callers.",
+      "check": "Look for public types or public members that expose the parameter-set catalog of a closed algorithm family.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, make tests of a platform-dependent cryptographic primitive return early (no-op) when the primitive's `IsSupported` is false, so they run on every CI operating system and don't fail there.",
+      "why": "ML-DSA needs OpenSSL 3.5 or later, or a recent Windows 11, and the tests must run on every CI OS.",
+      "check": "Look for ML-DSA (or similar platform-gated) tests that have no `IsSupported` guard, or that are excluded from some CI platforms instead of being guarded.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put an algorithm built on a stable BCL cryptographic primitive in the core libraries and register it by default. Reserve opt-in packages for algorithms that need a clean-room implementation or a third-party dependency.",
+      "why": "An opt-in package exists only to isolate such code or dependencies. Without either, it just makes a host take an extra step.",
+      "check": "Look for new algorithms over stable BCL types placed in a separate opt-in package or needing an extra registration call, or for algorithms with a third-party or clean-room implementation added to the core libraries.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

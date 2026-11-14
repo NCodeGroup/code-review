@@ -1,0 +1,20 @@
+{
+  "hash": "b2ff1fa7c3099de4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #314",
+  "rules": [
+    {
+      "statement": "When a template adds content behind a condition, test it by rendering the template both with and without the condition and checking that the content appears exactly when the condition holds; searching the template source for the text is not enough.",
+      "why": "A source-only search doesn't show the condition works, so a broken condition could put content into projects it doesn't apply to (such as a pointer to a settings file the project lacks) and the tests would still pass.",
+      "check": "In a diff that adds or changes conditional template content (for example a Jinja `{% if %}` block), look for a test that renders at least one variant where the condition is true and one where it is false, and asserts the content is there and missing in each. Flag tests that only grep the `.jinja` source.",
+      "scope": "domain",
+      "domain": "project-templates",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

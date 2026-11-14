@@ -1,0 +1,118 @@
+{
+  "hash": "68bcde96616fe497",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #598",
+  "rules": [
+    {
+      "statement": "Don't report reading properties through a resolved object's options data holder (such as `frontend.Options.TrustedOrigins`) as a call-chain or Law-of-Demeter violation; that rule targets chains of collaborator method calls like `a.B().C().D()`, not property reads on a plain options/data object.",
+      "why": "Copying every setting from the options type onto the owning type would duplicate the options class and weaken cohesion; property reads on a data holder are not the coupling the rule warns about.",
+      "check": "Before reporting a member-access chain, check whether the intermediate is a data holder (options/record) being read for properties rather than a collaborator whose methods are called in a chain.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a local test helper as duplicating a shared helper when it calls the shared helper and only adds settings on top of it.",
+      "why": "A helper that delegates to the shared one repeats no defaults, so changes to the shared defaults already reach it and it cannot drift.",
+      "check": "Read the body of the supposedly duplicate helper; if it calls the shared helper (e.g. with a configure callback) and only adds settings, don't raise the finding.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a stub or fake that only one test file needs out of that file; the test conventions make it a `private sealed` nested type of that test class, which is an allowed exception to the no-nested-types rule.",
+      "why": "The test isolation conventions explicitly require a single-file stub to be a private sealed nested type in that file.",
+      "check": "Before reporting a nested type in a test class, check whether it is a private sealed stub used only in that file; if so, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to the code under test to check an argument-null guard; the test conventions allow that use of the null-forgiving operator.",
+      "why": "The C# and test conventions sanction `null!` in test projects for argument-validation tests, so the ban on postfix `!` doesn't apply there.",
+      "check": "Before reporting `null!` in a test, check whether it is an argument passed to the code under test in a null-guard/argument-validation test; only report other uses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validator (`IValidateOptions<T>`) must report a duplicate registration, such as the same rule or name registered twice, as a validation failure instead of throwing from its constructor.",
+      "why": "A constructor exception surfaces as a raw composition error, while a validation failure names the configuration key and fits the options-validation pipeline.",
+      "check": "Look for `throw` statements in an options validator's constructor, or duplicate detection done outside `Validate`, and ask for it to become a `ValidateOptionsResult` failure.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every test must assert the behavior its name claims; a test that only constructs objects and asserts nothing must be given an explicit assertion (for example a strict mock showing a dependency is not touched until first use) or deleted.",
+      "why": "A test with no assertion has unclear intent and proves nothing, such as the laziness it claims.",
+      "check": "Look for test methods with no Assert, no mock verification and no expected-exception check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Source files must stay UTF-8 without a byte-order mark; don't let a change add a BOM to a file.",
+      "why": "Adding a BOM changes the file's encoding for no reason.",
+      "check": "Look in the diff for a BOM (U+FEFF) added before line 1 of a file.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every Moq setup ends with `.Verifiable()`, including value-stub setups (`SetupGet(...).Returns(...)`) on loose mocks.",
+      "why": "The maintainer confirmed that every setup must be verifiable; loose-mock value stubs are not exempt.",
+      "check": "Look for `Setup`/`SetupGet`/`SetupSequence` chains in tests that do not end with `.Verifiable()`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options validation failure messages must use one consistent format that starts with the full configuration key path of the member they are about (such as `Section:Item:Member must ...`), without placing a `: ` separator inside the key path.",
+      "why": "Inconsistent message formats confuse readers, and the tests end up pinning the odd form.",
+      "check": "Compare new validation messages with the existing ones in the same validator for key-path and separator format.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The PR description and changelog must describe the behavior the code actually implements (for example, which cases are ignored and which are refused with a given error), and must be corrected when they diverge.",
+      "why": "A reader comparing the description with the code is misled when they disagree.",
+      "check": "Compare the claims in the PR description and changelog with the code paths in the diff.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

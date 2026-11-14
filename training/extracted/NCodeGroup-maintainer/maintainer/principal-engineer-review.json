@@ -1,12 +1,12 @@
 {
   "hash": "8c4d513f818a37a7",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "NCodeGroup maintainer: principal-engineer-review",
   "rules": [
     {
-      "statement": "Replace hardcoded magic numbers and literal strings in logic with named constants or configuration options.",
-      "why": "The maintainer counts unexplained hardcoded values as 'duct tape' technical debt that makes code fragile and hard to understand.",
-      "check": "Look for unexplained numeric or string literals in conditionals, timeouts, sizes or limits that are not named constants or bound options.",
+      "statement": "Don't hardcode magic numbers or strings in logic; give them a named constant or a configurable option.",
+      "why": "The maintainer treats hardcoded magic values as \"duct tape\" technical debt that builds up over incremental patches.",
+      "check": "Look for literal numbers (timeouts, sizes, retry counts, limits) or literal strings that carry meaning, used inline in new or changed logic without a named constant or options property.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -15,9 +15,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Use the project's existing abstraction for a concern instead of bypassing it with direct calls to the underlying implementation.",
-      "why": "Bypassing established abstractions adds coupling and inconsistency, which builds up technical debt across incremental patches.",
-      "check": "Look for new code that reaches past an existing service, interface or helper (for example, it calls a lower-level API directly when the project already wraps it).",
+      "statement": "Use the existing abstraction or project pattern for a concern; don't bypass it with a direct or one-off implementation.",
+      "why": "Bypassing existing abstractions and adding inconsistent styles erodes architectural cohesion and counts as duct-tape code.",
+      "check": "Look for new code that reaches past an existing service, helper or interface the codebase already uses for the same concern (for example, calling a lower layer directly or reimplementing an existing utility), or that styles the same kind of code differently from its siblings.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -26,9 +26,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not add special-case conditionals or workarounds that patch a symptom; fix the underlying logic or design instead.",
-      "why": "The maintainer's main concern is complex conditionals that look like temporary fixes and pile up as patch upon patch.",
-      "check": "Look for new if or switch branches keyed on specific values, flags or edge cases that exist only to work around a bug somewhere else.",
+      "statement": "Don't add special-case conditionals that patch over a symptom; fix the underlying logic instead.",
+      "why": "Complex conditionals that feel like temporary fixes are fragile and pile up as technical debt.",
+      "check": "Look for new if/else branches keyed on one specific value, type or caller, or flag checks that work around a bug elsewhere instead of correcting it.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -37,9 +37,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Move logic that is repeated in the change into a shared reusable method or component instead of duplicating it.",
-      "why": "The review asks for repeated logic to be refactored, following the DRY principle, so the code stays maintainable.",
-      "check": "Look for blocks of code in the diff that are the same or nearly the same, or that copy logic already in the codebase.",
+      "statement": "Extract logic repeated across the diff, or duplicated from existing code, into a shared method or component.",
+      "why": "Repeated logic is harder to maintain and breaks the DRY principle the review enforces.",
+      "check": "Look for blocks that are the same or nearly the same in several places in the diff, or that copy an existing helper.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -48,9 +48,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Handle every failure path explicitly, including null inputs, timeouts and failed external or API calls.",
-      "why": "The maintainer requires production-ready code that covers all failure paths instead of relying on fragile assumptions.",
-      "check": "Look for external calls with no timeout or cancellation and no error handling, and for inputs dereferenced without null or validity checks.",
+      "statement": "Handle every failure path of new code, including null inputs, timeouts and failures of external calls.",
+      "why": "The review requires production-ready code that doesn't rely on fragile assumptions about inputs or dependencies.",
+      "check": "For each new external call (HTTP, database, I/O), check for a timeout or cancellation and for handling of failures. For each public entry point, check that null or invalid arguments are handled.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
@@ -59,9 +59,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Validate input and enforce authentication and authorization checks on every API endpoint.",
-      "why": "The review treats missing auth checks or input validation as a security risk in the API contract.",
-      "check": "Look for new or changed endpoints or handlers that accept request data without validating it, or that have no authorization requirement.",
+      "statement": "Validate input and enforce authentication and authorization checks on every new or changed API endpoint.",
+      "why": "A clear API contract with auth checks and input validation is required for security.",
+      "check": "Look for new controller actions, minimal API endpoints or handlers that are missing authorization metadata or checks, or that use request data without validating it.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -70,21 +70,22 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not hardcode secrets or credentials in source code or committed configuration; load them from a secure configuration source.",
-      "why": "The review requires environment variables and secrets to be handled securely.",
-      "check": "Look for passwords, keys, connection strings with credentials, or tokens written as literals in code or appsettings files.",
+      "statement": "Don't hardcode secrets or credentials in source or committed configuration; load them from a secure configuration source.",
+      "why": "Environment variables and secrets must be handled securely.",
+      "check": "Look for connection strings, passwords, API keys, tokens or signing keys as literals in code or in committed appsettings/config files.",
       "scope": "general",
-      "topic": "security-and-crypto",
+      "topic": "configuration-and-options",
       "applies_to": [
         "**/*.cs",
-        "**/appsettings*.json"
+        "**/appsettings*.json",
+        "**/*.config"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Avoid N+1 query patterns: do not issue a database query per item inside a loop when one batched query can fetch the data.",
-      "why": "The review asks whether queries are optimized and calls out N+1 problems explicitly.",
-      "check": "Look for database or repository calls inside loops over a result set, and for lazy-loaded navigation access inside iterations.",
+      "statement": "Don't issue a database query per item inside a loop (N+1); load related data in a single query or batch.",
+      "why": "The review requires optimized queries without N+1 problems.",
+      "check": "Look for database or repository calls, or lazy-loaded navigation properties, accessed inside loops over a result set.",
       "scope": "general",
       "topic": "persistence",
       "applies_to": [
@@ -93,11 +94,34 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Run multi-step data modifications that must succeed or fail together inside a single transaction.",
-      "why": "The review requires transaction integrity and data integrity to be kept.",
-      "check": "Look for several related writes or SaveChanges calls in one operation with no surrounding transaction.",
+      "statement": "Wrap related database writes that must succeed or fail together in a single transaction.",
+      "why": "Transaction integrity must be kept so a partial failure doesn't corrupt data.",
+      "check": "Look for several dependent inserts, updates or deletes, or several SaveChanges calls in one operation, that run without a shared transaction.",
       "scope": "general",
       "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make database schema changes backward compatible with existing data and code, or migrate the existing data explicitly.",
+      "why": "Schema changes must be safe and must not break data integrity or existing behavior compared with main.",
+      "check": "Look for migrations that drop or rename columns, add non-null columns without defaults, or narrow types, without a data migration or a compatibility step.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Protect shared mutable state against concurrent access, and release subscriptions and resources so they don't leak.",
+      "why": "The review looks for race conditions and memory leaks in how state is managed.",
+      "check": "Look for non-thread-safe collections or fields changed from several threads without synchronization, event handlers subscribed without being unsubscribed, and disposables that are never disposed.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
       "applies_to": [
         "**/*.cs"
       ],

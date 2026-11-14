@@ -1,0 +1,20 @@
+{
+  "hash": "94010a6ac6d5855b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #818",
+  "rules": [
+    {
+      "statement": "Don't report a field in a Kubernetes custom resource manifest as possibly unsupported without first checking it against the CRD schema of the pinned controller version, and don't raise it when that CRD defines the field and a CI job applies the manifest and exercises the path end to end.",
+      "why": "The maintainer declined such a finding: the pinned Envoy Gateway version's CRD defined the field with that value, and the pull request's CI leg already applied the manifest and proved the request path end to end. A speculative 'is this field valid?' question adds noise when the evidence is available.",
+      "check": "Before questioning a CRD field, look up the generated CRD for the pinned chart/controller version (e.g. the tagged CRD YAML) to confirm whether the field and value exist, and check whether a CI workflow installs the manifest and sends traffic through it; only report if the field is missing from that schema or no check exercises it.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**/*.yaml",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

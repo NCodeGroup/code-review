@@ -1,0 +1,32 @@
+{
+  "hash": "b8ddc06ffda6b827",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #310",
+  "rules": [
+    {
+      "statement": "When a test can't trigger a platform-specific guard in a script on the CI platform, have it find the guard's block in the script's AST and run that body against a fixture with its variables bound, rather than only checking the guard's text or position with a regex.",
+      "why": "A text-only check still passes when the guard keeps its wording but passes the wrong argument, misreads a return value or drops details from its error message. Running the body as written catches those mistakes.",
+      "check": "Look for tests that check a script's guard or branch only by regex or string matching on the source. Running the extracted block against a fixture is the expected alternative, with assertions on when it throws and what its message says.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a helper treats a failing external command (such as a git subcommand) as 'no problem', fail open only for the specific expected failure and say in a comment that this is deliberate. Report the command's error output for any other failure instead of hiding stderr and returning nothing.",
+      "why": "Swallowing every non-zero exit makes a corrupt clone or any other git error look like a clean result. The guard then lets the operation go on, and the user hits the obscure downstream error the guard was meant to replace.",
+      "check": "Look for helpers that redirect an external command's stderr to null and return an empty or 'ok' result on any non-zero exit code, without telling the expected failure apart from others and without a comment that the fail-open is deliberate.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

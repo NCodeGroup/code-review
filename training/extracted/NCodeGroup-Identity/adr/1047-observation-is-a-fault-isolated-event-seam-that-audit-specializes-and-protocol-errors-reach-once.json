@@ -1,0 +1,185 @@
+{
+  "hash": "26766866a8c20ce6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1047",
+  "rules": [
+    {
+      "statement": "Model pure observation (a notification that cannot reject, mutate or return a value) as a published event, not as a mediator command; keep any seam that shapes the outcome as a mediator command.",
+      "why": "The type should tell a reader at a glance whether a seam can change the outcome, and a notification modelled as a void mediator command lets a throwing handler abort the operation.",
+      "check": "Look for new mediator commands with no result used only to notify (issued, revoked, rotated, succeeded) and for event handlers that need to reject, mutate or return something.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish an observation event as the last, side-effect-only step of an operation, after its outcome is decided.",
+      "why": "Observation must never alter the outcome of the operation it observes.",
+      "check": "Check that the publish call comes after the state change or result is decided, and that nothing after it depends on what the handlers did.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An event handler must not try to change the outcome of the operation that published the event; a handler that needs to is on the wrong seam and belongs in a mediator command or strategy.",
+      "why": "Events are side-effect-only observation, and a handler that changes outcomes breaks the guarantee that observers cannot affect responses.",
+      "check": "Look at event handlers that throw to block, mutate the event or shared state the publisher reads, or signal results back to the publisher.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When implementing fan-out to multiple observers, run each handler in its own try/catch and log a failure instead of letting it reach the caller or stop the other handlers.",
+      "why": "Per-handler fault isolation is the default, so a slow or failing sink never breaks the operation or the other sinks.",
+      "check": "Look for loops that await handlers or observers without a try/catch around each one, or that rethrow handler exceptions to the publisher.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the shared event publish/subscribe seam for observation, not .NET `event`, `IObservable` or ad-hoc observer collections.",
+      "why": "None of these isolate a failing subscriber, order by priority or resolve handlers from DI scopes, and ad-hoc collections each re-implement isolation, ordering and scoping.",
+      "check": "Look for new `event` members, `IObservable` usage or `IEnumerable<IXxxObserver>` loops added to report what happened.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A singleton that dispatches to scoped services must create a fresh DI scope per dispatch and resolve those services from it, never capturing scoped services.",
+      "why": "Capturing scoped services in a singleton leaks scope lifetimes; the publisher creates a scope per publish for this reason.",
+      "check": "Look for singletons that take scoped services in their constructor or cache handler instances, rather than resolving them from a scope created per call with `IServiceScopeFactory`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register event handlers with `TryAddEnumerable` (or the provided `AddEventHandler<TEvent, THandler>()` helper) so that several handlers can coexist without duplicates.",
+      "why": "The seam dispatches to every registered handler, so registration must add to the collection idempotently.",
+      "check": "Look for event handler registrations using `AddSingleton`/`AddScoped` or `TryAdd*` instead of `TryAddEnumerable` or the helper.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define events as immutable records with typed properties, not dynamic metadata bags or dictionaries.",
+      "why": "Background handlers work from the event alone, and an untyped bag invites secrets.",
+      "check": "Look for event types with mutable setters, or with `Dictionary<string, object>` or similar bag properties.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Events and audit events must carry only identifiers, hashes and metadata, never tokens, secrets, authorization codes or key material.",
+      "why": "Events go to logs, audit stores and external buses, so a secret in an event leaks.",
+      "check": "Inspect new or changed event properties for token values, client secrets, codes, passwords or key bytes instead of their ids or hashes.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive everything an event needs before publishing it, and never read ambient request state such as `HttpContext`, `IHttpContextAccessor` or request-scoped services from an event handler.",
+      "why": "Handlers may run in the background after the request ends, so they must work from the event alone.",
+      "check": "Look for event handlers that use `IHttpContextAccessor`, `HttpContext` or request-scoped state, or for events whose envelope is filled in after publish.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not also log at a call site a milestone that the call site publishes as an event; logging, metrics and tracing of events are done by subscribing handlers.",
+      "why": "Logging, metrics and tracing are subscribers to the event, so logging the same milestone at the call site duplicates it.",
+      "check": "Look for `ILogger` calls right next to a `PublishAsync` (or audit recorder call) that log the same occurrence.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report diagnostic logging of the exception behind an errored protocol response as a duplicate of the protocol-error audit event: the two are complementary.",
+      "why": "The ADR keeps operator diagnostics as ordinary `ILogger` calls (unexpected `server_error` at Error, other errors at Debug) beside the audit event.",
+      "check": "Before flagging duplicate logging, check whether the log is an exception diagnostic for operators and not a re-log of the published milestone.",
+      "scope": "domain",
+      "domain": "oauth-oidc",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Audit OAuth/OpenID Connect protocol error responses once per errored request from a single endpoint-level funnel, not by publishing an error event at each call site that produces an error.",
+      "why": "Errors reach the response through both thrown exceptions and returned error results, and publishing at each call site misses some paths and double-counts others.",
+      "check": "Look for endpoint or handler code that publishes or records a protocol-error audit event directly instead of relying on the endpoint filter.",
+      "scope": "domain",
+      "domain": "oauth-oidc",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A failure while recording an audit or observation event must be logged and swallowed so that it never changes the response.",
+      "why": "Observation must not alter outcomes, including a client's error response.",
+      "check": "Look for audit recorder or publish calls inside response paths that can throw into the response, without a catch that logs.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert that events were published by registering a recording event handler, not by mocking the publisher or inspecting logs.",
+      "why": "The ADR says tests assert events with a recording handler.",
+      "check": "Look for tests that verify events through publisher mocks or log output instead of a recording handler.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish an audit event through the typed audit recorder facade, which derives the envelope, rather than raw through the event publisher; publish a state-changing success at its call site.",
+      "why": "The recorder derives the audit envelope once, before publication.",
+      "check": "Look for `IAuditEvent` instances passed directly to `IEventPublisher.PublishAsync`.",
+      "scope": "repository",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

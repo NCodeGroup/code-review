@@ -1,0 +1,82 @@
+{
+  "hash": "14bc8599dd419c50",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #145",
+  "rules": [
+    {
+      "statement": "When code matches a path by its last segment after trimming trailing separators, its tests must cover a prefixed relative path, a trailing-separator path, an absolute path and a near-miss name, not only the bare name.",
+      "why": "If the trim or leaf comparison regresses, for example to full-string equality, real setups like `template/.githooks/` or an absolute path would be misjudged and no test would fail.",
+      "check": "Look for new path leaf/suffix comparisons (Split-Path -Leaf, Path.GetFileName, TrimEnd of separators) whose tests use only the bare name, with no case for a trailing slash, a parent folder, an absolute path or a similar but different name such as `.githooks-old`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep script help text and doc comments in step with how the script actually reports output, naming the right stream (for example, a warning rather than printed output).",
+      "why": "Help text that names the wrong output stream points readers to the wrong place.",
+      "check": "When a diff changes Write-Host/Write-Output to Write-Warning (or similar), check that .SYNOPSIS/.DESCRIPTION or XML docs still describe the old behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply C#-specific style rules, such as not nesting one call inside another call's argument, to PowerShell scripts.",
+      "why": "The maintainer declined this: the nested-call rule is written for C#, and a clear PowerShell one-liner doesn't need to be split.",
+      "check": "Before reporting a style rule violation in a .ps1/.psm1 file, confirm that the rule's source applies to PowerShell and not only to C#.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a function is duplicated into a script that has to stay standalone, or ask for a body-equality test, when the tests already run both copies through the same cases.",
+      "why": "The copy is required because the script is standalone, and running both copies through every case already catches them drifting apart.",
+      "check": "Before reporting it, check whether the copy's target has to be self-contained and whether a test calls both copies with the same inputs and expectations.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test script, don't ask to save and restore environment variables the test sets and clears when each test suite runs in its own process and no later check in that file depends on the caller's values.",
+      "why": "The maintainer declined this: since the test runner starts a separate process for each suite, saving and restoring the variables adds lines without changing any result.",
+      "check": "Before reporting cleanup that doesn't restore environment variables, check the test runner (for example, whether it starts one pwsh process per suite) and whether a later check in the same file reads those variables.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tooling or agent instructions that set `core.hooksPath` must first confirm that no hooks path is already set and that the folder printed by `git rev-parse --git-path hooks` holds no hooks of its own (and no `.pre-commit-config.yaml` exists, where that applies), and must never change an existing hooks path.",
+      "why": "Setting a hooks path in a clone that uses pre-commit or `.git/hooks` hooks turns those hooks off and stops pre-commit from installing.",
+      "check": "Look for `git config core.hooksPath ...` in scripts or agent instructions that is guarded only by an empty `core.hooksPath` check, or that overwrites a path that is already set.",
+      "scope": "domain",
+      "domain": "git-hooks-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

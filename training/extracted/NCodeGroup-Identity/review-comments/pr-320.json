@@ -1,12 +1,12 @@
 {
   "hash": "872c60a816e17043",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #320",
   "rules": [
     {
-      "statement": "Represent HTTP status codes in public models and internal responses as `int`, not the `System.Net.HttpStatusCode` enum, so a status the enum does not name is kept exactly as it was sent.",
-      "why": "The enum is too restrictive: it can't name every status a server might send, such as 499.",
-      "check": "Look for properties, constructor parameters or fields typed `HttpStatusCode` in new models or response wrappers. The exception is code that has to build or read `HttpResponseMessage` directly.",
+      "statement": "Represent an HTTP status code in a public model or error type as an `int`, not as the `System.Net.HttpStatusCode` enum, so that a status the enum doesn't name is kept exactly as it was sent.",
+      "why": "The enum is too restrictive: a provider can return a status the enum has no member for, and that value should come through unchanged.",
+      "check": "Look for public properties, constructor parameters or internal response models typed `HttpStatusCode`. Using the enum is fine where an API requires it, such as building an `HttpResponseMessage`.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
@@ -15,23 +15,46 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Compare integer HTTP status codes against the `Microsoft.AspNetCore.Http.StatusCodes` constants (for example `StatusCodes.Status200OK`), not against `(int)HttpStatusCode.X` casts or numeric literals.",
-      "why": "Microsoft already provides a constants class with the int value of every HTTP status code, and the casts were repeated in several places.",
-      "check": "Look for `(int)HttpStatusCode.` or bare numbers like `200` compared against status codes in source and tests.",
+      "statement": "Compare integer HTTP status codes against the `Microsoft.AspNetCore.Http.StatusCodes` constants (for example `StatusCodes.Status200OK`), not against casts like `(int)HttpStatusCode.OK` or bare numeric literals.",
+      "why": "Microsoft ships a constants class with an int32 for every HTTP status code, and using it everywhere keeps comparisons consistent.",
+      "check": "Look for `(int)HttpStatusCode.X` or numeric literals such as `200` or `404` used as status code values in comparisons or tests.",
       "scope": "general",
-      "topic": "code-organization",
+      "topic": "protocols",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Don't hard-code policy such as the preference order of signing algorithms. Expose it as an options property, use the existing constant definitions (not string literals) for the default, and validate the configured values: reject blank entries, `none` and duplicates.",
-      "why": "The preference order is policy that users should be able to configure. Hard-coded string literals copy constants that already exist.",
-      "check": "Look for static readonly arrays of algorithm names or similar policy lists written as string literals in the implementation, with no matching option. Also check that the new option has validation.",
+      "statement": "Don't hard-code policy lists such as the preferred order of signing algorithms; expose them as a configurable option that falls back to a documented default when empty.",
+      "why": "A preference order is policy that deployments may need to change, so it belongs in options rather than in a static array in the implementation.",
+      "check": "Look for private static arrays or lists of algorithm names, or other preference lists, that decide behavior and that callers can't override through options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build lists of JOSE algorithm names from the `AlgorithmCodes` constants, not from string literals like \"PS256\".",
+      "why": "Shared constants stop typos and keep algorithm identifiers consistent across the codebase.",
+      "check": "Look for JOSE `alg` names written as string literals in code that builds algorithm lists or compares against them.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
-      "topic": "configuration-and-options",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an option that lists signing algorithms: reject blank entries, `none` and duplicates.",
+      "why": "A blank, duplicate or `none` algorithm in the preference list is a misconfiguration and would weaken client assertion signing.",
+      "check": "When a new option holds a list of JOSE algorithms, check that its options validator rejects empty or whitespace entries, `none`, and duplicates.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
       "applies_to": [
         "**/*.cs"
       ],

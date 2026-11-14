@@ -1,0 +1,31 @@
+{
+  "hash": "5c74dc750b73774d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1294",
+  "rules": [
+    {
+      "statement": "Don't add a security profile that provisions client registration metadata such as redirect URIs, logout URIs, key sets, authentication method or lifetimes; a security profile only sets ceilings, defaults and requirements over security settings, and a client gets its own values through ordinary registration metadata.",
+      "why": "A profile is a ceiling merged down the settings cascade, not a template. A provisioning profile like a `bff` profile would duplicate the `fapi2` ceiling and add a concept that profiles don't have.",
+      "check": "Look for new security-profile definitions or descriptors that assign per-client values like redirect, logout or back-channel URIs, jwks_uri or lifetimes, or that exist only to provision one kind of client, such as a BFF.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a setting, profile or descriptor to the OpenID provider that a backend-for-frontend client needs in order to work; the BFF must run against any standards-compliant provider using only standard client registration metadata.",
+      "why": "Design goal G3 says the BFF works with any compliant provider. A provider-specific BFF feature would make a BFF deployment look as if it needed the NCode OP, and other providers have nothing equivalent.",
+      "check": "Look for BFF code that depends on a provider-specific profile, metadata or extension, or for provider code that adds BFF-only settings or descriptors.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

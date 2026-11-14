@@ -1,0 +1,127 @@
+{
+  "hash": "7f8c23480462fc73",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1141",
+  "rules": [
+    {
+      "statement": "Treat an OAuth `response_type` as one whole value (such as `code id_token`) everywhere it is stored, advertised, registered or enforced, and never split it into its individual names to accept any combination of them.",
+      "why": "Each multi-name value is a distinct flow with its own security properties. Splitting it would let an operator or client who chose `code id_token` also use `id_token` alone, and would advertise flows nobody chose.",
+      "check": "Look for code that splits response_type on spaces and checks each name separately against an allowed set, that stores single names, or that expands names into combinations for discovery or registration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a response type in canonical form, with its names in ordinal order and separated by a single space. Canonicalize `response_type` protocol input at the protocol boundary, but don't normalize configured or stored values when reading them: a non-canonical configured value fails domain validation.",
+      "why": "Settings are compared and merged verbatim, so a lenient reader would turn a typo into an accepted value. Protocol input may order its names freely, so it is canonicalized before comparison.",
+      "check": "Check that request and registration response_type values are canonicalized before comparison, that settings readers don't silently reorder configured values, and that the setting's domain rejects values in a non-canonical order.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive grant types from a response type as OpenID Connect Registration §2 does: `authorization_code` when it includes `code`, `implicit` when it includes `id_token` or `token`. Never introduce a `hybrid` grant type.",
+      "why": "`hybrid` is not a registered OAuth grant type. Using it breaks clients registered the standard way and makes the token endpoint accept a non-standard `grant_type`.",
+      "check": "Look for a `hybrid` grant type constant, a check for it, or a token endpoint accepting it. Confirm the authorization code handler answers only `grant_type=authorization_code`, and that the authorization endpoint checks the derived grant types against `grant_types_supported`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, reject a response type the tenant does not support with `unsupported_response_type`, and one the tenant supports but the client is not allowed with `unauthorized_client`.",
+      "why": "RFC 6749 §4.1.2.1 defines these distinct errors, and the error has to show which scope imposed the refusal.",
+      "check": "Check which error code each response-type refusal path returns: tenant-level refusals must not return `unauthorized_client`, and client-level refusals must not return `unsupported_response_type`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, store each `response_types` value in canonical form with duplicates removed, default omitted `grant_types` from the registered response types, and refuse with `invalid_client_metadata` any registration whose response type uses a grant type it doesn't register or that the tenant doesn't support.",
+      "why": "RFC 7591 §2.1 asks the server to prevent inconsistent pairs. Reporting a registration the endpoints would refuse at every request as successful would be false.",
+      "check": "Check the registration handler for consistency validation between response types and grant types, a check against tenant support, consistent defaults (`code` and `authorization_code`), and use of `invalid_client_metadata` for these errors.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't require the reverse consistency direction in client registration: a registered `implicit` or other grant type with no response type that uses it is allowed.",
+      "why": "An unused grant type grants nothing at the authorization endpoint, OpenID Connect Registration requires only the forward direction, and refusing it would break clients that register a broad grant list.",
+      "check": "Before reporting a missing check that every registered grant type has a matching response type, confirm that the only check that should exist is response type to grant type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a client registration response, return an empty `response_types` list as an empty array rather than omitting it.",
+      "why": "An omitted `response_types` reads as `code`, which would misreport what the client may do.",
+      "check": "Look for JSON serialization that drops empty `response_types` arrays, for example through null or empty-collection ignore conditions.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a response type that includes `id_token` or `token` default to the `fragment` response mode for both success and error responses, on first and resumed passes alike, forbid `query` for it, and require a `nonce` for an `openid` request.",
+      "why": "Tokens in a query string are recorded by server logs and `Referer` headers. OAuth 2.0 Multiple Response Type Encoding Practices forbids query encoding for them.",
+      "check": "Check how the default response mode is chosen: it must use the response type, it must apply to the error and resumed paths too, `query` must be rejected for token-returning types, and the nonce check must be present.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the `response_types_supported` list as the only control over whether the authorization endpoint returns tokens, and don't add a separate boolean setting that duplicates a capability an existing list already expresses.",
+      "why": "A second switch can disagree with the list, so a flow would be advertised and registrable but refused at every request, and the refusal would not say which scope imposed it.",
+      "check": "Look for new options or settings, such as `AllowAccessTokensViaAuthorizationEndpoint`, that gate behavior already decided by `response_types_supported` or another list setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the secure-by-default `response_types_supported` baseline `code` alone, so that front-channel token flows are enabled only by explicitly listing them.",
+      "why": "RFC 9700 §2.1.2 says clients SHOULD NOT use response types that issue access tokens in the authorization response.",
+      "check": "Check that default setting values for supported response types contain only `code`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

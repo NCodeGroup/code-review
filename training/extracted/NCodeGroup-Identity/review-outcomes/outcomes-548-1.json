@@ -1,0 +1,244 @@
+{
+  "hash": "da43d9364dbe5031",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #548",
+  "rules": [
+    {
+      "statement": "Don't ask for `TryAddEnumerable` when several services are registered as instances of one record type and a documented replace-by-key step handles duplicates: `TryAddEnumerable` dedupes by implementation type and can't tell those instances apart.",
+      "why": "The maintainer declined this finding. The instances are registered data, the doc comment and ADR record the replace-by-key design, and a duplicate key registered any other way fails loudly at startup.",
+      "check": "Before reporting, see whether the registrations are instances of one type and whether the registration's doc comment or an ADR describes replacing by key.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In code that runs on every request, parse header and query values without LINQ or `string.Split`: split over spans with `MemoryExtensions.Split` into a `Range` buffer, and order the entries with a simple loop or sort.",
+      "why": "LINQ and `string.Split` allocate delegates, enumerators, sort buffers and substring arrays on every request, which the per-request path rules forbid.",
+      "check": "Look for `Split(`, `Where`, `OrderBy` or `Select` in methods called on each request or page render.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code maps each error code or key to a different message, cover every branch, the fallback included, with a test that asserts the rendered message for that code.",
+      "why": "Otherwise two swapped branches or a code mapped to the wrong key would show the wrong text while the suite still passes.",
+      "check": "Look for new switch or if-chain mappings from codes to messages that have no test asserting the output for each code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change passes a newly selected value from one component into another and each component is only unit-tested on its own, add an integration test that shows the value reaches the output.",
+      "why": "If the argument were dropped from the call, the separate unit tests would still pass.",
+      "check": "Look for new wiring between components, such as passing a selected locale or setting into a renderer, that no test drives end to end.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same data is kept on purpose in two places, such as server C# and a frontend bundle, have each copy name its counterpart in a comment and add a test that fails when the copies drift apart.",
+      "why": "Without that, a wording change to one copy makes the server-rendered and bundle-rendered pages show different text, and no test catches it.",
+      "check": "Look for duplicated string tables or constants across languages or projects that have no cross-reference comment and no test comparing them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, tests of components that consume shipped data such as translations or catalogs use test-owned sample data, and only the tests of that shipped data assert its exact content.",
+      "why": "Rewording or removing shipped data should not break tests that check something else, such as how markup is rendered or how a selector chooses.",
+      "check": "Look for tests outside the shipped data's own test class that build fixtures from shipped data instances or assert its exact wording.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order a type's members so that constants and static members come before instance members such as properties, constructors and instance methods.",
+      "why": "This is the repository's member-ordering convention.",
+      "check": "Look for constants, static fields, static methods or a static Regex declared after instance members, including in test classes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test double used by several test files is declared once as a top-level type in its own file, not copied into each file.",
+      "why": "Copies need identical edits whenever the interface changes, and they can drift apart.",
+      "check": "Look for the same stub, fake or record type declared in more than one test file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a stub, fake or sample type that only one test file needs out of that file: the test conventions make it a private sealed nested type there.",
+      "why": "The maintainer declined this finding. The no-nested-types rule covers src/** only, and the test instructions nest single-file doubles.",
+      "check": "Before reporting a nested type in a test file, check whether any other test file uses it. Only a double shared by several files belongs in its own file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to the code under test in an argument-validation test: the test conventions name this as the one exception to the ban on the null-forgiving operator.",
+      "why": "The maintainer declined this finding. csharp-tests.instructions.md allows the operator in this case, and the test projects use it the same way throughout.",
+      "check": "Before reporting a `!` in a test, check whether it supplies a null argument to test argument validation. Report other uses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a class that implements `IValidateOptions<TOptions>` `<TOptions>Validator` when it is the only validator of that options type.",
+      "why": "Readers search for validators by the framework naming pattern, and a validator named after its concern is hard to find.",
+      "check": "Look for `IValidateOptions<X>` implementations whose class name is not `XValidator`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return `IReadOnlyList<T>` (or another read-only interface) rather than `List<T>` from a method whose callers only read or enumerate the result, and keep the concrete list local.",
+      "why": "A concrete `List<T>` return type exposes mutable storage that no caller needs.",
+      "check": "Look for method signatures that return `List<T>` where callers only use `Count`, the indexer or enumeration.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make service-registration extension methods produce the same registrations, in the same order, whatever order the host calls them in, especially when a default depends on registration order.",
+      "why": "A fallback to the first registered item would otherwise change with call order, and that would contradict docs promising the method can be called before or after the main registration.",
+      "check": "Look for registration methods that append items, where calling one before another changes which item is first or the order of the list. Check that tests cover the different call orders.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask account-management pages (account, sessions, applications, change password) to carry `ui_locales`: it is a preference of the authorization or end-session request, and pages outside such a request render from Accept-Language and tenant settings.",
+      "why": "The maintainer declined this finding. The design is out of scope by decision, and the ADR states it.",
+      "check": "Before reporting that a form or redirect is missing `ui_locales`, check whether the page belongs to an authorization or end-session request flow.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code relies on keeping the input order among equal keys (a stable sort), add a test with tied keys that asserts that order.",
+      "why": "Changing `<` to `<=` would reverse tied entries, for example tied Accept-Language qualities, and no test would fail.",
+      "check": "Look for custom sorts or quality orderings that promise stability but have no test case with equal keys.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep public `///` doc comments to behavior a consumer can use: put repository paths, frontend internals and maintenance notes in `//` comments instead.",
+      "why": "Package consumers see `///` text in IntelliSense, where repository paths mean nothing to them and go stale when files move.",
+      "check": "Look for `<summary>` or `<remarks>` text that cites file paths, other projects' internals or keep-in-sync notes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In doc comments, describe the behavior instead of naming another internal type that provides it.",
+      "why": "A comment that names another type goes stale when that type is renamed.",
+      "check": "Look for `<remarks>` or `<summary>` text that names other internal classes, such as validators, when it could describe what happens.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enumerate an injected `IEnumerable<T>` only once: copy it into an array or `ImmutableArray` and build any indexes from that copy.",
+      "why": "A lazy or non-repeatable sequence can yield different items each time, which would leave the list and the index disagreeing.",
+      "check": "Look for constructors that enumerate an injected `IEnumerable<T>` parameter more than once, for example with a collection expression plus a separate index build.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When startup validation finds bad configuration or registrations, collect every offending item and throw one exception that names them all, not just the first.",
+      "why": "A host with several problems would otherwise need one restart per problem to find them all.",
+      "check": "Look for validation loops that throw on the first malformed or duplicate entry.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a URL query parameter, with its separator choice and escaping, in one shared helper instead of separate concatenations in several places.",
+      "why": "A later change to the parameter's name or encoding would otherwise have to be made everywhere, and one place could be missed.",
+      "check": "Look for more than one helper or inline concatenation that builds the same query parameter.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In TypeScript, compute a derived value once and test and render that value, instead of calling the function twice and adding a non-null assertion on the second call.",
+      "why": "The `!` hides the second call and would mask a mismatch if the function ever changed.",
+      "check": "Look for the same function call used in a condition and again with a `!` for the rendered value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

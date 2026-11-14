@@ -1,0 +1,42 @@
+{
+  "hash": "182f3ee79db4603f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template .github/agents/hybrid-reviewer.agent.md",
+  "rules": [
+    {
+      "statement": "Don't let a change take shortcuts to pass its checks: no skipped or weakened tests, swallowed errors, hard-coded values standing in for real behavior, or leftover TODOs.",
+      "why": "The reviewer has to catch these shortcuts because a diff that uses them still passes its checks.",
+      "check": "Look in the diff for tests that were removed, skipped or had their assertions loosened, catch blocks that drop the exception, literal values that replace computed or configured ones, and new TODO/FIXME comments.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, describe the product only as it is now: no `**Breaking:**` labels, no conventional-commit `!` marker or `BREAKING CHANGE:` footer, no wording that compares it with an earlier state, no migration notes and no compatibility shims.",
+      "why": "ADR-0015 says a pre-release product has no earlier released state to break or migrate from.",
+      "check": "In a pre-release project, look at the changelog, docs, commit messages and the pull request title for breaking-change markers, 'previously'/'now'-style wording or migration notes, and look at code for shims or obsolete aliases kept for compatibility.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md",
+        "**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep the changelog's `## [Unreleased]` section a catalog with only `### Added` and `### Security` subsections.",
+      "why": "ADR-0015 says a pre-release changelog lists what the product has. It doesn't track changes against an earlier state.",
+      "check": "Look for `### Changed`, `### Removed`, `### Fixed`, `### Deprecated` or other subsections under `## [Unreleased]` in CHANGELOG.md in a pre-release project.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "hash": "e6f888deebbefd5f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1059",
+  "rules": [
+    {
+      "statement": "Persist a pending, out-of-band-approved authorization request (device flow, CIBA and similar) as a payload in the existing persisted grant store rather than adding a dedicated store, entity, table or migration for it.",
+      "why": "The grant store already provides tenant scoping, hash keying, expiry, status and concurrency handling; a parallel store duplicates that plumbing and forces an out-of-band migration.",
+      "check": "Look for new store interfaces, EF entities, DbSets or migrations introduced for a pending authorization request type that could be a grant payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a grant must be found by a second key, store a separate pointer grant keyed by that second value that references the primary key, instead of adding an indexed column or lookup method to the shared grant entity.",
+      "why": "Changing the shared grant entity, schema and lookup contract for one grant type pushes flow-specific details into the generic persistence layer. A pointer row keeps them in the flow's own payload.",
+      "check": "Look for new columns, indexes or lookup overloads on the shared persisted-grant entity or store that serve only one grant type's secondary key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a human-typable code (such as an RFC 8628 user_code) and the high-entropy machine secret (such as a device_code) as independent random values; never derive or embed one from the other.",
+      "why": "The user code must stay short and typable, so it can't carry the entropy the machine secret needs.",
+      "check": "Look for a user code computed from, truncated from or encoding the device code, or for the reverse.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate human-entered codes from a transcription-resistant alphabet with no vowels, and normalize the entered value (case-fold and strip separators) before hashing and lookup.",
+      "why": "Without normalization, a user who types the code in a different case or spacing gets a failed lookup. Leaving out vowels avoids confusable characters and accidental words.",
+      "check": "Check that user-code generation uses a consonant-only alphabet and that the verification path normalizes case and separators before hashing or comparing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let an approve or deny decision on a pending authorization change only a request that is still pending, through a read-modify-write of the grant payload, and revoke the user-code pointer exactly once so the code can be entered only once.",
+      "why": "Concurrent or repeated decisions must not overwrite a decided request, and a user code must be single-use.",
+      "check": "Look at the decision handlers: is the pending status checked inside the read-modify-write, and is the pointer grant revoked with revoke-once semantics?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a device-code token poll, answer slow_down when the poll arrives within the polling interval of the last recorded poll, record the last-poll time only while the request is pending, and return authorization_pending, access_denied and expired_token as 400 OAuth errors.",
+      "why": "RFC 8628 defines these poll responses. Recording the poll time after a decision would wrongly throttle completion.",
+      "check": "Check the polling interval comparison, check that the last-poll timestamp is updated only in the pending branch, and check the error codes and HTTP status returned.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the polling-rate state on the pending request record itself rather than adding a separate rate limiter, cache or per-client row.",
+      "why": "The state travels with the request and is tenant-scoped and expiring at no extra cost, so a second subsystem isn't needed.",
+      "check": "Look for a new rate-limiter, memory cache or extra table introduced to enforce the device or CIBA polling interval.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When redeeming a device code or similar pending grant, reject a client other than the one it was issued to with invalid_grant right after the lookup, validate the subject before spending the grant, and consume the approved grant exactly once so a later poll fails with invalid_grant.",
+      "why": "Only the issuing client may redeem the code, the subject must still be valid before tokens are issued, and a code must not issue tokens twice.",
+      "check": "Check the order in the grant handler: lookup, then client-id check, then subject validation, then an atomic consume-once. Look for redemption without a consume-once or with the client check made late.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the verification and polling endpoints of an out-of-band flow share state only through the persisted record, never through in-process memory.",
+      "why": "Authorizing on a second device must work when the verification request and the poll land on different nodes.",
+      "check": "Look for static fields, in-memory caches or singletons that hold pending-request state between the verification and token endpoints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

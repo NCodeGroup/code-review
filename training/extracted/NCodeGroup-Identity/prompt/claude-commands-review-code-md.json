@@ -1,25 +1,36 @@
 {
   "hash": "f9a2e5c1dbef7844",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity .claude/commands/review-code.md",
   "rules": [
     {
-      "statement": "Do not break backward compatibility of public APIs or stored data formats; when a breaking change is unavoidable, include an explicit migration for stored data.",
-      "why": "The review process treats backward compatibility of public APIs and stored data, and migrations, as a risk check. Breaking either one silently breaks consumers or existing persisted data.",
-      "check": "Look for removed or renamed public members, changed signatures or semantics on public types, and changes to persisted entities, schemas or serialized formats that have no accompanying migration or compatibility shim.",
+      "statement": "Don't report a style preference the codebase itself doesn't follow; report only issues you can point to at a specific line in the code.",
+      "why": "The review prompt limits findings to concrete, locatable problems and excludes style preferences foreign to the codebase.",
+      "check": "Before raising a style finding, check whether sibling code in the repository follows that style; if it doesn't, or the finding can't be tied to a file and line, drop it.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add new code that duplicates a helper, extension or pattern the codebase already provides; reuse the existing one.",
+      "why": "The review checks fit with existing patterns and flags anything duplicated that already exists.",
+      "check": "For each new helper or utility in the diff, search the repository for an existing equivalent and flag the duplicate.",
+      "scope": "general",
+      "topic": "code-organization",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Reuse existing helpers, utilities and patterns in the codebase instead of reimplementing functionality that already exists.",
-      "why": "The review process checks whether a change duplicates something that already exists and whether it follows the codebase's existing patterns, naming and error handling.",
-      "check": "Look for new methods or classes in the diff that do the same job as an existing helper, extension or shared NCode.* library API, or that handle errors differently from how the surrounding code does.",
+      "statement": "A change to a public API or to the shape of stored data must stay backward compatible, or come with a migration and an explicit note of the break.",
+      "why": "The review treats backward compatibility of public APIs and stored data, and migrations, as risks to check.",
+      "check": "Look for removed or renamed public members, changed signatures, and changed persisted fields or schemas without a migration or a documented breaking change.",
       "scope": "general",
-      "topic": "code-organization",
+      "topic": "public-api",
       "applies_to": [
         "**/*.cs"
       ],

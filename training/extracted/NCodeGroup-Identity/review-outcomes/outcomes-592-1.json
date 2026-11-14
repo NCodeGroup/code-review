@@ -1,0 +1,242 @@
+{
+  "hash": "d22aee519e057699",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #592",
+  "rules": [
+    {
+      "statement": "When code adds an authorization refusal or precondition, record it in the decision record that defines that operation's authority, with its status code and a citation of any earlier ADR it reuses.",
+      "why": "If the record leaves out a refusal the code applies, readers and auditors can't tell what the operation requires.",
+      "check": "Find handler checks that return 403 or another refusal and see whether the ADR that defines the operation's authority mentions each one.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a multi-step write to use one transaction when its decision record accepts per-step saves and says a rerun completes the work; check the ADR's decision and the options it considered before reporting.",
+      "why": "Per-step saves can be the recorded design, for example when stores resolve referenced rows from the database, and a rerun converges a write that stopped part way.",
+      "check": "Before reporting partial-commit risk, read the governing ADR for an accepted convergence or idempotent-rerun rationale.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a 404-versus-200 difference as an existence leak when a caller who passes the earlier authorization check can already read the same fact through another endpoint.",
+      "why": "The response tells the caller nothing it couldn't already read, so nothing leaks.",
+      "check": "Before reporting, check whether the authority already required (for example Read on the resource) exposes the same fact through an existing GET.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a secondary write path to emit audit events for a resource when that resource's own endpoints don't audit those writes; check the sibling endpoint handler first.",
+      "why": "The secondary path should match the resource's endpoints. Adding auditing is a change to those endpoints, not to the secondary path.",
+      "check": "Look at whether the primary endpoint handler for the resource takes an audit recorder and records events for the same write.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an ordinal comparison of OAuth scope values when the store enforces case-insensitive uniqueness and the other lookups match with OrdinalIgnoreCase; check the store's normalization first.",
+      "why": "If matching is ordinal while the store is case-insensitive, code plans a value that the store then refuses to add.",
+      "check": "Before reporting OrdinalIgnoreCase on protocol values, check how the store normalizes them and how its sibling lookups compare.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't claim a public overload or API serves only tests unless a search of production code finds no callers.",
+      "why": "An overload that looks like a thin wrapper can be the common shape that most production routes use.",
+      "check": "Search the src tree for callers of the member before reporting it as a test-only seam.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for per-item keyed single-row lookups to be replaced by loading a whole collection into memory when the operation is an infrequent operator action and the cost growth is documented as accepted.",
+      "why": "Loading every row of a large tenant reads far more than the operation needs. Keyed reads of one row each are cheap.",
+      "check": "Check whether each lookup is a keyed single-row read, how often the operation runs, and whether the ADR accepts the cost.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a type name to drop every noun its namespace already contains; the namespace replaces only the brand, and a qualifier that names the subject and matches the wire contracts stays.",
+      "why": "Bare names such as Context or Orders would be ambiguous across sibling namespaces.",
+      "check": "Before reporting a namespace-noun repetition, see whether the shortened name would be ambiguous or would stop matching related contract names.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test project to move a stub, fake or sample type that only one test file needs out of that file; the test conventions make it a private sealed nested type, and the no-nested-types rule binds only production code.",
+      "why": "The test conventions put a type that serves one test file inside that file.",
+      "check": "Check whether the nested type is used only by its enclosing test class before reporting it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a validation rule or helper that an endpoint and another write path both need into one shared service or base class, and don't copy it into each caller.",
+      "why": "If the rule changes in one copy, the two paths accept or refuse different inputs, or one path stops a side effect such as cache eviction.",
+      "check": "Look for private helpers or validation checks in new code that duplicate ones in existing handlers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep shared response logic, such as ETag, If-None-Match and 304 handling, in one place, and don't copy it into each overload.",
+      "why": "A future change to conditional-GET behavior would have to be made twice, and the copies can drift.",
+      "check": "Look for overloads that repeat the same map, ETag and 304 sequence instead of delegating.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep compute or query methods free of side effects on shared context; return the results and record them in a separate, explicit step.",
+      "why": "A hidden mutation that later steps depend on, run in both plan and apply, makes write order matter without anyone seeing it.",
+      "check": "Look for methods that return computed results and also mutate a context or shared map that other components read.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a property on a context type shared among extension contributors stays settable, its doc comment says who sets it and who reads it.",
+      "why": "Without that, any contributor might overwrite a value that an earlier one planned against.",
+      "check": "Look for public settable properties on context or pipeline types and check that their summary states who writes and who reads them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare HTTP status codes against named constants, not bare numeric literals.",
+      "why": "A bare number hides what it means.",
+      "check": "Look for comparisons such as status === 409 against unnamed numbers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use a strict Mock<IDisposable> with a verifiable Dispose setup for a scope, not a hand-written no-op disposable class.",
+      "why": "Hand-written no-op classes get copied across test classes, and they don't check that the scope is disposed.",
+      "check": "Look for NoopDisposable-style classes in tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, end every Moq setup with .Verifiable(), and move setups that only some tests use out of the constructor into a helper that only those tests call.",
+      "why": "MockRepository.Verify() skips setups that aren't verifiable, so a dropped store or scope call would go unnoticed.",
+      "check": "Look for setups that end in .Returns(...) without .Verifiable(), especially in constructors.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't use the null-forgiving operator: narrow nullable values with Assert.NotNull and build fixtures with real empty values. The only exception is null! arguments in argument-validation tests.",
+      "why": "A null value would surface as a NullReferenceException instead of an assertion failure.",
+      "check": "Look for `!` dereferences and `= null!` in tests outside guard-clause tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name the region that groups a property's tests `{PropertyName} Property Tests`.",
+      "why": "This keeps test grouping consistent with the test layout convention.",
+      "check": "Look for regions for property tests named `{Name} Tests` without 'Property'.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use JsonElements.EmptyObject from NCode.Json instead of parsing \"{}\".",
+      "why": "The shared JSON helper convention applies to tests too.",
+      "check": "Look for JsonElement.Parse(\"{}\") or JsonDocument.Parse(\"{}\") in tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, build entity and event ids with Guid.CreateVersion7(), not Guid.NewGuid().",
+      "why": "Tests shouldn't model a pattern that production code must not use.",
+      "check": "Look for Guid.NewGuid() in test fixtures that build ids.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, split an end-to-end test that asserts several distinct behaviors into one test per behavior, with the tests sharing an arrange helper.",
+      "why": "An early failure hides the later assertions, and the test name doesn't say which behavior broke.",
+      "check": "Look for integration tests whose names or assertions cover several independent behaviors, such as preview, apply and rerun.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

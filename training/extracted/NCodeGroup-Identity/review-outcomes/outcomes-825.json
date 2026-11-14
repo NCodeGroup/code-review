@@ -1,0 +1,129 @@
+{
+  "hash": "e3962ef4fe4ccb99",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #825",
+  "rules": [
+    {
+      "statement": "When logging an outbound or caller-supplied URL, log only its scheme, host, port and path (for example `uri.GetLeftPart(UriPartial.Path)`), never its user information, query string or fragment.",
+      "why": "Capability URLs such as an RFC 9101 request_uri carry their only protection in the query. A requester can force a fetch to fail, which copies those tokens into the logs, and anyone who can read the logs can replay them.",
+      "check": "Look for log calls whose arguments include `AbsoluteUri`, `ToString()` of a Uri, or a raw URL string from a request or a registered endpoint without redaction.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an outbound HTTP fetch, keep the body's decoding and validation (UTF-8 decode, parsing) outside the try block that maps transport failures, and report a malformed document with its own error, not as a connection failure.",
+      "why": "A broad catch around decoding makes an invalid document look like a network failure, which sends the operator to the network instead of to the document.",
+      "check": "Look for a fetch try/catch that also contains decoding or parsing and classifies every exception it catches as a transport failure.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When narrowing the catch around an outbound HTTP fetch, decide which exceptions count as fetch failures in one shared predicate. It covers timeouts, `HttpRequestException`, `IOException` and corrupt or undecompressable bodies (`InvalidDataException`, `InvalidOperationException` from decompression streams), and it lets the caller's own cancellation propagate.",
+      "why": "A catch that is too narrow lets a client-controlled corrupt body escape as a 500 server_error instead of the protocol's client error, which silently changes the wire contract. Duplicated filters drift apart between call sites.",
+      "check": "Look for fetch catch filters that list only some transport exceptions when the handler enables automatic decompression, or for exception filters and timeout-versus-cancellation expressions copied across several fetch sites instead of calling a shared helper.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a fetch distinguishes its own timeout from the caller's cancellation (`timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested`), put that expression in one shared helper and call it from every fetch site.",
+      "why": "If the expression is duplicated, a later change to how a timeout is told apart from a caller cancel has to be made at every site.",
+      "check": "Look for the same timed-out expression repeated in several files.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When resolving a host name with `Dns.GetHostAddressesAsync` and treating an unresolvable name as a non-error, catch `ArgumentException` (which covers `ArgumentOutOfRangeException`) as well as `SocketException`.",
+      "why": "Malformed or overlong host names that `System.Uri` accepts can make resolution throw `ArgumentException`, which would otherwise turn a validation into a 500.",
+      "check": "Look for DNS resolution wrapped in a catch that handles only `SocketException`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover each catch branch that turns an exception into a result or a log, including the unresolvable-host branch, timeouts logging a `timeout` reason, and caller cancellation logging nothing.",
+      "why": "Without these tests, a regression that removes the catch, misclassifies a timeout or logs every caller cancellation as a failure would pass the test suite.",
+      "check": "For a new or changed catch block or exception filter in production code, look for a test that reaches it and asserts its result or log output, including that nothing is logged on caller cancellation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put DNS and other environment-dependent calls behind an injectable seam and stub it, instead of calling the real resolver.",
+      "why": "Tests that call real DNS, even for `localhost` or `.invalid`, depend on the machine's resolver and hosts file, and they fail in sandboxes that block lookups.",
+      "check": "Look for tests that reach `Dns.GetHostAddressesAsync` or similar system calls through the code under test without a stub.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, make a mocked method that returns a `Task` or `ValueTask` fail with `.ThrowsAsync(...)` or a faulted task, not with a synchronous `.Throws(...)`.",
+      "why": "A synchronous throw doesn't exercise the faulted-task shape that the real async implementation produces.",
+      "check": "Look for Moq setups on async methods that use `.Throws(` instead of `.ThrowsAsync(` or `ValueTask.FromException`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce a validation of stored settings through one shared service that every write path calls (create, update, import, promotion), not inline in a single endpoint handler.",
+      "why": "Other write paths could otherwise store a value the validation refuses, and the failure then shows up only later at runtime with nothing but a log line to explain it.",
+      "check": "When a validation is added inline in one handler, look for other code paths that write the same data and skip it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In code comments, don't cite the issue that the pull request closes; describe the behavior or cite the lasting design record instead.",
+      "why": "The issue pointer goes stale once the PR merges, and the design record already holds the rationale.",
+      "check": "Look for comments such as `see issue #NNN` added in a PR that closes that issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change alters the error description or log behavior returned to callers, add a CHANGELOG entry that describes the change.",
+      "why": "Without it, readers of the CHANGELOG can't see that the error text returned to callers changed.",
+      "check": "Compare changed error description strings or logging behavior in the diff with the CHANGELOG entry.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

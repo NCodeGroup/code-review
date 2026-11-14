@@ -1,0 +1,140 @@
+{
+  "hash": "edaa1b1218122568",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1458",
+  "rules": [
+    {
+      "statement": "A Helm chart's values must never hold a secret; database, cache, key and other credentials are referenced by the name of an existing Secret (or ConfigMap for public material) that the operator creates.",
+      "why": "Values files are committed, sometimes to public repositories, so a chart that accepts a secret value invites leaking it.",
+      "check": "Look for values keys or template code that take a password, connection string, key or token as a literal value instead of an `existingSecret`-style reference.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Helm chart refuses at render time (via `fail` or `required`) any configuration the application would reject at startup, instead of rendering it and leaving a pod in a crash loop.",
+      "why": "Failing the render means `helm install` applies nothing and the operator learns of the unsafe release before anything is deployed.",
+      "check": "For each new or changed setting that the application validates at startup (empty or wildcard hosts, missing required Secret, both-and-neither alternatives, replicas above 1 without shared state, non-https authority), check that the templates have a matching render-time failure.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Helm chart ships a `values.schema.json` that rejects unknown and mistyped values, and adds each new value to it.",
+      "why": "A typo should fail the install instead of being silently ignored.",
+      "check": "Check that new values keys appear in values.schema.json with a type, and that objects set `additionalProperties: false`.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every render-time refusal added to a chart comes with a CI case showing that the unsafe release fails to render, and every supported release under `ci/` must render under `helm lint --strict`.",
+      "why": "CI checks the contract, so a change that lets an unsafe release render fails the build.",
+      "check": "When a diff adds or changes a `fail`/`required` check, look for a matching failing-release fixture and the workflow step that asserts it fails.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "testing",
+      "applies_to": [
+        "charts/**",
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Deployment whose replicas keep single-use state in process uses the `Recreate` strategy, and it uses a rolling update with `maxSurge: 1` and `maxUnavailable: 0` only when that state is in a shared store.",
+      "why": "Two replicas with in-process single-use state must never run at once, and a rolling update with `maxSurge: 0` still starts the new pod while the old one serves.",
+      "check": "Check that the strategy template switches on whether a shared state store is configured, and look for rolling updates (including `maxSurge: 0`) used without one.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Chart pods meet the restricted Pod Security Standard: they run as a non-root UID, drop all capabilities, set `allowPrivilegeEscalation: false`, use the `RuntimeDefault` seccomp profile, have a read-only root filesystem with an `emptyDir` for `/tmp`, and don't mount a service-account token.",
+      "why": "The chart has to run the hardened image under restricted pod security.",
+      "check": "Inspect pod and container securityContext and `automountServiceAccountToken` in each workload template, and flag anything missing or loosened.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Secret volumes in a chart mount with mode `0440` and are readable through `fsGroup`, not world-readable.",
+      "why": "Secret files should be readable only by the app's user and group.",
+      "check": "Check `defaultMode` on secret volumes and the pod's `fsGroup`.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each chart component gets its own ServiceAccount and doesn't reuse another component's.",
+      "why": "Another component's ServiceAccount may carry cloud identities this component must not have.",
+      "check": "Look for a workload template that refers to another component's ServiceAccount name.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Probes for an HTTPS-only ASP.NET Core pod use `scheme: HTTPS` and send a `Host` header that `AllowedHosts` accepts; startup and liveness probes call the liveness endpoint and only readiness calls the readiness endpoint.",
+      "why": "The kubelet sends the pod IP as Host, which AllowedHosts rejects. Liveness must not check dependencies, but readiness does.",
+      "check": "Inspect probe definitions for scheme, an httpHeaders Host entry that isn't a wildcard, and which health path each probe uses.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "protocols",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A terminating pod keeps serving for a short drain through a `preStop` kubelet `sleep` action, and that drain fits within `terminationGracePeriodSeconds`.",
+      "why": "The endpoint has to leave load balancers before the process stops, so in-flight traffic isn't dropped.",
+      "check": "Check that a preStop sleep is present and that its duration plus shutdown time is less than the grace period.",
+      "scope": "domain",
+      "domain": "helm-kubernetes",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Helm chart lives outside any .NET project directory, so the Web SDK's content globs and the image build context never pick up its files.",
+      "why": "Chart files inside a project directory would be swept into the published output or the Docker build context.",
+      "check": "Look for chart directories added under a folder that contains a .csproj or under a Docker build context.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "charts/**",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

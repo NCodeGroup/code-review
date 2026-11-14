@@ -1,0 +1,32 @@
+{
+  "hash": "be0648969b711801",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #637",
+  "rules": [
+    {
+      "statement": "When two UI containers repeat the same dialog state, edit/delete handlers and selection wiring and differ only in their data query and create call, move the shared logic into one hook or component and pass in the parts that vary.",
+      "why": "Copied container logic drifts apart, so a fix to error handling or the edit flow in one copy never reaches the other.",
+      "check": "Look for a new or changed container component that repeats another container's dialog-state type, lookup handlers, update/delete handlers and dialog wiring almost line for line, rather than using a shared hook.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a doc comment paragraph is edited, rewrap the whole paragraph evenly within the file's line width (120 columns), with no over-long or unevenly broken lines.",
+      "why": "Partly rewrapped comments are harder to read and don't match the wrapping of the lines around them.",
+      "check": "In edited JSDoc/TSDoc or XML doc comment paragraphs, look for lines over 120 characters or lines left noticeably short or long next to the new text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "hash": "b85b81038553bd75",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #554",
+  "rules": [
+    {
+      "statement": "When a collection is pre-sized from a length read from peer-supplied data (a CBOR array or map header, a length prefix), clamp the capacity to what the remaining input bytes could actually hold instead of trusting the declared count.",
+      "why": "Sizing from the known length avoids repeated resizes, but the declared length is attacker-controlled, so an unclamped capacity such as 2^31-1 lets a tiny message force a huge allocation.",
+      "check": "Look for `new List<T>(n)` or `new Dictionary<K,V>(n)` where n comes from a decoded header; check that it is bounded by the bytes remaining (for example remaining bytes, or half of them for maps), and that a test feeds an oversized declared length.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create lists and dictionaries with their capacity when the element count is already known, and return a shared empty instance (such as `FrozenDictionary<K,V>.Empty`) instead of allocating a fresh empty collection.",
+      "why": "Collections created without the known capacity pay extra resizes, and fresh empty collections allocate on every read.",
+      "check": "Look for `new List<T>()` or `new Dictionary<K,V>()` filled in a loop over a count known beforehand, and for `new Dictionary<K,V>()` returned for an empty input.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hand-encode a value with a separate inline serializer writer when the codebase already has a shared value-encoding type; add a factory to that type and use it.",
+      "why": "Two encoders for the same format can drift apart.",
+      "check": "Look for a new local `CborWriter` or other format writer that builds a value which an existing value type or factory already knows how to encode.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, mark a thin pass-through seam over a platform API (for example a random source wrapping `RandomNumberGenerator`) with `[ExcludeFromCodeCoverage]` when tests substitute its interface.",
+      "why": "Such a seam is never exercised by tests by design, and leaving it in coverage skews the package's figures.",
+      "check": "Look for a new default implementation of an injectable interface that only forwards to a framework API and lacks `[ExcludeFromCodeCoverage]`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a negative test must use input that every earlier check accepts and assert the specific failure reason or code it is named for, not just that it failed.",
+      "why": "A test that can fail for another reason keeps passing when the rule it targets is deleted.",
+      "check": "Look for refusal tests whose input could be rejected by an earlier step (missing claims, wrong shape) or that assert only failure or only the exception type.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when one test covers several invalid arguments, pair each case with its expected message or `ParamName` and assert it (or use a Theory), so each check is proven separately.",
+      "why": "Asserting only `ArgumentException` for many cases lets an individual check be removed without any test failing, since another check may reject the same input.",
+      "check": "Look for loops or arrays of invalid inputs that assert only `Assert.Throws<ArgumentException>` with no per-case message or parameter name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name a test `..._Throws<X>` only when it asserts an exception; a test that asserts a returned result or failure code is named `..._Reports<Code>` or similar.",
+      "why": "A `Throws` name on a result-asserting test misstates the contract.",
+      "check": "Compare test names containing `Throws` with their bodies; flag ones that assert on a result's failure code and catch no exception.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, record the provenance of each test vector in a comment (the RFC appendix, working group example or tool command it came from), and for a mutated vector name its base vector and the exact change.",
+      "why": "Without provenance a maintainer cannot tell independent reference bytes from hand-edited ones.",
+      "check": "Look for new hex or byte-array test vectors with no source comment, or derived vectors that don't name their base and the mutation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't duplicate construction logic or reference data across overloads or test classes: have overloads delegate to one implementation and expose shared arrays from one test helper.",
+      "why": "A change to one copy can be missed in the other, for example a new default key type added in one file only.",
+      "check": "Look for test helper overloads repeating the same setup, and identical data arrays defined in more than one test class.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Start the XML doc summary of a get-only or init-only property with 'Gets', not 'Gets or sets'.",
+      "why": "'Gets or sets' misdescribes an init-only property as settable after construction.",
+      "check": "Look for `{ get; init; }` or `{ get; }` properties whose `<summary>` begins 'Gets or sets'.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an unconditional test that ML-DSA (or another OpenSSL-version-dependent algorithm) is supported on Linux; check instead that a test asserts the code follows `IsSupported` in both directions.",
+      "why": "ML-DSA support on Linux depends on OpenSSL 3.5 or later, not the operating system, so a 'Linux implies supported' assertion fails on older runners, unlike OS-determined cases such as secp256k1.",
+      "check": "Before reporting a missing platform-gate assertion, find out whether support depends on the OS or the native library version, and look for an existing test tying behavior to `IsSupported`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag public types declared in a purpose sub-namespace (such as `.Validation` or `.Issuance`) that is shared across an `.Abstractions`/implementation package pair; the production conventions allow it.",
+      "why": "Purpose namespaces shared across the pair are an accepted convention with ADR precedent, and since namespaces don't follow folders (IDE0130 is off), moving files doesn't change them.",
+      "check": "Before reporting a sub-namespace, check whether the same namespace is used in both the abstractions and implementation packages and whether an ADR or sibling package sets the precedent.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a token or message encoder that returns a new `byte[]` to write to a caller-supplied buffer writer instead, when the output is non-secret wire data that the caller keeps or sends whole and an ADR records that choice.",
+      "why": "The family deliberately returns encoded messages and tokens as arrays, the same way compact JOSE tokens are returned as strings; pooled or sensitive storage gives no benefit for non-secret wire output.",
+      "check": "Before reporting an array return on an encode/issue API, check whether the output is secret and whether sibling encoders and the ADRs set the array-return convention.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,203 @@
+{
+  "hash": "19048f2bfb4e24c4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1151",
+  "rules": [
+    {
+      "statement": "Make each frontend workspace's Vite or Vitest configuration file a single call to the shared preset factory with that workspace's coverage floors, and don't copy or override test globs, serving rules or gates locally.",
+      "why": "Copied configurations drift apart in test globs, serving rules and gates, and the copies sit outside every lint and type-check gate.",
+      "check": "Look for a vite.config.ts or vitest.config.ts that defines its own test, coverage, server or build options instead of calling a preset factory, or that copies another workspace's configuration.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a frontend test whose expected behavior is logging, mock the console method with `vi.spyOn(console, ...).mockImplementation(...)` and assert on the spy, and don't let an unexpected `console.error` or `console.warn` stand.",
+      "why": "The console guard fails any test that logs an error or warning, because warnings such as React's act() warning mean the test can pass for the wrong reason.",
+      "check": "Look for tests that trigger console.error or console.warn without a spy and an assertion on it, and for changes that suppress console output globally instead.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Add an entry to the console-guard exemption list only for a timing diagnostic that depends on machine load, never for a warning about the code's behavior.",
+      "why": "The only allowed exemption is Redux Toolkit's timing notice; any other exemption would hide real findings.",
+      "check": "Look at changes to the failOnConsole exemption list and confirm each new entry is a load-dependent timing message.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every frontend workspace `lint` script `--max-warnings 0`, and keep unused eslint-disable directives and unused inline configs reported as errors.",
+      "why": "Lint warnings accumulate otherwise, and a stale eslint-disable comment is only a warning.",
+      "check": "Look for a package.json lint script without `--max-warnings 0`, or an ESLint config change that downgrades unused-directive reporting.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/package.json",
+        "**/eslint.config.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `expect.requireAssertions` enabled in every Vitest configuration so a test that makes no assertion fails.",
+      "why": "A test without assertions passes without checking anything.",
+      "check": "Look for Vitest configuration that disables or omits requireAssertions, and for tests with no expect calls.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't exclude `*.test.*` or `*.stories.*` files from a workspace tsconfig, and include the workspace's `vitest.setup.ts` in it.",
+      "why": "Vitest strips types without checking them, so excluded tests or stories never fail on a type error.",
+      "check": "Look for tsconfig exclude patterns covering test or story files, or a tsconfig whose include omits vitest.setup.ts.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/tsconfig*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make coverage include every `.ts` and `.tsx` source except the entry point and the re-export barrel, and make test globs match both `.test.ts` and `.test.tsx`.",
+      "why": "A glob matching only `*.tsx` hides files such as a theme factory, and a test glob matching only `*.test.tsx` never runs `.test.ts` files.",
+      "check": "Look for coverage include or test globs that match only one extension, or coverage excludes beyond main.ts(x) and index.ts.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts",
+        "**/preset.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change raises a workspace's coverage, raise its coverage thresholds (rounded down to the level reached) in the same change, and lower a threshold only with a stated reason.",
+      "why": "Each workspace's floor stops regressions only if it tracks the level the workspace has reached.",
+      "check": "Look for coverage threshold reductions with no explanation, and for changes that add tests and raise coverage but leave the thresholds unchanged.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Turborepo configuration, make `test` and `typecheck` depend on a no-op `transit` task (`dependsOn: [\"^transit\"]`), and list root configuration files every workspace reads (such as the base tsconfig and the ESLint config) in `globalDependencies`.",
+      "why": "Turbo otherwise hashes only a package's own files, so changing an internal dependency or a root file replays stale cached results for its dependents.",
+      "check": "Look for turbo.json tasks that read dependency output without the transit dependency, or new shared root config files missing from globalDependencies.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/turbo.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never raise `chunkSizeWarningLimit` or the chunk size limit to get a build to pass; split the oversized chunk with a vendor group or a lazy boundary instead.",
+      "why": "Raising the limit hides the problem: a large chunk delays first paint, and any change to it invalidates the browser's cached copy of every library in it.",
+      "check": "Look for changes that increase the chunk size limit or bypass the oversized-chunk plugin.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "performance",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/preset.ts"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Load route-level surface containers through `React.lazy` inside a `Suspense` boundary, and have tests that assert on a lazily loaded container wait for it with `findBy...` queries.",
+      "why": "The shell paints before a surface loads and a surface never visited is never downloaded; a synchronous `getBy` query runs before the lazy chunk has resolved.",
+      "check": "Look for static imports of route-level containers in app shells, and for tests using getBy or queryBy against lazily loaded content.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.test.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a configuration preset that Node loads by type stripping in one module with erasable syntax only, no relative imports and no runtime imports of other workspace packages, and have it validate its own options at run time.",
+      "why": "Node can't resolve relative `.ts` or workspace `.js` specifiers when stripping types, and the files that call the preset aren't type-checked.",
+      "check": "Look for enums, namespaces, parameter properties, relative imports or workspace-package runtime imports in the preset, and for new options it doesn't validate.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/preset.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each new frontend workspace the test-support package as a devDependency, a `vitest.setup.ts` that calls `failOnConsole`, `--max-warnings 0` on its lint script, and a preset factory call with its coverage floors.",
+      "why": "Every workspace must carry the same gates for a green run to mean what it appears to.",
+      "check": "In a diff that adds a workspace, confirm all four elements are present.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "testing",
+      "applies_to": [
+        "**/package.json",
+        "**/vitest.setup.ts",
+        "**/vite.config.ts",
+        "**/vitest.config.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the shared test-support package free of a runtime dependency on `vitest` by having callers pass `beforeEach` and `afterEach` in, and keep its message formatting free of Node-only modules.",
+      "why": "The hooks must register on the Vitest copy that runs the suite, and browser-typed workspaces without Node's `util` types must still type-check the setup.",
+      "check": "Look for runtime imports of vitest or Node built-ins such as util in the test-support package.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/test-support/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a host-served frontend bundle set `html.cspNonce` to the CSP nonce placeholder that the serving host replaces on each response.",
+      "why": "The serving host replaces the placeholder per response, so scripts and styles carry a nonce that matches the Content-Security-Policy.",
+      "check": "Look for served-surface build configuration that omits the cspNonce placeholder or hard-codes a nonce.",
+      "scope": "domain",
+      "domain": "frontend-typescript",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/vite.config.ts",
+        "**/preset.ts"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

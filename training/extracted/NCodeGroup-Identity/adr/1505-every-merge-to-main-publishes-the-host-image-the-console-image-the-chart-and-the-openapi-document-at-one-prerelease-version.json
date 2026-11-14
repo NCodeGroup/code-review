@@ -1,0 +1,84 @@
+{
+  "hash": "2b72efa49d531815",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1505",
+  "rules": [
+    {
+      "statement": "In a publishing workflow, tag an image `latest` only when its version is stable; never tag a prerelease `latest`.",
+      "why": "A consumer following `latest` should only receive stable releases, while prereleases are selected through a semver range that includes them.",
+      "check": "Look for a workflow step that pushes a `latest` tag without a condition that the version has no prerelease suffix.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a workflow publishes an artifact (container image, Helm chart, OCI document), sign its digest keylessly with `cosign sign` and attest it with `actions/attest-build-provenance`.",
+      "why": "Every published artifact is signed and attested so a consumer can verify where it came from and who built it.",
+      "check": "Look for a new or changed push of an image, chart or OCI artifact with no matching `cosign sign` and `attest-build-provenance` step for that digest.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a job that verifies published artifacts read-only permissions, and have it pull them anonymously without logging in to any registry.",
+      "why": "Pulling anonymously makes the run fail when a package is private or unreachable, which an authenticated pull would hide.",
+      "check": "Look for a verify job that has write permissions or runs a registry login step (docker/login-action, `helm registry login`, `oras login`) before it pulls the artifacts.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a build argument stamps a version into an image build, reject any value with a character outside `[0-9A-Za-z.-]`, and fail the build unless the stamped version actually took effect.",
+      "why": "Rejecting unsafe characters keeps an injected value out of the build, and failing when the stamp didn't take effect means an image always reports the version its tag names.",
+      "check": "Look for a Dockerfile or build script that writes a version build argument into version files without validating its characters or confirming the result afterwards.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/Dockerfile",
+        "**/*.Dockerfile",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate a published OpenAPI document at build time, for example with the `GenerateOpenApiDocuments` target of `Microsoft.Extensions.ApiDescription.Server`, instead of fetching it from a running host.",
+      "why": "A running host needs a database and a deployment. The document describes the product rather than a deployment, so it is published whatever a deployment chooses to serve.",
+      "check": "Look for build or workflow steps that start a host and download its OpenAPI endpoint to produce the published document, or that make publishing the document depend on runtime API-reference switches.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "build/**/*.ps1",
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Package a Helm chart so that its `version`, its `appVersion` and the image tags it deploys are all the same artifact version.",
+      "why": "The chart pins its image tags to its `appVersion`, so a consumer that follows the chart's version alone also gets the matching images.",
+      "check": "Look for a `helm package` call that does not pass the same value to `--version` and `--app-version`, or for chart templates that set image tags apart from `.Chart.AppVersion`.",
+      "scope": "domain",
+      "domain": "helm-deployment",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Chart.yaml",
+        "**/templates/**/*.yaml",
+        ".github/workflows/**/*.yml",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

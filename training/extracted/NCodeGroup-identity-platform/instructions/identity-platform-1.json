@@ -1,0 +1,162 @@
+{
+  "hash": "b6cfdbdd9d46a725",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform identity-platform.instructions.md",
+  "applyTo": [
+    "**"
+  ],
+  "rules": [
+    {
+      "statement": "Don't let an infrastructure change destroy or replace a stateful resource as an incidental side effect: use a `moved` block, a gated adoption path, or a recorded decision.",
+      "why": "Live roots manage real production infrastructure, and a merge applies to production after approval. An unplanned `-/+` on a stateful resource loses data.",
+      "check": "Look for renamed or re-addressed resources, or changed force-new arguments, on stateful resources (databases, buckets, KMS keys, state stores) that have no `moved` block, no gated adoption, and no ADR reference.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin every third-party GitHub Action by its full commit SHA, with the version tag in a trailing comment.",
+      "why": "Tags can be moved, so pinning by SHA is the secure default for CI supply-chain integrity. The comment keeps the version readable.",
+      "check": "In workflow `uses:` lines, flag references pinned to a tag or branch (`@v4`, `@main`) or to a short SHA, and full-SHA pins that lack a `# vX.Y.Z` comment.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml",
+        ".github/actions/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have CI authenticate to the cloud through short-lived OIDC federation, never through stored long-lived credentials or access keys.",
+      "why": "Short-lived federated credentials are the modern, secure default. Stored secrets can leak and never expire.",
+      "check": "Flag workflows or infrastructure that add static cloud access keys, secret-stored credentials, or IAM users with access keys for CI, where an OIDC role assumption could be used instead.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Scope IAM roles and policies to least privilege for a single root and a single environment.",
+      "why": "Least-privilege IAM limits what one compromised role or pipeline can reach.",
+      "check": "Flag IAM policies with wildcard actions or resources, and roles shared across environments or roots.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use customer-managed KMS keys wherever the platform must control the key, enforce encryption on state and plan storage, and turn deletion protection on by default.",
+      "why": "These are the secure infrastructure defaults the platform adopts without asking.",
+      "check": "Flag new storage, state, or plan resources that use provider-managed keys where control is needed, that lack enforced encryption, or that have deletion protection off or defaulted to false.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit a credential, token, state file, plan or apply output, or backup to the repository.",
+      "why": "The repository is public on purpose, so anything committed is published.",
+      "check": "Look for `*.tfstate`, plan files, pasted plan or apply output, backups, keys, or tokens added in the diff, including inside docs or PR text.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a breaking component change (an interface change or a forced resource replacement) as an explicit breaking release marked `!`, rather than adding a compatibility shim.",
+      "why": "Pre-1.0 greenfield code defaults to the best long-term, cohesive design over compatibility-preserving patches.",
+      "check": "Flag compatibility shims, deprecated aliases, or duplicate inputs added only to avoid a break, and breaking interface changes whose PR title lacks `!`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change corrects an insecure or outdated shape, update the surrounding comments and docs that describe it in the same change.",
+      "why": "Existing comments and docs are point-in-time artifacts. Leaving them stale keeps teaching the wrong shape.",
+      "check": "Look for a corrected implementation whose nearby comments, README, or docs still describe the old behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never add agent attribution to a commit or pull request: no `Co-authored-by:` trailer naming an agent or bot, no `Claude-Session:` trailer, and no 'Generated with' line.",
+      "why": "A commit records the people who authored it. A squash merge carries the trailers onto `main`, and removing them there means rewriting published history.",
+      "check": "Inspect commit messages and the PR body for agent co-author trailers, session trailers, or 'Generated with' lines.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Title a pull request as a conventional commit, `type(scope)!: summary`, and give it a body with Why, Changes, and Verified sections, ending with a `Closes` or `Refs` issue reference when it serves an issue.",
+      "why": "Pull requests are squash-merged, so the title becomes the commit subject and the body becomes the commit message.",
+      "check": "Check that the PR title follows the conventional-commit format with a scope, and that the body has Why, Changes, and Verified sections plus a trailing `Closes`/`Refs` line when an issue applies.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For a pull request that changes live infrastructure roots, state the expected deploy plan summary (`N to add, N to change, N to destroy`) in the body.",
+      "why": "Merging applies to production after approval, so reviewers need the expected impact up front.",
+      "check": "For PRs touching live roots, check that the body states the expected add/change/destroy counts.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "documentation",
+      "applies_to": [
+        "live/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't change a reusable infrastructure module and a live root's reference to it in the same pull request: release the module first, then bump the root's `?ref=` to the release tag in a separate pull request.",
+      "why": "A component change reaches live roots only through a tagged release, which keeps what is deployed traceable to a permanent version.",
+      "check": "Flag PRs that modify both module sources and live roots, and live-root module sources that point to a branch or untagged ref instead of a `vX.Y.Z` tag.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit an agent's working plan file (`PLAN.md`) to the repository.",
+      "why": "The plan file is untracked working state and must never reach `main`. Its lasting decisions and lessons are promoted to durable docs instead.",
+      "check": "Flag a diff that adds or modifies `PLAN.md`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/PLAN.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

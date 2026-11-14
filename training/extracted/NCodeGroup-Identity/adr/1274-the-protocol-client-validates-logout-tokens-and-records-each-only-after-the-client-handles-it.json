@@ -1,0 +1,148 @@
+{
+  "hash": "f1ef28f6d6fc18e2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1274",
+  "rules": [
+    {
+      "statement": "When validating a token that must be refused on replay (such as an OIDC back-channel logout token), only look its `jti` up during validation; record the `jti` as handled only after the caller has acted on the token.",
+      "why": "The OP retries a failed delivery with the same token. If the `jti` is recorded during validation, the retry looks like a replay and the sessions are never ended.",
+      "check": "Look for a replay-store add (`TryAddAsync`/set) inside a validate method. Validation should only call a lookup such as `ContainsAsync`, and recording should be a separate step called after the token is handled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel logout endpoint validates the token, ends the sessions, records the token as handled, and only then answers 200. When ending the sessions fails, it answers 400 without recording the token.",
+      "why": "Back-Channel Logout 1.0 §2.8 has the relying party answer 400 so the OP retries, and the retry must validate again.",
+      "check": "In a logout endpoint handler, check the order of validate → end sessions → record → 200. Flag recording before the sessions are ended, recording on the failure path, or answering 200 when ending sessions failed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a logout token under Back-Channel Logout 1.0 §2.6:\n- `typ`, when present, is `logout+jwt`.\n- At least one of `sub` and `sid` is present, and each one present is non-empty.\n- `sid` is present when the client registered `backchannel_logout_session_required`.\n- `events` is an object whose `http://schemas.openid.net/event/backchannel-logout` member is an object.\n- `nonce` is absent.\n- `jti` is a non-empty string.",
+      "why": "A logout token has different required claims and a different `typ` from an ID token. Checking `typ` refuses an ID token presented as a logout token.",
+      "check": "Look for each of these claim checks in logout-token validation code, especially missing `typ`, `nonce`-absent or `events` checks, or `sub`/`sid` accepted when empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a logout token under the client's ID-token signature policy, require `iat` and `exp`, and bound its lifetime with a maximum measured from the earlier of `iat` and `nbf`.",
+      "why": "The OP signs logout tokens with `id_token_signed_response_alg`, and a bounded lifetime limits the replay window and the size of the replay store.",
+      "check": "Check that logout-token validation uses the per-client ID-token algorithms, requires `iat`/`exp`, and sets a maximum token lifetime.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each token type its own validator contract instead of adding a mode or flag to another token type's validator.",
+      "why": "Each token type has different required claims, and a mode would make the other contract's requirements conditional.",
+      "check": "Flag a parameter or option that switches an existing token validator (e.g. an ID-token validator) into validating a different token type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a shared-store key from untrusted request values (issuer, client id, `jti`) by length-prefixing each component and hashing the result (e.g. lowercase hex SHA-256 of the UTF-8 text) under a fixed prefix. Never store the raw request text in the key.",
+      "why": "Length prefixes keep distinct component lists from colliding, scoping the key by issuer and client keeps tokens from different issuers and clients apart, and hashing keeps request text out of the store.",
+      "check": "Look for store keys built by plain concatenation of request values, keys missing the issuer or client scope, or raw untrusted text used directly as a key.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set a replay-record entry to expire at the token's expiry plus the validation clock skew, the last instant the token could still validate.",
+      "why": "A shorter expiry would let a replay through, and a longer one keeps entries in the store needlessly.",
+      "check": "Check the expiry passed when recording a handled token: it should be `exp` plus the same skew the validator uses.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep registered per-client metadata (such as `backchannel_logout_session_required` or `id_token_signed_response_alg`) on the client registration, not in process-wide configuration.",
+      "why": "Two clients in one process can register differently.",
+      "check": "Flag a new client-metadata setting added to process-level options instead of the per-client registration type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an invalid token from a validator as data (`IsValid`, `FailureCode`, `FailureReason`), and throw only for provider failures and cancellation.",
+      "why": "This follows the protocol client's errors-as-data style. Only provider failures and cancellation are exceptional.",
+      "check": "Flag token validators that throw for an invalid token, or that swallow provider failures or `OperationCanceledException` into a failure result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep validation result types as plain data that consumers and test doubles can construct. Put follow-up operations such as commit or record on the service that produced the result, not on the result.",
+      "why": "A commit operation would make the result hold services and state, and the key scheme would be split across two places.",
+      "check": "Flag result or DTO types that gain methods or fields holding stores, registrations or other services in order to perform follow-up actions.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a validator's input as a request object with `required` members rather than as positional parameters.",
+      "why": "Fields can then be added without changing the method signature.",
+      "check": "Flag new public validate methods that take loose token or option parameters where sibling validators take a request type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a method that records a handled token `Try…` and have it return `false` when the entry already exists or has already expired. It throws `ArgumentNullException` for null arguments and `ArgumentException` for a result that is not valid.",
+      "why": "This follows `IExpiringKeySet.TryAddAsync`, and it lets concurrent deliveries detect that another delivery already recorded the token.",
+      "check": "Check that the record method returns a bool, does not throw when the entry is already recorded, and validates its arguments.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

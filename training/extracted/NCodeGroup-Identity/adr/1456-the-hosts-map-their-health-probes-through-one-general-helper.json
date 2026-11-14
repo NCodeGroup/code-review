@@ -1,0 +1,40 @@
+{
+  "hash": "6216b47d893cb43b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1456",
+  "rules": [
+    {
+      "statement": "Map the liveness probe so it runs no health checks, and map the readiness probe so it runs only the checks tagged `ready`.",
+      "why": "Liveness must never depend on dependencies, so a dependency outage doesn't restart replicas; readiness decides whether a replica can serve and so runs the checks it can't serve without.",
+      "check": "Look at `MapHealthChecks` calls or `HealthCheckOptions.Predicate` for the liveness endpoint: it must filter out every check (for example `_ => false`). The readiness endpoint's predicate must select checks by the `ready` tag, not all checks.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a host, map the health probes by calling the shared `MapHealthProbes()` helper, and don't build `HealthCheckOptions` or hard-code probe paths in the host.",
+      "why": "A separate copy of the probe options in each host drifts from the others, and the chart's probes and the AppHost's `WithHttpHealthCheck` depend on the same two paths.",
+      "check": "Look for a host's `Program.cs` or startup code that calls `MapHealthChecks`, creates `new HealthCheckOptions`, or uses literal `/health/live` or `/health/ready` strings instead of calling `app.MapHealthProbes()` and using `HealthProbeDefaults`.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.Host/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tag a health check that a replica can't serve without by using the shared readiness tag constant (`HealthCheckTags.Readiness`), not a literal `\"ready\"` string or a tag defined in an ASP.NET Core package.",
+      "why": "The tag lives in a package that doesn't depend on ASP.NET Core, so packages like storage adapters can tag their checks without taking the ASP.NET Core shared framework, and the readiness probe reads the same constant.",
+      "check": "Look at `AddCheck` or `AddHealthChecks` registrations for dependency checks such as databases or caches: they must pass `HealthCheckTags.Readiness`. A `\"ready\"` literal, a missing tag, or a new tag constant in an ASP.NET Core package is a violation.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

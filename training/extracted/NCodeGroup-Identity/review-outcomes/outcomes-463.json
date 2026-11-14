@@ -1,0 +1,74 @@
+{
+  "hash": "e3c1d01e101101b3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #463",
+  "rules": [
+    {
+      "statement": "When a validity rule such as credential expiry is enforced on one code path, and sibling paths read the same stored data without it, either move the check into one shared helper that every path calls or record in the governing decision record which paths it deliberately leaves out.",
+      "why": "Otherwise enforcement drifts between paths, and any new path has to remember to copy the inline filter.",
+      "check": "Look for a new inline filter (expiry, revocation, status) on one resolver or endpoint. Then check whether sibling resolvers or exports that read the same data skip it, with no shared helper and no documented scope.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an inline, entity-specific validation check to move into a shared validator when that validator also serves other entity types with different requirements, and a lower layer already enforces the rule for every caller while the inline check only maps it to a specific error response.",
+      "why": "Moving it would apply one entity's limit (such as a client secret's entropy floor) to others whose keys follow their own minimums. The inline check exists only to return a precise 400 instead of an exception.",
+      "check": "Before reporting duplication, check who else calls the shared validator and whether their requirements differ. Also check whether the generator or lower layer already enforces the rule.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several methods build a modified copy of the same model field by field, put the copy in one helper (or use a `with` expression) instead of repeating it in each method.",
+      "why": "If the model gains a field, one copy can miss it and silently drop that field.",
+      "check": "Look for two or more places in a diff that construct the same record or model type by copying each property from an existing instance.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write decision records and code comments about the end state (\"rotation never deletes\", \"does not authenticate\"), not relative to an earlier design (\"no longer deletes\").",
+      "why": "A reader who never saw the previous design has to guess what it was.",
+      "check": "Look for phrases such as \"no longer\", \"now\" or \"instead of before\" in added comments, XML docs or ADR text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask full-host integration tests to swap the wall clock for a fake TimeProvider when the integration host runs on the real clock like the other integration tests, the time offsets are large, and the exact expiry boundary is already unit-tested with fixed instants.",
+      "why": "Full-host tests run on the real clock by convention. Large offsets keep them stable, and the boundary behavior is covered by deterministic unit tests.",
+      "check": "Before reporting DateTimeOffset.UtcNow in an integration test, look at whether sibling integration tests use the real clock, whether the offsets are days or more, and whether a unit test covers the boundary with fixed instants.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, build fixture data only from field combinations that production code actually produces, such as a symmetric secret with an HMAC or null algorithm rather than RS256.",
+      "why": "An impossible combination doesn't change today's results, but a later test that reads those fields would exercise data that can't occur.",
+      "check": "Look at fixture factory methods in a diff for inconsistent field combinations, such as a key type paired with an algorithm or use from another family.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

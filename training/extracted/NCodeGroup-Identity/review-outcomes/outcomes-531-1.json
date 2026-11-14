@@ -1,0 +1,163 @@
+{
+  "hash": "dd96c19f9677055c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #531",
+  "rules": [
+    {
+      "statement": "Bound expensive work-factor secret verification (PBKDF2, Argon2id and similar) with one process-wide gate that has a maximum concurrency, a maximum queue length and a queue timeout, and treat a refused turn as a temporary unavailability (503 temporarily_unavailable with Retry-After) rather than queuing waiters without limit.",
+      "why": "Unauthenticated callers can otherwise send wrong secrets faster than derivations complete, growing the queue without bound and stalling every verification in the process for all clients and tenants.",
+      "check": "Look for awaits on a semaphore or gate around password/secret hashing without a timeout or waiter cap, per-scheme gates instead of a shared budget, or a refusal mapped to a credential failure instead of a temporary unavailability.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When authenticating a supplied secret against several stored verifiers, try the verifiers with no work factor before any expensive work-factor verifier.",
+      "why": "Trying them in storage order makes a wrong secret cost one full derivation per stored verifier, multiplying the gate capacity each attempt uses and slowing legitimate requests.",
+      "check": "Look for loops that await every stored verifier in storage order without putting the cheap (non-work-factor) verifiers first.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a policy decision that several entry points must make the same way (for example, which stored form a secret takes for a given method) in one shared service, and call it from every entry point instead of repeating the condition at each site.",
+      "why": "Copies drift, and one drifted entry point silently applies the wrong policy; the copies here already differed in how they handled unreadable settings.",
+      "check": "Look for the same lookup-plus-ternary or fallback logic repeated across handlers, seeders or endpoints, especially when the copies handle edge cases differently.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare as `required` a descriptor trait property whose default would silently change security or storage behaviour for implementers that don't set it, and set it explicitly on every built-in descriptor.",
+      "why": "An optional init property defaulting to false lets an existing package-registered descriptor get the wrong behaviour with no warning at compile time or start-up.",
+      "check": "Look for new bool or enum init properties on extensibility descriptors that default to a value changing behaviour for existing implementers, without `required`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a method's behaviour or output form changes, give it a name that states the form it produces instead of keeping the old name with the same signature.",
+      "why": "Reusing the name and signature compiles and runs for existing callers, so the break shows up only at run time (here, at authentication).",
+      "check": "Look for public methods whose signature is unchanged but whose stored or returned form changed meaning, and for names that don't say which form they produce.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Initialise an option's default from the named constant it must satisfy instead of repeating the literal value.",
+      "why": "If one value changes and the other doesn't, a host using the defaults can fail its own validation.",
+      "check": "Look for a property default literal equal to a nearby constant (such as a minimum) that the default is meant to match.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build an options validation failure message from the threshold constant and the configured value (for example in an `IValidateOptions<T>`), rather than hard-coding the threshold in the message text.",
+      "why": "A hard-coded message names the wrong floor when the constant changes, and without the configured value an operator can't see which value tripped the check.",
+      "check": "Look for validation or refusal messages containing literal threshold numbers, or that omit the actual configured value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an option's range rule only in its `IValidateOptions<T>` validator, and don't duplicate guards for it in the classes that use the options.",
+      "why": "Duplicated guards drift and report configuration errors inconsistently (for example as an ArgumentOutOfRangeException that reads as a caller bug), while the validator already runs at start-up and whenever the options are read.",
+      "check": "Look for argument or range checks on option values inside the constructors or methods that use the options when a validator already enforces the same rule.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag an options validator for taking a catalog or registry as a constructor dependency when the catalog's elements read no options in their constructors and a test proves it.",
+      "why": "The recursion risk the no-dependency rule guards against doesn't exist when constructing the dependency reads no options; the maintainer kept the validator on the catalog directly.",
+      "check": "Before reporting, check whether the dependency's construction (and that of its elements) reads any options, and whether a test asserts that.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a `SectionName`, configuration key paths in validation messages, or `init` setters on an options class that is configured only in code through `Configure<T>` and never bound from configuration.",
+      "why": "Options set only in code have no section or key path to name, the messages already give the Type.Property a developer sets, and init setters would break the Configure<T> lambdas.",
+      "check": "Before reporting, search for configuration binding (Bind, BindConfiguration, GetSection) of the options type; if it is only set through Configure<T> lambdas, don't raise the finding.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a stub or fake that only one test file uses out of that file: the test conventions make it a private sealed nested type there, and the production ban on nested types doesn't apply to tests.",
+      "why": "The test rules require a stub that one test file needs to be a private sealed nested type in that file.",
+      "check": "Before reporting a nested helper type in a test class, check whether any other test file uses it; only a helper shared across files belongs in its own file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put a test helper that more than one test file needs (such as request or assertion-signing helpers) once in the project's shared infrastructure folder, instead of copying it into each test class.",
+      "why": "Duplicated helper copies, such as assertion-signing code, can diverge.",
+      "check": "Look for private helper methods in a new test class that re-implement helpers already present in another test class in the same project.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, make test setup helpers decide behaviour through the same production service or registered descriptor that production uses, rather than by comparing names to known constants.",
+      "why": "A helper that hard-codes a name comparison diverges from production for package-contributed variants.",
+      "check": "Look for test factories or helpers that branch on a method or scheme name string where production reads a descriptor trait or calls a service.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test concurrency gates and timeouts by holding turns explicitly and advancing a `FakeTimeProvider`, not by sleeping.",
+      "why": "Sleep-based tests are slow and flaky; the rewritten tests hold the gate's turn explicitly and use FakeTimeProvider for the timeout.",
+      "check": "Look for Task.Delay or Thread.Sleep in tests of timeouts, gates or queueing, where a FakeTimeProvider and explicit holds would work.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

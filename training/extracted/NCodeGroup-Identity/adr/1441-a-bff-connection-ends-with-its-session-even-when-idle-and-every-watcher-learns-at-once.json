@@ -1,0 +1,138 @@
+{
+  "hash": "eb14838bec4cb8d1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1441",
+  "rules": [
+    {
+      "statement": "Revalidate a session-bound long-lived connection, such as a SignalR hub connection, with a periodic background watch that starts when the connection connects, not only when an invocation arrives, and abort the connection when the watch finds the session ended.",
+      "why": "A hub that only pushes never receives an invocation, so a check that runs only on invocations leaves an idle connection open after its session ended, and the connection keeps getting whatever the hub pushes.",
+      "check": "Look for session or authorization checks on hub connections that run only inside invocation filters or hub methods, with nothing that watches the connection between invocations and aborts it.",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background watch that revalidates a connection's session must validate it without sliding its expiration; only real user activity, such as an invocation, may slide the session.",
+      "why": "If the watch slid the session, an idle connection would keep its session alive forever and the idle timeout would never end it.",
+      "check": "Look at the background revalidation loop: does it call a validate or touch method that renews or extends the session's sliding expiration?",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A session revalidation loop must log and retry when the session store is unavailable, must log and treat any other unexpected failure as session ended (fail closed), and must throw OperationCanceledException when it is cancelled.",
+      "why": "A store outage should not drop every connection, but any other failure must not leave a connection open for a session that can't be verified.",
+      "check": "Look for catch blocks in revalidation loops that swallow general exceptions and keep the connection alive, or that treat store-unavailable errors as the session ending, or that swallow cancellation.",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When any use of a connection finds its session ended, latch that end in one shared signal, such as a CancellationToken on the connection's session, so every watcher learns it at once. After that, report the end from the latch without reading the store again, and don't keep a separate copy of the end-of-session rule for each caller.",
+      "why": "Without a shared signal, each watcher (invocation, idle watch, circuit provider, refresh) finds the end on its own, up to one revalidation interval later, and separate loops copy the same rule.",
+      "check": "Look for code that detects an ended session (failed validation, missing session in a token request, a refresh that ends the session) but does not signal the shared latch, or for new per-caller revalidation loops or callbacks that only one host type, such as Blazor, can see.",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you signal an event through a CancellationTokenSource, don't run the registered callbacks synchronously inside the caller who signals it (for example, use CancelAsync instead of Cancel), while still making sure IsCancellationRequested is set before the call returns.",
+      "why": "Watchers must not run inside the caller that found the end, yet any later check must see the end right away.",
+      "check": "Look for CancellationTokenSource.Cancel() calls on shared signals that other components register callbacks on, called from request or invocation code paths.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a hub invocation finds that its session has ended, reject the invocation with a HubException instead of running the action it carried.",
+      "why": "Letting the invocation that finds the end run would act for a session that has already ended.",
+      "check": "Look at hub filters or hub methods that detect an ended session but continue to call next or run the hub method anyway.",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't abort a Blazor Server circuit's hub connection when its session ends, and don't fail its later invocations. Instead, sign the circuit out through its AuthenticationStateProvider and keep the connection open.",
+      "why": "An aborted circuit drops into reconnection, which fails once the session cookie ended, so the user sees a failed reconnection instead of a signed-out page. Also, every render acknowledgement, event and navigation is an invocation, so failing them freezes a circuit that is signing out.",
+      "check": "Look for session-end handling that aborts the connection or throws on every invocation for the Blazor hub or its negotiate endpoint, and check that the circuit's authentication state provider waits on the session-end signal.",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a connection's session has ended, any token request made through that connection must fail, even when the hub's invocations are still allowed to run.",
+      "why": "A token request through a connection whose session ended must fail, whichever caller finds the end first.",
+      "check": "Look at token resolution paths for connections: do they check the latched session-end signal before issuing or forwarding a token?",
+      "scope": "domain",
+      "domain": "bff-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prove behavior that only a real browser and a real server show (Blazor circuit sign-out, cross-origin browser WebSockets, idle hub connections, WebAssembly traffic) with end-to-end tests in real browsers, written as a theory over every supported browser engine, and assert server-side state alongside what the browser shows.",
+      "why": "A unit test cannot show a circuit, a browser WebSocket or a WebAssembly runtime.",
+      "check": "Look for changes to render modes, Blazor packages or hub filters whose only coverage is a unit test, or for end-to-end tests that run on only one browser or assert only the browser's outcome.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*EndToEnd*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give an end-to-end suite's support projects, such as the sample apps it hosts, a name ending in `.Tests`.",
+      "why": "The gates would run them as test projects.",
+      "check": "Look at new projects that are hosted by a test suite but contain no tests, and check that their names do not end in `.Tests`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.sln",
+        "**/*.slnx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, host an ASP.NET Core app under test through WebApplicationFactory<TEntryPoint> (with UseKestrel() when a real browser must reach it), not by building it with WebApplication.CreateBuilder inside the test process.",
+      "why": "The app's static web assets resolve only through its own manifest, which WebApplicationFactory locates.",
+      "check": "Look for test fixtures that call WebApplication.CreateBuilder to host an app that serves static web assets or Blazor content.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

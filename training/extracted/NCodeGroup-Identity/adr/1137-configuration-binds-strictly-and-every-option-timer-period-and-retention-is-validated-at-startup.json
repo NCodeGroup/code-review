@@ -1,0 +1,106 @@
+{
+  "hash": "31b403bf5ddfcc40",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1137",
+  "rules": [
+    {
+      "statement": "Bind every options type from configuration strictly, with `BinderOptions.ErrorOnUnknownConfiguration` set at every depth, and register it with `ValidateOnStart`.",
+      "why": "The binder ignores a key that maps to no property, so a misspelled, misplaced or leftover key is silently discarded. Strict binding stops the host with an error that names the key.",
+      "check": "Look for `Bind`, `Configure<T>(section)` or `AddOptions<T>().Bind(...)` calls that don't set `ErrorOnUnknownConfiguration`, or options registrations that lack `ValidateOnStart`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each configuration section one owner that binds all of its subsections and rejects any subsection it doesn't recognize, with an error that lists the recognized ones. Packages and extensions must not bind or add keys under a section another component owns, and a custom component binds its options from a section of its own.",
+      "why": "With one owner, the host's chosen section name applies to every subsection and a misplaced subsection is caught instead of ignored.",
+      "check": "Look for a package that binds a subsection of a section owned elsewhere, an extension that adds keys under a section the framework binds, or a section owner that doesn't reject unknown subsections.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configuration that would otherwise fail on first use (unknown strategy codes, route templates without a required parameter, uncompilable patterns, malformed URLs) before the host starts, not at the first request or inside a hosted service after startup.",
+      "why": "A failure discovered late comes after health checks have reported the instance ready, or it faults one background service while the rest of the host keeps serving traffic.",
+      "check": "Look for options checked or parsed lazily on the request path or inside a hosted service's run loop instead of in a startup validator or at endpoint mapping.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate every TimeSpan option that drives a timer, a periodic refresh, a cache lifetime or a lease duration to be between 1 millisecond and 4,294,967,294 milliseconds, checking it against one shared definition of that range in code rather than DataAnnotations `[Range]` attributes.",
+      "why": "Zero or negative periods stop polls, break leases, fail cache writes or fault hosted services. 1 ms is the shortest period a `PeriodicTimer` accepts, and about 49.7 days is the longest any .NET timer or `CancellationTokenSource` delay accepts.",
+      "check": "Look for new or changed interval, period, lifetime or lease-duration options with no validator that checks the full range, or with bounds repeated in `[Range]` attributes or literals.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate that a retention option is not negative, and allow zero to mean the row is removed as soon as it ends.",
+      "why": "A negative retention has no meaning and must stop the host at startup.",
+      "check": "Look for retention TimeSpan options whose validator is missing, accepts negative values, or wrongly rejects zero.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give data that grows with use configuration keys for its retention and prune or flush intervals, so an operator can set them.",
+      "why": "Operators need to configure the retention and the pruning timers, and strict binding then catches a misspelled key.",
+      "check": "Look for pruning or flush jobs whose retention or interval is hard-coded instead of exposed through a bound, validated options type.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write an options validator as an `IValidateOptions<T>` that collects and reports every failure rather than only the first, and register it beside the services that read the options.",
+      "why": "An operator sees every misconfiguration at once, and the validator is registered wherever the options are used.",
+      "check": "Look for validators that return on the first failure, validation done in constructors or service code instead, or validators registered away from the services that read the options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An `IValidateOptions<T>` must not take the options type it validates through `IOptions<T>`, `IOptionsMonitor<T>` or `IOptionsSnapshot<T>`.",
+      "why": "A validator that reads the options it validates deadlocks the host as it starts.",
+      "check": "Look at the constructor dependencies of each `IValidateOptions<T>` implementation for an options accessor of the same `T`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an options validation failure message name the failing option, its configuration key and the offending value, for example \"Options.Retention ('Section:Retention') must not be negative; it is -1.00:00:00.\".",
+      "why": "An operator can then find and fix the exact key that stopped the host.",
+      "check": "Look for validation failure messages that omit the configuration key path or the actual value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

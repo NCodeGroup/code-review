@@ -1,0 +1,119 @@
+{
+  "hash": "84a26679688c00a5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1073",
+  "rules": [
+    {
+      "statement": "Don't put EF Core migrations, a provider choice or provider-specific wiring in a published, provider-neutral persistence library; it ships the model only, and the migrations live in a host-owned database project that sets `MigrationsAssembly` to itself.",
+      "why": "Migrations in the published library would tie every consumer to one provider and one schema history.",
+      "check": "Look for a `Migrations/` folder, `UseNpgsql`/`UseSqlServer` calls or a `MigrationsAssembly` setting added to a packable library project instead of the host's database project.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A host must never apply EF Core migrations at startup, in any environment. A dedicated migration worker applies them and exits, and the host waits for that worker to finish.",
+      "why": "A migration that fails inside the API process crashes the host. A separate resource keeps the failure visible and contained.",
+      "check": "Look for `Database.Migrate()`, `MigrateAsync()` or a hosted service that migrates in the host's startup path, and for an orchestrator or AppHost that starts the API without `WaitForCompletion` on the migration worker.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't create or evolve a relational schema with `EnsureCreated`; use migrations.",
+      "why": "`EnsureCreated` can create a schema but can never change one later.",
+      "check": "Look for `Database.EnsureCreated()` or `EnsureCreatedAsync()` calls against a relational context.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every migrated DbContext an `IDesignTimeDbContextFactory` in its database project, so `dotnet ef` never has to boot the host.",
+      "why": "`dotnet ef` would otherwise start the whole host to build the context.",
+      "check": "When a new DbContext with migrations is added, check that its database project has a matching design-time factory.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist the ASP.NET Core Data Protection key ring with `PersistKeysToDbContext` in a host-owned context that has its own migrations history, never in a shared library's DbContext or in a file next to the database.",
+      "why": "A `DataProtectionKeys` table in the shared context forces that table on every consumer of the library. A file creates a second storage location that a reset has to keep in sync with the database.",
+      "check": "Look for `IDataProtectionKeyContext` or a `DataProtectionKeys` DbSet added to a library context, and for `PersistKeysToFileSystem` in host configuration.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep hand-written types out of a project's `Migrations/` folder, because that folder is treated as generated code.",
+      "why": "Everything under `Migrations/` is marked `generated_code` in `.editorconfig` and excluded from the formatter, so hand-written code there would not be analyzed or formatted.",
+      "check": "Look for non-migration classes, such as rules, helpers or tests, added under a `Migrations/` directory.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every EF Core model change must come with its migration in the same change.",
+      "why": "A model change without its migration breaks the first deployment that needs it.",
+      "check": "The build's `dotnet ef migrations has-pending-model-changes` drift step fails on this, so a reviewer only needs to confirm that a changed entity or configuration has a matching migration.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Register a health check for the host's DbContext (`AddDbContextCheck`) and tag it as a readiness check.",
+      "why": "The database is a dependency the host needs before it can serve traffic, so it belongs in the readiness check.",
+      "check": "When a host registers a relational DbContext, check for a matching `AddDbContextCheck<T>` tagged for readiness.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Seed data from idempotent seed handlers in the host, not from the migration worker or the migrations.",
+      "why": "The worker only applies the schema. Seeding has to be safe to run again on every start.",
+      "check": "Look for seed inserts in migrations or the migration worker, and for seed handlers that insert without first checking whether the data already exists.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't store developer state such as databases or key rings under `App_Data/` or in other local files; keep it in the orchestrated database so that one reset clears it all.",
+      "why": "State spread across several places can drift out of sync. Deleting one piece without the others leaves stored keys that can no longer be decrypted.",
+      "check": "Look for file paths under `App_Data/`, SQLite files or file-based key storage added to host configuration.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

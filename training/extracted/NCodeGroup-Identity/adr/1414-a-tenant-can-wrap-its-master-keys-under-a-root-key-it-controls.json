@@ -1,0 +1,120 @@
+{
+  "hash": "8cc96108e5c8bb30",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1414",
+  "rules": [
+    {
+      "statement": "When code checks secret or key material (for example the round-trip check of a key wrap), compare the values in constant time and zero every temporary buffer that held them afterwards.",
+      "why": "The ADR's key probe compares in constant time and zeroes both values so the check neither leaks timing nor leaves material in memory.",
+      "check": "Look for SequenceEqual, ==, or a manual loop used on secret bytes instead of CryptographicOperations.FixedTimeEquals, and for buffers holding secret material that are not cleared with CryptographicOperations.ZeroMemory (or the NCode.Buffers equivalent).",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat any failure to reach or validate a protecting key, including a transient one, as unavailable and refuse the operation, rather than assuming the key is still usable.",
+      "why": "The server fails closed so that a revoked key takes effect. Treating transient failures as available was considered and rejected.",
+      "check": "Look for catch blocks around key validation, unwrap or probe calls that swallow the error, return success, or keep using cached material without bounding how long it stays valid.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a persisted state value is unknown, read it as the most restrictive state (for example unavailable), never as active.",
+      "why": "An unknown owner root key state reads as unavailable, so a state the code doesn't recognise can't unlock access.",
+      "check": "Look for parsing of persisted state or status strings where the default or fallback branch maps to an enabled or active state.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reach a key or resource in another account through delegation the owner grants (an assumed role, service account impersonation, a consented multi-tenant application), and never store access keys, client secrets or key files in configuration or the database.",
+      "why": "A stored secret can leak. Delegation lets the caller act without holding one.",
+      "check": "Look for new configuration options, database columns or entity properties that hold cloud access keys, client secrets or key file contents used to reach a key in another account.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a cross-account trust binding (such as an AWS sts:AssumeRole ExternalId) on the server from the owner's normalized identity, and don't take it from caller input or generate it at random.",
+      "why": "A binding derived from the owner can't be chosen by another tenant, so a role another tenant trusts can't be assumed on this tenant's behalf. A random ID would have to be shown to the tenant anyway.",
+      "check": "Look for an ExternalId or similar trust binding that comes from a request body or query, or from a random generator, instead of from the owner identity.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Audit events about keys may carry the provider, reference, identity, state and failure, but never key material.",
+      "why": "The ADR requires audit records to name keys without exposing material.",
+      "check": "Look for audit or log calls that include key bytes, wrapped or unwrapped material, or secrets among their properties.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two public entry points perform the same cryptographic operation with differently sourced inputs, route both through one private implementation so their binding, checks and error mapping cannot drift.",
+      "why": "Each adapter's configured and referenced WrapAsync call one private WrapUnderAsync, so the two cannot drift.",
+      "check": "Look for overloads or sibling methods that each repeat the same wrap, validation and exception-mapping logic instead of delegating to a shared private method.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An exception that signals a recoverable unavailability (such as a revoked or unreachable key) must not derive from an exception type that other code treats as permanent corruption and handles by deleting data (such as CryptographicException).",
+      "why": "OwnerRootKeyUnavailableException does not derive from CryptographicException, so development pruning never deletes a tenant's master keys while its key is unavailable.",
+      "check": "Look for new unavailability or transient exception types that derive from CryptographicException or another base that cleanup or pruning code catches in order to destroy data.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate interval options at host start against explicit bounds, including bounds between related options (for example a retry interval no greater than the validation interval), and stop the host when a configured name doesn't resolve to a registered implementation.",
+      "why": "ValidationInterval and RetryInterval are validated at start with ranges, and a listed provider that is not a registered wrapper stops the host.",
+      "check": "Look for new TimeSpan or interval options without range validation, or without ValidateOnStart, and for options that name registered services but are never checked against the registrations.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To add an operation that only some implementations of a contract can support, define a derived interface with real members, not a parameter on the base method that some implementations must throw for, and not a marker interface with no members.",
+      "why": "A parameter the base contract doesn't need forces implementations that give it no meaning to throw, and a marker interface has no members, so IReferencedKeyWrapper extends IKeyWrapper instead.",
+      "check": "Look for a new parameter on a shared interface method that some implementations reject with NotSupportedException or ArgumentException, and for new empty marker interfaces used for capability checks.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

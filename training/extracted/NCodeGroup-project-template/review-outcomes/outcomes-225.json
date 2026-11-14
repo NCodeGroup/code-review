@@ -1,0 +1,64 @@
+{
+  "hash": "a3c89122ca06fd8c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #225",
+  "rules": [
+    {
+      "statement": "When code reads an HTTP API answer, treat a success status whose body is not the expected JSON object (empty, `null`, a scalar or an array) as a read failure with a stated reason, not as a valid answer with missing fields.",
+      "why": "A 200 with an empty body can make the JSON parser return null without throwing. The run then reports every setting as 'not available' and exits 0, so callers believe the work was done when nothing changed.",
+      "check": "Look for a parsed response (e.g. `ConvertFrom-Json`, `JsonSerializer.Deserialize`) used without checking for null or the wrong shape after a success status, and for missing tests that cover an empty body, a body that isn't JSON and a call that gets no response, each expected to fail with its reason and make no write.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a call to an external CLI or HTTP tool fails without returning a status, include the first line of the tool's stderr in the reported reason, with no token or URL text, instead of throwing stderr away.",
+      "why": "If stderr is discarded, a user sees only 'no response' and can't tell a login problem from a network problem.",
+      "check": "Look for external tool calls that send stderr to `$null` or discard it, and failure messages that give a generic 'no response' with no detail from the tool.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report deferred follow-ups as untracked or missing an issue link when the plan's Follow-ups section lists them and the repository's landing policy (such as `follow-ups=issues` in AGENTS.md) files them as issues once the pull request merges.",
+      "why": "Under that policy the issues are created only when the pull request lands, so they can't be linked from the pull request beforehand.",
+      "check": "Before reporting, check the plan's `## Follow-ups` section and the Landing policy in AGENTS.md to see whether deferred items get filed automatically on merge.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In changelog entries, name the exact version when an instruction refers to earlier releases (e.g. 'projects made before 0.58.0') instead of an open-ended 'before'.",
+      "why": "A sentence that ends at 'before' leaves readers unsure whether their existing projects need the step.",
+      "check": "Look in CHANGELOG entries for time references such as 'before' or 'earlier' that don't name the version they mean.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask standalone tool scripts, which users run or copy on their own, to move a duplicated helper into a shared module: each such script carries its own helpers, and the copies may rightly diverge.",
+      "why": "The scripts must work as single files. Helpers such as failure-reason formatters handle different hosts' answers and can legitimately differ.",
+      "check": "Before reporting duplication, check whether the scripts are meant to be standalone (for example, scripts under a tools folder that users run or copy) and whether the copies serve different hosts or answers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/tools/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

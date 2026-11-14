@@ -1,0 +1,143 @@
+{
+  "hash": "6cfd73e9a5dd8c95",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1180",
+  "rules": [
+    {
+      "statement": "Don't apply EF Core migrations or call `EnsureCreated` on application startup; schema changes run from a separate migration worker or job before the rollout.",
+      "why": "A schema change is a deliberate step, and replicas that start at the same time must not race to apply it.",
+      "check": "Look for `Database.Migrate()`, `MigrateAsync()`, `EnsureCreated()` or similar calls in host startup, hosted services or `Program.cs` of a serving host.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a migration review, flag by hand a column changed to nullable that the previous release still maps as required, because the expand-only check cannot detect it.",
+      "why": "The previous release keeps running during a rolling update and after a rollback, and it fails when it reads a null from a column it treats as required.",
+      "check": "Look in migration diffs for `AlterColumn` operations that set `nullable: true` and compare them with the previous release's entity mapping.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a migration review, flag by hand a store-type change that keeps the CLR type (such as `text` to `jsonb`), a collation change, or a sequence restart, because the expand-only check cannot detect them.",
+      "why": "These change how the previous release's reads and writes behave even though the model type looks the same, so the previous release may break.",
+      "check": "Look in `AlterColumn` operations for changed `type:`/`oldType:` with the same CLR type, changed `collation:`, and `RestartSequence` operations.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a migration review, flag by hand a dropped unique index that the previous release relies on, because the expand-only check cannot detect it.",
+      "why": "The previous release may depend on that uniqueness for correctness while it still runs side by side with the new release or after a rollback.",
+      "check": "Look for `DropIndex` on an index declared `unique: true` and check whether the previous release's code assumes the uniqueness.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A database migration only expands the schema: a contracting operation (dropping or narrowing a column, table, or constraint, or adding a constraint or unique index to an existing table) ships in a later release than its expansion.",
+      "why": "During a rolling update the previous and next release run side by side, and a Helm rollback runs no migration, so every migration must leave the previous release working.",
+      "check": "Look for drop, rename, narrowing alter, or new constraint/unique-index operations on existing tables in a migration that is not a separate contract step following an already-shipped expansion.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't give a new table a restricting foreign key to an existing table in an expand migration.",
+      "why": "Once the new release writes a dependent row, the previous release's delete of the row it references fails.",
+      "check": "Look for `AddForeignKey` or foreign keys inside a `CreateTable` that reference an existing table with `onDelete: ReferentialAction.Restrict` or `NoAction`.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put a long-running data migration in a schema migration that runs before the rollout; run it in application code after the rollout.",
+      "why": "An install or upgrade takes as long as its migrations, and the pre-rollout job has a deadline that the deployment timeout must cover.",
+      "check": "Look for large data backfills or row-by-row updates added to an EF Core migration or the migration worker.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*Migration*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Strip the byte-order mark from files written by `dotnet ef migrations add` before committing them.",
+      "why": "The ADR's re-scaffolding procedure requires migration, designer and snapshot files without a BOM.",
+      "check": "Check that newly scaffolded migration, designer and model snapshot files don't start with a UTF-8 BOM.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A migration worker compares the database's recorded migration ids with the assembly's migrations and throws, applying nothing, when the database history names a migration the assembly lacks.",
+      "why": "A database ahead of the assembly must stop the worker with a message naming the context and the reset step, so the worker never guesses.",
+      "check": "Look at migration runner code to confirm it checks applied migrations against the assembly's migrations before calling migrate, and fails with a message naming the context.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a Helm chart's database migration as a `pre-install`/`pre-upgrade` hook Job from the same image as the server, with a bounded `backoffLimit` and `activeDeadlineSeconds`, and use the delete policy `before-hook-creation,hook-succeeded` so a failed Job is kept for its logs.",
+      "why": "Helm waits for the hook, so a failed migration fails the release while the previous version still serves, and a separate migration image could fall out of step with the host.",
+      "check": "In chart templates, check the migration Job's hook annotations, its image reference, `backoffLimit`, `activeDeadlineSeconds` and `helm.sh/hook-delete-policy`.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/templates/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a chart's migration hook Job as restricted as the server (non-root user, read-only root filesystem, no capabilities, no service-account token), and label it with a distinct component so the Service and PodDisruptionBudget selectors don't match it.",
+      "why": "The Job runs the same image, so it gets the same hardening, and it must not receive traffic or count toward disruption budgets.",
+      "check": "Compare the Job pod's `securityContext` and `automountServiceAccountToken` with the server Deployment's, and check that its `app.kubernetes.io/component` label isn't matched by the Service or PDB selectors.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/templates/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a `pre-install` hook Job reference a service account that the chart itself creates; use the namespace's `default` account unless the chart is configured to use an existing account.",
+      "why": "On a first install the hook runs before the chart's own resources exist, so the chart's service account isn't there yet.",
+      "check": "Check that the hook Job's `serviceAccountName` doesn't point to a chart-created ServiceAccount when `serviceAccount.create` is true.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/templates/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

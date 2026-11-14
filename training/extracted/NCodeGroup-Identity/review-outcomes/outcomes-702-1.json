@@ -1,0 +1,283 @@
+{
+  "hash": "3dcaaed7d3776fc7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #702",
+  "rules": [
+    {
+      "statement": "Don't ask for an alias, compatibility shim or rename note when a renamed public name, setting value or identifier has never shipped (its PublicAPI entry is still in PublicAPI.Unshipped.txt and the package is pre-release).",
+      "why": "Nothing unshipped has been released or stored, and the standing direction rules out aliases and compatibility shims for anything that has only existed in the repository.",
+      "check": "Before reporting a rename as breaking, check whether the old name appears in PublicAPI.Shipped.txt or a released changelog; if it is only in PublicAPI.Unshipped.txt, don't report it.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a stub, fake or sample type out of the test file when only that one file uses it: the test conventions nest it there as a private sealed type.",
+      "why": "The test instructions rule that a stub, fake or sample type that one test file needs is a private sealed nested type in that file; the no-nested-types exception is the production rule.",
+      "check": "Search the test project for other uses of the nested helper; report only when a second test file needs it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test file's namespace carries the project's .Tests segment (for example `Product.Tests.Algorithms`), not the production namespace of the code under test.",
+      "why": "A test type in the production namespace is inconsistent with the rest of the project.",
+      "check": "Look for test files whose namespace declaration omits the test project's root namespace.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when the code under test catches exceptions, don't rely on a strict mock with no setup to prove a call never happens; set up the call with `.Verifiable(Times.Never())` or otherwise assert no calls were received.",
+      "why": "The code under test swallows the MockException a strict mock throws, so the test can't detect the regression it means to guard.",
+      "check": "Look for tests asserting that a dependency is not called through strict-mock behaviour alone, where the code path wraps the call in a try/catch.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background loop that processes several independent items (providers, owners, tenants) catches each item's failure, logs it naming the item, and continues with the rest, rethrowing only when cancellation was requested on the stopping token.",
+      "why": "Otherwise one failing item skips every later item until the next interval, can starve the rest, and the log doesn't name the failing item.",
+      "check": "Look for a foreach over items in a hosted or background service that awaits per-item work with no per-item try/catch, or catches without logging the item's name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that an awaited wait in a hosted service can fault and escape ExecuteAsync without first checking how the awaited task completes; a task completed only through TrySetResult and awaited with WaitAsync(stoppingToken) ends only with a result or a cancellation that is already handled.",
+      "why": "Such a wait never faults, so the proposed catch would guard against nothing.",
+      "check": "Read the awaited method's implementation (TaskCompletionSource usage, WaitAsync with the stopping token) and sibling services that wait the same way before reporting.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that writes an audit or domain event for an outcome does not also log that same outcome at the call site; it logs only a failure to publish the event.",
+      "why": "The outcome would be recorded twice under separate templates and EventIds, and the two can drift; the event is the one record and the log is derived from the event stream.",
+      "check": "Look for a success log message emitted next to publishing an audit event for the same fact.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two methods (for example span and memory variants) perform the same decode or parse, build them on one shared implementation, so that size computation, length checks and error mapping live in one place.",
+      "why": "Duplicated copies drift, so inputs get accepted or rejected differently depending on the path, and later fixes can miss one copy.",
+      "check": "Look for a new helper that repeats the size calculation, buffer rental, TryXxx call and error mapping of an existing sibling method.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validator gives a TimeSpan option that is added to or subtracted from the current time an upper bound (or the arithmetic clamps it), not only a lower bound.",
+      "why": "A value such as TimeSpan.MaxValue lets the host start, but every use then throws ArgumentOutOfRangeException and retries forever.",
+      "check": "Look for TimeSpan options used in `now - option` or `now + option` whose validator enforces only a minimum.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't discard the bool result of a Try* lookup on the strength of a comment saying it must succeed; check it and return a specific error, or take the value from the resolution that already validated it.",
+      "why": "If the assumption ever breaks, the null result leads to misleading errors downstream.",
+      "check": "Look for `_ = TryGet...(...)` or ignored Try* return values that a comment justifies.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An interface method's XML docs list every exception type its implementations deliberately throw as part of the contract, with an `<exception cref>` entry saying when.",
+      "why": "Callers reading the contract can't otherwise tell that the call can fail that way.",
+      "check": "Compare the exceptions an implementation throws on purpose with the `<exception>` entries on the interface member.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy a pooled buffer's contents into a transient array with ToArray() just to pass it to an async call; hold the data in a rented Memory<byte> lease that lives across the await.",
+      "why": "ToArray adds an avoidable heap allocation per operation on a hot path.",
+      "check": "Look for `lease.Span.ToArray()` or `.Memory.ToArray()` whose result is only passed to an awaited call.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give page sizes and other service limits named constants, with a comment citing the service limit, and declare a shared string literal (such as a name prefix) once in a common abstractions package rather than repeating it in each implementation.",
+      "why": "Unnamed limits don't say whether they are service maxima, and copies of a prefix can drift so that implementations disagree on which items match.",
+      "check": "Look for numeric literals assigned to Limit or MaxResults properties, and the same string constant declared in several sibling implementations.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A proof that compares a random challenge with its decrypted result keeps both in rented byte buffers and compares them with `CryptographicOperations.FixedTimeEquals`, not as strings.",
+      "why": "Byte buffers avoid array and string allocations and keep the comparison constant-time, as the sensitive-buffer conventions expect.",
+      "check": "Look for challenge-response or decryption checks that build strings and compare them with == or string.Equals.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a catch's exception variable as unused when its `when` filter reads it.",
+      "why": "The filter uses the variable, so it can't be dropped.",
+      "check": "Read the catch's when clause before flagging the declared variable.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A change that makes a validator accept or reject tokens differently is recorded in the changelog and the validator's docs, and a test pins the new refusal.",
+      "why": "Otherwise issuers that depended on the old behaviour start failing validation and nothing announces the change.",
+      "check": "Look for changes to key selection or acceptance logic in token validation with no changelog entry and no test for the newly refused case.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before RSA-OAEP unwrap sends an encrypted key to a remote key service, it refuses an encrypted key whose length is not the modulus size with a CryptographicException.",
+      "why": "A wrong-length key then fails like a tampered token, at the tag with a random CEK, rather than surfacing a distinct service error, and it costs no billed remote call.",
+      "check": "Look for remote decrypt or unwrap calls that forward the attacker-supplied encrypted_key without checking its length against the key size.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE decrypt loop tries several recipients or keys, it skips to the next one only for failures that mean the key doesn't decrypt the token (JoseException, CryptographicException, ArgumentException), and lets every other failure, such as a timeout or transport error, propagate.",
+      "why": "Trying the next recipient after a transport failure would call the same failing service again, and transport failures propagate by design.",
+      "check": "Look for recipient or key loops that catch broad exceptions or OperationCanceledException and continue, or that differ between the compact and JSON paths.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to narrow a remote key provider's mapping of a decrypt 400 or InvalidArgument to CryptographicException when the provider verifies a key's operations and algorithm before storing it, and the service reports disabled or deleted keys with other statuses that propagate.",
+      "why": "For a stored, verified key, the only remaining cause of that status at decrypt is the service refusing the ciphertext, and one convention covers all unwrap paths for that service.",
+      "check": "Check whether the create and bind paths verify the key's algorithm or operations, and which statuses the service uses for disabled or missing keys, before reporting.",
+      "scope": "domain",
+      "domain": "cloud-kms",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report exact ordinal matching between stored remote key identifiers and a provider's listing when the bind and create paths store only the identifier form the service itself returns.",
+      "why": "The provider refuses a response that names the key differently, so case, port or version variants never bind, and the stored form equals the listed form.",
+      "check": "Read the bind and create paths to see whether they store the service-returned identifier and refuse mismatches before reporting.",
+      "scope": "domain",
+      "domain": "cloud-kms",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a remote key listing to log each key whose tags it can't read because access was denied; in a shared account that is the normal answer for other applications' keys, and leaving such keys in place fails safe.",
+      "why": "A warning per foreign key would flood every sweep, and a total can't tell a missing permission from foreign keys.",
+      "check": "Check whether the skipped keys are expected to be foreign and whether the skip is documented on the listing contract before reporting.",
+      "scope": "domain",
+      "domain": "cloud-kms",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that per-key KMS metadata calls (ListResourceTags, DescribeKey) made by an infrequent background sweep will throttle live cryptographic traffic, since AWS KMS counts those calls against quotas separate from the cryptographic-operation quota.",
+      "why": "AWS calculates the quotas independently, so a sequential daily sweep can't throttle Sign or Decrypt, and ListKeys offers no cheaper filter.",
+      "check": "Check which KMS quota the calls fall under and how often the sweep runs before reporting a throttling risk.",
+      "scope": "domain",
+      "domain": "cloud-kms",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Documentation that grants a deployment identity permission to destroy cloud KMS keys scopes it to that deployment's keys with least-privilege conditions, such as tag conditions on deletion and creation, a custom role without purge, or a vault or key ring per deployment.",
+      "why": "Unconditioned destroy permissions let a tag-filter bug, a copied tag or a second deployment sharing the scope destroy keys the identity never created.",
+      "check": "Look for documented IAM or role grants for key deletion with no resource or tag condition and no per-deployment scope.",
+      "scope": "domain",
+      "domain": "cloud-kms",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every new render-time refusal added to a Helm chart template gets a matching refuse case in the chart's CI workflow, and existing CI renders are updated to set any value that became required.",
+      "why": "Otherwise nothing in CI asserts the refusal, and existing render steps start failing.",
+      "check": "Look for new `fail` or `required` calls in chart templates with no corresponding refuse case and no updated render values in the chart workflow.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "testing",
+      "applies_to": [
+        "charts/**/templates/*.tpl",
+        "charts/**/templates/*.yaml",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

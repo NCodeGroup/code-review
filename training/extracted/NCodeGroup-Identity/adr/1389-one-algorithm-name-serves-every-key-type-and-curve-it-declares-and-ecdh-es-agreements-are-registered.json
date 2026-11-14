@@ -1,0 +1,127 @@
+{
+  "hash": "448c0cdd1cc5d0c9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1389",
+  "rules": [
+    {
+      "statement": "Register a JOSE algorithm once under its `alg`/`enc` name and have that one registration declare every key type (and curve) it accepts, rather than registering the same name again for another key type.",
+      "why": "Every consumer (headers, settings, discovery metadata, the algorithm collection) resolves an algorithm by name alone; registering a name twice breaks the one-name lookup and pushes key-aware resolution onto every caller.",
+      "check": "Look for a second registration of an existing algorithm name (e.g. `ECDH-ES` for `OKP` keys) or for lookups that resolve by name plus key type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When checking whether a key fits a JOSE algorithm, check the key's type, size and, for key types on curves, its named curve (`crv`); never infer the key type or curve from the key size alone.",
+      "why": "Type and size do not identify a curve: P-256 and secp256k1 are both 256-bit EC curves, Ed25519 and X25519 are both 256-bit OKP curves, and EC P-256 and OKP X25519 keys are both 256 bits.",
+      "check": "Look for key compatibility checks that compare only key type and bit size, or that branch on key size to decide the key type or curve, for curve-based algorithms such as ECDSA, EdDSA or ECDH-ES.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express a JOSE algorithm's accepted curves as declared data checked by the shared key-compatibility rule, and override the compatibility check only for a constraint the declared key types cannot express.",
+      "why": "If each algorithm checks curves its own way, the declared curves become data nothing reads, and a contributed algorithm that lists curves but checks only type and size would accept any curve.",
+      "check": "Look for an algorithm that declares curves but overrides its compatibility check with its own type/size logic, or hand-codes a curve check duplicating its declaration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In ECDH-ES key agreement with key wrapping, generate the content encryption key randomly and wrap it under the key derived from the agreement with the `epk`.",
+      "why": "RFC 7518 §4.6 requires this for the ECDH-ES+AxxxKW algorithms.",
+      "check": "Look for ECDH-ES+AxxxKW code that uses the agreed key directly as the CEK or derives the CEK deterministically instead of generating and wrapping a random one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write the `epk` header as a JSON Web Key of the recipient key's type that holds only that type's required public members (RFC 7638 §3.2), never a private member, produced through the key type's own JWK descriptor rather than a second copy of its members.",
+      "why": "RFC 7518 §4.6.1.1 asks for the minimum that represents the key; a duplicate member list in the agreement could drift from the key type's descriptor and leak a private member.",
+      "check": "Look for `epk` serialization that writes members by hand, includes optional or private members (e.g. `d`), or bypasses the key type's JWK descriptor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading an `epk`, require the recipient key type's `kty`, reject it if it carries a private member of that type or of any standard key type, and import only the required members through a validating public-key import.",
+      "why": "An ephemeral public key must not smuggle private material or a different key type, and must be validated before it is used in an agreement.",
+      "check": "Look for `epk` parsing that does not compare `kty` to the recipient key, ignores private members such as `d`, `p`, `q` or `k`, or imports the key without validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an ECDH key agreement, refuse an ephemeral public key on a different curve than the recipient's key and refuse an all-zero shared secret.",
+      "why": "These are unsafe ephemeral keys; RFC 7748 §6 requires rejecting the degenerate all-zero shared secret.",
+      "check": "Look for ECDH/X25519/X448 agreement code that does not compare the ephemeral key's curve to the recipient's or does not check the shared secret for all zeros.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate that a key is compatible with its declared JOSE algorithm (type, size and curve) when the key is registered, imported or provisioned, not only when it is first used.",
+      "why": "An Ed25519 key declared for ECDH-ES or a P-256 key declared for ES256K should be refused up front as a configuration error instead of failing later in use.",
+      "check": "Look for key registration, import or provisioning paths that accept a key/algorithm declaration without running the same compatibility check the cryptographic runtime applies.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check JWE decryption key compatibility against the configured key only, never reading the token, and report a mismatch as the caller's configuration error.",
+      "why": "RFC 7516 §11.5 warns against behavior that depends on attacker-controlled token content; a key on the wrong curve is a configuration problem.",
+      "check": "Look for decryption-key validation that inspects the incoming token's headers or content, or that reports a misconfigured key as a token error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several contributed strategies may handle the same input, choose the one that accepts it and refuse an input that two of them accept as ambiguous; use registration order as the preference order instead of adding priority numbers.",
+      "why": "Choosing per input keeps the vocabulary open to packages without letting two strategies handle the same key, and registration order already expresses the host's preference, whereas a priority is a number every contributor would have to choose.",
+      "check": "Look for strategy collections that silently pick the first of several matching strategies, or that introduce a priority/order property to rank contributed strategies.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

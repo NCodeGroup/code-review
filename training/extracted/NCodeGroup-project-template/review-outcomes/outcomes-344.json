@@ -1,0 +1,33 @@
+{
+  "hash": "250e9df43f25d231",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #344",
+  "rules": [
+    {
+      "statement": "When code uses a regex or pattern to drop or keep lines, give its tests a case for every form the pattern is meant to match and at least one near-miss it must not match, and assert which lines remain.",
+      "why": "Otherwise a later edit to the pattern could drop a rule that should be kept, or keep one that should be dropped, and no test would fail.",
+      "check": "Look for a new or changed filtering pattern whose tests skip some of the variants it targets (for example, the bare form) or have no near-miss case that must stay unmatched.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same pattern or logic has to be copied into two files because one ships standalone and can't load a shared helper, add a test that reads or runs both copies and fails when they differ, rather than relying on a 'change both together' comment.",
+      "why": "If one copy changes without the other, the two code paths will quietly disagree, and a comment alone does nothing to stop that.",
+      "check": "Look for duplicated patterns or logic marked with a 'keep in sync' or 'change both together' comment, and check whether a test compares the copies.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

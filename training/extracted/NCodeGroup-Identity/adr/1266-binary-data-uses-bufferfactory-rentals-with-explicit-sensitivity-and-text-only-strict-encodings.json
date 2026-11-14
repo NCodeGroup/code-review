@@ -1,0 +1,173 @@
+{
+  "hash": "7aababa7c31fb333",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1266",
+  "rules": [
+    {
+      "statement": "In production code, rent every pooled buffer, pooled writer or pinned array from `NCode.Buffers` `BufferFactory` (`Rent`, `CreatePooledBufferWriter`, `CreatePinnedArray`), never from a bare `ArrayPool<T>.Shared`, `MemoryPool<T>.Shared`, `SecureMemoryPool<T>.Shared`, `new ArrayBufferWriter<T>` or `new Sequence<T>`.",
+      "why": "A single rental API makes sensitivity an explicit argument at every rental, visible at review.",
+      "check": "Look for direct uses of the banned pools or constructors in non-test code.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Use `BufferFactory.CreateArrayBufferWriter()` only for a contiguous writer that never holds a secret, such as public output (a public JWK or JWKS, a wrapped key, a document for the user's own browser); anything that may hold secret material must use a sensitive pooled rental instead.",
+      "why": "The non-pooled array writer is not zeroed, so it is only safe for public data.",
+      "check": "Check what is written into each `CreateArrayBufferWriter()` writer: private keys, plaintext, passwords or tokens in it are a violation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass `isSensitive: true` to every `BufferFactory` rental that holds keys, passwords, nonces, decrypted JWE plaintext, or a payload serialized or compressed before encryption.",
+      "why": "Sensitive rentals come from the pinned `SecureMemoryPool`, which zeroes the memory on return; non-sensitive rentals use the shared pool and leave secrets behind.",
+      "check": "For each `Rent`/`CreatePooledBufferWriter`/`GetSpanLease` call, see what data flows into it; secret data with `isSensitive: false` is a violation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode sensitive text to bytes once, with `SecureEncoding`, into a sensitive buffer, rather than producing intermediate unpooled byte arrays or repeated encodings.",
+      "why": "Every extra copy of a secret's bytes is memory that is not zeroed.",
+      "check": "Look for passwords or secrets converted to bytes more than once or via `GetBytes(string)` returning a fresh array.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a consumer needs one contiguous span of a `Sequence<T>` or `ReadOnlySequence<T>` (a cryptographic primitive, a base64url codec), take `GetSpanLease(isSensitive:)`; any other consumer reads the sequence segment by segment instead of copying it to an array.",
+      "why": "The lease returns the single segment without copying and otherwise a pooled copy with the right sensitivity; other copies waste memory and may leak secrets.",
+      "check": "Look for `ToArray()` or manual copies of a sequence into a contiguous buffer, and for contiguous consumers not using `GetSpanLease`.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Justify an optimization of a hot-path primitive (field, scalar or group arithmetic, encoders, constant-time helpers) with a benchmark in the benchmark projects.",
+      "why": "Optimizations of hot primitives must be backed by measured evidence.",
+      "check": "A diff that micro-optimizes such primitives without adding or updating a benchmark is a violation.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Convert all text to bytes and bytes to text only through `NCode.Buffers.SecureEncoding.UTF8` or `.ASCII`, or a strict encoding constructed with `throwOnInvalidBytes: true` / `throwOnInvalidCharacters: true`, never the lenient `Encoding.UTF8`, `ASCII`, `Unicode`, `BigEndianUnicode`, `UTF32`, `Latin1`, `Default` or `GetEncoding`, in production and test code alike.",
+      "why": "Lenient encodings silently substitute `?` or U+FFFD, turning malformed input into a different valid-looking one so distinct inputs collide in signatures, hashes and derived keys; tests must not pass on input the product rejects.",
+      "check": "Look for lenient `Encoding` properties, lenient constructors or `GetEncoding` calls.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "On inbound paths, catch the exception a strict encoding throws on unrepresentable input and map it to the protocol's error response, rather than substituting a character or letting it escape unhandled.",
+      "why": "Malformed input must be rejected as a protocol error, not silently altered.",
+      "check": "Look at decoding/encoding of request input: an unhandled `EncoderFallbackException`/`DecoderFallbackException` or a replacement fallback is a violation.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not call an API overload that takes no encoding and picks an implicit one; always pass an explicit strict encoding.",
+      "why": "An implicit encoding is lenient and hides the conversion from review.",
+      "check": "Look for text APIs (stream readers/writers, `File` text methods, content helpers) called without an encoding argument.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always pass `contentEncoding: SecureEncoding.UTF8` to `TypedResults.Text` and `TypedResults.Content`.",
+      "why": "So `text/plain` responses carry `charset=utf-8` and are strictly encoded; the analyzer cannot ban the encoding-less form because one symbol covers both, so review must check it.",
+      "check": "Find every `TypedResults.Text`/`TypedResults.Content` (and `Results.Text`/`Content`) call and confirm the `contentEncoding` argument is `SecureEncoding.UTF8`.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a response whose media type has no charset parameter, such as `application/jwt`, as strict UTF-8 bytes with no charset added to the content type.",
+      "why": "Such media types define no charset parameter, yet their content must still be strictly encoded.",
+      "check": "Look for `application/jwt` responses that append `charset=` or that encode the body with a lenient encoding.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report `HttpResponse.WriteAsync(string)` as a missing-encoding or lenient-encoding violation.",
+      "why": "It is deliberately allowed because the ASP.NET Core request-delegate generator emits it, and banning it would fail generated code.",
+      "check": "Before reporting, confirm the call is `HttpResponse.WriteAsync(string)`; it is exempt from the strict-encoding rule.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When viewing a struct of one blittable field type as a span with `MemoryMarshal.CreateSpan(ref Unsafe.As<TStruct, TField>(ref value), count)`, cover the struct with round-trip tests that verify its sequential layout.",
+      "why": "The span view relies on sequential layout, which only tests verify.",
+      "check": "A new struct span view without a corresponding round-trip test is a violation.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read and write a defined little-endian wire encoding with `BinaryPrimitives`, not by reinterpreting memory with `MemoryMarshal.Cast`, and use `MemoryMarshal.Cast<byte, T>` only for byte-aligned limb radixes (not radix-2^51).",
+      "why": "Reinterpreting memory depends on host endianness and only matches the wire format when limbs are byte-aligned.",
+      "check": "Look for `MemoryMarshal.Cast`/`Unsafe.As` used to serialize wire data or non-byte-aligned limbs.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For tiny fixed-limb structs, use direct field access rather than a span view.",
+      "why": "Direct field access is faster than a span view for such small structs.",
+      "check": "Look for span views created over small fixed-limb structs in arithmetic code.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

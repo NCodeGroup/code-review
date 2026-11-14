@@ -1,0 +1,46 @@
+{
+  "hash": "0df849ca4fe4ad52",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #618",
+  "rules": [
+    {
+      "statement": "When a Helm chart template picks between configurations on a values condition (such as a Deployment's update strategy), the chart's CI render checks must cover each branch of that template, not just the same branch in a sibling template.",
+      "why": "Without a render check per branch, swapping the branches or dropping the condition still passes CI, and a bad strategy (such as two replicas during an update without a shared session store) ships unnoticed.",
+      "check": "For each new or changed conditional in a chart template, look for a CI step that renders that template with `--show-only` once per branch's values and checks the output each branch should produce.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "testing",
+      "applies_to": [
+        "**/charts/**/templates/*.yaml",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test of an endpoint or helper that serves a file must assert every HTTP validator it returns (both the entity tag and the last-modified time), not just some of them.",
+      "why": "If a validator such as `LastModified` were dropped, conditional revalidation like If-Modified-Since would stop working and no test would fail.",
+      "check": "In tests of file results (for example `FileHttpResult` or similar), check that both `EntityTag` and `LastModified` are asserted against the expected values, such as the written file's last-write time.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap comment blocks and Markdown prose at 120 columns, and rewrap the whole paragraph when an edit pushes a line past that width.",
+      "why": "The rest of the repository's comments and documentation wrap at 120 columns, and longer edited lines cause style drift.",
+      "check": "Look for edited comment lines (in code, `.dockerignore` and similar files) or Markdown paragraph lines longer than 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/.dockerignore",
+        "**/*.cs",
+        "**/*.yml",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "hash": "ebb3e7f6633bc245",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #505",
+  "rules": [
+    {
+      "statement": "Don't close a partly done issue with `Closes #N` unless the remaining work is already filed as follow-up issues and the pull request links them; otherwise use `Refs #N`.",
+      "why": "Closing an issue while work remains leaves that work with no open issue to track it, even though docs may still describe it as pending.",
+      "check": "When a PR description says an issue it marks `Closes`/`Fixes` is only partly done, check that it links the follow-up issues filed for the rest, or uses `Refs` instead.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Link any pending or rollout work mentioned in documentation or instruction files to a tracking issue, or leave the note out.",
+      "why": "Pending work written as plain prose has no owner, gives no way to tell if it's still wanted, and goes stale once the work is done.",
+      "check": "Look for notes like 'Rolling out', 'still to do' or 'will move' in docs and instruction files that have no issue link next to them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test guarantees that a mocked call does not happen, state it in the test (for example `Verify(..., Times.Never())` or a setup with `.Verifiable(Times.Never())`) instead of relying on a strict mock having no setup for it.",
+      "why": "If the test relies only on a missing setup, a regression shows up as a generic unexpected-call exception, or the code under test swallows it and it becomes an unrelated failure. Either way the message doesn't say the forbidden call was made.",
+      "check": "Look for tests whose name or intent says something is not recorded or not called, where an explicit negative assertion was removed or never added and the test leans only on strict mock behavior.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag a CHANGELOG entry just because it describes a test-only, build or tooling change: the changelog records all notable changes to the project, not only ones package consumers can see.",
+      "why": "The changelog preamble says it covers all notable changes. The project template has each plan's last step write an entry, and earlier entries set the precedent for build and guard changes.",
+      "check": "Before reporting a changelog entry as noise, read the changelog preamble and the earlier entries for build or test changes; report it only if the preamble limits the changelog to consumer-visible changes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

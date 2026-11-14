@@ -1,0 +1,173 @@
+{
+  "hash": "b00ebf8a3f8bd23b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #532",
+  "rules": [
+    {
+      "statement": "In a test project, don't ask to move a private sealed stub, fake or sample type that only one test file uses out of that file into its own top-level file: the test conventions require it to be nested there, and the no-nested-types rule covers production code only.",
+      "why": "The maintainer declined several findings: csharp-tests.instructions.md requires a one-file stub to be a private sealed nested type, and the no-nested-types rule in csharp-production.instructions.md applies only to src/**.",
+      "check": "Before reporting a nested type in test code, check whether more than one test file uses it. Report it only when two or more files share it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for test stubs duplicated across two test projects to be merged into one shared helper when no shared test library exists: each project keeps its own nested copy, trimmed to the members its tests need.",
+      "why": "There is no shared test project, and the test conventions nest a one-file stub in its own file, so each project keeps its own copy.",
+      "check": "Before reporting duplicated stubs, check whether the copies are in different test projects and whether a shared test library already exists that both reference.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test file, don't flag a `#region Scaffolding` that groups test helpers as a nonstandard region name: it is the established name for test helpers.",
+      "why": "130 test files use `#region Scaffolding`, and the template's region list doesn't forbid a helpers region, so renaming it in one file would make that file inconsistent with the rest.",
+      "check": "Before reporting a region name in a test file, count how often sibling test files use the same name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, don't pass `null!` for an argument the code under test shouldn't read; pass a strict mock with no setups instead.",
+      "why": "`null!` suppresses the nullable check instead of fixing its cause. A strict mock with no setups also proves the code never reads the argument.",
+      "check": "Look for `null!` arguments in added test code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, narrow a nullable value with an assertion such as `Assert.NotNull` or `Assert.IsType<T>(..., exactMatch: false)` before dereferencing it, rather than using the null-forgiving operator.",
+      "why": "With `!`, a missing member fails with a NullReferenceException instead of a clear assertion failure.",
+      "check": "Look for `!` on indexer or member access, such as `json[\"x\"]!`, in test code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each strict-mock setup that the code under test must call `.Verifiable()`, and put the setup only in the tests that reach the call.",
+      "why": "Without `.Verifiable()`, no test fails if production code stops making the call.",
+      "check": "Look for strict-mock `Setup(...).Returns(...)` chains in added tests that don't end in `.Verifiable()`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the exact script or commands that generate an independent-oracle test fixture in a comment above the fixture's constants, and note there when the output is randomized.",
+      "why": "Without the script, the fixture can't be reproduced or audited.",
+      "check": "Look for hard-coded cryptographic test vectors whose comment describes how they were generated in prose but doesn't include the script or commands.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validating configured or registered string codes, use `string.IsNullOrWhiteSpace`, and throw an InvalidOperationException that names the problem when a registration entry is null, rather than letting a NullReferenceException escape.",
+      "why": "A whitespace code registers an entry that nothing can look up, and startup gives no error naming the problem.",
+      "check": "Look for `string.IsNullOrEmpty` on identifiers or codes, and for registration loops that dereference entries without a null check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an error message rejects a value that must come from a known set, list the accepted values in the message.",
+      "why": "Otherwise an operator with a mistyped value has to look up the valid values elsewhere.",
+      "check": "Look for rejection messages for enum-like or registered values that name only the bad value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hold secret material such as a shared secret or a key-encryption key in a sensitive `BufferFactory.Rent(..., isSensitive: true, ...)` rental, including the fallback above the stackalloc limit, rather than in a pinned GC array that is wiped by hand.",
+      "why": "A pinned GC array keeps the secret outside the secure pool, and it is wiped only by a manual ZeroMemory call.",
+      "check": "Look for `GC.AllocateUninitializedArray<byte>(..., pinned: true)` or `new byte[]` that holds key material.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the framework's size constant, such as `SHA256.HashSizeInBytes`, instead of a literal like `256 >> 3` for a hash or block size.",
+      "why": "If the hash were ever changed, a literal size could silently disagree with it outside debug builds.",
+      "check": "Look for numeric literals or shifts used as digest sizes next to hash API calls.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a key against a curve-bound algorithm by the key's actual curve, not by its type and size alone, and fail closed when the curve can't be determined.",
+      "why": "Two curves can share a size, so a key on the wrong curve could be accepted at declaration time and only fail later at runtime.",
+      "check": "Look for key/algorithm compatibility checks that compare only key type and bit size, or that skip the curve check when the curve is unknown.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a rule shared by several code paths, such as choosing a key's curve or reading a stored public key with its exception filter, one shared implementation, and return its result to the callers so they can't skip it, rather than copying the logic into each class.",
+      "why": "Copies drift. Different paths could then choose different curves, or let an exception escape as a 500 on one path and not on another.",
+      "check": "Look for the same lookup, resolution or try/catch logic duplicated across classes, especially with different exception filters.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In decision records and CHANGELOG entries, state the current behaviour in the present tense, and don't add amendments, deltas or breaking notes that only record how a pull request's own drafts evolved.",
+      "why": "Notes about intermediate drafts contradict the record's other statements and mislead readers.",
+      "check": "Look for amendment notes, 'now' or 'no longer' deltas, or Breaking entries that describe changes made earlier in the same unreleased work.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a buffer or field for what it actually holds, and give overloads with different roles different names.",
+      "why": "Misleading names make code harder to audit, and they make it easy to confuse which overload does what.",
+      "check": "Look for buffers reused for unrelated outputs, locals with numeric suffixes such as `x2`, and same-named overloads with different responsibilities.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

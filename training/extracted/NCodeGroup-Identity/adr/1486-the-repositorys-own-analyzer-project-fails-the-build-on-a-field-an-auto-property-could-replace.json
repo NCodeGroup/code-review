@@ -1,0 +1,53 @@
+{
+  "hash": "985af2e0b1d4c80a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1486",
+  "rules": [
+    {
+      "statement": "Hold state in an auto-property, static or instance, private included, rather than a field; keep a field only when it is a const or enum member, a ref field, a fixed-size buffer, a volatile field, a field of a struct with [StructLayout] or [InlineArray], or a field used by reference (passed to a ref/out/in/ref readonly parameter such as Interlocked, Volatile, LazyInitializer or a benchmark input, taken with ref or &, or a mutable struct mutated through the field).",
+      "why": "The conventions prefer auto-properties, and a field is needed only where code uses its storage by reference or its layout is a contract; the repository's analyzer fails the build (NCID0001) on any other field.",
+      "check": "Look for new field declarations that are not one of the listed exemptions; in repositories that load the analyzer, leave this to the build rather than raising it in review.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When code reinterprets a struct's fields as contiguous memory (for example through Unsafe.As or MemoryMarshal to read them as one span), declare the struct with an explicit [StructLayout(LayoutKind.Sequential)] (or another explicit layout) so the layout is recorded as a contract.",
+      "why": "The field layout is a contract the reinterpreting code depends on, and the attribute both documents it and keeps the fields legitimately as fields.",
+      "check": "Find Unsafe.As<TStruct, T>, MemoryMarshal.Cast or similar over a struct's fields and verify the struct carries a [StructLayout] attribute.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Roslyn analyzer test project, compile test snippets with CSharpCompilation against the test host's TRUSTED_PLATFORM_ASSEMBLIES and run the analyzer through CompilationWithAnalyzers instead of using Microsoft.CodeAnalysis.Testing.",
+      "why": "Microsoft.CodeAnalysis.Testing downloads reference assemblies from NuGet while tests run, which breaks hermetic tests.",
+      "check": "Look for a reference to Microsoft.CodeAnalysis.Testing packages or reference-assembly downloads in analyzer tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*Tests/**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not suppress a build-failing analyzer rule that the repository declares unsuppressible (such as the field-versus-auto-property rule) with #pragma warning disable, [SuppressMessage] or an .editorconfig severity; change the code to an auto-property or a genuine exemption instead.",
+      "why": "The rule must be kept by the build, not by review, so no suppression is allowed.",
+      "check": "Look for #pragma warning disable, [SuppressMessage] or .editorconfig severity entries targeting the rule's diagnostic ID.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

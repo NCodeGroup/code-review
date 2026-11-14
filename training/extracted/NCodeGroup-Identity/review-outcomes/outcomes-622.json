@@ -1,0 +1,40 @@
+{
+  "hash": "b21f1ad540241d4f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #622",
+  "rules": [
+    {
+      "statement": "In a test project, when a test needs to check how many times a strict mock is called, put the count on the setup with `.Verifiable(Times.Exactly(n))` instead of calling `mock.Verify(..., Times...)` by hand.",
+      "why": "Call counts then follow the verified-mock pattern: they are verified when the test class disposes its mocks, not checked by hand.",
+      "check": "Look for `mock.Verify(` calls with a `Times` argument in test methods, where the setup could carry `.Verifiable(Times...)` instead.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name each test method for everything it checks, not just part of it, such as only one of the two entities whose behavior it asserts.",
+      "why": "If the name leaves out something the test checks, a reader can't tell from the name what the test covers.",
+      "check": "Compare the test method name with its setups and assertions, and flag checked behavior or entities the name doesn't mention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when more than one place throws the same error response (for example the same not-found `HttpResultException` and message), build it in one shared helper that every caller uses, instead of repeating the message inline.",
+      "why": "If one copy is reworded and the others aren't, the same error comes back with different messages.",
+      "check": "Look for new code that builds an exception or error result whose message text already appears elsewhere in the codebase, instead of calling a shared error factory.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

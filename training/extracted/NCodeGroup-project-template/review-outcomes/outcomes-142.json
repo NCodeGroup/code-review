@@ -1,0 +1,78 @@
+{
+  "hash": "9a31b6a132d0e582",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #142",
+  "rules": [
+    {
+      "statement": "Don't ask a test suite to also parse or compare generated copies of the code it tests when an existing check already fails if any generated copy differs from its source by a single byte.",
+      "why": "The maintainer declined this: a byte-for-byte sync check between the source and its generated copies is already stricter than comparing one function in each copy.",
+      "check": "Before reporting that only one copy of duplicated or generated code is tested, look for a template or sync test that compares the generated files with their source. Report only if no such check exists.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test exercises only the source copy of code that a generator copies into other files, the test's header names the generator and the check that keeps the copies in sync.",
+      "why": "Without that note, readers assume the shipped copies are untested and could drift from the source.",
+      "check": "Look for a test file that loads one copy of code that exists in several generated files, and whose header does not point to the generator or the sync check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code makes a deliberate behavioral choice, such as a case-sensitive comparison, an inclusive `>=` boundary or a guard that skips input before the first section, add a test that fails if that choice is reversed.",
+      "why": "If no test pins the choice, changing `-cmatch` to `-match`, `-ge` to `-eq` or dropping a guard leaves the suite green while behavior departs from the documented rule.",
+      "check": "For each deliberate comparison mode, boundary operator or guard in the diff, check whether some test input would give a different result if the operator were flipped or the guard removed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code scans Markdown for headings, it opens a code fence on a run of three or more backticks or tildes, closes the fence only on a bare run of the same character at least as long as the opening run, and treats an unclosed fence as running to the end of the file.",
+      "why": "This is the Markdown fence rule. If a single flag toggles on any fence marker, mixed markers make headings inside code samples count, or real headings after the sample get skipped.",
+      "check": "Look for fence detection that toggles one flag on any ``` or ~~~ line, or that ignores the length of the opening run, or ignores text after the closing run.",
+      "scope": "domain",
+      "domain": "markdown-processing",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests for Markdown fence handling cover tilde fences, each marker type inside the other, shorter or annotated runs that don't close a fence, longer runs that do, section headings inside a fence, and unclosed fences.",
+      "why": "Each of these branches can break without failing a test that uses only a closed backtick fence.",
+      "check": "Check whether the fence-handling tests include only a closed backtick fence, and whether any of the listed cases is missing.",
+      "scope": "domain",
+      "domain": "markdown-processing",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A new changelog entry follows the wording of earlier entries of the same kind, including any closing sentence that tells consumers how to pick up the change.",
+      "why": "If the entry leaves out the usual pickup instruction, readers may not know they must take an action to get the feature.",
+      "check": "Compare a new changelog entry with earlier entries of the same kind, and look for a closing sentence the earlier entries share that the new one leaves out.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

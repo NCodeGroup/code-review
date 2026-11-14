@@ -1,0 +1,144 @@
+{
+  "hash": "c452bbd153a90431",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1106",
+  "rules": [
+    {
+      "statement": "When concurrent callers share one in-flight fetch of a caller-supplied URL (single-flight), key the shared fetch and any remembered failure by the URL plus the fetch limits applied (timeout, size cap), not by the URL alone.",
+      "why": "Keyed by the URL alone, a caller with lower limits (such as a one-second timeout) would make another caller's fetch fail, and the remembered failure would then block that caller too.",
+      "check": "Look at the key passed to the single-flight helper and to the failure cache for outbound fetches. Report it if the key contains only the URI while the timeout or size limit can vary per caller.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a fetch shared between concurrent callers without any single caller's CancellationToken, store its result or failure in the caches before removing it from the in-flight dictionary, and check the caches again before starting the fetch.",
+      "why": "A caller that gives up must not break the fetch for the others, and the ordering stops a racing caller from starting a duplicate fetch between removal and caching.",
+      "check": "In single-flight fetch code, look for a caller's token passed into the shared operation, for removal from the in-flight map before the cache write, and for a missing cache re-check inside the fetch.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remember a failed fetch of a caller-supplied URL (unreachable, non-2xx, oversized, malformed or refused content) for a short bounded duration, and don't fetch again while the failure is remembered.",
+      "why": "Otherwise every request that needs the resource triggers a new outbound fetch, so a client that sends many requests makes the server send as many.",
+      "check": "Look at outbound fetches of caller-supplied URLs. Report it if failures are not cached, or if a remembered failure still allows a new fetch to start.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make key resolution from a remote key set fail closed: a failed or suppressed fetch yields no keys, doesn't throw to the caller and never grants access.",
+      "why": "If a fetch failure grants access or escapes as an exception, an attacker can turn an outage into an authentication bypass or an error leak.",
+      "check": "Look at the failure paths of the key resolver. Report it if they throw, fall back to accepting the signature, or return keys from another source.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't serve a stale cached key set after a refresh of a client's jwks_uri fails; return no published keys until a fetch succeeds.",
+      "why": "An attacker who makes the jwks_uri unreachable could otherwise keep alive a key the client removed because it was compromised.",
+      "check": "Look for fallback to the last good or expired key set on fetch failure, or for a stale-while-error cache option, in jwks_uri or other remote key-set caching.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client has a jwks_uri, resolve its public keys only from that URI (plus its shared secrets) and never also return its stored public keys.",
+      "why": "A client has one source of public keys, so a key removed from the published set can't survive in storage.",
+      "check": "Look at key resolution code. Report it if stored asymmetric keys are combined with the keys fetched from the jwks_uri.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before fetching a client-supplied key set URL, require an absolute https URI that passes the configured host allowlist, and fetch it through the guarded outbound client under a timeout and a response size cap.",
+      "why": "Fetching a client-supplied URL from the server is a server-side request forgery sink.",
+      "check": "Look for fetches of jwks_uri or similar URLs that skip the scheme check, the allowlist check, the SSRF-guarded HttpClient, the timeout or the size limit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log the failure of an outbound fetch of a caller-supplied URL only on the server side, with a reason from a closed vocabulary, and return only a generic protocol error (such as invalid_client) to the caller, never the internal address or cause.",
+      "why": "Internal addresses and failure causes must not reach the caller, while operators still need a reason they can act on.",
+      "check": "Look for exception messages, resolved IPs or HTTP status details in error responses, and for free-form reason strings in failure logs instead of defined constants.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a duration that protects server capacity, such as a failure-cache duration, a host-level option validated at startup, not a per-tenant or per-client setting that a lower scope could set to zero.",
+      "why": "Per-scope settings merge by Min, so a tenant or a client could switch the protection off. Limits that are safe to lower can stay per-scope settings.",
+      "check": "Look for new capacity-protection values exposed as per-scope settings, and for host options that lack range validation at startup.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorized management write sets a URL the server will fetch later, refuse it if the host is a literal IP the SSRF guard refuses or a name that resolves only to refused addresses. Don't refuse a name that doesn't resolve, and don't reveal which addresses were refused.",
+      "why": "A URL the guard always refuses can never be fetched, so storing it moves the failure to every later request. A URL may be registered before its DNS exists, and the refused addresses are internal information.",
+      "check": "Look at management create and update validation of fetchable URLs. Report it if the check is missing, if it rejects names that don't resolve, or if its error message lists the resolved addresses.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't run DNS-resolution checks on caller-chosen hosts in unauthenticated or weakly authenticated endpoints such as dynamic client registration; rely on the runtime fetch log for those.",
+      "why": "The caller would learn how the server's resolver answers for names it picks.",
+      "check": "Look for host-resolution or SSRF-guard validation results returned to callers of dynamic client registration or other anonymous endpoints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a cache entry that owns no native handle plain absolute expiration, and add eviction cleanup only for entries that own disposable native resources.",
+      "why": "Entries such as public keys that own no native handle need no disposal on eviction, so cleanup callbacks would be needless overhead.",
+      "check": "Look at memory cache entries. Report missing eviction disposal for entries that hold native handles, and unneeded eviction callbacks for plain data.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "hash": "8bdbd3ffb108101f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1133",
+  "rules": [
+    {
+      "statement": "A reusable OpenTofu component module declares its `required_providers` but contains no `provider` configuration block and no `backend` block.",
+      "why": "Provider and backend configuration belong to the composition root (stack or live configuration), so the component can be reused in any environment.",
+      "check": "Look for `provider \"...\" {}` blocks or `terraform { backend ... }` inside a component module directory rather than a stack or live configuration.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A reusable infrastructure component takes its dependencies as input variables and exposes what others need as outputs, and doesn't look up another component's resources itself through data sources or remote state.",
+      "why": "Lookups across components couple them and break composition; stacks wire components together explicitly.",
+      "check": "Look for `data` sources or `terraform_remote_state` in a component that fetch resources another component creates, instead of taking them as variables.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/modules/**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every reusable infrastructure component ships a README, an example, and `tofu test` tests that use mocked providers.",
+      "why": "Components are published products that other people consume and get support for, so they need documentation and tests that run without real cloud credentials.",
+      "check": "Check that a new or changed component directory has a README, an example, and `*.tftest.hcl` tests that use `mock_provider`.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "testing",
+      "applies_to": [
+        "**/modules/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an infrastructure component's variables and outputs as its public API: removing or renaming a variable or output, adding a required input, or forcing a resource replacement is a breaking change that needs a major version.",
+      "why": "Consumers pin released versions and have to act on these changes.",
+      "check": "Look for removed or renamed variables or outputs, new variables without defaults, or changes that force resource replacement, where the diff doesn't flag the change as breaking.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a refactor of an infrastructure component renames, moves or drops resources, it uses `moved` and `removed` blocks so that existing state isn't destroyed and recreated.",
+      "why": "Without these blocks, consumers who upgrade get forced resource replacements.",
+      "check": "Look for a resource address that was renamed, moved into or out of a module, or deleted, where the diff has no matching `moved` or `removed` block.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reusable infrastructure components declare provider version ranges, not exact versions; exact provider versions are pinned only by the lock file of the deployed live configuration.",
+      "why": "Exact pins in shared components conflict across consumers; the live configuration owns the exact versions it runs.",
+      "check": "Look for exact `version = \"x.y.z\"` provider constraints in component or stack code, or a lock file committed outside the live configuration.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Live deployment configuration references reusable infrastructure modules and stacks only by a released version, pinned by digest where the source supports it, never by a local path or a branch.",
+      "why": "The hosted deployment has to exercise exactly the published artifacts that self-hosters consume.",
+      "check": "Look for `source = \"../...\"`, local paths, or unpinned branch refs in live or cluster configuration.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/live/**",
+        "**/clusters/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Reusable deployment components, stacks and charts take environment-specific values (domains, hostnames, account IDs, secret or parameter-store paths) as inputs and don't hard-code them or default them to the vendor's own environment.",
+      "why": "Published artifacts have to stay generic for self-hosters; platform specifics belong only in the live configuration.",
+      "check": "Look for variable defaults, or literals in component, stack or chart code, that name a specific production domain, hostname, account or SSM path.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/charts/**",
+        "**/kubernetes/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A reusable infrastructure component is secure by default: its default input values pick the secure configuration.",
+      "why": "Components are published for other people to use, so a configuration that takes the defaults must be safe.",
+      "check": "Look for defaults that open public access, turn off encryption or TLS, or grant broad permissions unless the consumer opts in.",
+      "scope": "domain",
+      "domain": "infrastructure-as-code",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/modules/**/*.tf",
+        "**/kubernetes/components/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

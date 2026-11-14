@@ -1,0 +1,62 @@
+{
+  "hash": "07ab41fa30374d12",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template .github/agents/copilot-reviewer.agent.md",
+  "rules": [
+    {
+      "statement": "Do not weaken, skip or delete existing tests to make a change pass; a change that alters behavior must keep or strengthen the tests that cover it.",
+      "why": "Skipped or weakened tests are a shortcut that hides whether the work actually behaves as required.",
+      "check": "Look in the diff for removed test methods, added Skip attributes, loosened assertions, or tests changed to expect the new wrong result without a stated reason.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not swallow errors: a catch block must handle, translate or rethrow the exception, not silently discard it.",
+      "why": "Swallowed errors are a shortcut that hides failures instead of fixing them.",
+      "check": "Look for empty catch blocks, catch-all handlers that only return a default, or ignored error results added in the diff.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not leave TODO comments or hard-coded placeholder values in place of the required implementation.",
+      "why": "Leftover TODOs and hard-coded values are shortcuts that leave the work unfinished while its checks still pass.",
+      "check": "Search added lines for TODO/FIXME/HACK comments and for literal values (URLs, keys, counts, magic strings) that stand in for configuration or computed values.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, describe the product as it is: add no breaking-change labels, conventional-commit `!` markers or `BREAKING CHANGE:` footers, migration notes, wording set against an earlier state, or compatibility shims.",
+      "why": "A pre-release product has no released state to break or migrate from, so such text and shims misdescribe it and add dead code.",
+      "check": "In a project marked pre-release, look in the changelog, docs, commit messages and PR title for `**Breaking:**`, `!:`, `BREAKING CHANGE:`, 'previously'/'now' wording or migration notes, and in code for obsolete aliases or shims kept for old callers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep the changelog's `## [Unreleased]` section a catalog under `### Added` and `### Security` headings only.",
+      "why": "Before the first release everything is new, so Changed, Removed or Fixed sections describe states that never shipped.",
+      "check": "In CHANGELOG.md of a pre-release project, look for `### Changed`, `### Removed`, `### Fixed`, `### Deprecated` or other headings under `## [Unreleased]`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

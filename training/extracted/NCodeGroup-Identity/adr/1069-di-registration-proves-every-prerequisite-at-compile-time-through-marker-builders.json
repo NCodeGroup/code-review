@@ -1,0 +1,117 @@
+{
+  "hash": "23ad75e15c7d8d1b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1069",
+  "rules": [
+    {
+      "statement": "Register an opt-in capability that layers on another library's services as an extension on that library's marker-typed service builder (`IServiceBuilder<TMarker>`), not on a bare `IServiceCollection`.",
+      "why": "The receiver marker proves at compile time that the prerequisite library is registered; a bare collection gives the compiler nothing to enforce, so a missing prerequisite becomes a confusing runtime failure.",
+      "check": "Look for new `Add…` extension methods on `IServiceCollection` that hook, decorate or consume another library's services instead of extending that library's `IServiceBuilder<TMarker>`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express a registration's second prerequisite as a required `IServiceBuilder<TMarker>` parameter (the builder that prerequisite's registration returned), never as a marker struct value or a bespoke proof type, and return the receiver builder.",
+      "why": "Anyone can `default` an empty marker struct, so a marker instance proves nothing; only a builder minted by the prerequisite's registration is unforgeable, and returning the receiver keeps the chain on the primary library.",
+      "check": "Look at registration methods with an extra prerequisite: is it a parameter of marker type, an optional or nullable builder, or a custom proof type, and does the method return something other than its receiver?",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encode registration prerequisites only in the builder types; don't add runtime checks that verify another library was registered.",
+      "why": "Runtime verification defers an avoidable mistake to startup and depends on order, while the typed builders make a missing prerequisite or a wrong order a compile error.",
+      "check": "Look for registration code that inspects the service collection (for example `IsRegistered`, `Any(d => d.ServiceType == …)`) or throws to signal a missing prerequisite library.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every registration that another registration depends on, including a dependency-inverted seam such as a custom store, must mint and return its own marker-typed builder.",
+      "why": "Dependents can only demand an unforgeable witness if the prerequisite's registration hands one back.",
+      "check": "Look at store and seam registrations that dependents need: do they return `void` or the bare collection instead of `IServiceBuilder<TheirMarker>`?",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a registration marker as an empty `readonly struct` implementing `IRegistrationMarker<TMarker>`, and put a library's marker in that library's `.Abstractions` package.",
+      "why": "The marker's type identity is the whole signal, so it carries no data to keep in sync. Abstractions-only consumers must be able to name the builder without referencing the implementation package.",
+      "check": "Look for new marker types that are classes, have members or data, or are declared in an implementation package rather than in the `.Abstractions` package.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a bare `IServiceCollection` only for registrations that stand alone: chain roots that bootstrap a marker with no prerequisite, one-service helpers, and marker-less cross-cutting infrastructure.",
+      "why": "The test is whether the registration would do the right thing if it were the only thing registered; anything that hooks another library's services is a bolt-on and must gate on that library's builder.",
+      "check": "For each new bare-collection extension, ask whether it depends on services from another library; if so, flag it.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A helper that is called from more than one library's builder should extend the non-generic `IServiceBuilder`, not a bare `IServiceCollection` and not one specific marker builder.",
+      "why": "The non-generic builder still requires the caller to hold some library builder, so it is stronger than a bare collection, and it doesn't tie the helper to one library.",
+      "check": "Look for shared helpers (message factories, endpoint providers or groups) that extend `IServiceCollection` or a single `IServiceBuilder<TMarker>` even though several libraries use them.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Follow the registration naming shape: a package-root `AddXLibrary()` extends its prerequisite's builder, creates its own builder with `NewBuilder<XLibrary>()` and returns it; a folder-level `AddYServices()` extends `IServiceBuilder<XLibrary>` and returns its receiver; a bolt-on returns the builder it augments.",
+      "why": "A bolt-on adds to an existing library and introduces no new library layer, so only library roots mint new builders.",
+      "check": "Look at return types: does a bolt-on or a folder-level registration mint a new library builder, or does an `AddXLibrary` return its receiver instead of the new builder?",
+      "scope": "repository",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a package's main registration class `DefaultRegistration`, and put each other receiver shape or opt-in set in a sibling `…Registration` class, because one static class holds only one `extension(...)` receiver.",
+      "why": "Analyzer CA1708 forbids mixing receivers in one static class, and the naming keeps registration code easy to find.",
+      "check": "Look for a static class with `extension(...)` blocks for more than one receiver, or registration classes named outside the `DefaultRegistration`/`…Registration` pattern.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In host wiring, compose capabilities by chaining off the builders the single composition root exposes, never by calling capability methods on the bare `IServiceCollection`, and reference implementation packages only from the composition root.",
+      "why": "Chaining off the root's builders documents the dependency order at the call site and keeps the compile-time prerequisite checks in force.",
+      "check": "Look in host or sample startup code for capability registrations called on `services` directly, or for implementation-package references outside the composition root.",
+      "scope": "repository",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

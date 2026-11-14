@@ -1,0 +1,51 @@
+{
+  "hash": "f9a2e5c1dbef7844",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform .claude/commands/review-code.md",
+  "rules": [
+    {
+      "statement": "Don't report a style preference that the codebase itself doesn't follow; only report issues you can point to in specific code.",
+      "why": "The review prompt limits findings to concrete problems in the code and excludes style preferences the codebase doesn't follow.",
+      "check": "Before reporting a style finding, look at sibling files and existing code to confirm the codebase actually follows that style. Drop findings that can't be tied to a specific file and line.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Flag new code that duplicates a helper, type or behavior already in the codebase, and suggest reusing the existing one.",
+      "why": "The review checks fit with the codebase, including whether anything duplicates what already exists.",
+      "check": "Search the repository and shared NCode.* packages for existing implementations of what the diff adds, such as helpers, extension methods or utility types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Flag changes that break backward compatibility of public APIs or stored data unless they come with a migration or explicit versioning.",
+      "why": "The review prompt names backward compatibility of public APIs and stored data, and migrations, as risks to check.",
+      "check": "Look for removed or renamed public members, changed signatures, or changed persisted shapes and serialized formats that ship without a migration or compatibility path.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "New or changed code must follow the codebase's existing patterns for error handling, naming and tests.",
+      "why": "The review prompt checks fit: whether the change follows the codebase's existing patterns, naming, error handling and tests.",
+      "check": "Compare how the diff handles errors, names things and structures tests with nearby existing code. Flag places where it differs without a reason.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

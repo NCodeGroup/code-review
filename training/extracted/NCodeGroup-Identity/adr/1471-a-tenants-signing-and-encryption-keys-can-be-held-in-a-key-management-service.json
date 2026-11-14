@@ -1,0 +1,139 @@
+{
+  "hash": "1a9e6e4d76319bd6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1471",
+  "rules": [
+    {
+      "statement": "Verify every signature a key management service returns against the locally stored public key before the signed token is issued.",
+      "why": "A wrong key or a tampered remote key reference would otherwise issue tokens nobody can verify, and the reference is tenant-carried data that must not be trusted blindly.",
+      "check": "Look for remote/KMS signing calls whose result is used or returned without a local verification against the stored SPKI.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve JWKS, JWK export, algorithm checks and verification from the stored public key (SPKI) of a remote key; never call the key management service for them or fetch public keys per request.",
+      "why": "Fetching per request makes every token depend on a second round trip and makes the JWKS call the service; the public half is enough locally.",
+      "check": "Look for JWKS or verification code paths that call a KMS provider (e.g. GetPublicKey) at request time instead of using the persisted public key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never export a private key from a key management service to perform signing, decryption or key agreement locally; have the service perform the operation.",
+      "why": "The private key would leave the service, defeating the custody guarantee that no replica holds a private key.",
+      "check": "Look for code that retrieves or exports private key material from a KMS, or performs ECDH/RSA private operations locally for a remote-custody key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Load a stored reference to a remote key fail-closed: an unregistered provider, a missing public key or algorithm, an unsupported algorithm, or a mismatched use throws an exception naming the secret instead of skipping or defaulting.",
+      "why": "A remote key reference is data carried in a tenant's document and must not be trusted blindly; a tenant with an invalid key must not load.",
+      "check": "Look in deserialization of remote secrets for missing-field or unknown-provider branches that default, skip, or log instead of throwing an exception that identifies the secret.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reach a key management service for signing or content-key unwrapping only through asynchronous APIs, never by blocking on a remote call in synchronous code.",
+      "why": "A remote call has no place in synchronous code; signing and unwrapping go through the asynchronous seam.",
+      "check": "Look for synchronous signing/unwrap methods that call a remote provider, or for .Result/.Wait()/GetAwaiter().GetResult() on KMS calls.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before creating a key in a key management service, resolve and validate every local input (provider capability, key type, algorithm row) first, and hand any created key that cannot be kept to the destroyer rather than leaving it orphaned.",
+      "why": "Creating a remote key and then failing on a local check leaves billable, sensitive keys that no stored secret names.",
+      "check": "Look for remote key creation calls that precede validation, or error paths after creation that neither verify the returned public half nor schedule the created key for destruction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not destroy remote keys inside the transaction that removes their stored secrets; report the removed keys and destroy them only after the commit.",
+      "why": "Destroying before commit would lose keys still referenced if the transaction rolls back; work that follows a committed change runs after the commit.",
+      "check": "Look for calls that delete or schedule deletion of KMS keys inside a rollover or repository transaction rather than after the commit with the removed list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Change a tenant's key custody or key configuration by superseding the old keys and letting them expire after a grace period, never by replacing them at once.",
+      "why": "Tokens signed by the old keys must stay verifiable, so a switch needs no outage and no manual key handling.",
+      "check": "Look for custody or key-configuration changes that delete or immediately deactivate existing serving keys instead of scheduling retirement and expiry after a grace.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at host start that the configured key provider supports every algorithm a provisioned key needs, and refuse to start otherwise rather than failing at the first token.",
+      "why": "A provider without a row for a provisioned key should stop the host at start, not at the first token.",
+      "check": "Look for provider/algorithm compatibility checks that happen lazily during issuance instead of during startup validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a remote key refuse an algorithm or operation kind its provider row does not support with InvalidOperationException, and make a factory refuse a type, size, curve or kind that differs from the row with ArgumentException.",
+      "why": "Each remote key can only perform what its row's kind allows; mismatched creation inputs are caller errors.",
+      "check": "Look for remote key operations that attempt unsupported algorithms without throwing InvalidOperationException, or factory methods that accept mismatched parameters or throw a different exception type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero buffers that hold derived shared secrets or key material after use, and log only key identifiers, never key material or secrets.",
+      "why": "A replica should see only one message's ECDH secret, buffers are zeroed and logs carry ids.",
+      "check": "Look for shared-secret or key byte buffers not cleared (e.g. CryptographicOperations.ZeroMemory) after use, and log statements that include key bytes or secrets rather than ids.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

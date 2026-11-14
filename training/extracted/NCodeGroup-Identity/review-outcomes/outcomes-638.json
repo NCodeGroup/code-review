@@ -1,0 +1,32 @@
+{
+  "hash": "86b075d51704c2ae",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #638",
+  "rules": [
+    {
+      "statement": "An XML doc comment, or an instruction file describing a member, must state only what the member actually does, such as exactly which values a builder method copies and which come from separate properties.",
+      "why": "Readers who trust docs that overstate behavior expect values that aren't there, and tests that rely on that can pass or fail for the wrong reason.",
+      "check": "For added or changed summaries and convention bullets, compare each claim about what a method copies, sets or returns against its body, and report claims the code doesn't fulfil.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test-data builder to copy a collection it receives through an init property into an immutable collection when its build method already copies that collection into each built object: the rule on buffering stored collections is for long-lived production state.",
+      "why": "Each built object is already independent of the caller's collection, and until the build method runs a test-data builder is meant to reflect its inputs; a builder lives for one test statement.",
+      "check": "Before reporting a stored caller collection in a test builder or test-support type, check whether the build method copies it into a new collection; if it does, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.cs",
+        "**/*Tests/**/*.cs",
+        "**/*TestSupport/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

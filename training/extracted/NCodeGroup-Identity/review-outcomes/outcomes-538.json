@@ -1,0 +1,19 @@
+{
+  "hash": "5a6ade8a0109a9aa",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #538",
+  "rules": [
+    {
+      "statement": "When contributor documentation shows a command for fixing a failure that a check script reports, keep it in line with the commands the script prints, and cover the case where several problems need their flags combined in one command (for example `--reset-author` together with the hook-running amend).",
+      "why": "A contributor who follows a documented example that leaves out a flag the script adds for a combined case ends up with a commit that still fails the check.",
+      "check": "When a diff changes docs that show remediation commands, or changes the script that prints them, compare the two. Flag any case or flag the script handles (such as an agent-account author) that the docs neither show nor mention.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

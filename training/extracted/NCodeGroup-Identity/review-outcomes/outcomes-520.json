@@ -1,0 +1,51 @@
+{
+  "hash": "4d6ab6b38d78786c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #520",
+  "rules": [
+    {
+      "statement": "A code comment that cites a decision record (for example \"See ADR-NNNN\") must point to a record that exists in the repository or is added in the same change; otherwise drop the reference and put the reasoning in the comment.",
+      "why": "A reader who follows a dangling reference finds nothing, and the reasoning behind the code is recorded nowhere.",
+      "check": "For each new or changed comment citing an ADR number, confirm a matching docs/decisions file exists or is added by the diff and that the cited number is the right record.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a helper that keeps advancing a fake clock or polling until a task completes must stop at a wall-clock deadline (for example measured with Stopwatch.GetTimestamp/GetElapsedTime) and fail the test with the task's state, rather than loop without a limit or stop after a fixed number of steps.",
+      "why": "An unbounded loop makes CI hang until the job times out instead of failing a named test, and a fixed step count can run out before a passing continuation on the thread pool completes, which makes the test flaky.",
+      "check": "Look for `while (!task.IsCompleted)` style loops in test helpers that advance time or yield; verify they have a wall-clock deadline and call Assert.Fail or throw when it passes, and that the bound isn't a fixed iteration count.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a service shouldn't create its own private instance of a type that is registered as a shared singleton (such as a lock table) with `new()`; inject the shared instance through the constructor and keep separate uses apart with a key that includes their purpose.",
+      "why": "Private instances can't be substituted in tests, their separation is enforced only by convention, and injecting the shared one later would silently merge their key spaces.",
+      "check": "Look for fields initialised with `new()` for types that are also registered in DI as singletons; check whether the instance is injected and whether keys from different users are separated by a purpose component.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a per-replica cache in a singleton as unbounded or as a violation of the stateless-singleton rule when its keys come only from configuration (never from request data), correctness doesn't depend on it, and an ADR records it as an accepted exception.",
+      "why": "Such a cache holds at most one entry per configured key, and a replica that misses or restarts just recomputes the value, so it neither grows without bound nor needs shared state.",
+      "check": "Before reporting, trace where the cache keys come from (configuration vs request values), check whether a miss only causes a recomputation, and look for an ADR recording the exception.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

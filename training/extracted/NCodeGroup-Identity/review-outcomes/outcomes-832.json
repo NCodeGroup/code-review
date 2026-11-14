@@ -1,0 +1,75 @@
+{
+  "hash": "946281511f232140",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #832",
+  "rules": [
+    {
+      "statement": "Don't report a DbContext that defaults to QuerySplittingBehavior.SplitQuery as a hot-path round-trip regression when the context keeps a host's explicit UseQuerySplittingBehavior choice and a single query can still call AsSingleQuery().",
+      "why": "A single query that joins several collections multiplies their rows, and that cost grows with the data. A split query costs a bounded round trip per collection, and hosts or individual queries can opt back into a single query.",
+      "check": "Before reporting, confirm that the context keeps a host-chosen splitting behavior (and has a test for it) and that the opt-out through AsSingleQuery() is documented in the code comment or changelog.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that If-None-Match no longer treats a bare (unquoted) token as a match when the code parses the header as an RFC 9110 entity-tag list and compares weakly.",
+      "why": "RFC 9110 section 13.1.2 defines weak comparison of entity tags, and a cache revalidates with the quoted ETag it received. A bare token only costs a full response, never a wrong answer.",
+      "check": "Check that If-None-Match handling follows the RFC 9110 entity-tag forms and weak comparison, and that any project decision record lists accepting bare tokens as a rejected option, before raising a compatibility finding.",
+      "scope": "domain",
+      "domain": "http",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project for EF Core relational stores, turn RelationalEventId.MultipleCollectionIncludeWarning into an error in the shared test DbContext setup, not in one test class, so every store's queries run under it.",
+      "why": "A guard set in a single test class covers only that store, so a new single-query multi-collection include in any other store would pass every test.",
+      "check": "Look for ConfigureWarnings(...Throw(RelationalEventId.MultipleCollectionIncludeWarning)) or similar configured only inside one test class instead of in the shared context helper used by all persistence tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a published package changes a default that alters how consumers' operations run (such as EF Core query splitting), the changelog entry and the code comment state the trade-off consumers inherit and how to opt out.",
+      "why": "Every consumer of the package gets the new default. For example, split queries read one snapshot only inside a transaction, so consumers need to know where to choose SingleQuery or call AsSingleQuery().",
+      "check": "For a diff that changes a library-wide default behavior, check that the changelog and the code comment name the behavioral consequence (such as consistency or round trips) and the opt-out.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a DbContext sets a provider default in OnConfiguring that it doesn't otherwise configure, keep the host's explicit choice, update the provider's existing relational extension instead of replacing the provider setup, and comment why the default lives in the context and not in the host's provider wiring.",
+      "why": "The context owns the setting, so every relational provider and host gets it. Rewriting the provider extension is unusual, so the reason needs to be recorded to survive provider or EF upgrades.",
+      "check": "In OnConfiguring code that touches RelationalOptionsExtension or IDbContextOptionsBuilderInfrastructure.AddOrUpdateExtension, check that it applies the default only when the host didn't choose one, keeps the other provider options, and has a comment explaining the placement.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When handlers delegate validation to a shared helper, at least one handler-level test exercises the success path with the real input form (such as a quoted If-Match entity tag), not only the failure path.",
+      "why": "Helper unit tests alone don't catch a handler that passes the wrong value or wires the helper wrongly for the accepted form.",
+      "check": "For a handler that calls a shared precondition or validation helper, look for a handler test that sends valid input and asserts success, besides the mismatch or error tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

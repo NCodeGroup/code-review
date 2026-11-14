@@ -1,0 +1,40 @@
+{
+  "hash": "5edef211be0ea1fb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #727",
+  "rules": [
+    {
+      "statement": "Don't ask to replace a private constructor with a primary constructor when the type keeps the constructor private so that callers must go through a static (often async) factory method; a C# primary constructor takes the type's accessibility and can't be private.",
+      "why": "A primary constructor can't express a type whose only constructor must be private behind a factory, so the primary-constructor convention keeps the classic constructor in that case.",
+      "check": "Before reporting a classic constructor as a primary-constructor candidate, check its accessibility and whether a static factory such as `StartAsync`/`CreateAsync` is the only way to build the type; if it is private for that reason, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Roslyn analyzer's test project, give every exemption branch in the analyzer's logic (for example each kind of in-place write: method call, property assignment, field assignment, increment/decrement, pass by `ref`) its own test that expects no diagnostic, along with a test showing that the non-exempt case is reported.",
+      "why": "If an untested exemption branch regresses, legitimate code gets reported as an error and builds break with no failing test.",
+      "check": "For each branch or switch case in an analyzer's exemption/suppression logic that the diff adds or changes, look for a matching test asserting no diagnostic; report branches that only some other branch's test covers.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name a test region after the member it covers: `{MethodName} Tests` for a method and `{PropertyName} Property Tests` for a property.",
+      "why": "The test template uses separate region-name forms for methods and properties, and one naming pattern makes tests easy to find across the suite.",
+      "check": "Look at `#region` names in test classes. A region for a method should read `X Tests`, and a region for a property (such as `SupportedDiagnostics`) should read `X Property Tests`. Don't suggest the method form for a property.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

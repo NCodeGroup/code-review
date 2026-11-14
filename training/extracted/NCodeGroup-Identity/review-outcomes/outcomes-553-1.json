@@ -1,0 +1,150 @@
+{
+  "hash": "a297afe69115cadd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #553",
+  "rules": [
+    {
+      "statement": "When a loop commits destructive changes one item at a time, run the post-commit side effects (cache eviction, observer notifications, audit events) for the items already committed in a `finally` block, so a later item that fails or is cancelled can't skip them.",
+      "why": "If eviction and notification only run after the loop, one failing or cancelled item leaves the items already deleted cached on every replica and never announced or audited.",
+      "check": "Look for per-item commit loops where evict, notify or audit calls come only after the loop and outside any finally that covers the items committed so far.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A repair or compensating action that runs after an operation failed must use its own bounded CancellationToken, not the token of the operation that may have timed out.",
+      "why": "If the failure came from the shared token's timeout, the repair throws OperationCanceledException at once and never runs, leaving the state broken.",
+      "check": "In catch blocks that revert or repair state, check whether the repair calls reuse the timed-out or caller token instead of creating a fresh CancellationTokenSource with a timeout.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that catches `OptionsValidationException` from startup options validation must also handle an `AggregateException` whose inner exceptions are all `OptionsValidationException`.",
+      "why": "The startup validator throws an AggregateException when more than one options type fails, so catching only OptionsValidationException lets a configuration with two errors crash with an unhandled exception instead of the documented exit code and log.",
+      "check": "Find catches of OptionsValidationException around IStartupValidator.Validate() or similar, and check that an AggregateException of options failures is handled the same way.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when the code under test swallows exceptions or turns them into a result code, don't rely on a strict mock's exception to prove a call never happened: assert `Assert.Empty(mock.Invocations)`, and check the logged entries with a recording logger.",
+      "why": "A strict mock's MockException is caught by the code under test, so the test passes whether or not the forbidden call or the expected log happened.",
+      "check": "In tests of catch-all paths, look for strict mocks with no setups used as 'never called' checks, or loose loggers, and no assertion on Invocations or the logged entries.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every rejection branch of a validation guard (size limits, empty or oversized input, wrong format or label, too-small key size) gets its own test, not only the success path.",
+      "why": "If a guard is removed or inverted, for example a minimum key size, nothing fails and weak or malformed input is silently accepted.",
+      "check": "For new or changed guard conditions in production code, check that the tests include an input that hits each rejecting branch and assert the error or exit code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a retry loop with an attempt cap needs a test where every attempt fails, asserting the exact number of attempts and what happens afterwards.",
+      "why": "Testing only one failure followed by success misses an off-by-one in the cap or an unbounded loop.",
+      "check": "For production retry loops, look for a test that makes every attempt fail and verifies the call count equals the cap.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A query that only needs to identify owners or keys must project only those columns instead of loading full rows, especially rows that carry wrapped key material or other secrets.",
+      "why": "Loading whole rows with wrapped keys just to find distinct owners moves secret material out of the database and wastes memory on every pass.",
+      "check": "Look for store reads that return full entities with secret or large columns when the caller only uses a few identifier fields.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two places compare the same identity (for example owner type and id with a particular StringComparison), put the comparison in one shared method that both call.",
+      "why": "Duplicated comparisons can drift, so two code paths end up disagreeing about which entity matches.",
+      "check": "Look for new inline equality checks that repeat an existing comparison of the same fields elsewhere.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reformatting a Markdown table, keep every row and keep exactly one header separator row, so the table stays one block.",
+      "why": "A dropped row removes part of a documented contract, and a stray separator row mid-table renders the rest as a broken second table.",
+      "check": "In diffs of Markdown tables, compare the rows before and after and look for `| --- |` lines anywhere other than right after the header.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an audit or event publish awaited after a commit as able to fail the response when the publisher's contract isolates handler faults and sibling endpoints record their audit the same way.",
+      "why": "The publisher's contract says a throwing handler never aborts the publish or the caller, and a client that disconnects after the commit gets no response whichever way the audit goes.",
+      "check": "Before reporting, read the event publisher's documented fault-isolation contract and how sibling write endpoints record their audit events after the commit.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask individual stores to clamp `page.Limit` when they page exactly as the shared base store does and caller-supplied limits are already bounded at the API edge.",
+      "why": "A clamp belongs to the paging contract of every store, not to a few of them. Internal callers pass fixed sizes and external limits are normalized at the edge.",
+      "check": "Before reporting, compare the store's paging with the base store's paging and check whether the API edge normalizes the limit.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a deviation from a general rule (such as counting a final lost concurrency race as failed instead of rethrowing) when an ADR explicitly records that decision.",
+      "why": "The deviation is intended and documented. For example, counting a contended page as failed keeps the pass going for other pages while a later pass retries it.",
+      "check": "Before reporting, search the ADRs that the code or feature cites for a decision covering the behaviour.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to unify two cursor-encoding helpers when one is inherited from a base class in another package and both write the same cursor format.",
+      "why": "The class that derives from the base shares its cursor helpers with its other pages, the other helper serves stores that don't derive from it, and the formats can't drift because they're identical.",
+      "check": "Before reporting duplicate cursor helpers, check whether one comes from a base class in another package and whether both produce the same encoding.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

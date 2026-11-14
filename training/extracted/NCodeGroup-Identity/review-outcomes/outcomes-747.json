@@ -1,0 +1,73 @@
+{
+  "hash": "66794ad790793e3a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #747",
+  "rules": [
+    {
+      "statement": "In a test project, don't report the null-forgiving `null!` when it is the argument a null-argument test passes to check that the member throws.",
+      "why": "The test conventions name `null!` as the one allowed exception in a test project, for the null argument of a null-argument test, and sibling tests use it the same way.",
+      "check": "Before reporting a postfix `!` in a test, see whether it is the `null!` passed as the argument under test in a test asserting an argument-null throw. If it is, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Where code consumes a configured URL that must be absolute `https`, such as linking it in a page or admitting its origin in a Content-Security-Policy, check the scheme there through one shared parse helper instead of relying on the startup options validator alone.",
+      "why": "If the validator is bypassed (a test host, options changed after validation, a later refactor), an http or other-scheme URL would otherwise be linked and its origin admitted in the policy.",
+      "check": "Look for a configured URL parsed with a plain absolute-URI parse (no `https` scheme check) and then rendered or added to a CSP source list, or for separate inline https checks that repeat the same parse.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy a security helper, such as adding an origin to a CSP source list, as a private method into each host. Put one shared helper next to the shared CSP types and call it from every builder.",
+      "why": "Private copies can drift apart, for example in how they treat non-https URIs.",
+      "check": "Look for private methods in two or more classes with the same compute-and-add logic for policy sources or other security decisions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When writing a configured URL into output such as an HTML `href`, write the configured string after validating it. Use the parsed `Uri` only to validate the value and derive values such as its origin, not its normalized `Uri.AbsoluteUri`.",
+      "why": "`Uri.AbsoluteUri` normalizes the value (it adds a trailing slash and can change case and escaping), so the output would differ byte for byte from what was configured. The convention is to carry identifiers as strings.",
+      "check": "Look for `uri.AbsoluteUri` or `uri.ToString()` written into rendered markup or responses where the original configured string is available.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When replacing existing content in a document, such as swapping the icon links in an HTML head, keep the original content if the replacement has nowhere to be inserted, instead of removing it and adding nothing.",
+      "why": "Removing first and failing to insert silently leaves the document with neither the original nor the replacement.",
+      "check": "Look for remove-then-insert logic where the insertion point (for example `</head>`) may be missing, and check whether the removal still happens in that case.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an options validator accepts or rejects an empty string for an optional value, add a test with an empty-string case that asserts the intended behavior, matching how sibling options treat empty values.",
+      "why": "Otherwise an operator whose environment value expands to empty gets an untested startup outcome, and the suite doesn't show whether that is intended.",
+      "check": "In tests for an options validator, check that each nullable string option has a test for the empty-string case and that its expected result matches sibling options and the documented behavior.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

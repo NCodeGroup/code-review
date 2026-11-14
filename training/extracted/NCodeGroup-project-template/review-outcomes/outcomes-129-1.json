@@ -1,0 +1,172 @@
+{
+  "hash": "503565d586fe4e6f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #129",
+  "rules": [
+    {
+      "statement": "When code reads remote state (an API call, a CLI call), treat only a definite answer as a negative result; a non-zero exit, network error, 5xx, auth failure or unreadable body must give an explicit 'unknown' result or skip the action, never fall through to 'no' or 'not configured'.",
+      "why": "A transient failure read as 'no' reports a protected branch as unprotected, or builds a ruleset without a security gate. It decides something on a guess.",
+      "check": "Look for API/CLI calls whose failure branch (non-zero exit, catch, parse failure that only logs) leaves a flag at its false default and then acts on it, for example by removing a rule or reporting 'not protected'.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide an HTTP outcome such as not-found from the structured status code (the response status line or a status property), not by regex-matching '404' in error messages or merged CLI output.",
+      "why": "Text matching depends on the CLI's wording, and a 404 inside a URL, request ID or proxy page would make a 5xx look like not-found.",
+      "check": "Look for `-match '404'`, `\\b404\\b`, `Contains(\"404\")` or similar matches against error text or stderr used to classify a response.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't merge a CLI's stderr into the output that gets parsed as the response body (for example `2>&1` before `ConvertFrom-Json`); read stdout alone, and capture stderr separately if you need it for diagnostics.",
+      "why": "A warning on stderr during a successful call corrupts the JSON, so a good answer reads as unreadable.",
+      "check": "Look for `2>&1` or merged streams feeding a JSON or other structured parse.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't treat a GitHub API 404 as proof that a resource or setting doesn't exist when acting on it would remove an existing protection; GitHub also answers 404 when the token can't see the resource, so skip with a reason and remove the protection only when a readable answer says it's off.",
+      "why": "Reading a 404 caused by missing access as 'not configured' would quietly strip a security gate.",
+      "check": "Look for code that removes a rule, check or protection after a 404 from the GitHub API without telling it apart from missing access.",
+      "scope": "domain",
+      "domain": "github-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a required status check or code-scanning rule to a repository ruleset only when the repository has been queried and shown to produce those results; don't add it unconditionally on an assumption about organization settings.",
+      "why": "A required check that never reports leaves every pull request waiting forever, and an organization setting stated as a fact goes stale.",
+      "check": "Look for ruleset or branch-protection code that always adds required checks or code_scanning rules, justified only by a comment, without querying the repository's setup.",
+      "scope": "domain",
+      "domain": "github-automation",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A workflow that provides a required status check must also trigger on `merge_group`, and must read the base and head SHAs from the merge_group event when it needs them.",
+      "why": "If it doesn't, a required check never reports in a merge queue, and merges stay pending.",
+      "check": "Look for a workflow whose job is a required check and whose `on:` has push/pull_request but no `merge_group`.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `release/**` branch triggers on a workflow when the repository releases by tags from main and has no release branches.",
+      "why": "The maintainer declined this because no release branches exist, so the trigger would do nothing.",
+      "check": "Before reporting a missing release-branch trigger, check the documented release process and whether release branches exist.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test suite that runs a lint or analyzer gate must include a control fixture with a known finding that the gate must report, and must fail when it finds no files to analyze.",
+      "why": "Without them, a wrong root, a wrong settings path or settings that exclude everything would still print PASS while analyzing nothing.",
+      "check": "Look for analyzer or lint test scripts that don't assert a known violation is caught, or that don't fail on an empty file list.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests, cover every branch of a remote-call fallback: make the stub able to answer not-found, other failures such as 403 or 5xx, no response, and a body that can't be parsed, and assert the intended outcome and message for each.",
+      "why": "If the stub only answers successfully, the failure branches never run, and a regression such as reading a failure as success goes unnoticed.",
+      "check": "Look for new failure or parse-failure branches in code that calls an API, with test stubs that only ever return valid success responses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same payload is sent on both create and update paths, test that the update path still includes it, and test any case where an update removes an existing setting.",
+      "why": "If a later edit drops the setting from the update body, re-runs would quietly remove protection while the suite still passes.",
+      "check": "Look for tests that check a payload's fields only in the create case, while the code also sends the payload on update (PUT/PATCH).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a function has to be copied by hand between scripts that can't share a module, add a test that parses both copies and fails when they differ or one is missing.",
+      "why": "A comment asking to keep the copies in step doesn't stop a fix from landing in only one copy.",
+      "check": "Look for duplicated functions marked 'keep in sync' or 'mirrors X' that no test compares.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code comments, changelog entries and README tables must describe what the code does now, with correct names, and state external settings as conditions, not permanent facts; when a change alters CI triggers or behaviour, record it in the changelog and README.",
+      "why": "Wrong job names or claimed checks that don't exist mislead readers, and undocumented CI changes go unnoticed by reviewers and by projects that copy the workflow.",
+      "check": "Compare comments, changelog and README rows against the diff, for example named jobs, claimed exit-status checks, test coverage rows and workflow triggers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1",
+        "**/*.psd1",
+        "**/*.yml",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test suite for installing a pinned analyzer module from the package gallery when it's missing, if the script's help documents that network dependency.",
+      "why": "The maintainer kept this on purpose: CI has no other way to get the module, contributors get the same version, and offline the install fails with its own clear error, not as a lint failure.",
+      "check": "Before reporting a non-hermetic install in a lint test, check whether the version is pinned and the script's help documents the dependency.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

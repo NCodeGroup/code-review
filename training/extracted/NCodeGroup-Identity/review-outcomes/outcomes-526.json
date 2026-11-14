@@ -1,0 +1,88 @@
+{
+  "hash": "c5de230bd16c1bf2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #526",
+  "rules": [
+    {
+      "statement": "When a change adds a required parameter to a public constructor or otherwise breaks callers, the changelog entry must explicitly mark it as **breaking** and name who is affected (for example replacement handlers that construct the type).",
+      "why": "Consumers who replace a handler or construct the type themselves get a compile error after upgrading, and the release notes don't warn them. Pre-1.0 packages may break, but the break still has to be flagged.",
+      "check": "Look for public constructor, method or record signature changes in the diff. Check that the matching CHANGELOG entry says the change is breaking and says which consumers it affects.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a method builds a list from optional sources, such as a URL that exists only when an alias is configured, add tests for both cases: with the optional entry and without it.",
+      "why": "If the optional entry were dropped or mangled, nothing would catch it. Clients that rely on it would be rejected and no test would fail.",
+      "check": "For new or changed code that conditionally appends to a returned collection, check that tests cover both the configured and the unconfigured case and assert the exact contents.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name a boolean parameter of a setup helper for what it controls, such as which mocks get set up, not as if it described the request under test.",
+      "why": "A flag named like a request property misleads readers at the call site, so later edits to the helper or the theory rows are easy to get wrong.",
+      "check": "Look at bool parameters on test setup helpers that only change which setups run or that trigger an early return. Their names should describe that effect. A comment should explain why a setup is skipped.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use named constants, or an existing shared constant, for well-known values such as the default HTTPS port 443 and HTTP port 80, not bare numeric literals.",
+      "why": "Bare literals are harder to read and can drift from other copies of the same value.",
+      "check": "Look for bare numeric literals like 443 or 80 used as port fallbacks, or other protocol magic numbers, in new code.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a new or amended architecture decision record when a change is a bug fix that applies an existing setting or decision and makes no new decision, and don't ask for an accepted record to be rewritten.",
+      "why": "The repository's rules send bug fixes straight to a pull request without an ADR, and accepted records aren't rewritten. A public API change from the fix belongs in the changelog, marked breaking.",
+      "check": "Before reporting a missing ADR, check whether the change only makes existing behaviour consistent with a setting that is already in use. If it does, check only that the changelog covers it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare security-relevant request URLs, such as a client-assertion `aud` or a DPoP `htu`, with the tenant's published or configured URLs (including any mTLS alias), never with a URL rebuilt from the request's Host header.",
+      "why": "A forged Host header would make an attacker-chosen audience match a URL built from the request.",
+      "check": "Look for audience or htu validation that builds the expected URL from HttpRequest.Host or the request scheme. It should use the issuer or base address and the published endpoint URLs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the end-session endpoint, don't pick the authentication scheme to resolve or sign out of from the request's unvalidated `client_id` alone. Resolve every login under the tenant's scheme and the named client's scheme, require confirmation if any login found isn't the session the hint names, and sign out of every one.",
+      "why": "With a single scheme taken from an unvalidated `client_id`, a logout that names a client with another scheme can miss the end-user's login, skip the confirmation and clear the browser-state cookie.",
+      "check": "In logout or end-session code, look for scheme selection driven only by a request parameter, and for a sign-out that covers only one scheme.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

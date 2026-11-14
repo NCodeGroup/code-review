@@ -1,0 +1,115 @@
+{
+  "hash": "c7b760fd4368a5d0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1085",
+  "rules": [
+    {
+      "statement": "A CIBA backchannel authentication request must be rejected unless exactly one of login_hint, login_hint_token or id_token_hint is present, and a ping or push request must also carry a client_notification_token.",
+      "why": "The hint identifies the user up front, and a non-poll delivery mode needs the token as the bearer credential for the client notification endpoint.",
+      "check": "Look at backchannel authentication validation: does it require exactly one hint (not at least one) and require client_notification_token for ping and push delivery modes?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Verify a signed CIBA request object only with an asymmetric algorithm the client's settings permit within backchannel_authentication_request_signing_alg_values_supported, reject an encrypted one, use its claims in place of the form parameters, and refuse a nested `request` claim with invalid_request_object.",
+      "why": "Request objects follow the client's registered metadata within the effective ceilings. A nested request object is not allowed.",
+      "check": "In request-object handling for backchannel authentication, look for symmetric or unlisted algorithms being accepted, encrypted objects being accepted, form parameters being merged over or alongside the object's claims, or a nested `request` claim not being refused.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token grant that polls a pending request must answer slow_down for a poll that comes too soon (stamping the last-poll time), authorization_pending while pending, access_denied when denied and expired_token past expiry. It must redeem the request only for the client that started it (invalid_grant otherwise, without consuming it) and validate the subject before claiming the approved request once, ahead of token issuance.",
+      "why": "This mirrors the device grant. One-time redemption, client binding and subject validation prevent token theft and replay.",
+      "check": "In a polling grant handler, check the order: client binding check without consuming, subject validation, then a one-time consume, then token issuance. Also check that each pending state maps to the right error code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a token-endpoint poll for a CIBA request whose client uses push delivery with unauthorized_client.",
+      "why": "A push-mode client receives its tokens at its notification endpoint and never polls.",
+      "check": "Check that the CIBA token handler checks the delivery mode and rejects polls for push-mode requests without consuming the request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Approve or deny a pending grant request only while it is still pending, through a read-modify-write update that reports whether this call decided it. Only the deciding call dispatches a client notification, and an approval validates the approving subject first and denies the request if the subject is refused.",
+      "why": "Notifying on every call would notify twice under a concurrent decision. Approving an invalid subject must not issue tokens.",
+      "check": "Look for approve or deny code that overwrites a non-pending status, ignores the update result, or dispatches a notification whatever the update result. Also look for approval code that skips subject validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deliver CIBA ping and push callbacks through a durable, retried job on the job dispatcher, POSTing to client_notification_endpoint with client_notification_token as the bearer credential. A ping carries only auth_req_id, and a push carries the same token response a poll would issue.",
+      "why": "Client delivery must survive failures and be retried, and push must return the same tokens as polling.",
+      "check": "Look for inline HTTP calls to the client notification endpoint from request or approval code, a missing bearer token, or push building token responses in a different way from the poll path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A CIBA push denial must carry only auth_req_id and error=access_denied, with no tokens and no error_description, and its delivery job must hold only the error code.",
+      "why": "error_description is optional and the end user may not be the party that denied. A durable dispatcher must not persist tokens for a denial.",
+      "check": "Look at the denial delivery payload and job: is an error_description or any token included or stored?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model deployment-specific identity concerns, such as resolving a login hint to a subject or notifying a user's authentication device, as injectable seams with safe defaults (the resolver answers unknown_user_id and the transport is inert), not as built-in implementations.",
+      "why": "A built-in lookup would assume what a hint means, and a built-in transport would assume the channel. Safe defaults keep the protocol secure until a deployment plugs in its own.",
+      "check": "Look for hard-coded username lookups for hints, built-in device notification channels, or default seams that approve or resolve users instead of failing safe.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist a pending authorization request (device or CIBA style) as a payload of the existing persisted-grant store, keyed by a high-entropy identifier, instead of adding a dedicated store, EF entity or migration.",
+      "why": "The grant store already provides tenant scoping, hashing, expiry and concurrency, and a parallel store would duplicate that plumbing.",
+      "check": "Look for new tables, entities or stores added for a pending-request grant type, or request identifiers that are not high-entropy.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

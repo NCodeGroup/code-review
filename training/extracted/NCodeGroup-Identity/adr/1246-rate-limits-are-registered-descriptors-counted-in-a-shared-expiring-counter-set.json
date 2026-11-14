@@ -1,0 +1,153 @@
+{
+  "hash": "091cb8381282c322",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1246",
+  "rules": [
+    {
+      "statement": "Keep the state of a rate limit or quota that must hold across replicas in a store shared between replicas; don't enforce it with per-process limiters such as ASP.NET Core's built-in `System.Threading.RateLimiting` partitions.",
+      "why": "A limiter whose state lives in one process admits N times its limit on N replicas.",
+      "check": "Look for new rate limits or quotas built on in-process counters or `AddRateLimiter` partitions where the limit is meant to be deployment-wide.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several limits are judged for one request, judge them in one batched, atomic call to the counter store that stops at the first limit exceeded. Don't make sequential round trips, pipeline them, or increment and then compensate.",
+      "why": "Sequential calls cost a round trip per limit. A pipeline can't stop at the first refusal, so a refused request would still spend later allowances. Compensation leaves an over-count that refuses other callers until it runs.",
+      "check": "Look for loops awaiting one store increment per limit, pipelined increments with no early stop, or decrement-after-refusal logic.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a Valkey/Redis counter's increment and its expiry atomic, for example `INCR` plus `PEXPIRE` when the count starts at 1 inside one Lua script, so a counter never outlives its window.",
+      "why": "If the increment and the expiry are separate calls, a failure between them leaves a counter that never expires.",
+      "check": "Look for `StringIncrementAsync` followed by a separate `KeyExpireAsync` call, or an increment with no expiry at all.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every key that one Valkey/Redis script or batch touches the same hash tag (such as the tenant in `{tenant}`), keep each batch to one tag's keys, and keep braces out of any configured key prefix.",
+      "why": "A clustered Valkey computes a key's slot from the text between its first `{` and the next `}`, and a script may only touch keys in one slot. Braces in the prefix would put every tenant in one slot.",
+      "check": "Look for multi-key scripts whose keys lack a shared `{…}` tag, batches that mix tenants, or key prefixes containing `{` or `}`.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put raw client IDs, IP addresses or similar identifiers in shared-store keys or in rate-limit log messages. Put a digest in the key, and log only the tenant, partition name, limit and window.",
+      "why": "No client ID or address should appear in the store or in the logs.",
+      "check": "Look for key builders that concatenate a raw address or client ID, and for log calls on refusal that include either one.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a rate-limit or quota refusal with `429 Too Many Requests` (RFC 6585 §4). Include `Retry-After` in whole seconds, rounded up and at least 1, and `Cache-Control: no-store`, and don't run the request's handler.",
+      "why": "RFC 6585 defines the status. The retry hint tells the client when a request would be admitted, and the refusal must not be cached.",
+      "check": "Look for refusals that use another status code, omit `Retry-After` or `no-store`, truncate seconds toward zero, allow a zero value, or still call the endpoint.",
+      "scope": "domain",
+      "domain": "http-rate-limiting",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a capacity guard such as a rate limiter fail open when its store is unreachable. Bound each store call with a short timeout, and use a circuit breaker so that while it is open requests are admitted without calling the store.",
+      "why": "A store outage must not become an authentication outage, and failing open must stay cheap rather than cost every request the store client's own timeout.",
+      "check": "Look for rate-limit store calls with no explicit short timeout, for exceptions that turn into refusals, or for missing breaker logic that skips the store after a failure.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Time a circuit breaker on the monotonic clock (for example `TimeProvider.GetTimestamp`), not wall-clock time. Close it only on a successful answer to a call made after it opened.",
+      "why": "A wall-clock step could hold the breaker open, and a slow call made earlier must not undo a newer failure.",
+      "check": "Look for breaker open-until values based on `DateTimeOffset`/`UtcNow`, and for close logic that doesn't compare the call's start time with the time the breaker opened.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a sliding-window rate limit, count rejected requests too, not only admitted ones.",
+      "why": "A client that keeps retrying without backing off would otherwise be readmitted at every window start.",
+      "check": "Look for limiter code that increments the counter only after deciding to admit the request.",
+      "scope": "domain",
+      "domain": "http-rate-limiting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When partitioning by remote address, count an IPv6 address by its `/64` prefix and an IPv4-mapped IPv6 address as its IPv4 address.",
+      "why": "A `/64` is the smallest block a host is usually assigned, so counting full IPv6 addresses lets one host spread across many partitions.",
+      "check": "Look for address partition keys built from the full `IPAddress.ToString()` without masking IPv6 to `/64` or calling `MapToIPv4` on mapped addresses.",
+      "scope": "domain",
+      "domain": "http-rate-limiting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate registered descriptors in a catalog that throws an `InvalidOperationException` naming the misregistered descriptor (blank or duplicate name, non-positive window, missing selector, unknown setting key and so on). Order the descriptors deterministically by order, then by ordinal name.",
+      "why": "A misregistration should fail loudly with a message that identifies the descriptor, and evaluation order must not depend on registration order.",
+      "check": "Look for new descriptor catalogs that accept invalid or duplicate entries silently, throw exceptions that don't name the descriptor, or order entries without an ordinal tiebreak.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every command of a shared-state store adapter through one measuring wrapper that records its duration, adds `error.type` on an exception and rethrows.",
+      "why": "With one wrapper every store call is measured the same way and failures stay visible to callers.",
+      "check": "Look for new adapter commands that call the store client directly rather than through the wrapper, or a wrapper that swallows exceptions.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a limit's variants as data (such as a window length and an `IsSliding` flag) and its stages as open string names, not as an `enum`, so packages can register new ones.",
+      "why": "A vocabulary is open unless provably closed, and a closed set can't gain a limit from a package.",
+      "check": "Look for new enums of window kinds, stages or partitions in rate-limiting code.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

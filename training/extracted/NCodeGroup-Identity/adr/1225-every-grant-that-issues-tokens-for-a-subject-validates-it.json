@@ -1,0 +1,103 @@
+{
+  "hash": "9625ae5c9f45429b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1225",
+  "rules": [
+    {
+      "statement": "Every token grant that issues tokens for an end user (authorization code, refresh token, password, device code, CIBA, token exchange, or a grant another package registers) must validate the subject's authentication and account standing before issuing tokens, refusing with `access_denied`.",
+      "why": "A disabled, blocked or deleted account must be refused wherever tokens are issued for it; a grant that skips subject validation lets such an account obtain tokens.",
+      "check": "Look for a new or changed grant handler that issues tokens for a subject without sending the shared subject-validation command or helper before issuing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A grant that redeems a single-use stored credential (device code, CIBA `auth_req_id`) must run every check, subject validation included, before it consumes the credential, so a refused request leaves the credential unspent; only the authorization-code grant spends its code first, because a replayed code terminates its session.",
+      "why": "Spending a credential and then refusing would burn it on a request that failed. The authorization code is the exception because its replay detection depends on spending it first.",
+      "check": "In device-code or CIBA grant handlers, check that the consume-once call comes after all validation; don't flag the authorization-code grant for spending its code before validating.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A stored bearer credential issued to one client (device code, `auth_req_id`) must be redeemed only by that client: if another client presents it, return `invalid_grant`, checking right after the grant lookup and before the expiry, status and polling checks.",
+      "why": "RFC 8628 §3.4 and CIBA Core §11 bind these credentials to the client they were issued to; checking first avoids leaking the grant's state to another client.",
+      "check": "Look for a device-code or CIBA token handler that doesn't compare the presenting client with the issued client, or that compares them only after the expiry/status/slow_down checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An approved device or CIBA grant payload that lacks the subject's authentication must be refused with `invalid_grant` instead of issuing tokens without a validated subject.",
+      "why": "The subject can only be validated from its recorded authentication; a payload without it cannot be checked.",
+      "check": "Look for handlers that read the subject authentication from an approved payload and continue (or use a default) when it is null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an approval itself can issue tokens (such as CIBA push delivery), validate the approving subject before recording the approval, for every delivery mode, and deny the request when the subject is refused.",
+      "why": "Push delivery issues tokens at approval, with no later token request to catch a refused subject. Validating after recording would leave an approved request and no recorded denial.",
+      "check": "In approval code paths, check that subject validation runs before the approval is persisted, and that a refusal records a denial and returns failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a subject is validated outside a protocol request, pass a null request instead of fabricating an empty one; the validator then skips only the checks that depend on the request (`max_age`, `idp:` acr_values, essential `acr` claim) and runs every other check.",
+      "why": "A fabricated request misrepresents the context, while a null request honestly states that none exists.",
+      "check": "Look for code that builds an empty or placeholder protocol request just to call subject validation, or a validator that skips more than the request-dependent checks when the request is null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An endpoint that authenticates the end user from a session cookie must validate the cookie's session (`sid`) against the session service, and if the session has ended, treat the user as unauthenticated and challenge for a new login.",
+      "why": "The cookie of a terminated session must not approve anything, such as a device authorization request.",
+      "check": "Look for cookie-authentication paths that accept the cookie principal without validating its `sid` session.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In token exchange, don't ask for the actor to be validated as a subject: only the subject the tokens are issued for is validated (carrying the tenant its token was validated under), while the actor is named in `act` and its token is validated by the issued-token validator.",
+      "why": "The actor is not the subject the tokens are issued for, and its token has already been validated.",
+      "check": "Before reporting a missing actor subject validation in a token-exchange handler, confirm that the actor token goes through issued-token validation and that the exchanged subject goes through subject validation with its tenant recorded.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

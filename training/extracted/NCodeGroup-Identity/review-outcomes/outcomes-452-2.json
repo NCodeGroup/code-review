@@ -1,0 +1,18 @@
+{
+  "hash": "9a8193449b9ac066",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #452",
+  "rules": [
+    {
+      "statement": "Write code comments in the timeless present and leave out change-relative words such as \"now\", \"no longer\" or \"used to\" that describe behavior compared with an earlier version.",
+      "why": "A comment with change-relative wording reads wrongly to someone who never saw the earlier behavior.",
+      "check": "Look in added or edited `//` and `///` comments for words like \"now\", \"no longer\", \"used to\", \"previously\" or \"new\" that compare the code with an earlier version instead of describing what it does.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

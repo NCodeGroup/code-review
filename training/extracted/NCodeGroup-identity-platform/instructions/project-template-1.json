@@ -1,0 +1,176 @@
+{
+  "hash": "4e112399340a1e9f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform project-template.instructions.md",
+  "applyTo": [
+    "**"
+  ],
+  "rules": [
+    {
+      "statement": "Save files as UTF-8 without a BOM, with LF line endings, and follow the repository's `.editorconfig`.",
+      "why": "The template sets UTF-8 without BOM and LF as the base file convention for every repository.",
+      "check": "Look for files added or changed with a BOM, CRLF line endings, or formatting that contradicts `.editorconfig`.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit `PLAN.md`; it is a local, gitignored working file for the plan-then-execute workflow.",
+      "why": "PLAN.md is the handoff between planner and executor and must never be committed, staged or pushed.",
+      "check": "Flag any diff that adds or modifies `PLAN.md` in the commit or pull request.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/PLAN.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't edit project-template-owned files (`.github/instructions/project-template.instructions.md`, `.template/`, `.template-version`, `.githooks/commit-msg`, `docs/decisions/project-template/`, `CLAUDE.md`, `.claude/agents/plan-executor.md`, generated commands, prompts, agents and skills, `.copier-answers.yml`); override a rule in `AGENTS.md` or a project instruction file instead.",
+      "why": "Template updates replace those files and discard any edit made to them.",
+      "check": "Flag changes to template-owned paths that aren't part of a template update; suggest moving the override into `AGENTS.md` or a project instruction file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't keep an outdated or insecure shape just because existing code already has it: correct it to current practice, and update the comments, docs and decision records it touches in the same change.",
+      "why": "Existing code, comments and docs show what someone intended when they wrote them. They don't bind later changes, and stale docs mislead.",
+      "check": "Look for new code that copies a deprecated or insecure pattern from nearby code, or a change in behavior that leaves the comments, docs or ADRs describing it out of date.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every change that completes planned work adds its entries to the changelog in Keep a Changelog 1.1.0 format: under `## [Unreleased]`, or under the new version's `## [x.y.z] - YYYY-MM-DD` section when releasing, grouped under Added, Changed, Deprecated, Removed, Fixed or Security, with compare links at the end. Leave a changelog in another format in its own style.",
+      "why": "The template makes writing the changelog the last step of every plan and standardizes on Keep a Changelog.",
+      "check": "Check that a change consumers can see has a changelog entry under the right section and category heading, and that new release sections come newest first and have compare links.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A change consumers can observe (public API, behavior, validation or security posture, stored data or wire formats) must come with an ADR in `docs/decisions/` recording its decision, added before or in the same pull request.",
+      "why": "Consumer-observable decisions must be recorded so that nobody re-argues them later. Bug fixes and internal changes don't need one.",
+      "check": "When a diff changes public API, behavior, validation, security posture, stored data or a wire format, check for a new or existing ADR that covers the decision.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a project ADR as a new file numbered from 1000 and replace an outdated one by superseding it, never by rewriting it; numbers below 1000 belong to the template's decisions.",
+      "why": "Each ADR number names exactly one record, and superseding keeps the history of decisions.",
+      "check": "Flag edits that change the decision of an existing accepted ADR instead of adding a superseding one, and new project ADRs numbered below 1000.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Index every ADR in `docs/decisions/README.md`.",
+      "why": "CI runs `.template/Test-AdrIndex.ps1` to check that the index lists every record.",
+      "check": "A new ADR file has a matching entry in the decisions README.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When a project overrides a template decision, write a project ADR that supersedes the template's ADR and list the override in `AGENTS.md`.",
+      "why": "Overrides must be explicit so that the template's rule and the project's rule don't silently conflict.",
+      "check": "A change that departs from a template rule comes with a superseding ADR and an `AGENTS.md` entry.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "AGENTS.md",
+        "docs/decisions/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit secrets, `.env` files, or the contents of the root `secrets/` folder.",
+      "why": "Secrets must never enter the repository or a prompt.",
+      "check": "Look for credentials, keys, tokens, `.env` files or files under the root `secrets/` folder in the diff.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never add a `Co-authored-by:` trailer naming an AI agent, a `Claude-Session:` trailer, or a 'Generated with' line to commits, pull request titles or pull request descriptions.",
+      "why": "Commits and pull requests record the people who wrote them. A squash merge copies these lines onto the default branch, where only a history rewrite can remove them.",
+      "check": "Look for agent attribution lines in commit messages and in the pull request title and description.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "An `ignore` rule in `.github/dependabot.yml` that holds back an upgrade must have a comment naming the issue that tracks lifting it.",
+      "why": "A held-back upgrade must stay traceable so that someone lifts it later.",
+      "check": "Flag new Dependabot `ignore` entries that have no comment pointing to an issue.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding or pinning a version of a tool, package or action, use the newest upstream release that is past the dependency cooldown set in the template's decisions.",
+      "why": "An installed or remembered version says nothing about what is current, and the cooldown guards against brand-new releases.",
+      "check": "Check that newly pinned versions are current upstream releases past the cooldown, not outdated ones or ones released inside the cooldown window.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't leave anything framing finished work as pending: when a change completes an item, remove or update the todo lists, 'remaining' lines in docs and changelog entries that still describe it as open.",
+      "why": "'Done' is one fact everywhere. An item counts as done only when no work remains and nothing still frames it as pending.",
+      "check": "Look for todos, 'remaining' or 'not yet' notes in docs or the changelog that the diff makes obsolete.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a lesson learned during a task in an instruction file or an ADR in the same change, never only in an agent's memory.",
+      "why": "Lessons kept only in an agent's memory are lost to other sessions and tools.",
+      "check": "When a change corrects a recurring mistake or settles a convention, check that it updates an instruction file or an ADR.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

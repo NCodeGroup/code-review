@@ -1,0 +1,137 @@
+{
+  "hash": "4d23a1c20d67d71a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1198",
+  "rules": [
+    {
+      "statement": "Count a daily quota in one fixed window per UTC calendar day whose counter expires at the next midnight UTC, not in a rolling 24-hour window or in the tenant's own time zone.",
+      "why": "A UTC calendar day is what a plan can state, costs one atomic increment, and gives every replica and tenant the same boundary. A tenant-local time zone would let a tenant reset its count by changing its zone.",
+      "check": "Look for daily quota code that computes its window or expiry from local time, from the tenant's time zone, or from a sliding 24-hour span instead of UTC midnight.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't meter public, anonymously fetched metadata endpoints (such as the OpenID discovery document and the JWKS) against a tenant's quota, and make any new public metadata endpoint opt out of metering through its endpoint metadata.",
+      "why": "Anyone, any cache or any relying-party library can fetch these endpoints. If they were counted, any caller could spend the quota, run up billed overage and get the tenant's clients refused until midnight.",
+      "check": "Look for a new anonymous metadata endpoint that is registered without opting out of metering, or for quota counting that includes discovery or JWKS requests.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Count a per-client or token-request quota only for authenticated confidential clients, after client authentication, and never for a public client that is identified by client_id alone.",
+      "why": "Anyone can read a public client's client_id from an authorization URL, so counting it would let any caller spend the quota and get every client of the tenant refused.",
+      "check": "Look for a quota increment at the token endpoint that runs before client authentication or that also runs for public clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce a quota that is shared across replicas with one atomic increment-and-compare on the shared counter before the request is processed, not with a read before the work and an increment after it.",
+      "why": "A read-then-increment is not atomic, so concurrent replicas overshoot the quota under load.",
+      "check": "Look for quota code that reads a shared count, does the work, and only then increments the count based on the outcome, such as counting issued tokens.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge a daily quota after the per-minute rate limits, so that a request a limit refuses does not spend the quota.",
+      "why": "A request that is refused anyway should not use up the tenant's daily allowance.",
+      "check": "Check the order of the limiter stages and descriptors: a daily quota must not run before the address or tenant per-minute limits.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a setting whose value creates a charge to the customer, such as an overage allowance, mean none when it is unset or zero, never unlimited.",
+      "why": "A missing setting must never bill a customer without limit, even where other limits treat unset as unrestricted.",
+      "check": "Look for billing or overage settings whose unset value falls through to the unrestricted default for limits, or that admit without bound when they are missing.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express an opt-in bounded behavior as a single setting whose value is both the opt-in and the hard ceiling, not as a policy flag plus a separate ceiling setting.",
+      "why": "Two settings can disagree. For example, an 'admit' policy with no ceiling means unbounded billing.",
+      "check": "Look for a new pair of settings, an enable or policy flag and a separate limit, where one value alone could say both whether to admit and how far.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge a quota and its overage allowance with one shared counter whose limit is the quota plus the allowance, and treat a count past the quota as overage, rather than keeping a second counter for overage.",
+      "why": "One counter keeps the overage exact across replicas and needs no extra state.",
+      "check": "Look for a separate overage counter or an extra round trip to the counter store just to track overage.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a request at a quota ceiling with the same response a rate limit gives: 429 Too Many Requests, the temporarily_unavailable error code, Retry-After in whole seconds until the window resets, and Cache-Control: no-store.",
+      "why": "With the same response, a client handles quota refusals and rate-limit refusals the same way.",
+      "check": "Look for a quota refusal that uses a different status code or error code, that leaves out Retry-After or Cache-Control: no-store, or that gives Retry-After as a fractional or date value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record billable overage at the moment it is admitted, as its own usage meter alongside the total meter, and don't record it when a later stage refuses the request.",
+      "why": "The ledger lags and is written per replica, so overage worked out from it would not match what was served. A request a later stage refuses was not served and must not be billed.",
+      "check": "Look for overage computed afterwards as total minus quota, or for overage recorded before later limiter stages have admitted the request.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the shared counter store fails during quota or rate-limit evaluation, admit the request and log a warning, and don't record billable overage for it.",
+      "why": "An outage of the counter store must not take the service down. Usage that the counter did not see must not be billed.",
+      "check": "Look for counter store exceptions in limiter code that refuse the request, that are swallowed without a warning log, or that still record overage.",
+      "scope": "domain",
+      "domain": "rate-limiting-and-quotas",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

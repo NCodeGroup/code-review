@@ -1,0 +1,208 @@
+{
+  "hash": "b29560ff37e25134",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1197",
+  "rules": [
+    {
+      "statement": "Create a `Meter` through `IMeterFactory`, never with `new Meter(...)`.",
+      "why": "The factory scopes a meter to its service provider, so two hosts in one process never share instruments, and tests can read them with `MetricCollector<T>`.",
+      "check": "Look for `new Meter(` in production code, or a static `Meter` field, instead of a meter obtained from an injected `IMeterFactory`.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a package's instruments in one internal singleton metrics class that creates them once from the factory's meter, and have call sites call methods on that class rather than `Meter` or instrument APIs.",
+      "why": "One class owns each instrument's definition, so names, units and attributes stay consistent and are created only once.",
+      "check": "Look for call sites that call `CreateCounter`/`CreateHistogram`, or that call `Add`/`Record` on instruments they hold themselves, outside the package's single metrics class.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each package that owns instruments exactly one meter, named after the package through a public `MeterName` constant, so a host can subscribe to the whole family with one wildcard.",
+      "why": "A meter named like its package lets a host subscribe to the whole family with one wildcard such as `NCode.Identity.*`.",
+      "check": "Look for a second meter in one package, a meter name that isn't the package name, or a meter name written as a literal instead of a public constant.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take every metric attribute value from a vocabulary the server controls, and record a value that isn't registered as `_OTHER` instead of the raw input.",
+      "why": "Vocabularies are open and the metrics backend's series budget is bounded, so a caller must never be able to create a new series with a value it chose.",
+      "check": "Look for metric tags whose values come straight from request data, configuration or caller input without being checked against a registered set, with `_OTHER` as the fallback.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never use a tenant, client, subject or remote address as a metric attribute. Put them on traces and logs instead.",
+      "why": "These values are unbounded. A series per tenant grows with the customer base until the backend drops data, while traces and logs pay nothing per series.",
+      "check": "Look for metric tags carrying tenant ids, client ids, subject ids, user ids, IP addresses or hostnames.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive the count of a domain outcome that would be audited from its published event, never from a separate counter at the call site.",
+      "why": "A parallel counter duplicates the event seam and lets the two counts drift apart.",
+      "check": "Look for a new counter that increments at a place where a domain or audit event is also published for the same fact.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a mechanism that sits on a flood path, such as refused requests or counter-store calls, with a direct instrument, not by publishing a domain event.",
+      "why": "A flood of refusals must not become a flood through the event pipeline and its sinks, which is the load the limiter exists to shed.",
+      "check": "Look for rate-limit rejections or other per-request mechanism results being published as events instead of recorded on an instrument.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a mechanism's instrument once, in the package that owns the mechanism.",
+      "why": "Every signal has exactly one owner, so the mechanism's counts and latencies are never duplicated or split across packages.",
+      "check": "Look for an instrument that measures another package's mechanism, or two packages recording the same mechanism's signal.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't record your own request count or latency instrument for an HTTP endpoint. Add endpoint-specific attributes to ASP.NET Core's `http.server.request.duration` through `IHttpMetricsTagsFeature`.",
+      "why": "ASP.NET Core already owns request count, latency and status, and a second instrument would duplicate that signal.",
+      "check": "Look for counters or histograms that measure inbound request count, duration or status inside endpoint or middleware code.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a span or instrument for an inbound request or an outbound `HttpClient` call. Trace only the package's own work around them, such as waits and store operations.",
+      "why": "ASP.NET Core and `System.Net.Http` already trace and measure these, so a package's own spans would only duplicate them.",
+      "check": "Look for `StartActivity` calls or histograms that wrap a whole endpoint handler or a single `HttpClient.SendAsync` call.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use OpenTelemetry's standard semantic-convention name for an attribute the conventions define (such as `error.type`, `http.route` or `http.response.status_code`), and put every other instrument and attribute name under the family's namespace.",
+      "why": "Standard names keep dashboards interoperable, and a shared namespace mirrors the way ASP.NET Core groups its instruments under `aspnetcore.`.",
+      "check": "Look for custom names for concepts the semantic conventions already define, such as `error_code` instead of `error.type`, or new names outside the family's namespace prefix.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tag a metric only with an OAuth error code the server chose, never with an error value echoed from the request.",
+      "why": "A server-chosen error code keeps the attribute's values bounded and stops a caller from creating series.",
+      "check": "Look for error tags built from request parameters, or from exception messages that include caller input.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each package that traces exactly one static `ActivitySource`, named after the package through a public constant placed next to its meter's name.",
+      "why": "A host can then add the whole family with one `AddSource` wildcard. The source is static because .NET has no activity-source factory, and it costs nothing until a listener samples it.",
+      "check": "Look for several activity sources in one package, a source name that isn't the package name, or a source name written as a literal instead of a public constant.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every span mirror one of the package's duration histograms: name it after the histogram without the `.duration` suffix, give it the same bounded attributes, and on failure set its status to `Error` and its `error.type`.",
+      "why": "One vocabulary then describes both signals, and each span has a matching metric.",
+      "check": "Look for a new span that has no matching histogram, has a different name or different attributes, or skips setting the `Error` status and `error.type` on failure.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never put a secret or personal data on a span: no token, handle, cookie, key, subject, client id or path. Correlate the span with its request through the parent span instead.",
+      "why": "Traces are exported and stored, and the design forbids secrets and personal data on any telemetry.",
+      "check": "Look for `SetTag` or `AddTag` calls on activities whose values are tokens, session handles, cookies, keys, subject or user ids, client ids or request paths.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep library packages dependent only on `System.Diagnostics.Metrics`/`System.Diagnostics`, and set up the OpenTelemetry SDK and exporters in the host-composition package, not in libraries or `Program.cs`.",
+      "why": "Recording costs nothing until a listener subscribes, and putting hosts together is the job of the server package.",
+      "check": "Look for OpenTelemetry SDK package references in library projects, or OpenTelemetry pipeline setup written directly in `Program.cs`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a host sets up OpenTelemetry metrics, drop the unbounded `server.address`, `server.port` and `network.peer.address` attributes from `System.Net.Http` instruments if outbound calls go to URIs that clients register. Add the OTLP exporter to the metrics pipeline only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured, not through `UseOtlpExporter`.",
+      "why": "Hosts of client-registered URIs are unbounded. `UseOtlpExporter` would also export every log record and turn on tracing, and a host without a collector shouldn't retry an endpoint that doesn't exist.",
+      "check": "Look for OpenTelemetry metrics setup that keeps `System.Net.Http` host or peer attributes, calls `UseOtlpExporter`, or adds an OTLP exporter without checking that the endpoint is configured.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every new or changed instrument a unit test that reads it through `MetricCollector<T>` and asserts its name, unit and attributes, and update the metrics catalog document with any instrument, span or attribute added or changed.",
+      "why": "Dashboards and alerts are built against a reviewed contract, so changing telemetry must be a deliberate, tested and documented change.",
+      "check": "Look for a diff that adds or changes an instrument, span or attribute without a matching `MetricCollector<T>` test and without an update to the metrics catalog.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/docs/metrics.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

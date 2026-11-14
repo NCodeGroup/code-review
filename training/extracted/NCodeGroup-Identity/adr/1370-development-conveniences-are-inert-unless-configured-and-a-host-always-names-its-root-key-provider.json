@@ -1,0 +1,100 @@
+{
+  "hash": "01e1df9af9c37a0e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1370",
+  "rules": [
+    {
+      "statement": "Make a development convenience (developer keys, developer CORS, development seeds) register nothing unless its configuration section is present, rather than gating it on an environment check.",
+      "why": "A convenience that turns itself on in every non-Production host persists state, such as seeded clients, in hosts that never asked for it. Gating on configuration keeps it inert by default.",
+      "check": "Look for development-only registrations that check IHostEnvironment.IsDevelopment() or similar, or that register services when their configuration section is absent.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide the environment in exactly one production-safety check that refuses every development-only configuration section in Production and lists each offending section in a single report; don't add a second environment check elsewhere.",
+      "why": "When two places decide the environment, they can disagree about what Production refuses.",
+      "check": "Look for new environment checks in composition or registration code outside the single production-safety registration, and for development sections the Production check doesn't refuse.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give library options collections host-specific defaults (origins, client ids, redirect URIs). Start them empty and have the host's environment overlay declare the entries.",
+      "why": "The configuration binder appends configured entries to a collection that already holds some, so configuration can extend such a default but never replace it.",
+      "check": "Look at options classes for collection properties initialized with concrete identifiers, URLs or client ids instead of an empty collection.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a development convenience create in-memory signing keys or intercept the tenant's key read. Every host signs with persisted keys read back through the production path.",
+      "why": "In-memory keys regenerate on restart, differ across replicas, invalidate tokens issued earlier, and make the runtime, the JWKS endpoint and the management API disagree about which keys exist.",
+      "check": "Look for development registrations that replace the key or tenant factory, or that generate keys in memory instead of provisioning them through the store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give a root key or key-protection provider setting a default or fallback. Validate at startup that it isn't blank, and have the lookup throw with the setting's name instead of choosing a provider.",
+      "why": "A fallback to an ephemeral provider starts a host with a root key that is lost on restart, which makes every stored secret unreadable, and outside Production this happens silently.",
+      "check": "Look for a default value for the key-protection provider, or for code that picks a provider when the setting is missing instead of failing with an error that names the setting.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Select an ephemeral (lost-on-restart) root key provider only explicitly, in development, conformance or test configuration, and have Production refuse both the ephemeral provider and an unset one.",
+      "why": "An ephemeral root key loses every stored secret on restart, so it must never be reached by accident or deployed.",
+      "check": "Look for the ephemeral provider being selected in production, staging or shared configuration or in chart defaults, and for Production checks that miss it or an unset provider.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't commit development credentials (bootstrap secrets, administrator passwords, root keys, private keys) in launch profiles or appsettings. Generate them once per machine and supply them through environment variables or user secrets.",
+      "why": "A committed development credential puts a secret in the repository, and a printed generated secret ends up in logs.",
+      "check": "Look in launchSettings.json, appsettings*.json and similar files for secret, password, key or PEM values, and look for code that logs generated secrets.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/launchSettings.json",
+        "**/appsettings*.json",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate each configured CORS allowed origin at startup as a browser Origin header value: an http or https scheme and a host with an optional port, with no user information, path, query, fragment or trailing slash. Fail with an error that names the offending configuration entry and its index.",
+      "why": "An entry that can never match a request is a silent misconfiguration, so it should stop the host with a clear error.",
+      "check": "Look for CORS origin options that are bound without a validator, or without ValidateOnStart, or whose errors don't name the configuration path.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

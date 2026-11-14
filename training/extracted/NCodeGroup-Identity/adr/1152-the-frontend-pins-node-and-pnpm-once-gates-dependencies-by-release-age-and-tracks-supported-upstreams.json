@@ -1,0 +1,187 @@
+{
+  "hash": "10285087dd04f6e2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1152",
+  "rules": [
+    {
+      "statement": "State the frontend's Node major only in `.node-version`, and make every consumer that can read a file read it: CI through `actions/setup-node`'s `node-version-file`, and scripts and documentation by naming the file rather than a number.",
+      "why": "A version stated in many places drifts, and a runtime move has to find every copy.",
+      "check": "Look for a hard-coded Node major in workflows, scripts or docs (e.g. `node-version: 26`, 'requires Node 26') where `.node-version` could be read or referenced instead.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*.ps1",
+        "**/*.md",
+        "**/.node-version"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the Node major in `.node-version` changes, update in the same change every value that cannot read the file: `engines.node`, every `@types/node` range, and the `node:<major>` image in Dockerfiles.",
+      "why": "These values must move with the runtime or they drift; `engines.node` is also what invalidates Turborepo's task cache when the runtime changes.",
+      "check": "A diff touching `.node-version` must also update `engines.node`, the `@types/node` ranges and the Dockerfile Node images to the same major, and the reverse.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.node-version",
+        "**/package.json",
+        "**/Dockerfile*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `engines.node` an advisory floor (`>=<major>.0.0`) and don't set `engineStrict`.",
+      "why": "Dependabot's updater runs its own Node, so a strict engine check would break its updates.",
+      "check": "Look for `engineStrict` or `engine-strict` being added, or `engines.node` being changed to something other than the runtime's floor.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json",
+        "**/.npmrc",
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make `@types/node` track the runtime major: force every copy to the root range with a pnpm override (`'@types/node': '$@types/node'`), and have Dependabot ignore its major updates.",
+      "why": "An `@types/node` major that doesn't match the runtime gives wrong types, so a runtime move must be its own deliberate change.",
+      "check": "Look for an `@types/node` range whose major differs from `.node-version`, a removed override, or a Dependabot config that allows `@types/node` majors.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json",
+        "**/pnpm-workspace.yaml",
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Install pnpm from the exact version pinned in the `packageManager` field, using `pnpm/action-setup` (pinned to a commit) in CI and npm globally on local machines, never through Corepack.",
+      "why": "Node no longer ships Corepack, and installing it from npm brings back a shim layer that Node itself dropped.",
+      "check": "Look for `corepack enable`, `corepack prepare` or `npm i -g corepack` in workflows, scripts or Dockerfiles, a `pnpm/action-setup` referenced by tag instead of commit SHA, or a `packageManager` field without an exact version.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**",
+        "**/*.ps1",
+        "**/Dockerfile*",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't move a tool to a major version that the tools depending on it don't officially support: keep pnpm on the newest major Dependabot supports, and keep TypeScript on the newest major typescript-eslint supports.",
+      "why": "Dependabot reads unsupported pnpm lockfiles as an empty dependency graph, which silently stops security updates; typescript-eslint doesn't support newer TypeScript majors.",
+      "check": "Flag a bump of the `packageManager` pnpm major or the `typescript` major that goes past what Dependabot or typescript-eslint officially supports.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put pnpm settings in `pnpm-workspace.yaml` with `strictDepBuilds: true`, and record an explicit `allowBuilds` decision for every dependency that has an install script, allowing a script only when the dependency cannot work without it.",
+      "why": "Without `strictDepBuilds`, pnpm only warns about install scripts it skipped; least privilege says a script runs only when it is needed.",
+      "check": "Look for pnpm settings added to `.npmrc` or `package.json` instead of `pnpm-workspace.yaml`, for `strictDepBuilds` being removed, or for an `allowBuilds: true` entry without a justification.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml",
+        "**/.npmrc",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate dependency resolution with pnpm's `minimumReleaseAge`, and set the Dependabot npm `cooldown` to a window no longer than pnpm's (and no shorter than the template's cooldown).",
+      "why": "A Dependabot cooldown longer than pnpm's window lets pnpm lock versions that Dependabot then rejects with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`, failing every update.",
+      "check": "Compare `minimumReleaseAge` (minutes) in `pnpm-workspace.yaml` with `cooldown.default-days` for npm in `.github/dependabot.yml`; flag a mismatch, a removed gate, or a window shorter than the template's cooldown.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml",
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each `minimumReleaseAgeExclude` entry a comment explaining why the young version is needed, and remove the entry once the version has aged past the window.",
+      "why": "This keeps the exception list short and keeps the release-age gate meaningful.",
+      "check": "Look for `minimumReleaseAgeExclude` entries that have no comment, or that are stale because the version is now older than the window.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/pnpm-workspace.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare versions numerically, never as text, when a script picks an installed runtime version.",
+      "why": "A text comparison sorts `22.9.0` above `22.22.2` and picks the wrong install.",
+      "check": "Look for version selection done with string sorting or ordinal comparison instead of parsing into `Version` or numeric parts.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh",
+        "**/*.js",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep lint configuration in one flat `eslint.config.js` at the workspace root, use `@eslint-react` (not `eslint-plugin-react` behind `fixupPluginRules`) together with `eslint-plugin-react-hooks` and `@eslint-react`'s conflict-disabling preset, and put `eslint-config-prettier` last.",
+      "why": "`@eslint-react` is built for flat config and TypeScript and needs no compatibility wrapper. The hooks rules stay enforced, and putting Prettier last turns off formatting rules that conflict with it.",
+      "check": "Look for per-package or legacy `.eslintrc*` files, `fixupPluginRules` wrappers, `eslint-plugin-react-hooks` being removed, or `eslint-config-prettier` not being the last entry.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/eslint.config.js",
+        "**/.eslintrc*",
+        "**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In frontend test configuration, use Vitest-specific type entry points (`@testing-library/jest-dom/vitest`, `vitest/config`), and list `\"node\"` in `types` for any workspace whose tests import `node:` modules.",
+      "why": "Generic Jest entry points give the wrong types under Vitest, and `node:` imports need the Node types listed.",
+      "check": "Look for `@testing-library/jest-dom` without the `/vitest` entry point, `vite` config imports in test config instead of `vitest/config`, or tests that import `node:` in a workspace whose tsconfig `types` lacks `\"node\"`.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "testing",
+      "applies_to": [
+        "**/tsconfig*.json",
+        "**/vitest.config.*",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/setupTests.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Update coupled devDependency majors (Vite, Vitest, ESLint plugins) through one Dependabot group, not separate groups.",
+      "why": "Coupled majors must move together in one pull request.",
+      "check": "Look for Dependabot config that splits the frontend devDependencies into several groups, or adds a separate majors group.",
+      "scope": "domain",
+      "domain": "frontend-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/dependabot.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

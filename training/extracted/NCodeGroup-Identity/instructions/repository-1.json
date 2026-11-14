@@ -1,16 +1,113 @@
 {
-  "hash": "437c4352b1ed2497",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "4d2e873bab1e14b1",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity repository.instructions.md",
   "applyTo": [
     "**"
   ],
   "rules": [
     {
-      "statement": "In pre-release code with no shipped consumers, make the change as a clean cutover (rename, move, remove or change signatures directly) instead of adding compatibility shims, obsolete aliases or duplicate settings that keep the old shape.",
-      "why": "Nothing has shipped, so there is no backward compatibility to keep. The best long-term, cohesive design is preferred over a minimal patch that preserves compatibility, and PublicAPI churn is expected.",
-      "check": "Look for [Obsolete] forwarding members, old-name setting aliases, adapter overloads or 'kept for compatibility' comments added in a pre-release package.",
-      "scope": "repository",
+      "statement": "In a pre-release project, do not add or keep compatibility shims, readers for older formats, transition paths, \"keeps working until rotated\" behavior, or upgrade, migration, rollback or rolling-deploy notes for anything that has only existed in the repository.",
+      "why": "Nothing is shipped, so there are no packages, data, tokens or consumers to keep compatible; clean cutovers are preferred over shims.",
+      "check": "Look for fallback parsing of a legacy format, obsolete aliases or forwarding members, [Obsolete] shims, dual-read paths, or comments/docs describing upgrade or migration steps for unreleased behavior.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "public-api",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, write code comments, XML docs, documents, changelog entries, decision records, test names, commit messages and pull request text to describe the product as it is, never with delta phrasing such as \"now\", \"no longer\", \"previously\", \"used to\", \"replaces\", \"renamed\", \"moved\", \"migrated\" or \"before/after this change\", and never naming a removed or renamed member.",
+      "why": "Breaking changes are allowed and never tracked, so every text describes current behavior rather than how it differs from an earlier unreleased state.",
+      "check": "Scan added comments, docs, test names and changelog lines for comparative or historical wording, `**Breaking:**` labels, or names of removed members; the product's own mechanisms (an EF Core migration, key rotation replacing a key, a new session) are allowed.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, describe a fix to unreleased behavior as the capability or protection it establishes and record nothing about what was wrong before.",
+      "why": "Fixes to unreleased behavior are not tracked; the text describes the product as it is.",
+      "check": "Look for comments, changelog entries or test names that say \"fixes\", \"was broken\", or describe the prior defect instead of the resulting behavior.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep `## [Unreleased]` in CHANGELOG.md as a present-tense catalog under only `### Added` and `### Security`, editing it in place: add an entry for a new capability, rewrite the entry whose capability changes, and delete the entry whose capability is removed.",
+      "why": "Until the first stable release the changelog catalogs what the product does rather than a history of changes.",
+      "check": "Check for `### Changed`, `### Removed`, `### Fixed` or `### Deprecated` sections, appended entries describing changes to existing entries, or stale entries for removed capabilities.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, never put the conventional-commit `!` breaking marker in a commit subject or pull request title, nor a `BREAKING CHANGE:` footer in a commit message or pull request description.",
+      "why": "Breaking changes are allowed and never tracked before the first stable release.",
+      "check": "Inspect commit subjects and PR titles for `type!:` and messages/descriptions for `BREAKING CHANGE:`.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "documentation",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, rewrite a decision record in place when its decision changes instead of adding a superseding record, and state its Context in the present tense.",
+      "why": "Decision records describe the product as it is; changes are not tracked through supersession chains.",
+      "check": "Look for a new ADR that supersedes a repository ADR, or ADR text using historical or delta phrasing.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, don't raise a review finding that asks for a breaking-change label, a compatibility note, a deprecation path or a migration path.",
+      "why": "The project owner's standing direction is that breaking changes are allowed and untracked, and such findings are answered by citing it.",
+      "check": "Before reporting public API churn, renames, removals or format changes as needing compatibility handling, confirm whether the project is marked pre-release (e.g. `pre-release: untracked` in AGENTS.md).",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "public-api",
+      "applies_to": [
+        "**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, don't decline or soften a finding toward a minimal patch because the comprehensive fix requires a large refactor, public API churn, renames or moved types; recommend the cohesive design.",
+      "why": "The owner directs choosing the comprehensive model regardless of refactor size; a partial fix is unfinished work.",
+      "check": "When a diff applies a narrow workaround where a cohesive model change is the correct design, flag it rather than accepting it as sufficient.",
+      "scope": "domain",
+      "domain": "pre-release-projects",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an extensible vocabulary (settings, scopes, profiles, grant types, client-authentication methods, claims, stores, endpoints) as open: string names plus registered descriptors or strategies validated when composed, and use an enum, a switch over the vocabulary, or a hard-coded relationship between members only when the set is provably closed.",
+      "why": "The library is meant to be extended by registration without editing it; a closed construct blocks a sibling package from adding a member.",
+      "check": "Look for new enums or switch statements over a vocabulary another package could plausibly extend, and ask whether a package other than this one could ever need another member.",
+      "scope": "domain",
+      "domain": "extensible-libraries",
       "topic": "public-api",
       "applies_to": [
         "**/*.cs"
@@ -18,20 +115,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Model an extensible vocabulary (settings, scopes, profiles, grant types, client-authentication methods, claims, stores, endpoints and similar) as string names plus registered descriptors or strategies, and use an enum, a switch over its members or a hard-coded relationship between them only when the set is provably closed.",
-      "why": "Consumers and sibling packages must be able to add a member by registering it, without editing the library. A closed construct blocks that.",
-      "check": "Look for a new enum, a switch/if-chain over vocabulary values, or hard-coded member relationships where another package could plausibly need an extra member, with no justification that the set is closed.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Use authorization code with PKCE `S256` for interactive clients, and do not add or enable the implicit flow, hybrid flows that return tokens in the front channel, or the resource-owner password flow.",
-      "why": "Current guidance (the OAuth 2.1 direction, RFC 9700 Security BCP) treats these as the modern secure defaults. The repository should follow them without asking.",
-      "check": "Look for implicit/hybrid/password grant support, PKCE made optional, or the `plain` code challenge method being allowed.",
+      "statement": "Require authorization code with PKCE `S256` for interactive clients and do not support implicit, hybrid front-channel-token or resource-owner-password flows.",
+      "why": "Current guidance (OAuth 2.1 direction, RFC 9700 Security BCP) deprecates those flows as insecure.",
+      "check": "Look for implicit/hybrid response types, the password grant, PKCE `plain`, or PKCE being optional for interactive clients.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -41,9 +127,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Sign tokens with asymmetric algorithms such as `PS256` or `ES256`, and never use `HS256` or other shared-secret signing for tokens that cross a trust boundary.",
-      "why": "Modern recommended practice requires asymmetric signing across trust boundaries.",
-      "check": "Look for HS256/HMAC signing defaults or configuration for issued ID/access tokens consumed by other parties.",
+      "statement": "Sign tokens that cross trust boundaries with asymmetric algorithms such as `PS256` or `ES256`, never `HS256`.",
+      "why": "Modern recommended practice uses asymmetric signing so verifiers cannot mint tokens.",
+      "check": "Look for HS256/HMAC defaults or allowed algorithms for tokens issued to or verified by other parties.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -53,9 +139,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Validate redirect URIs by exact match against registered values, never by prefix, wildcard or pattern matching.",
-      "why": "Exact-match redirect URIs are required by the Security BCP and OAuth 2.1.",
-      "check": "Look for StartsWith, Contains, regex, wildcard or case-insensitive comparisons of redirect URIs.",
+      "statement": "Validate redirect URIs by exact match against registered values, and default to sender-constrained, short-lived tokens, least-privilege scopes and secure-by-default headers and CORS.",
+      "why": "These are the modern, secure, recommended identity-platform practices the project defaults to.",
+      "check": "Look for prefix, wildcard or pattern redirect URI matching, long default token lifetimes, broad default scopes, or permissive CORS/header defaults.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -65,89 +151,47 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Default issued tokens to short lifetimes and sender-constraining where applicable, grant least-privilege scopes, and ship secure-by-default headers and CORS settings.",
-      "why": "These are the modern recommended identity-platform defaults the repository adopts without asking.",
-      "check": "Look for long default token lifetimes, broad default scopes, permissive CORS (any origin with credentials) or missing security headers in defaults.",
+      "statement": "Don't preserve an insecure or outdated shape because existing code, comments, settings or docs already have it; correct it to modern best practice and update the surrounding comments, docs and ADRs in the same change.",
+      "why": "Existing artifacts are point-in-time evidence of intent, not constraints, and the repository must carry the correction.",
+      "check": "When a diff extends an insecure existing pattern, or corrects one without updating the related comments, docs or ADRs, flag it.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When a change fixes an insecure or outdated design, update the surrounding code comments, docs and decision records in the same change so that none of them still describe the old shape.",
-      "why": "Existing code and docs are point-in-time artifacts. The repository, not chat history, must carry the correction.",
-      "check": "Look for a design change whose diff leaves comments, XML docs, markdown docs or ADRs that still describe the previous behavior.",
-      "scope": "general",
-      "topic": "documentation",
-      "applies_to": [
-        "**/*"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When pinning a tool, package, provider or action version, pin the latest release from its upstream release feed or registry, not a locally installed or remembered version.",
-      "why": "A locally installed or remembered version says nothing about what is current upstream.",
-      "check": "Look for newly added or bumped version pins that are older than the current upstream release.",
-      "scope": "general",
-      "topic": "configuration-and-options",
-      "applies_to": [
-        "**/*.csproj",
-        "**/Directory.Packages.props",
-        "**/*.props",
-        "**/.github/workflows/*.yml",
-        "**/global.json",
-        "**/.config/dotnet-tools.json"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Never put agent attribution in a commit message: no `Co-authored-by:` trailer naming an agent or bot identity, no `Claude-Session:` trailer and no 'Generated with' line.",
-      "why": "A commit records the people who wrote it. The host lists the agent in the contributor graph, and undoing that means rewriting published history.",
-      "check": "Look in commit messages and PR descriptions for agent co-author trailers, session trailers or generated-with lines.",
-      "scope": "general",
-      "topic": "code-organization",
       "applies_to": [
         "**"
       ],
-      "enforced_by_tools": true
+      "enforced_by_tools": false
     },
     {
-      "statement": "Add an entry to `CHANGELOG.md` in the same pull request for every consumer-visible change.",
-      "why": "Durable knowledge, including consumer-visible changes, must live in versioned repository content.",
-      "check": "Look for public API, behavior or configuration changes with no matching CHANGELOG.md update in the diff.",
+      "statement": "Never add agent attribution to a commit message: no `Co-authored-by:` trailer naming an agent or tooling account, no `Claude-Session:` trailer, and no \"Generated with\" line, including in pull request titles and descriptions.",
+      "why": "The host reads such trailers as authorship and lists the agent as a contributor, which only a history rewrite can undo, and nothing blocks it automatically.",
+      "check": "Inspect commit messages and PR descriptions for Co-authored-by lines naming Copilot, copilot-swe-agent[bot], noreply@anthropic.com or similar, Claude-Session trailers, or 'Generated with' lines.",
       "scope": "general",
       "topic": "documentation",
       "applies_to": [
-        "**/*.cs",
-        "CHANGELOG.md"
+        "**"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Track deferred work and follow-ups as GitHub issues and reference them by issue number, not as untracked TODO notes or 'remaining' bullets left in docs, and close completed issues from the pull request with `Closes #<number>`.",
-      "why": "GitHub issues are the single source of truth for pending work, and an item must never be both done and still framed as pending.",
-      "check": "Look for new TODO/remaining/follow-up notes with no issue reference, or a PR that completes work but leaves 'still open' bullets or lacks a Closes reference.",
+      "statement": "Track pending work, deferred decisions and follow-ups as GitHub issues and reference them by address: a Markdown link in a Markdown file, `issue #123` in a code comment, and `#123` in commits, issues and pull requests.",
+      "why": "GitHub issues are the single source of truth for pending work, not untracked notes or chat history.",
+      "check": "Look for TODO/follow-up comments or 'remaining work' doc bullets without an issue reference, or issue references in the wrong form for the file type.",
       "scope": "general",
       "topic": "documentation",
       "applies_to": [
-        "**/*"
+        "**"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "When adding a file that a root build file imports, also re-admit it in `.dockerignore` so the container image build can see it.",
-      "why": "The local gate does not build the host image, so only the Host image check on the PR catches the missing file.",
-      "check": "Look for a new file imported by Directory.Build.props/targets or similar root build files with no matching `.dockerignore` re-admit entry.",
-      "scope": "repository",
-      "topic": "code-organization",
+      "statement": "A pull request that completes an issue names it with `Closes #<number>`, and nothing (docs, changelog, remaining-work bullets) may still frame a completed item as pending.",
+      "why": "Completion status is one global fact; an item is never both done and open.",
+      "check": "Check the PR description for Closes lines for completed issues, and check docs/changelog in the diff for stale 'still open' or 'remaining' wording about the completed work.",
+      "scope": "general",
+      "topic": "documentation",
       "applies_to": [
-        ".dockerignore",
-        "Directory.Build.*",
-        "**/*.props",
-        "**/*.targets"
+        "**"
       ],
       "enforced_by_tools": false
     }

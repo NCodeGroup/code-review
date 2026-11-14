@@ -1,0 +1,29 @@
+{
+  "hash": "027fedcd362017ff",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #163",
+  "rules": [
+    {
+      "statement": "Don't report a changelog entry that sits under a new dated version section instead of `## [Unreleased]` (with the `[unreleased]` compare link moved to the new tag) when the pull request's plan has a `Release:` line; only plans without a `Release:` line add entries under `[Unreleased]`.",
+      "why": "A plan with a `Release:` line writes its own dated section, and `/ship-plan` tags and publishes that section when the pull request merges, so the tag exists by the time the section ships.",
+      "check": "Before reporting, open the plan the pull request implements and see whether it has a `Release:` line, and check the AGENTS.md Landing section (`release: tag+release`). Report only when there is no `Release:` line and the entry still skips `[Unreleased]`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a rewording of an already-released changelog section when the change was asked for, the plan's Decisions record it, and it changes no fact, only making the sentence say what the code does.",
+      "why": "The published release notes for that tag keep the original wording, so a clarifying edit to the changelog doesn't misstate what shipped.",
+      "check": "Before reporting an edit to a released changelog section, check whether the plan's Decisions or the linked issue ask for it, and whether the edit changes any fact (behavior, version, date) or only clarifies wording. Report only edits that are unrecorded or change facts.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

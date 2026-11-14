@@ -1,0 +1,190 @@
+{
+  "hash": "7809ca481fa5ea4e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1381",
+  "rules": [
+    {
+      "statement": "When a token requirement selects between the user's token and the application's own client token, choose by whether a session exists, and never fall back to the client token when the user's token fails.",
+      "why": "A fallback would let an expired session silently call the API with the application's rights instead of the user's, and the frontend would never learn that the session had ended.",
+      "check": "Look for code that catches a user-token failure (refresh failed, provider unavailable) and then requests or attaches a client_credentials token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a BFF, serve the application's own client_credentials token only to a request that has a session, and answer 401 without contacting the OP when there is none.",
+      "why": "The session proves the caller is the BFF's own frontend. Without that check, any client on the network could call the API with the BFF's rights.",
+      "check": "Look for client-token paths that run before the session is resolved or checked, or that request a token from the OP when no session exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When nested operations share one lock table (for example, an outer operation holds a lock while it calls an inner service that locks the same entity), key the locks by purpose as well as by entity so the two never share a key.",
+      "why": "If both operations take the same key, the outer operation waits on itself until the lock times out.",
+      "check": "Look for a lock or semaphore keyed only by entity id where a service holding that lock calls another service that locks the same id.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound every wait on a keyed single-flight lock with a configured timeout that ends in a defined error, and make sure a cancelled holder releases its lock.",
+      "why": "An unbounded wait or a lock left held by a cancelled caller would block every later caller on that key.",
+      "check": "Look for waits on a lock or semaphore with no timeout, and for lock holders whose cancellation path doesn't release the lock in a finally or dispose.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a cross-replica lease or shared-state cache around acquiring a token when a second acquisition revokes nothing (client_credentials, or a token exchange whose refresh token isn't kept); a per-replica in-memory cache is enough.",
+      "why": "Without a reuse hazard, a lease only adds a shared-state round trip to every request, and storing the token puts a bearer credential in shared state for no gain.",
+      "check": "Before asking for a distributed lock or persistence around a token, check whether the grant issues a refresh token that rotation would revoke if reused. Flag code that persists such bearer tokens to shared state.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a singleton that holds a concurrent cache of the application's own data (such as its own client tokens) as breaking the stateless-singleton rule, as long as no request or session state goes into it and its keys come from configuration.",
+      "why": "The source accepts this exception explicitly: the cached data belongs to the application, not to a request, so no request's state leaks into another.",
+      "check": "Before reporting a stateful singleton, check whether its keys and values come only from configuration and app-owned credentials, not from request or session data.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive in-memory cache keys from registration or configuration values, never from request input, so the cache stays bounded.",
+      "why": "Keys taken from requests would let callers grow the cache without bound.",
+      "check": "Look for cache keys built from query strings, headers, route values or body fields.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When forwarding a browser request to an upstream API, strip the browser's Cookie, Authorization, DPoP, anti-forgery and forwarding headers, and drop the upstream's Set-Cookie headers.",
+      "why": "The upstream must see only the BFF, so no browser credential reaches it and the upstream can't set cookies in the browser.",
+      "check": "Look at proxy or forwarder transforms for request headers that are copied through, and for response Set-Cookie headers that aren't removed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before forwarding a request path that is appended to a destination base path, reject it with 400 if it contains a dot segment, an encoded '/' or '\\', or a backslash.",
+      "why": "Such a path could leave the destination's base path once the upstream server decodes it.",
+      "check": "Look for code that appends a remaining request path to an upstream URI without checking for '.', '..', '%2F', '%5C' or '\\'.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a configured forwarding destination: it must be an absolute URI with no user info, query or fragment, and it must use https outside Development.",
+      "why": "A destination with embedded credentials, a query or plain http would leak data or weaken transport security for every forwarded request.",
+      "check": "Look at the options validation for destination URIs and check that the scheme, user info, query and fragment are all checked.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send outbound HTTP through a named IHttpClientFactory client, not a private SocketsHttpHandler or raw HttpClient, so a host can add handlers or replace the primary handler.",
+      "why": "IHttpClientFactory is the framework's seam for outbound telemetry, resilience and test-server handlers. A private handler blocks all of these and forces a test to relay calls through its own listener.",
+      "check": "Look for `new SocketsHttpHandler`, `new HttpClient` or a custom handler-source interface in outbound code where a named client would serve.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Attach security-critical outbound credentials (access tokens, DPoP proofs) with a handler outside the host-configurable named-client pipeline, so handlers a host adds or a replaced primary handler can't skip it.",
+      "why": "Keeping the token handler outside the client means the token and its proof are attached to every request, whatever handlers a host adds.",
+      "check": "Look for token-attaching handlers registered with AddHttpMessageHandler on a client that hosts are told to customize.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove IHttpClientFactory's default logging handlers from a client whose request URIs may carry sensitive queries, when another component already logs those requests.",
+      "why": "The factory's loggers would log each forwarded URI together with its query.",
+      "check": "Look at named-client registrations for forwarded or proxied traffic and check whether default logging is cleared (for example with RemoveAllLoggers).",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use ':' in configuration metadata key names.",
+      "why": "The .NET configuration loader reads a colon as a section separator.",
+      "check": "Look for metadata or dictionary keys bound from configuration whose names contain ':'.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configuration metadata at load time, and refuse dependent settings that appear without the setting that enables them, so a typo fails configuration instead of silently disabling a security behavior.",
+      "why": "Without this, a misspelled key would forward requests without a token rather than fail.",
+      "check": "Look for optional metadata or options that are read lazily with no load-time validation, or where dependent keys are accepted without their primary key.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a token or credential path fail closed: when an endpoint isn't guarded as the credential requires, throw and forward nothing, instead of forwarding without the credential.",
+      "why": "Forwarding without the token, or outside the cookie boundary, would silently break the security model.",
+      "check": "Look for code paths that skip attaching a token or continue forwarding when the endpoint's guard metadata is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

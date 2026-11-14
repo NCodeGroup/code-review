@@ -1,0 +1,98 @@
+{
+  "hash": "4bfb07637c46b197",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #528",
+  "rules": [
+    {
+      "statement": "When the same contract (file names, encodings, environment variable names) is implemented in two places, such as a C# class and a build script, add a test that ties them together, for example a shared golden fixture that both sides' tests check against.",
+      "why": "Otherwise the two sides can drift apart while every test still passes, and the failure only shows up in a full end-to-end run with no hint of the cause.",
+      "check": "Look for a script or second-language copy of logic that a C# type also implements, with no test that compares its output to the C# side or to a shared fixture.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hand-maintain a list in code that copies entries from a configuration file. Derive it from the config, or add a test that reads the config and asserts that the list matches it.",
+      "why": "If only comments keep the copies in step, an entry added to or renamed in the config gets skipped silently and causes failures that are hard to trace.",
+      "check": "Look for hard-coded id lists or names that mirror entries in an appsettings or other config file, with no derivation and no test comparing them.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Template expansion that substitutes placeholder tokens must fail and name the leftover tokens if any placeholder remains unreplaced after expansion.",
+      "why": "A misspelled or new token otherwise passes through as literal text and causes an unclear failure further down the line.",
+      "check": "Look for template code that calls Replace once per token and never checks the result for remaining `{{...}}` patterns.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy a helper function between build scripts. Move it into a shared script that each one dot-sources.",
+      "why": "If one copy changes, for example in its padding handling, the scripts can quietly produce different results.",
+      "check": "Look for the same function defined in more than one script file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, each test asserts one behavior, the one its name describes. Move any extra assertion, such as a length check, into its own test named for that behavior.",
+      "why": "If the first assertion fails, the second never runs, and the test name describes only one of the two.",
+      "check": "Look for a test method that asserts two independent behaviors when its name mentions only one.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use the constants and helper methods that the class under test exposes instead of repeating their string values as literals, except in a test that deliberately pins the exact shared contract.",
+      "why": "Tests that repeat literals go stale without a compiler error when a constant is renamed. A contract-pinning test has to spell the values out, though, because reading them from the class under test would make it tautological.",
+      "check": "Look for test literals that duplicate a public constant of the type under test. Before reporting, check whether the test exists to pin the exact external contract, which is often noted in a comment. Don't report it if it does.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a test of a thin wiring method, such as a loop of builder `WithEnvironment` calls, when it is marked `[ExcludeFromCodeCoverage]` with a justification and the logic it applies is tested elsewhere.",
+      "why": "The maintainer declined this finding: the wiring itself carries little risk, and the tests on the method that builds its input already cover the behavior.",
+      "check": "Before reporting a missing test, check whether the method has `[ExcludeFromCodeCoverage(Justification = ...)]` and only passes along data from a tested method.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a consumer's tests to repeat coverage of a helper's edge case, such as replacing an empty file, when the helper's own tests already cover it.",
+      "why": "The maintainer answered that the case is covered where it lives, so the consumer tests don't need to repeat it.",
+      "check": "Before reporting an uncovered edge case of a helper that a consumer calls, look for that case in the helper's own tests in the same or a related test project.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

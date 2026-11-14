@@ -1,0 +1,18 @@
+{
+  "hash": "b267c5f5a0294773",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #190",
+  "rules": [
+    {
+      "statement": "Don't flag a pull request for adding a new dated version section to CHANGELOG.md instead of entries under `## [Unreleased]`, or for a compare link to a tag that doesn't exist yet, when the repository's conventions say a plan's last step writes its version's changelog section and the version is tagged on the merge commit after merge.",
+      "why": "In repositories that follow this release flow, the version section is written inside the pull request on purpose, and the tag is created when it merges, so the compare link resolves once it's tagged. Older `[Unreleased]` entries can come from earlier pull requests that landed without a version of their own.",
+      "check": "Before reporting, read the Landing or release section of AGENTS.md (look for a plan `Release:` line, or a note that the last step writes the changelog section) and check whether earlier version sections were added the same way. Report only if the repository's convention really says to add entries under Unreleased.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

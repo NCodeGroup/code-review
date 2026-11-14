@@ -1,46 +1,23 @@
 {
   "hash": "a6a9aabc7d188001",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "NCodeGroup maintainer: gap-hunting-review",
   "rules": [
     {
-      "statement": "Code paths meant to behave the same way (parallel code paths, sibling modules, symmetric operations such as read/write, encode/decode, sync/async overloads) must handle validation, errors, edge cases and logging the same way.",
-      "why": "The maintainer counts any asymmetry between paths meant to be equivalent as a gap that leaves the capability delivered inconsistently.",
-      "check": "Compare each changed method with its siblings and counterparts. Flag one that validates an input, throws a particular exception, handles an edge case or logs an event while its counterpart doesn't.",
-      "scope": "general",
-      "topic": "errors-and-validation",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When a change alters a type, member, behavior or contract, update every place that references it (callers, overloads, tests, XML docs, README and other docs) in the same change.",
-      "why": "Out-of-sync references create inconsistencies and contradictions between files; a change in one file has to stay consistent with every place it's referenced.",
-      "check": "For each renamed, re-signatured or behavior-changed item in the diff, look for callers, tests, doc comments and markdown that still describe the old name or behavior.",
-      "scope": "general",
-      "topic": "documentation",
-      "applies_to": [
-        "**/*.cs",
-        "**/*.md"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Don't duplicate logic across files or methods; route repeated behavior through one shared implementation so the copies can't drift apart.",
-      "why": "Duplicated logic tends to get out of sync, which leads to inconsistent behavior.",
-      "check": "Flag new code that re-implements validation, parsing, mapping or computation that already exists elsewhere in the change or codebase, especially where the copies already differ slightly.",
+      "statement": "When a change alters a symbol, contract, behavior or semantic, update every place that references it (callers, sibling implementations, tests, XML docs, README and design docs) so they stay consistent with the change.",
+      "why": "Out-of-sync references leave a change inconsistently delivered and docs or tests contradicting the code.",
+      "check": "For each changed member, option, error code or behavior in the diff, look for other references to it in the touched files and nearby code, tests and docs, and flag any that still describe or assume the old behavior.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
-        "**/*.cs"
+        "**/*"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "A feature's implementation must cover its failure modes, edge cases, invariants and input validation all the way down to the low-level code, not just the happy path.",
-      "why": "A missing failure mode, edge case, invariant or validation leaves the capability incomplete, and closing it counts as part of the capability, not as new scope.",
-      "check": "Trace each capability in the diff into its low-level methods. Flag unvalidated inputs, unhandled null/empty/boundary values, swallowed or unhandled failures, and invariants that are assumed but never enforced.",
+      "statement": "When two code paths are meant to behave the same way (parallel paths, sibling modules, symmetric operations such as read/write or encode/decode), report any asymmetry between them, such as validation, error handling, logging or edge-case handling present in one but missing from the other.",
+      "why": "Asymmetry between things meant to be equivalent is a gap that leaves the capability inconsistently delivered.",
+      "check": "Compare the changed path with its sibling or counterpart line by line for argument validation, failure modes, logging/telemetry and edge cases. Flag whatever one has and the other lacks without a stated reason.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
@@ -49,45 +26,44 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Failure paths in a capability must have observability: log or report failures and significant rejections, the same way equivalent paths already do.",
-      "why": "The maintainer lists a missing observability/logging path as a gap that leaves the capability incompletely delivered.",
-      "check": "Look for catch blocks, rejection branches or early-return error paths in the diff that produce no log or telemetry, where similar paths elsewhere do.",
+      "statement": "Trace each capability a change is meant to deliver down to its low-level implementation, and report a missing failure mode, edge case, invariant, validation or logging path as an in-scope gap even when the ticket didn't call out that detail.",
+      "why": "Closing such a gap completes the existing capability rather than adding new functionality, so it belongs in the change.",
+      "check": "For each intended capability, check that the implementation handles invalid input, empty/null/boundary values, failure of dependencies and invariant violations, and that failures are logged or observable. Flag any path that silently does the wrong thing or is unhandled.",
       "scope": "general",
-      "topic": "logging-and-telemetry",
+      "topic": "errors-and-validation",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Implemented behavior must match the intent described in the governing spec, design doc, ticket or README, and any low-level divergence from that intent must be fixed.",
-      "why": "The spec or docs are the source of intent, and comparing against them is how low-level gaps are found.",
-      "check": "Compare the changed behavior with the relevant RFC, spec, design doc or README. Flag missing required behaviors, wrong defaults or error semantics, and contradictions with the documented contract.",
+      "statement": "Don't report missing brand-new functionality beyond the change's intended scope, and don't flag existing extra functionality that isn't part of the intended scope; limit gap findings to the behavior the change is meant to deliver.",
+      "why": "The review completes the intended capability. Asking for new features or removal of unrelated existing ones is out of scope.",
+      "check": "Before raising a 'missing feature' finding, confirm that it is a low-level part of a capability the change, ticket or spec actually intends, not a new capability.",
       "scope": "general",
-      "topic": "protocols",
+      "topic": "code-organization",
       "applies_to": [
-        "**/*.cs",
-        "**/*.md"
+        "**/*"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Tests for a changed capability must cover its edge cases and failure modes, not only the success path.",
-      "why": "The review explicitly checks tests for edge cases, and any edge case or failure mode left untested is a gap.",
-      "check": "For each new or changed branch, validation or error path in production code, check that a test exercises it. Flag test changes that only cover the happy path.",
+      "statement": "When a spec, design doc, ticket or README describes the intended behavior, use it as the source of intent and report places where the implementation or its tests fall short of or contradict that documented behavior.",
+      "why": "The documented intent is how low-level gaps against the intended behavior are found.",
+      "check": "Read the referenced spec, design doc or README section and compare each stated behavior, requirement and error case with the code and tests in the diff. Flag requirements that are unimplemented, implemented differently or untested.",
       "scope": "general",
-      "topic": "testing",
+      "topic": "documentation",
       "applies_to": [
-        "**/*Tests/**/*.cs"
+        "**/*"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Give members and parameters names and semantics that state their meaning without ambiguity, and keep naming consistent with related members.",
-      "why": "The review looks for unclear semantics and naming inconsistencies.",
-      "check": "Flag names that are ambiguous, that contradict what the code does, or that use different terms for the same concept than sibling members do.",
+      "statement": "Report duplicated logic introduced or touched by a change that can drift out of sync, and contradictions or unclear semantics and naming between the touched files.",
+      "why": "Duplicated or contradictory logic and unclear semantics cause inconsistencies when only one copy is later changed.",
+      "check": "Look for the same computation, validation or mapping repeated across touched files, names that mean different things in different places, and members whose behavior doesn't match their name or docs.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "code-organization",
       "applies_to": [
         "**/*.cs"
       ],

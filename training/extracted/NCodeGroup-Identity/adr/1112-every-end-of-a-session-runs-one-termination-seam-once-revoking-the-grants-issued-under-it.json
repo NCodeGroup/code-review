@@ -1,0 +1,138 @@
+{
+  "hash": "87853fc2a5a75c54",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1112",
+  "rules": [
+    {
+      "statement": "Route every end of an end-user session (logout, timeout, expiry, eviction, admin action, account change, code replay) through the single session-termination command seam rather than revoking the session's grants directly.",
+      "why": "A termination that revokes grants outside the shared seam skips back-channel logout and the audit record, and leaves extensions no place to react.",
+      "check": "Look for new code paths that end a session by calling grant revocation directly (e.g. RevokeWhereAsync by session or subject) without dispatching the session-terminated command.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispatch a named session's termination only when the current call atomically claimed (revoked) the session grant, and dispatch nothing when the claim returns null because the session is unknown, in another tenant, or already revoked.",
+      "why": "A session ended by two paths at once would otherwise notify its relying parties twice and be audited twice.",
+      "check": "Check that termination dispatch is conditional on the claim's result and that the claim isn't done inside a handler after the dispatch decision.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build the session-termination payload (subject, participating clients) from the grant the claim returned, not from an earlier read of the session.",
+      "why": "A client added to the session between an earlier read and the claim would have its tokens revoked but receive no back-channel logout.",
+      "check": "Look for a session read before revocation whose client list feeds the termination, instead of the claimed grant's payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Scope a logout's revocation to the session it resolves (by sid), and never revoke every grant of the subject unless the operation is an explicit sign-out everywhere.",
+      "why": "Revoking all of the subject's grants on logout over-revokes, ending the subject's sessions on other devices.",
+      "check": "Check logout or end-session handlers for revocation filtered by subject id alone when a session id is known.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Stamp the session's sid on every grant issued under an interactive session (authorization codes, refresh tokens, session-bound claim grants), and store null only for non-interactive issuance such as client credentials or device code.",
+      "why": "One revocation by sid must revoke every grant under the session, and a session-bound grant that stores null outlives its session.",
+      "check": "For new or changed grant-issuance paths, verify the session id from the subject's authentication is set on the persisted grant envelope.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Terminate the session of an authorization code only when the code is a replay (already redeemed), and don't terminate anything for a code that expired unused, was revoked, or names no session.",
+      "why": "RFC 6749 §4.1.2 and RFC 9700 treat a second redemption as a compromise signal, but an expired or revoked code isn't one, and ending the session would sign the user out of every relying party.",
+      "check": "In the authorization-code grant handler, check that session termination is tied to the consumed/redeemed state and not to every rejected code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a subject-wide termination, claim each unrevoked session, revoke all of the subject's grants outside the dispatch, and always dispatch one subject-wide termination with a null session id, even when no session was claimed.",
+      "why": "Revoking only inside the dispatch leaves grants active if the dispatch fails, and skipping the dispatch means extending handlers and the audit miss the termination.",
+      "check": "Look for subject-wide sign-out code that revokes grants only from a handler, sends one termination per session, or skips the dispatch when the claimed count is zero.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat session-termination reasons as an open string vocabulary compared ordinally, and pass extension-defined reasons through handlers and audit events unchanged.",
+      "why": "Extensions end sessions for their own causes, and the handlers and audit event must carry those names as given.",
+      "check": "Look for closed enums or switches that reject unknown reasons, or for case-insensitive or culture-sensitive comparison of reason values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store and match a session id (sid) verbatim as an opaque, case-significant key, with no normalized companion column or case-folded comparison.",
+      "why": "The sid is an opaque, case-significant Base64Url value, so it is indexed and matched directly.",
+      "check": "Look for ToLower/ToUpper, case-insensitive comparison, or a normalized column applied to sid values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register handlers of a fan-out command seam with TryAddEnumerable so that consumers can add their own handlers alongside the defaults.",
+      "why": "The seam is a mediator fan-out, and consumers extend it by registering additional handlers.",
+      "check": "Check that default handlers for a fan-out command are registered with TryAddEnumerable, not TryAdd or Add with replace semantics.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a session revocation method report what the call itself ended (a bool for one session, a count for many), returning false or 0 when the session was missing or already revoked by a concurrent caller.",
+      "why": "Callers such as the management API report and audit only the terminations their call performed.",
+      "check": "Look for session revoke APIs that return void, or that return true when nothing was claimed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

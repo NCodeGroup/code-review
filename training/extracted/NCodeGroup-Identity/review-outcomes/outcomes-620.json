@@ -1,0 +1,75 @@
+{
+  "hash": "0784df7d91e78cb4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #620",
+  "rules": [
+    {
+      "statement": "Run work that happens after a database commit, such as recording an audit event, on its own bounded post-commit cancellation token rather than the request's token, and do it inside the shared recorder so no call site can drop the record.",
+      "why": "If the client disconnects after the commit, the change stays committed but a request-token-bound lookup or publish can be cancelled, dropping the audit record and breaking the promise to audit every change.",
+      "check": "Look for audit or event recording calls after `SaveChangesAsync` that pass the request `CancellationToken` (or `HttpContext.RequestAborted`), including preliminary lookups the recorder does before it publishes.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code, apply the hoisting rule too: assign a call's result to a local before passing it to an assertion, rather than nesting the call inside `Assert.*` arguments.",
+      "why": "The house rule against nesting calls inside other calls' arguments applies to tests as well as production code, for readability and debuggability.",
+      "check": "Look for assertions such as `Assert.Equal(x, GetSomething(...).Count)` or `Assert.Single(GetSomething(...), ...)` with a method call inside the arguments.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to bundle a shared template method's parameters into a parameter type when each parameter is a distinct concept and the type would only exist to carry them for that one call.",
+      "why": "Such a type moves the argument list into an initializer without removing a concept, and callers stay short calls anyway.",
+      "check": "Before flagging a method with four data parameters, check whether the parameters are distinct concepts (request, target, configuration, callback) and whether a grouping type would be used anywhere else.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask test classes to move their own mock-setup helpers into a shared test support type just because similar small helpers appear in several classes: each test class owns the strict-mock setups for its own subject.",
+      "why": "A test reads its arrangement in its own file and each class verifies its own mocks; sharing a few-line helper would couple the test classes through a support type.",
+      "check": "Before reporting duplicated setup helpers across test classes, check whether each helper configures that class's own mock fields and whether sibling test classes follow the same per-class setup pattern.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, group tests in `#region` blocks named for the member or operation under test (such as `AddTeamAdmin Tests`), including in feature-oriented integration test files.",
+      "why": "The test layout convention applies to integration suites too, matching sibling suites.",
+      "check": "Look for test methods placed directly in the class outside any `<Member> Tests` region, with only a `Scaffolding` region or none.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag a discouraged name suffix such as `*Manager` when the new type follows a naming pattern already established by its sibling components for the same role.",
+      "why": "Following the existing pattern lets a reader find every such component by one name pattern.",
+      "check": "Before reporting a naming-rule departure, check whether sibling types or components with the same responsibility already use the same suffix.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

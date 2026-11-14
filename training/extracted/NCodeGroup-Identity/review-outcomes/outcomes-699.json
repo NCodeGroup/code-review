@@ -1,0 +1,99 @@
+{
+  "hash": "810a4c4bb3b9bfdc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #699",
+  "rules": [
+    {
+      "statement": "When a refused or invalid input must be answered with a 400, signal it with a dedicated exception type (or a result) plus the exceptions a dependency documents as refusals, and let every other exception, including broad types like InvalidOperationException, reach the logged 5xx branch.",
+      "why": "Catching broad exception types as a 400 turns SDK, client or misconfiguration faults into unlogged bad requests and leaks the raw exception message into the problem detail.",
+      "check": "Look for catch clauses or filters that map InvalidOperationException, ArgumentException, CryptographicException or similar broad types to a 400/bad-request response without those types being a documented refusal of the called API.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a business rule that decides acceptance (for example which options an endpoint offers versus which ones it accepts) in one shared method, and call it from every place that needs it instead of re-implementing it.",
+      "why": "If the copies drift, the UI or capabilities can offer something the route refuses, or hide something it would accept.",
+      "check": "Look for new code that re-derives a predicate already implemented in a validator, helper or shared module (in C# or frontend code), instead of calling the existing one.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that checks a validation refusal asserts the exact error detail, not just that the detail contains a keyword.",
+      "why": "A Contains assertion still passes if the intended check disappears and some other check rejects the input, so it no longer pins which rule refused it.",
+      "check": "Look for refusal tests that assert with Contains or a substring match on the problem detail or error message, especially where an exact assertion was loosened.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a method takes a group of parameters that callers always pass together, group them into a small record so the method takes at most about three data parameters.",
+      "why": "Long argument lists repeated at call sites are easy to misorder and hurt readability.",
+      "check": "Look for new methods with four or more data parameters where several of them are always passed together or already come back from another method as a tuple.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A new stateless presentational component exported from a shared frontend UI package gets a Storybook story file covering its default, error and in-progress states, like its sibling components.",
+      "why": "Without a story, the component's states can't be previewed or reviewed in isolation, unlike every sibling component.",
+      "check": "For a new exported component file in a UI package, look for a matching `*.stories.tsx` beside it with default, error and submitting/loading stories.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/packages/ui/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "New pure helper functions in a frontend module get their own unit test file, not just indirect coverage through component tests.",
+      "why": "Without direct tests, a change to a helper's format shows up only as a confusing component-test failure.",
+      "check": "For a new module of exported pure functions, look for a matching `*.test.ts` that covers each function's distinct cases.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an explicit constructor to become a primary constructor when one of its initializations reads another instance member, or when a primary constructor would have to enumerate an input sequence twice.",
+      "why": "The C# conventions keep a classic constructor when an initializer reads another instance member, so the constructor can read its sources once and derive the rest from them.",
+      "check": "Before reporting, check whether the constructor body builds one member from another member (for example an index from a materialized list). If it does, the explicit constructor is allowed.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test names follow the Member_WhenState_ExpectedResult pattern and include the state segment, like their sibling tests.",
+      "why": "A name without the state segment is inconsistent with sibling tests and doesn't say which scenario is being tested.",
+      "check": "Look for test method names with only two segments (Member_Expected) where sibling tests use Member_WhenState_Expected.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

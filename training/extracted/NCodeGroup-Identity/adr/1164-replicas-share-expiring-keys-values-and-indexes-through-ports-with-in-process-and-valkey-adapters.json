@@ -1,0 +1,129 @@
+{
+  "hash": "eeb6c486bb7e3cb6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1164",
+  "rules": [
+    {
+      "statement": "Implement a single-use or replay check with an atomic add-if-absent operation on the shared store, never as a read followed by a write (for example `IDistributedCache.GetAsync` then `SetAsync`).",
+      "why": "A read-then-write lets two concurrent presentations of the same proof or assertion both be accepted, on one replica or on two that share a store.",
+      "check": "Look for replay, nonce or single-use checks that call a get/contains method and then a set/add method separately, or that are built on `IDistributedCache`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Redeem a one-time record (such as a login transaction) with an atomic take that removes and returns the entry in one step, not with a get followed by a remove.",
+      "why": "With an atomic take, a replayed callback finds nothing. A separate get and remove lets two concurrent callbacks both redeem it.",
+      "check": "Look for code that reads a one-time entry and then deletes it in separate calls instead of using a take/GETDEL-style operation.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Update shared state that concurrent requests may modify with a versioned compare-and-swap, not with an unconditional overwrite.",
+      "why": "Without compare-and-swap, two concurrent requests that refresh the same record overwrite each other.",
+      "check": "Look for shared session or state updates that write the new value with a plain set and don't check the version read earlier.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In library code, don't register host-wide infrastructure services such as `IDistributedCache`. Depend on the library's own ports and let the composition root choose the adapter.",
+      "why": "Registering such a service from a library decides it for the host and for every other consumer of it.",
+      "check": "Look for `AddDistributedMemoryCache`, `AddStackExchangeRedisCache` or other registrations of shared framework services inside a library's service-collection extensions.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build shared-store keys from request-supplied values as a purpose prefix, the tenant and a digest (such as the base64url SHA-256 of the length-prefixed UTF-8 components), never by joining raw values with a separator.",
+      "why": "Values joined with `:` are ambiguous (`(\"a:b\",\"c\")` and `(\"a\",\"b:c\")` give the same key) and unbounded in length, and a key that names no tenant collides across the tenants that share the store.",
+      "check": "Look for store keys made with string interpolation or concatenation of request values, or keys that leave out the tenant.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a security check relies on a shared store, make it fail closed: an expiry that isn't in the future records nothing and the add fails, and an unreachable store throws instead of being treated as a missing or new entry.",
+      "why": "Treating a failed or degenerate store operation as success would let replays through or treat a session that can't be read as absent.",
+      "check": "Look for catch blocks around store calls that return success, null or 'absent', and for adds that accept a past or current expiry.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An in-process store that keeps caller-supplied byte buffers must copy them on write instead of keeping the caller's memory.",
+      "why": "Otherwise a caller that reuses its buffer can change an entry that is already stored.",
+      "check": "Look for store implementations that save a `ReadOnlyMemory<byte>` or array argument directly without copying it.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configuration and startup validation errors must never include a connection string or any of its parts.",
+      "why": "Connection strings and their parts may hold a password.",
+      "check": "Look for exception messages or log calls that interpolate connection strings, host/user/password parts or raw configuration values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Values written to a shared external store are opaque bytes that the caller serializes, and the caller encrypts any value that must not be readable in the store.",
+      "why": "The store is outside the process and can be read by whoever operates it, so it must not hold secrets in clear.",
+      "check": "Look for tokens or other sensitive session data written to a shared store without encryption.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute expiry times-to-live for a shared store from the local `TimeProvider` clock and round them up to whole milliseconds, so expiry doesn't depend on the server's clock.",
+      "why": "Expiry then follows the replica's own clock, and rounding up keeps a record from expiring before it should.",
+      "check": "Look for TTL calculations that truncate or round down to milliseconds, or that rely on server-side time.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put an adapter that brings a heavy third-party client (such as a Redis client) in a separate opt-in package, not in the core or turnkey package.",
+      "why": "Otherwise every consumer, including single-instance self-hosters, carries a client it doesn't use.",
+      "check": "Look for new package references to backend clients such as StackExchange.Redis added to core library projects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

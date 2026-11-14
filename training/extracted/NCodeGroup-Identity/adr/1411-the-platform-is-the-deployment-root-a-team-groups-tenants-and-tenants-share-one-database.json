@@ -1,0 +1,55 @@
+{
+  "hash": "dc7b97ded165b70f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1411",
+  "rules": [
+    {
+      "statement": "Don't add per-tenant database routing, per-tenant connection strings or cross-database materialization: all tenants share one database and one DbContext, and isolation between tenants comes from the ambient-tenant query filter.",
+      "why": "Tenants are a logical isolation boundary within one deployment. An operator who needs physical isolation runs a separate deployment, which is far simpler than a control/tenant database split with a connection-routing seam.",
+      "check": "Look for code that picks a connection or database per tenant, splits a control-plane context from a tenant-plane context, or reads across databases to build a tenant. Also look for tenant-bound queries that bypass the ambient-tenant filter instead of relying on it.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization check matches a role assignment at a node whose identifiers are unique only within a tenant (such as a client or resource server), also match on the tenant, not just on node type and identifier.",
+      "why": "Platform, team and tenant identifiers are globally unique and retired, so matching on type and identifier is enough for them. Client and resource-server identifiers can repeat across tenants, so matching without the tenant would grant authority in another tenant.",
+      "check": "Look at role-assignment lookups and comparisons. Flag any that compare only node type and identifier for client, resource-server or other tenant-scoped nodes without also restricting to the caller's tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add an operation that moves a tenant from one team (tenant group) to another; a tenant's team is fixed when it is created, and its creation path must take a team identifier.",
+      "why": "A tenant's team is part of its authority, usage and policy, so a customer that reorganizes recreates its tenants instead of moving them.",
+      "check": "Look for endpoints, setters or migrations that change a tenant's team after creation, and for tenant-creation paths that don't require a team.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a per-team tenant-count quota checked before the insert can be overshot by one when two creations race: the decision accepts that overshoot and deliberately keeps no serialized counter on the team row.",
+      "why": "The ceiling is checked before the insert and never serialized on the team row. A rare overshoot by one is accepted as the price of not having a contended counter.",
+      "check": "Before reporting a race in a tenant-quota check, confirm it is the accepted check-then-insert pattern for the team's tenant limit and not a different quota or invariant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

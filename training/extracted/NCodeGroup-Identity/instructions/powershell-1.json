@@ -1,0 +1,76 @@
+{
+  "hash": "1ebe7ada343b4372",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity powershell.instructions.md",
+  "applyTo": [
+    "**/*.ps1"
+  ],
+  "rules": [
+    {
+      "statement": "In a PowerShell script, when an `if`, `switch` or loop statement is used as a value that must be an array, wrap the whole statement in `@(...)` rather than wrapping each branch.",
+      "why": "A statement used as a value unrolls its output: an empty array becomes `$null` and a single item becomes that item, so `.Count` throws under `Set-StrictMode -Version Latest`. Wrapping each branch doesn't stop this.",
+      "check": "Look for assignments like `$x = if (...) { ... } else { ... }` or `$x = foreach ...` whose result is later used as an array (`.Count`, indexing), where the statement isn't wrapped in `@(...)`, or only the branches are wrapped.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PowerShell script, pass an indexed or member-access value to a native command as a subexpression inside a quoted argument (`\"body=$($map[$id])\"`), never as `$map[$id]` or `$obj.Member` written directly in the argument.",
+      "why": "Native command arguments expand only a bare variable; `[...]` and `.Member` stay literal text, so the command gets the object's type name followed by the literal suffix.",
+      "check": "Look at calls to native executables (gh, git, dotnet, docker, etc.) for arguments containing `$var[...]` or `$var.Prop` that aren't inside `$( )`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PowerShell script, check prerequisites such as Docker or a completed build only after the script has decided it has work to do, so a run that selects nothing reports its verdict without needing them.",
+      "why": "A run that selects nothing, such as an affected-only run with nothing affected, should succeed without needing Docker or a build.",
+      "check": "Look for prerequisite checks (tool availability, Docker running, build steps) placed before the selection logic that can decide there's nothing to do.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PowerShell fixture test, create the fixture as a temporary directory (initialized as a git repository when the script under test reads git) and delete it in a `finally` block.",
+      "why": "The conventions require isolated fixtures that are always cleaned up, even when the test fails.",
+      "check": "Look in `*.tests.ps1` files for fixtures created in the working tree or in shared locations, or temp directories that aren't removed in a `finally` block.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tests.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PowerShell test that asserts a script's `return` or `throw`, run the script in a child `pwsh -NoProfile -File` process rather than dot-sourcing or invoking it in the test's own session.",
+      "why": "A child process keeps the script's exit, return and thrown errors from ending or polluting the test's own session, and lets the test assert on them reliably.",
+      "check": "Look in `*.tests.ps1` files for scripts invoked with `&` or `.` in the same session when the test asserts on their return value or thrown error.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tests.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each build PowerShell script a fixture test named `<script>.tests.ps1` in the build scripts' tests folder, and run it as an early stage of the definition-of-done script that doesn't need a build.",
+      "why": "Build scripts are tested by fixtures that run before any build, so failures show up quickly.",
+      "check": "Look for new or changed build scripts with no matching `<script>.tests.ps1`, or a tests file that isn't wired into the early stage of the definition-of-done script.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "hash": "f99a98b045b6d383",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #237",
+  "rules": [
+    {
+      "statement": "Don't ask a pull request to move its changelog entries from a new dated version section back under `## [Unreleased]` when the repository cuts the version in the pull request that makes the change, as when a plan's `Release:` line names the version and its last step writes the changelog section.",
+      "why": "In that workflow the release is published from the newest `CHANGELOG.md` section after the merge, and landing is refused unless that section is the plan's version, so leaving the entries under Unreleased would block the release.",
+      "check": "Before reporting a dated changelog heading or changed compare links, read the repository's AGENTS.md (the Landing section) and the plan's `Release:` line, and look at how earlier version sections came in. Report only if the repository keeps entries under Unreleased until a separate release step.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

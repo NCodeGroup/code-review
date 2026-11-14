@@ -1,0 +1,115 @@
+{
+  "hash": "aefab5e2f50e81d7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1089",
+  "rules": [
+    {
+      "statement": "A pushed authorization request endpoint must accept only POST with application/x-www-form-urlencoded, authenticate the client the same way the token endpoint does (public clients identified by client_id), and reject a pushed request that itself carries a request_uri parameter.",
+      "why": "RFC 9126 section 2.1 requires the push to be client-authenticated over the back channel and forbids request_uri inside a pushed request.",
+      "check": "In PAR endpoint code, look for missing method or content-type checks, client authentication that is skipped or different from the token endpoint's, or no rejection of an incoming request_uri parameter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a pushed authorization request with the same load and validation logic the authorization endpoint uses (response delivery, redirect URI and PKCE checks), not with a separate copy of those checks.",
+      "why": "A parallel copy of the validation could drift from the authorization endpoint's rules.",
+      "check": "Look for PAR code that re-implements redirect_uri, response_type/response_mode or PKCE validation itself instead of calling the authorization endpoint's shared load and validate steps.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A successful pushed authorization request must return 201 Created with a JSON body containing request_uri and expires_in, and every validation refusal must return 400.",
+      "why": "RFC 9126 sets this response shape, and the decision makes all push-time refusals 400.",
+      "check": "Check the PAR success status code and body fields, and look for validation errors that return a status other than 400 or that try to redirect.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store a pushed authorization request as a short-lived, single-use grant bound to the pushing client's client_id, keyed by a cryptographically random URL-safe value, issue its request_uri as urn:ietf:params:oauth:request_uri:<key>, and consume it atomically once so that a replayed request_uri is refused.",
+      "why": "The opaque one-time reference is controlled by the server, and making it single-use and short-lived (90 seconds by default, configurable) limits exposure and stops replay.",
+      "check": "Look for PAR grants read without being consumed, keys from a non-cryptographic or guessable source, a missing client_id on the stored grant, a hard-coded or unbounded lifetime, or a request_uri without the urn prefix.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove client authentication parameters (client_secret, client_assertion, client_assertion_type) from a pushed authorization request before you persist it.",
+      "why": "They only authenticated the push, play no part at the authorization endpoint, and secrets must never be stored.",
+      "check": "Check that the code that persists PAR parameters removes the client credential parameters before the parameters are serialized into storage.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the authorization endpoint, expand a pushed request_uri into its stored parameters right after loading the raw request values and before deriving the response delivery or trusting any parameter such as state, response_mode or redirect_uri.",
+      "why": "The decision on whether an error can be redirected reads state, response_mode and redirect_uri, so those must already be the pushed values. Expanding later means that decision sees an empty request.",
+      "check": "Look for code that resolves response delivery or redirect_uri, or that uses other request parameters, before PAR expansion, or that moves expansion into a later step.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a pushed request_uri cannot be resolved, or its stored client_id does not match the authenticated client at the authorization endpoint, answer invalid_request_uri directly with 400 and never redirect the error to the client.",
+      "why": "The server could not recover the request, so it has no redirect_uri it can trust.",
+      "check": "Look for a missing client_id comparison against the stored grant, or for code that sends PAR lookup or mismatch failures through the redirect error path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When require_pushed_authorization_requests is enabled for the tenant or client, refuse any authorization request that does not carry a pushed request_uri with invalid_request, and advertise the setting and the pushed_authorization_request_endpoint in discovery.",
+      "why": "This setting lets a deployment force the PAR flow, and RFC 9126 makes both values discoverable metadata.",
+      "check": "Check that the setting is evaluated at the authorization endpoint (and that a JAR request_uri doesn't satisfy it), defaults to false, and that the discovery metadata includes both values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Distinguish a PAR request_uri from a JAR request_uri by the urn:ietf:params:oauth:request_uri: prefix: resolve the prefixed form from server storage, and treat any other value as a JAR reference fetched over HTTPS, never confusing the two.",
+      "why": "Both mechanisms use the same parameter with different meanings: an opaque server-side reference (RFC 9126) versus a URL to fetch a signed request object (RFC 9101).",
+      "check": "Look for request_uri handling that fetches URN values over the network, looks up HTTPS URLs in grant storage, or allows non-HTTPS JAR fetches.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

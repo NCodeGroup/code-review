@@ -1,0 +1,19 @@
+{
+  "hash": "96b305144a1afec2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #193",
+  "rules": [
+    {
+      "statement": "When a script compares a command's output with an exact expected value, such as a version string checked against a pin, capture only the command's stdout and don't merge stderr into it with `2>&1`.",
+      "why": "Wrapper tools like uv/uvx can print notices or warnings on stderr, for example on a cold cache. If stderr is merged in, the exact comparison fails even though the right version ran.",
+      "check": "Look for output captured with `2>&1` (or something like it) and then compared with `-eq` or an exact string. Flag it unless stderr is dropped (for example with `2>$null`) or the expected value is pulled out with a regex before comparing.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

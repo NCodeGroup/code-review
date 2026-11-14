@@ -1,0 +1,62 @@
+{
+  "hash": "afac1631b08582db",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template .claude/commands/review-plan-diff.md",
+  "rules": [
+    {
+      "statement": "Don't skip, weaken, or delete existing tests to make a change pass; fix the code or escalate instead.",
+      "why": "A test weakened to pass hides the defect it was guarding against, even though the checks then pass.",
+      "check": "Look for tests marked skipped, assertions removed or loosened, expected values changed to match new output, or test cases deleted, without a stated behavior change that justifies it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't swallow errors: a catch block must handle, translate, or rethrow the exception, not silently discard it.",
+      "why": "Swallowed errors are a shortcut that hides failures the change should surface.",
+      "check": "Look for empty catch blocks, catch blocks that only return a default, or catch-all handlers that drop the exception without logging or rethrowing.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't leave TODO comments or hard-coded placeholder values in place of the required behavior.",
+      "why": "Leftover TODOs and hard-coded values are shortcuts that make checks pass without doing the work.",
+      "check": "Look for new TODO/FIXME/HACK comments and literal values standing in for configuration, computed results, or inputs that the code should derive.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, describe the product as it is: add no breaking-change labels, migration notes, compatibility shims, or wording that contrasts with an earlier state.",
+      "why": "ADR-0015: a pre-release project has no released state for users to migrate from, so breaking-change framing and shims are noise.",
+      "check": "In a pre-release project, look for `**Breaking:**` in the changelog or docs, a conventional-commit `!` marker or `BREAKING CHANGE:` footer in commit messages or the PR title, phrases like \"now\", \"no longer\" or \"previously\", migration sections, and obsolete aliases or shims kept for compatibility.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep the changelog's `## [Unreleased]` section a catalog with only `### Added` and `### Security` subsections.",
+      "why": "ADR-0015: before a first release, every feature is new, so Changed, Removed, Fixed or Deprecated entries describe a prior state that users never had.",
+      "check": "In CHANGELOG.md of a pre-release project, look for subsections other than `### Added` and `### Security` under `## [Unreleased]`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "hash": "212ce450d43cbe70",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #502",
+  "rules": [
+    {
+      "statement": "In a test project, when integration tests assert that a protocol endpoint marks its responses non-cacheable (`Cache-Control: no-store`, `Pragma: no-cache`), at least one test also asserts those headers on an error response from that route, not only on success responses.",
+      "why": "If only success responses are checked, a change that stops the no-store filter from running on error paths for those routes would still pass the integration suite. Error responses need the headers too.",
+      "check": "Look at new or changed integration tests for token, PAR, or similar endpoints that assert no-store headers. Check whether any of them asserts the headers on an error response (for example a 400 `invalid_request`) as well as on 200/201 responses.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

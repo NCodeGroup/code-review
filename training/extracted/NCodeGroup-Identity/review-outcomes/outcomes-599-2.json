@@ -1,0 +1,29 @@
+{
+  "hash": "3b9c5c6e1c75a061",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #599",
+  "rules": [
+    {
+      "statement": "In a test project, don't report a null-forgiving operator (`!`) that passes a deliberate null to the code under test in an argument-validation test, and don't suggest a nullable-typed helper in its place.",
+      "why": "The test conventions allow the null-forgiving operator in test projects for exactly this case (the project template bans it only outside them), and a nullable helper would only hide the same null.",
+      "check": "Before reporting `!` in test code, see whether the argument is a deliberate null passed to prove the code under test rejects it. Report it only when it suppresses a value that could instead be proven non-null, for example with a pattern match or Assert.NotNull.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the `params IEnumerable<T>` signature convention (buffer inside the method) to test helper methods as well as production code, rather than declaring `params T[]`.",
+      "why": "The maintainer applied the convention to test helpers and changed `params T[]` helpers to `params IEnumerable<T>` that buffer inside, so the convention isn't limited to production code.",
+      "check": "Look for new or changed test helper methods that declare a `params` array parameter where `params IEnumerable<T>` would work.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

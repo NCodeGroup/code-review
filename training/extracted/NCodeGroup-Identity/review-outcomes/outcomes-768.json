@@ -1,0 +1,19 @@
+{
+  "hash": "23fa194429b94ec6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #768",
+  "rules": [
+    {
+      "statement": "Make a decision record or README describe build and release mechanisms (such as what gets its version from version.json) only as far as the repository actually carries them out, and don't say a mechanism covers artifacts it leaves unstamped.",
+      "why": "Readers rely on the ADR to know how artifacts are versioned, and an accepted ADR can't be changed, so a claim that is only partly true stays wrong.",
+      "check": "For each claim in a changed ADR or README about versioning, stamping or publishing, look at the build configuration (version.json, package.json version fields, pipeline scripts). Flag any artifact the claim names that the build doesn't actually handle that way, such as a package.json left at a placeholder version.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md",
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

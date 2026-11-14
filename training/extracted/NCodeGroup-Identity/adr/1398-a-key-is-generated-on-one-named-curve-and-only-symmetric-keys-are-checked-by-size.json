@@ -1,0 +1,126 @@
+{
+  "hash": "f7f9e1873396dbdd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1398",
+  "rules": [
+    {
+      "statement": "When a key generation request gives a size but no curve, select a curve only when exactly one candidate curve has that size; refuse a size that several curves share with an error that names those curves, and never take the first curve of that size.",
+      "why": "A size states a key's strength, not its curve. Two curves of the same size (P-256 and brainpoolP256r1, or P-256 and secp256k1) are different keys that the parties receiving them cannot swap, so picking the first one guesses at something the configuration never said.",
+      "check": "Look for curve resolution by size that uses First/FirstOrDefault or a built-in default curve when more than one curve matches, and check that the ambiguity error lists the matching curves.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A key type descriptor must refuse a curve or parameter set whose size is not the requested key size, in both its generation-validation method and its key-generation method, so that callers that have no algorithm are also checked.",
+      "why": "The descriptor is where each curve's size is known, and it is the only check reached by callers that generate key material without an algorithm. Without it, a management API request could generate a key that provisioning refuses.",
+      "check": "In a new or changed key type descriptor that supports curves, confirm that both ValidateGeneration and GenerateKeyMaterial compare the curve's size with the requested KeySizeBits and refuse a mismatch.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a second curve-size check in an algorithm-level resolver that restates the size data the key type descriptor already owns. Keep the check in the descriptor.",
+      "why": "A second check repeats the descriptor's data and still cannot cover the paths that have no algorithm.",
+      "check": "Look for resolver code that hard-codes or re-derives curve sizes to check a declared size against a declared curve. A declared size must pass through unchanged.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate OKP keys only on an explicitly named curve. Never infer an OKP curve from the key size.",
+      "why": "Ed25519 (signing) and X25519 (key agreement) are both 256 bits, and the key type has no algorithm that would tell a signing request from an agreement request.",
+      "check": "Look for OKP key generation that picks a curve by size when no curve is named. It should refuse the request instead.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After validating a secret creation request, pass the validated generation parameters on whole to the generation step, and don't re-derive them from the original request.",
+      "why": "This way the endpoint generates exactly the key that was validated.",
+      "check": "Look for endpoints that validate a creation request and then rebuild the size, curve or key type from the raw request instead of using the validation result's generation parameters.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When choosing among an algorithm's key types for a configured key, pick the first key type that can take the configuration. If that key type then refuses the configuration, report its refusal and don't fall through to a later key type. When no key type accepts, list the curves and sizes of every candidate key type in the error.",
+      "why": "Falling through would provision a key the configuration did not describe, for example an OKP key from an ambiguous or wrong EC configuration. An error that comes only from the first key type misleads the operator, because it names only that key type's curves.",
+      "check": "Look for loops over candidate key types that skip to the next one when resolution fails, and for 'no key type accepts' errors that name only one key type's options.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a persisted asymmetric key as satisfying a key specification only when its secret type matches, its stored public half is on the specified curve and the algorithm's key-compatibility check accepts it. Treat a missing or unreadable public half as not satisfying the specification.",
+      "why": "Without these checks, a key that does not fit the specification would be reused when a new key should be provisioned.",
+      "check": "In code that matches existing keys against a key specification, look for matches on secret type alone, and for a missing or unreadable public key that is treated as a match.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a held key by its type and size only when it is symmetric. Validate an asymmetric key through the key itself or its stored public half with the algorithm's key-compatibility check, and refuse a type-and-size check for asymmetric types and for entries bound to curves.",
+      "why": "An asymmetric key's type and size don't show its curve or parameter set, so a type-and-size check would accept a key that the algorithm refuses when it is first used. The stored public half that shows these parameters is always available.",
+      "check": "Look for asymmetric keys, or entries with curves, that are validated only by key type and bit size.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't unprotect a symmetric key's material to validate it during a metadata update. Its type and size describe it completely.",
+      "why": "A metadata update has no reason to unprotect secret material.",
+      "check": "Look for metadata update or validation paths that decrypt or unprotect symmetric key material only to check it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a contributed key type whose keys have parameters beyond their type and size derive from the asymmetric secret key base type, and don't add a separate flag that says whether type and size describe the key completely.",
+      "why": "The key's runtime type already states this fact, and a second flag could contradict it.",
+      "check": "Look for new key types that have curve or parameter-set data but don't derive from AsymmetricSecretKey, and for new boolean properties that duplicate the asymmetric/symmetric distinction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

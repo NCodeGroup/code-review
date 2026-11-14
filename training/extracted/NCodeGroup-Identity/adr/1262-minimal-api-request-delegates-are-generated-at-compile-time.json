@@ -1,0 +1,57 @@
+{
+  "hash": "99336a6123a30914",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1262",
+  "rules": [
+    {
+      "statement": "A project that maps a minimal-API endpoint binding `[FromForm]`, `IFormFile` or `IFormCollection` must set `EnableRequestDelegateGenerator=false` in its project file, with a comment that names the antiforgery guard test, the decision record and the tracking issue.",
+      "why": "The Request Delegate Generator's form binding (`TryResolveFormAsync`) reads the form without checking `IAntiforgeryValidationFeature`, so a post that fails antiforgery validation answers 500 instead of the runtime factory's 400.",
+      "check": "When a diff adds a form-bound endpoint parameter (`[FromForm]`, `IFormFile`, `IFormCollection`), confirm the project's .csproj sets `EnableRequestDelegateGenerator=false` and the comment names the guard test, the ADR and the issue.",
+      "scope": "domain",
+      "domain": "aspnetcore-minimal-api",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Turn the Request Delegate Generator on once in `Directory.Build.props` and don't opt out per project, except in a project that has a form-bound endpoint.",
+      "why": "Generated delegates remove the expression-tree compilation and fully optimized JIT of every endpoint from each host start. That cuts the integration suite from about 6 minutes to about 41 s and speeds up cold starts in production.",
+      "check": "Flag a .csproj that sets `EnableRequestDelegateGenerator=false` without having a form-bound endpoint, and flag a change that removes the family-wide switch.",
+      "scope": "domain",
+      "domain": "aspnetcore-minimal-api",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every form-posting endpoint has a guard test that posts without the antiforgery token and asserts a 4xx response and no state change.",
+      "why": "The guard test keeps the runtime factory's 400 answer observable. It fails if a form-bound project loses its generator opt-out and starts answering 500.",
+      "check": "When a diff adds an endpoint that binds a form, look for an integration test that posts to it without the antiforgery token and asserts 4xx and that nothing changed.",
+      "scope": "domain",
+      "domain": "aspnetcore-minimal-api",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't re-enable the Request Delegate Generator for a project with a form-bound endpoint until the upstream generated form binding checks `IAntiforgeryValidationFeature` and the project's antiforgery guard tests pass.",
+      "why": "With the generator on, posts that fail antiforgery validation answer 500 instead of 400 until upstream fixes it.",
+      "check": "Flag a diff that removes `EnableRequestDelegateGenerator=false` from a project that still has form-bound endpoints, unless the guard tests pass and the tracking issue is resolved.",
+      "scope": "domain",
+      "domain": "aspnetcore-minimal-api",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "hash": "6079c0909d01ea1f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1402",
+  "rules": [
+    {
+      "statement": "Never treat an unsupported or unmatched `ui_locales` preference as an error: an authorization or end-session request's validation must not check `ui_locales` against `ui_locales_supported`, and a preference that matches nothing just falls back to another locale.",
+      "why": "OpenID Connect Core §3.1.2.1 says an unsupported locale SHOULD NOT cause an error. A preference the provider can't meet is one the end-user simply doesn't get.",
+      "check": "Look for request validators or handlers that reject, log an error for, or return an OAuth error when a `ui_locales` value is missing from the supported set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `*_supported` setting that discovery advertises, such as `ui_locales_supported`, must accept only values from a registered vocabulary of things the server actually implements or renders, and options validation must reject unregistered values.",
+      "why": "A free-form list would advertise locales or features nothing renders, and a request for one would silently get something else. A registered vocabulary keeps the advertisement true.",
+      "check": "Look for new or changed discoverable supported-values settings whose descriptor or validator accepts any well-formed string without checking it against the registered catalog.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When selecting a UI locale, match each preference in order using RFC 4647 §3.4 lookup (the full tag, then the tag with its last subtag removed), case-insensitively, and apply the tenant's supported-locales ceiling to the fallback default as well as to the preferences, so that a configured default outside the ceiling is never rendered.",
+      "why": "If the ceiling bounds the fallback the same way it bounds a preference, a page always renders in a locale that discovery advertises, and the advertised set never disagrees with the rendered default.",
+      "check": "Look at locale-selection code for exact-match-only comparisons, case-sensitive tag matching, or a fallback to a default or first locale that skips the supported-locales ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When parsing `Accept-Language` into locale preferences, order the entries by descending quality and drop the `*` wildcard and any entry with a quality of zero.",
+      "why": "The user agent's preferences have to be read in their stated priority, and q=0 or the wildcard names no language to render.",
+      "check": "Look for `Accept-Language` parsing that keeps header order regardless of q-values, or that passes `*` or q=0 entries on as preferences.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Carry the end-user's `ui_locales` preference across interactive pages on the redirect URL's `ui_locales` query and as a hidden `ui_locales` form field. Don't look up the parked authorization request on each page, and don't store the locale in a cookie.",
+      "why": "A store read keyed by a query value on every anonymous request is a cost any caller can impose. A cookie is extra state the tenant route must scope and a second source of truth. The query and the hidden field carry the choice exactly as far as it applies, at no cost.",
+      "check": "Look for login, consent or logout pages that load stored request state, or set or read a cookie, to work out the UI language, and for redirects or forms between interactive pages that drop the `ui_locales` value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Server-rendered pages must write the selected locale's tag into the `lang` attribute of the `html` element, and client-side code must render in that page language instead of negotiating its own language from `navigator.languages`.",
+      "why": "If the client negotiated on its own, the no-JavaScript pages would stay in one language, the first frame would flash another, and the document's `lang` would not match what the user reads.",
+      "check": "Look for rendered HTML documents without a server-set `lang`, or front-end code that picks its locale from `navigator.language(s)` rather than the document's `lang`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several DI registration methods contribute to an ordered collection whose order decides a default, make each method end by putting the registrations into a canonical order that depends only on the set of registered items, never on the order in which the methods were called.",
+      "why": "An order that depends on the calls makes the default a property of the host's composition order. Nothing documents that, and reordering `Program.cs` would change it without a test failing.",
+      "check": "Look for extension methods that append to a shared enumerable registration where the first registration becomes the default and the result depends on which `Add*` call ran first.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on `TryAddEnumerable` to dedupe or replace data registered as singleton instances that share one implementation type. Find and replace the existing instance by its identifying key (for example, a tag or name) instead.",
+      "why": "`TryAddEnumerable` dedupes by implementation type, so it can't tell apart instances of the same record type that carry different data.",
+      "check": "Look for `TryAddEnumerable` calls that register instances of a record or data type expected to be unique per key rather than per type.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at host startup, with an options validator, that every registered strategy or data item a component depends on is of the kind that component can use (for example, a UI locale that carries the messages the pages need), and also refuse an incompatible registration at the point of use.",
+      "why": "The error is then found at deploy time, never by an end-user, and no page renders text in one language under the tag of another.",
+      "check": "Look for consumers that silently skip, cast unsafely, or fall back when a registered item lacks what they need, with no startup validator that stops the host.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Localize host-extensible server-rendered text with registered message records that a host can add or adapt through DI, not with `.resx` satellite-assembly resources.",
+      "why": "Satellite assemblies are closed to a host that wants to add a language or change wording, while a small registered message record can be replaced or extended.",
+      "check": "Look for new `.resx` files or `IStringLocalizer` resource lookups introduced for extensible end-user interface text.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.resx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

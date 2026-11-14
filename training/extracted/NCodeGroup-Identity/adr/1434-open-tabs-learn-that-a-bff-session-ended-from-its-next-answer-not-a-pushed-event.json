@@ -1,0 +1,83 @@
+{
+  "hash": "c8eac50759fada4d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1434",
+  "rules": [
+    {
+      "statement": "Don't add a server-sent-events or WebSocket endpoint, or a shared-state pub/sub primitive, to a BFF to push session-ended events to open tabs; the 401 of the next guarded call is the signal.",
+      "why": "Each push stream holds one of the six HTTP/1.1 connections per origin and starves the application. It also needs cross-replica pub/sub and connection bounds, and EventSource cannot send the anti-forgery header. A push only changes how soon a stale page clears.",
+      "check": "Look for new MapGet endpoints returning text/event-stream, WebSocket middleware or endpoints, or new pub/sub primitives in a BFF meant to notify about session end or logout.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A BFF guarded API call or user-info endpoint reached without a live session must answer 401 with the session_required problem type, never a redirect.",
+      "why": "The 401 problem response is the single signal frontends rely on to learn a session ended. It holds on every replica, whichever way the session ended.",
+      "check": "Check how guarded BFF endpoints handle a missing or expired session: flag a redirect or challenge to login, a 403, or a 401 without the session_required problem type.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A BFF's user/session-info endpoint (such as GET /bff/user) must only read the session and never slide its idle expiration window.",
+      "why": "Frontends poll this endpoint to detect the end of a session, so a poll must not keep the session alive.",
+      "check": "Look for the user-info endpoint renewing, touching or refreshing the session's idle expiry, or the cookie sliding on that path.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A BFF's user/session-info endpoint must return the session's idle expiry and absolute expiry times so frontends can probe when they pass.",
+      "why": "Frontends schedule probes at session.idleExpiresAt and session.expiresAt and reread them after every answer.",
+      "check": "Check that changes to the user-info response keep the idle and absolute expiry fields and don't remove or rename them.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Frontend code behind a BFF that detects a session end (a 401 session_required or a logout) must broadcast it to its other tabs through a BroadcastChannel and send the user to the BFF's login, directly or through a sign-in screen whose click starts it.",
+      "why": "Sharing one tab's answer clears every tab. On its own, BroadcastChannel never learns of a back-channel logout, an idle timeout or a failed refresh, so it supplements the poll and doesn't replace it.",
+      "check": "In frontend session handling, look for a 401 or logout handler that doesn't notify other tabs, or one that relies only on BroadcastChannel without handling 401 or probing.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Frontend code that polls or probes BFF session state must send the anti-forgery header and recheck on visibilitychange when a hidden tab becomes visible.",
+      "why": "The user-info endpoint is guarded by the anti-forgery header, and browsers throttle a hidden tab's timers, so scheduled probes may not have run.",
+      "check": "In frontend polling of the BFF user endpoint, look for missing anti-forgery headers or a missing visibilitychange recheck.",
+      "scope": "domain",
+      "domain": "bff-web-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

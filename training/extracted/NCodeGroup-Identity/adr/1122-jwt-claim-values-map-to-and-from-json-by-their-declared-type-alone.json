@@ -1,0 +1,124 @@
+{
+  "hash": "6f3037b9a7757800",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1122",
+  "rules": [
+    {
+      "statement": "When decoding a JWT payload into claims, map a JSON string to a `#string` claim with its exact text; never re-type it by its shape (for example, probing whether it looks like a date or number).",
+      "why": "Lenient sniffing changes claims after the signature is verified (\"1.2\" becomes a date, an OIDC `birthdate` loses its required `YYYY-MM-DD` format), so authorization would compare a re-formatted value instead of what the issuer signed. JSON has no date type. Only the producer can say a string is a date.",
+      "check": "Look for decode paths that call a date parser (`DateTime(Offset).TryParse`, `JsonElement.TryGetDateTimeOffset`, a coercion helper) on string claim values and assign `ClaimValueTypes.DateTime` or another non-string type based on the result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decoding a JSON number into a claim, pick the first integer type that fits (`#integer32`, `#integer64`, `#uinteger64`, then unbounded `#integer`), use `#double` only when the literal has a fraction or an exponent, and never route an integer through `double`.",
+      "why": "Integers above 2^53 (identifiers, counters, large timestamps) lose precision in `double`, and code reading integer claims expects an integer type.",
+      "check": "Look for `GetDouble()`/`double` conversion of JSON numbers in claim mapping, or for typing every number as `ClaimValueTypes.Double`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a claim value to JSON, parse it in its declared type's lexical space with `CultureInfo.InvariantCulture`, using `NumberStyles.Integer` for integer types and `NumberStyles.Float` for reals, never `NumberStyles.Any` or the current culture.",
+      "why": "The XML Schema lexical space allows no thousands separators, currency symbols or parenthesized negatives, so lenient or culture-sensitive parsing accepts text the declared type does not allow.",
+      "check": "Look for `NumberStyles.Any`, `NumberStyles.Number`, `NumberStyles.Currency`, a missing format provider, or `CultureInfo.CurrentCulture` in claim-value parsing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When encoding a claim whose value doesn't fit its declared type (malformed, out of range, a non-finite `#double`, `JSON`/`JSON_ARRAY` that is malformed or the wrong kind, or an unknown value type), emit the claim's verbatim string value instead of throwing or guessing another type.",
+      "why": "Throwing turns one malformed claim into a failed token issuance. The verbatim string keeps the data, and guessing a different type is nondeterministic.",
+      "check": "Look for exceptions thrown on bad claim content during encoding, for NaN/Infinity written as JSON numbers, for unchecked `JSON` values parsed as raw JSON, or for fallbacks that try other types.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, turn a date or time string into a CLR value through the codebase's shared date-coercion policy (such as a `DateCoercion.TryParseDateTimeOffset` helper) instead of hand-rolling `DateTime.TryParse` or `DateTimeOffset.TryParse`.",
+      "why": "Hand-rolled parsing duplicates the shared policy and drifts from it, so the code accepts different formats and produces different values.",
+      "check": "Look for new `DateTime.TryParse`, `DateTime.Parse`, `DateTimeOffset.TryParse` or `ParseExact` calls on date strings where a shared coercion helper exists.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse an instant from text as `DateTimeOffset`, treating a zone-less value as UTC and keeping an explicit offset, so an out-of-range instant fails instead of being parsed as `DateTime`.",
+      "why": "`DateTime` parsing clamps an out-of-range instant such as `0001-01-01T00:00:00+05:00` to a machine-local value, which gives a wrong instant instead of a failure.",
+      "check": "Look for `DateTime` parsing of offset-bearing or zone-less timestamp text, or for missing `AssumeUniversal`-style handling of zone-less values.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep both directions of a bidirectional value mapping (such as claim value to JSON and JSON to claim value) side by side in one type, cover them with a round-trip test over every input kind, and have every caller go through that type.",
+      "why": "Splitting the two halves of one bijection across files, with neither tested against the other, let them drift. Decoded identities are routinely re-encoded, so the round trip has to be exact.",
+      "check": "Look for a new encoder or decoder that does its own claim-value conversion, or for changes to one direction of the mapper with no matching round-trip test.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map every JSON claim set (validated token payloads, UserInfo responses and so on) to a `ClaimsIdentity` through the single shared claims-identity factory, never with ad-hoc conversion code.",
+      "why": "One shared factory makes one JSON value always give the same `Claim`, wherever the claim set comes from.",
+      "check": "Look for code that loops over JSON properties and builds `Claim` objects directly, outside the shared factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When creating a numeric claim, format its value with `CultureInfo.InvariantCulture` (for example `value.ToString(CultureInfo.InvariantCulture)`).",
+      "why": "Culture-formatted values such as \"1,000\" are not in the declared type's lexical space, so they go out as strings instead of numbers.",
+      "check": "Look for `new Claim(..., value.ToString(), ClaimValueTypes.Integer...)` or string interpolation of numbers without the invariant culture.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use a lenient, opt-in date coercion meant for loosely typed `object` deserialization (such as a `DateString` option on an object JSON converter) in claim-value mapping.",
+      "why": "That coercion is meant for callers who already know the text is a date. Using it in claim mapping would bring back sniffing and rewrite string claims.",
+      "check": "Look for claim-mapping code that reads or applies object-converter date-string options.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

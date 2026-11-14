@@ -1,0 +1,114 @@
+{
+  "hash": "7139be4400801748",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #146",
+  "rules": [
+    {
+      "statement": "A .NET regular expression that validates a whole input value ends with `\\z`, not `$`, so the input can't carry a trailing newline.",
+      "why": "In .NET, `$` also matches before a trailing newline, so a value with a newline suffix passes the check.",
+      "check": "Look for `Regex` patterns, or `[RegularExpression]` patterns, used to validate a whole value (anchored with `^`) that end in `$` without `RegexOptions` that change this.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A regular expression meant to match a single line uses `[ \\t]` and `[^\\r\\n]` rather than `\\s` and `.` where a newline must not match.",
+      "why": "`\\s` matches a newline, and `.` can too depending on options, so a multi-line input can match a pattern meant for one line.",
+      "check": "Look for single-line patterns that use `\\s` between tokens or `.*` when the input may contain line breaks and the options aren't stated.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A presence or existence check treats only an explicit 'not found' result as absent, and reports and stops on any other failure.",
+      "why": "Reading every non-zero exit or exception as 'absent' turns a transient error or missing reference into a silent change in behavior, with no report of why.",
+      "check": "Look for existence probes (process exit codes, file or API lookups) where any failure, catch or non-zero exit is taken to mean the item doesn't exist.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tests for a bounded numeric setting cover the values just inside and just outside each bound, plus non-integer input, and check the fallback for each.",
+      "why": "A loosened pattern such as `\\d+` would let out-of-range values through while tests that cover only one valid and one garbage value stay green.",
+      "check": "When a diff adds or changes range validation for a setting, check that tests cover the minimum, the maximum, one value past each, and a malformed value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A paged API query, such as a GraphQL connection read with `first: N`, checks `pageInfo.hasNextPage` and either fetches the next pages or reports that the result is partial.",
+      "why": "Without the check, items past the first page are left out silently.",
+      "check": "Look for GraphQL or REST list calls with a page size where the code ignores `hasNextPage` or the next-page cursor or link.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't trust an account as a known bot or a privileged user because of its username alone; also require a check the platform enforces, such as its bot-account flag or its access level.",
+      "why": "On hosts like GitLab, anyone can register a matching username and get treated as trusted.",
+      "check": "Look for allowlists that match on a login or username string with no platform-verified bot flag or permission check.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In agent automation, a step built from bot or comment text takes its file list, change and verification command from the code, never from the comment's text; its command uses only the repository's build/test tooling or plain file checks, and the protected paths changed are checked with a diff before pushing.",
+      "why": "Prompt-injected text in a comment can otherwise get arbitrary commands run, or CI and lock files changed, and pushed under the maintainer's credentials.",
+      "check": "Look for automation that turns review-comment text into commands or edits without vetting each step for network access, shell pipes, env or credential reads or copied comment text, or that pushes with no `git diff --name-only` protected-path check.",
+      "scope": "domain",
+      "domain": "agent-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a test uses its own copy of a pattern or constant when the test also asserts that the source contains that exact string.",
+      "why": "The exact-match assertion already ties the test's copy to the source, so parsing the value back out would test the same thing in a roundabout way.",
+      "check": "Before reporting drift between a test literal and the source, look for an assertion that the source contains the literal verbatim.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a separate test of a missing setting's default when an existing test already runs with the setting absent and expects the default, and the code applies defaults the same way for every kind of absence.",
+      "why": "Another case would run the same code path and add no coverage.",
+      "check": "Before reporting an untested default, look for an existing test whose input omits the setting or its whole section, and check whether the code starts every key at its default.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

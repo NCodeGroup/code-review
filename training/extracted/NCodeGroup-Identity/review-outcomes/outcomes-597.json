@@ -1,0 +1,32 @@
+{
+  "hash": "adbd6bf5b69c7005",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #597",
+  "rules": [
+    {
+      "statement": "When a script exits early if nothing is selected, its tests must also cover each non-empty selection branch, including a global trigger that selects everything, and check that the run gets past the early return to the steps after it.",
+      "why": "If the fixtures only cover the empty or no-suite cases, a misordered early return or a dropped selection could let a selected suite report PASSED without running, and the tests would still pass.",
+      "check": "In tests for a selection or gating script, check whether any case selects something: a change that maps to a project, or a global build input that selects everything. Each such case should assert that the run names the selection and reaches the later step, for example a failing prerequisite check stubbed on PATH.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*.tests.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an edit to a file that comes from the project template as an edit to a template-owned file when `.copier-answers.yml` lists that file under `project_owned_files`.",
+      "why": "Files listed under project_owned_files belong to the repository. A template update leaves them alone and only shows the template's changes, so adding local stages to them, such as stages in build/dod.ps1, is intended.",
+      "check": "Before flagging an edit to a template-provided file, look for the file under `project_owned_files` in `.copier-answers.yml` and check what AGENTS.md says about it. Raise the finding only if the file isn't listed.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "build/**",
+        "**/.copier-answers.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

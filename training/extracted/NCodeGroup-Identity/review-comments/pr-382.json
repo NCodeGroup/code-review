@@ -1,12 +1,12 @@
 {
   "hash": "c370d876df751d8b",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #382",
   "rules": [
     {
-      "statement": "A serialization API writes its output to a caller-supplied IBufferWriter<byte> or Utf8JsonWriter instead of returning a newly allocated byte[].",
-      "why": "Returning a byte[] breaks the buffer convention and allocates an array for every call. Writing to a buffer writer lets callers use pooled buffers.",
-      "check": "Look for new public or internal methods that serialize to bytes and return byte[] (for example SerializeToUtf8Bytes or ToArray results) where a buffer-writer overload could be used instead.",
+      "statement": "A method that serializes to UTF-8 (JSON or otherwise) writes into a caller-supplied `IBufferWriter<byte>` (or a `Utf8JsonWriter`) and does not return a freshly allocated `byte[]`.",
+      "why": "Returning a `byte[]` goes against the buffer convention: callers should control where the output goes so no intermediate array gets allocated.",
+      "check": "Look for new public or internal methods that return `byte[]` from serialization, such as `SerializeToUtf8Bytes` or `ToArray()` results, where a buffer-writer overload should be offered instead.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -15,9 +15,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Methods that produce bytes into a buffer writer take the destination as a generic `ref TWriter destination` parameter constrained `where TWriter : IBufferWriter<byte>, allows ref struct`, so ref struct writers are accepted.",
-      "why": "This is the standard producer shape. It lets callers pass stack-only, ref struct buffer writers without boxing.",
-      "check": "Look for new methods that take a plain `IBufferWriter<byte>` output parameter when the generic `ref TWriter ... allows ref struct` form would work. When the plain form is needed, for example to feed a Utf8JsonWriter, the reason should be documented.",
+      "statement": "When code needs a temporary buffer for serialized output, for example to parse it again or feed it to a log or span projection, rent a pooled buffer writer (`BufferFactory.CreatePooledBufferWriter` from `NCode.Buffers`) inside a `using` instead of allocating an array.",
+      "why": "Pooled buffers mean the intermediate step allocates no array.",
+      "check": "Look for intermediate `byte[]`, `MemoryStream.ToArray()` or `ArrayBufferWriter` used only as scratch space between writing and reading serialized data.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -26,9 +26,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Put the input or source parameter first and the output destination (writer, buffer writer, destination span) last in a method signature.",
-      "why": "It keeps signatures consistent with the existing source-first, destination-last APIs such as Decode(ciphertext, ref destination) and CopyPlaintext(source, destination).",
-      "check": "Look for new methods whose first parameter is a Utf8JsonWriter, IBufferWriter, destination span or other output, placed before the input being processed.",
+      "statement": "A method that accepts a buffer-writer destination declares it as a generic `ref TWriter destination` with `where TWriter : IBufferWriter<byte>, allows ref struct`, so that ref-struct writers are supported.",
+      "why": "This is the standard producer shape. It lets callers pass stack-only writers, even when the method has to stage the output internally, for example because `Utf8JsonWriter` can't hold a ref struct.",
+      "check": "Look for new methods that take a plain `IBufferWriter<byte>` parameter as their output destination instead of the generic `ref TWriter … allows ref struct` form.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
@@ -37,9 +37,20 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Parse JSON with JsonElement.Parse instead of JsonDocument.Parse in new code.",
-      "why": "The maintainer wants to stop using the older JsonDocument parsing APIs. JsonElement.Parse returns a value with no document to own and dispose.",
-      "check": "Look for newly added JsonDocument.Parse (or JsonDocument usage generally) in production or test code where JsonElement.Parse would do.",
+      "statement": "Order write and copy method parameters with the source or input first and the destination (writer, buffer writer, output span) last.",
+      "why": "This keeps the codebase consistent with existing APIs such as `Decode(ciphertext, ref destination)` and `CopyPlaintext(source, destination)`.",
+      "check": "Look for new methods whose `Utf8JsonWriter`, `IBufferWriter<byte>`, `Span<byte>` or other destination parameter comes before the value being written.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse JSON with `JsonElement.Parse` rather than `JsonDocument.Parse` in new code.",
+      "why": "The maintainer wants to move off the older JSON parsing APIs. `JsonElement.Parse` leaves no disposable document to own.",
+      "check": "Look for new `JsonDocument.Parse` (or `JsonDocument.ParseValue`) calls in the diff where `JsonElement.Parse` would do.",
       "scope": "general",
       "topic": "text-and-encoding",
       "applies_to": [
@@ -48,9 +59,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Read endpoint information (such as the endpoint name) from HttpContext, for example via HttpContext.GetEndpoint() and IEndpointNameMetadata, instead of passing it as a separate parameter next to the HttpContext.",
-      "why": "The HttpContext already carries the endpoint metadata, so a separate parameter is redundant and can disagree with it.",
-      "check": "Look for methods that take both an HttpContext and an endpoint name or endpoint argument that could be derived from httpContext.GetEndpoint().",
+      "statement": "Don't add a parameter for a value that can be derived from `HttpContext`, such as the endpoint name: derive it inside the method from `HttpContext.GetEndpoint()` metadata (`IEndpointNameMetadata.EndpointName`, else `DisplayName`).",
+      "why": "Passing a value the method can already derive from its context is redundant and lets callers drift from the one rule for deriving it.",
+      "check": "Look for methods that take both an `HttpContext` and a separate endpoint-name (or similar request-derived) argument, or for duplicated helper code that reads endpoint metadata.",
       "scope": "domain",
       "domain": "aspnetcore",
       "topic": "public-api",

@@ -1,0 +1,29 @@
+{
+  "hash": "319120cf59702ea6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #539",
+  "rules": [
+    {
+      "statement": "When removing change narration or planning material from a design or conformance document, keep the design rationale it held (why an approach, strategy or setting was chosen) and restate it in the present tense, unless an ADR already records it and the PR description mentions the removal.",
+      "why": "Deleting planning sections wholesale also loses rationale that isn't change narration, such as why a consent strategy or explicit ids were chosen. It also makes the PR description understate the change.",
+      "check": "Look for deleted doc sections like Goal, Approach or design notes. Confirm that reasons which still apply to current behavior survive in present-tense wording or are recorded in an ADR, and that the PR description mentions any removal.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After editing a wrapped comment or XML doc paragraph, reflow it so its lines fill to the file's wrap width (120 columns) rather than leaving a short line where text was removed.",
+      "why": "A paragraph that ends a line early after an edit drifts from the file's formatting. The maintainer reflowed such summaries to the 120-column width.",
+      "check": "In edited `///` or `//` comment paragraphs, look for a line that stops well short of 120 columns while the next line continues the same sentence.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

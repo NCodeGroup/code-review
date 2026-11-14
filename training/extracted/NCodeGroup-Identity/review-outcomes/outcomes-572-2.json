@@ -1,0 +1,18 @@
+{
+  "hash": "60d342d9408c7ebd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #572",
+  "rules": [
+    {
+      "statement": "When adding an optional (nullable) value to an existing public record, declare it as a nullable `{ get; init; }` property that defaults to null, not as a new positional primary-constructor parameter.",
+      "why": "A new positional parameter changes the record's constructor, so every external caller and serializer that builds the record breaks at compile time and at binary level. An init property keeps existing constructor calls working.",
+      "check": "In a diff to a public `record`, look for a new nullable or optional parameter added to the positional parameter list, which often shows up as tests or call sites now passing `null`. Ask for it to become a nullable init property instead.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

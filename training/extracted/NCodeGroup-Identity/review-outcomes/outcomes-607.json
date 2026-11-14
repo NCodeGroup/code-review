@@ -1,0 +1,84 @@
+{
+  "hash": "93312576c8e00044",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #607",
+  "rules": [
+    {
+      "statement": "In production code, a background loop or watch started for a SignalR (or other long-lived) connection must have its cancellation source linked to the connection's `ConnectionAborted` token, so it can never outlive the connection even if registration races with disconnect.",
+      "why": "Otherwise a watch created after the connection has gone away is never cancelled or disposed, and an orphaned loop keeps polling a backing store for a dead connection.",
+      "check": "Look for per-connection CancellationTokenSources or background tasks created in hub filters/OnConnectedAsync that are only cancelled from OnDisconnectedAsync and are not linked to `Context.ConnectionAborted`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test support host's Program.cs to be composition-only (single UseX/MapX calls): inline middleware and inline probe endpoints that exist only for test assertions are acceptable in hosts under tests/.",
+      "why": "The composition-only Program.cs rule applies to shipping hosts; test support hosts map their probe and counter endpoints inline, matching the suite's other in-process hosts.",
+      "check": "Before reporting inline lambdas or middleware in a Program.cs, check whether the host lives under tests/ and serves only test assertions, and whether sibling test hosts do the same.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/tests/**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that scans captured responses for leaked secrets or tokens must scan every response that has a body (e.g. every non-redirect), not only successful 200 responses.",
+      "why": "Filtering on status 200 lets a non-200 response carrying a token in its body pass unnoticed.",
+      "check": "Look for leak or token scans guarded by a status filter such as `Status: 200` that skips other body-bearing responses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a fixed wait used for a negative check must be derived from the configured interval it depends on (a named multiple of it), not a hard-coded duration.",
+      "why": "A magic delay only approximates the number of cycles that must pass, hides its link to the configuration, and drifts when the interval changes.",
+      "check": "Look for `Task.Delay(TimeSpan.FromSeconds(n))` or similar literal waits in tests whose length implicitly depends on a configured interval.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't drive a fake `TimeProvider` by looping clock advances with real `Task.Delay` polling; gate on the code under test arming its timer (e.g. a `TaskCompletionSource` completed from `TimeProvider.CreateTimer`) and then advance the fake clock once.",
+      "why": "Polling with real delays makes tests depend on wall-clock timing, so they become slow or flaky on loaded CI machines.",
+      "check": "Look for helper loops that call `Advance` on a fake time provider interleaved with real `Task.Delay` calls or real-time timeouts.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't declare a new private constant for an HTTP header name that is already defined elsewhere; use `HeaderNames` from Microsoft.Net.Http.Headers or the shared component that owns the header.",
+      "why": "Spelling the same header name in several places lets the copies drift apart.",
+      "check": "Look for new `const string ...HeaderName = \"...\"` fields duplicating a header available in `HeaderNames` or already declared in a shared helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Extract a long null-conditional member chain used inside a condition into named locals or a small, intention-named private helper.",
+      "why": "Long chains such as `GetHttpContext()?.GetEndpoint()?.Metadata.GetMetadata<T>()` inside an if are hard to read and debug.",
+      "check": "Look for if conditions that reach through three or more `?.` member accesses to compute a boolean.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

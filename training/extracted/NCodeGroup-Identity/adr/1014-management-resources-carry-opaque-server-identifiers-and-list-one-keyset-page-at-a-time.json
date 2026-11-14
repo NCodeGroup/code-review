@@ -1,0 +1,117 @@
+{
+  "hash": "e29db1571a990f8f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1014",
+  "rules": [
+    {
+      "statement": "A create endpoint's request must not accept an identifier for the resource it creates; the server mints the identifier and returns it in the `201` body and the `Location` header.",
+      "why": "Caller-chosen identifiers get tied to every foreign key and reference, so the resource can never be renamed, and every caller has to handle format, validation and collisions. Server-minted identifiers reveal nothing and can't be chosen by a caller.",
+      "check": "Look for create request DTOs or handlers that read an id for the new resource from the body, and for create responses missing the id in the body or the Location header. Names chosen by the creator where the name is the resource (like a tenant name) are the exception.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mint public resource identifiers from the one shared injectable generator (128 CSPRNG bits, Base64Url, no prefix), not with `Guid.NewGuid()` or ad hoc random code.",
+      "why": "When every create path calls one generator, identifier format and entropy change in one place, and a test can replace the generator with a single registration.",
+      "check": "Look for `Guid` used as a resource identifier type, `Guid.NewGuid()`, or local `RandomNumberGenerator` or encoding code that builds resource ids instead of calling the shared crypto service's resource-id generator.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never expose internal surrogate keys (such as database snowflake or identity `Id` columns) in API responses, routes or cursors that a caller can read as an id; expose only the opaque resource identifier.",
+      "why": "A response must never expose a surrogate key. Only the opaque server identifier is a public identity.",
+      "check": "Check response models and mappers for a surrogate `Id` property, and check routes for numeric key parameters.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a parent resource reference from the route, never from the request body.",
+      "why": "The route sets the parent scope and is what authorization and tenant confinement apply to. A body value could contradict it.",
+      "check": "Look for request DTOs on nested endpoints that carry a parent id (owner, tenant, resource server) that the handler uses in place of the route value.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A collection `GET` for a collection that can grow without bound must return one keyset page (`{ items, continuationToken }`), take `cursor` and `limit` query parameters and clamp the limit to a default and a maximum page size. It must not use offset/skip paging or return the whole collection.",
+      "why": "Offset paging skips or repeats rows when the collection changes and gets slower as the offset grows. A keyset page costs the same wherever it sits and stays stable under concurrent writes.",
+      "check": "Look for list endpoints that return unbounded arrays, use `Skip`/`page`/`offset` parameters, or accept a limit without clamping it.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keyset paging must order by the surrogate key, fetch `limit + 1` rows to detect a next page, encode the last key as an opaque Base64Url cursor and treat a malformed cursor as the start of the list instead of failing.",
+      "why": "This keeps every list the same shape and keeps page cost constant. A stale or tampered cursor then restarts the list and can't cause an error.",
+      "check": "Look for paging stores that order by something other than the surrogate key, throw or return 400 on a bad cursor, or reimplement the paging mechanics instead of supplying only an ordered query to the shared base.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize a list request once, at its collection's node or tenant scope with the list operation, never per item.",
+      "why": "The scope sets the authority over the whole collection, and tenant-bound lists are already confined by the persistence query filter. Authorizing per item has drifted from the design.",
+      "check": "Look for list handlers that loop over items calling the authorization service, or that filter results item by item after authorizing.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a list filter only as an explicit query parameter backed by an explicit store method. Don't add a general query protocol (OData, JSON:API filters, arbitrary sort/filter expressions, `IQueryable` exposure).",
+      "why": "General query protocols leak `IQueryable` into the API surface, let arbitrary filters and sorts become a denial-of-service risk, and paginate by offset.",
+      "check": "Look for OData or JSON:API packages, endpoints that accept filter or sort expressions, or `IQueryable` returned from or passed through API layers.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for pagination on a collection that is small and bounded by design (such as an owner's secrets or a resource's scopes); returning such a collection whole is intended.",
+      "why": "The decision deliberately returns bounded-by-design collections whole. Only collections that can grow without bound are paged.",
+      "check": "Before reporting a missing page, check whether the collection has a natural or enforced small bound.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the uniqueness validators and unique indexes on server-minted identifiers; don't remove them because the identifiers are random.",
+      "why": "Validators and unique indexes still assert uniqueness as a safety net, even though the server mints the identifiers.",
+      "check": "Look for migrations or validators that drop a unique index or uniqueness check on a resource identifier column.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

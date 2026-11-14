@@ -1,0 +1,144 @@
+{
+  "hash": "ab86accca67e0466",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1123",
+  "rules": [
+    {
+      "statement": "Never convert a NumericDate or Unix-seconds value with `DateTimeOffset.FromUnixTimeSeconds` or `FromUnixTimeMilliseconds`; use a non-throwing, range-guarded conversion that returns false for a non-finite or out-of-range value.",
+      "why": "These APIs throw `ArgumentOutOfRangeException` outside the representable range, so a caller-chosen value such as a DPoP `iat` of 99999999999999 turns a protocol rejection into an unhandled server error.",
+      "check": "Look for calls to `FromUnixTimeSeconds`/`FromUnixTimeMilliseconds`, or try/catch of `ArgumentOutOfRangeException` around them, on values that come from tokens, proofs or request parameters.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Read a JWT NumericDate (`exp`, `nbf`, `iat`, `auth_time`, DPoP `iat`) so that a fractional number of seconds is accepted and converted at tick precision, not by reading it as a `long` or `int`.",
+      "why": "RFC 7519 §2 allows non-integer NumericDate values, and real clients send them, so an integer-only read rejects valid tokens.",
+      "check": "Look for time claims read with `TryGetInt64`, `GetInt64`, `TryGetInt32` or deserialized into `long`/`int` before conversion to a date.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a NumericDate only from a JSON number, never from a JSON string or through a lenient date accessor that parses date strings.",
+      "why": "A date string is not a NumericDate, and a lenient parser accepts non-NumericDate input and compares an offset-bearing string's local ticks against a UTC clock.",
+      "check": "Look for time claims read via generic `DateTimeOffset` accessors, `DateTimeOffset.Parse`/`TryParse`, or code that accepts `JsonValueKind.String` for `exp`/`nbf`/`iat`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fail token validation when a time claim such as `nbf` or `exp` is present but unreadable or out of range; never treat it as absent.",
+      "why": "Ignoring an unparseable `nbf` lets a token be used early and ignoring an unparseable `exp` lets it never expire, so the validator fails open.",
+      "check": "Look at validators where a failed parse of a time claim falls through to the same branch as a missing claim.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an invalid or hostile value sent by a remote party fail with the endpoint's own protocol error (such as `invalid_dpop_proof`, `invalid_client`, `invalid_request`), never with an unhandled exception that becomes a server error.",
+      "why": "A remote party controls these values, so a throwing conversion lets any caller trigger a server error rather than a defined rejection.",
+      "check": "Look for parsing or arithmetic on untrusted claim or parameter values that can throw without being mapped to the protocol error response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a margin or lifetime to a `DateTimeOffset` taken from untrusted input, saturate at `DateTimeOffset.MaxValue` rather than letting the addition overflow and throw.",
+      "why": "A value near the top of the range, such as a client assertion `exp`, overflows when a replay-retention margin is added.",
+      "check": "Look for `DateTimeOffset.Add`/`+ TimeSpan` on externally supplied times with no saturation guard.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a whole number sent by a remote party (such as `expires_in`) with a reader that accepts any JSON-number form of a whole value (`60`, `60.0`, `6e1`) and refuses a non-zero fraction, a value outside the target range, a JSON string and any non-number, never with `JsonElement.TryGetInt32` or the serializer's default `int` handling.",
+      "why": "JSON has one number type and a sender may write 60 as `60.0`, which `TryGetInt32` and default `int` deserialization reject, failing a successful response.",
+      "check": "Look for `TryGetInt32`/`GetInt32` or plain `int`/`int?` members without a whole-number converter on values parsed from a remote party's JSON response or request.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test whether a JSON number is a whole value using `decimal` (`TryGetDecimal` and `decimal.Truncate`), not `double`.",
+      "why": "Binary rounding makes a `double` read `60.0000000000000001` as 60, accepting a value that is not a whole number.",
+      "check": "Look for `TryGetDouble`/`GetDouble` followed by a `Math.Floor`/`Truncate` or equality check to decide integrality.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not round or truncate a fractional count (such as a lifetime in seconds) a remote party sends; reject it instead.",
+      "why": "Rounding or truncating invents a value the remote party never stated.",
+      "check": "Look for `Math.Round`, `Math.Floor`, casts to `int` or `Convert.ToInt32` applied to a received fractional number.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a pushed authorization response whose `expires_in` is not a positive whole number.",
+      "why": "The lifetime must be a positive count of seconds, and a value below decimal precision reads as 0, which must be refused.",
+      "check": "Look at PAR response handling for an `expires_in` read that does not check for a positive value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a parsing rule several packages need in one shared reader that they all reference, rather than a private copy in each package.",
+      "why": "Per-package copies duplicate one rule and leave the policy scattered, relying on every site to remember the guard.",
+      "check": "Look for new private helpers that reimplement NumericDate or whole-number parsing alongside an existing shared reader.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a new, separately named accessor for stricter or broader parsing instead of changing what an existing shared accessor (such as a generic `TryGetValue<int>`) accepts.",
+      "why": "Widening an existing accessor silently changes the result for every existing caller.",
+      "check": "Look for diffs that change the accepted inputs of an existing widely used parsing accessor.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

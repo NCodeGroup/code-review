@@ -1,0 +1,136 @@
+{
+  "hash": "97f2e9bc99763d00",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1093",
+  "rules": [
+    {
+      "statement": "Keep the stable internal principal id as the subject for every internal record and lookup (grants, consent, sessions, revocation, principal resolution), and apply a pairwise pseudonym only to the `sub` value emitted to a client.",
+      "why": "Grants, consent, sessions and revocation are cross-client joins keyed by the stable id. Putting the pseudonym in its place breaks those joins, such as 'revoke everything for this user'.",
+      "check": "Look for code that persists, keys or looks up grants, consent, sessions or revocation by a pairwise `sub`, or that writes the projected value back into the authenticated subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a pairwise `sub` with a deterministic, stateless, one-way hash over the sector, principal id, tenant id and an optional secret salt. Join the inputs with a separator that cannot appear in any component, and don't persist a mapping from pseudonym to principal.",
+      "why": "A pure function always gives the same pseudonym for the same (sector, principal) pair without storage. A stored reverse map would keep exactly the link pairwise exists to hide, and an ambiguous join could let two different input sets produce the same hash.",
+      "check": "Look for pairwise derivations that use random or time-varying input, that concatenate inputs with no unambiguous separator, or that add a table, entity, store or migration mapping pseudonyms back to principals.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never try to reverse a pairwise `sub` presented back to the server. Get the stable subject from server-side state (such as the session at end session), and refuse operations like token exchange whose only subject is a pairwise `sub` that doesn't resolve.",
+      "why": "The derivation is one-way and nothing is stored, so a pseudonym can't be resolved to a principal. Treating it as a principal id would be wrong or would need a forbidden reverse map.",
+      "check": "Look for code that resolves an inbound token's `sub` as a principal id without considering that it may be a pairwise pseudonym, or that tries to look up or invert pseudonyms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the subject projection at every place a client-facing `sub` is emitted (ID token, access token, back-channel `logout_token`, token introspection), and have UserInfo echo the access token's projected `sub` instead of computing its own.",
+      "why": "Every emitted `sub` must be pairwise so that relying parties and resource servers can't correlate users across sectors, and the UserInfo `sub` must equal the ID token's.",
+      "check": "Look for a new or changed issuance or response path that writes the raw principal id as `sub`, or that skips the projection service.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve a pairwise sector as OpenID Connect Core §8.1 requires: use the host of `sector_identifier_uri` when it is set, otherwise the common host of the `redirect_uris`, otherwise fall back to the `client_id` rather than failing at issuance.",
+      "why": "The fallback treats a client with absent or ambiguous redirect hosts as its own sector, so it still gets a stable, non-correlatable `sub` instead of an error.",
+      "check": "Look at sector-resolution code for a wrong precedence order, or for throwing or returning an error when the redirect hosts are absent or ambiguous.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client registers a `sector_identifier_uri`, require an absolute `https` URI, fetch the document, require it to be a JSON array of strings, and verify that every registered redirect URI appears in it by ordinal match. Reject a failure with `invalid_client_metadata` on both create and update registration.",
+      "why": "Sector membership must be vouched for by whoever controls the document. Otherwise a client could claim another party's host as its sector and correlate or impersonate that sector's pseudonyms.",
+      "check": "Look for registration paths that accept a `sector_identifier_uri` without fetching and checking it, that allow non-https, that compare URIs case-insensitively or by prefix, or that validate on POST but not on PUT.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At registration, refuse a pairwise client whose `redirect_uris` span more than one host and that has no `sector_identifier_uri`.",
+      "why": "OpenID Connect Core §8.1 requires a `sector_identifier_uri` in this case, because otherwise the sector is ambiguous.",
+      "check": "Check that registration metadata validation rejects `subject_type=pairwise` with multi-host `redirect_uris` and no `sector_identifier_uri`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send every server-side fetch of a caller-supplied URL through the shared guarded outbound HTTP client. That client resolves the address and pins the connection away from private, loopback and link-local addresses, and it follows no redirects. Never make that block a setting that can be turned off.",
+      "why": "A fetch of a client-supplied URL is an SSRF sink that could reach cloud metadata or internal hosts. The private-address block is the non-negotiable floor.",
+      "check": "Look for `HttpClient` or `IHttpClientFactory` calls on URLs that come from callers or registrations and bypass the guarded client, for redirects being enabled, or for an option that disables the private-address block.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't guard against SSRF by checking only the URL's host string for private addresses. Resolve the address and pin the connection to the checked address.",
+      "why": "A hostname can resolve to a private address (DNS rebinding) and an IP literal can be obfuscated, so only a check that resolves and then pins is robust.",
+      "check": "Look for SSRF checks that parse `Uri.Host` or match IP strings without resolving the address and connecting to that same address.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound every fetch of a caller-supplied document with a timeout and a maximum response size, and read the body through a capped reader (such as `IOutboundHttpContentReader.ReadCappedAsync`) rather than buffering it without a limit.",
+      "why": "Untrusted callers can reach the fetch, so a slow or huge response must not tie up or exhaust the server.",
+      "check": "Look for outbound fetches of caller-supplied URLs that read the body with `ReadAsStringAsync` or `ReadAsByteArrayAsync`, or that have no timeout or size cap.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep extracting the stable subject from an inbound principal and projecting it to a client-facing pseudonym as two separate, distinctly named methods. Neither calls the other, and neither is treated as the other's inverse.",
+      "why": "The projection is one-way, so the two operations aren't inverses. Distinct names keep call sites unambiguous.",
+      "check": "Look for a projection method used where the stable subject should be extracted (or the reverse), for one method calling the other, or for a name suggesting they round-trip.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

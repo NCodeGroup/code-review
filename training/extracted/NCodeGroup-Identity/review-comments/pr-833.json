@@ -1,0 +1,18 @@
+{
+  "hash": "709da56dd1382f91",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity review of #833",
+  "rules": [
+    {
+      "statement": "When a boolean property or method such as `IsConfigured` guarantees that a nullable member is non-null when it returns true, annotate it with `[MemberNotNullWhen(true, nameof(Member))]` so callers can read the member directly after the check, without null-forgiving operators or a second null check.",
+      "why": "The maintainer asked for the not-null-when attribute so the compiler's nullable analysis knows the guard's guarantee, and callers can read the value directly once the guard is true.",
+      "check": "Look for nullable properties on options or other classes that sit next to a guard property or method that checks them. Report it when the guard has no `[MemberNotNullWhen]`/`[NotNullWhen]`, or when callers use `!` or check for null again after the guard.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

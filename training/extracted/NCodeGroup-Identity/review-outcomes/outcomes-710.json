@@ -1,0 +1,119 @@
+{
+  "hash": "bc3432af1d33d9fd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #710",
+  "rules": [
+    {
+      "statement": "When a library middleware rewrites responses by path prefix, so it also changes responses from the host's own endpoints under that prefix, state that reach in the middleware's XML summary, the decision record and the changelog.",
+      "why": "Otherwise a host's own endpoints quietly start returning a different error shape after an upgrade, and nothing in the package's surface signals the change.",
+      "check": "Look for middleware that matches on a path prefix rather than on endpoint metadata. Then check that its summary and the changelog say it affects every endpoint under that prefix, and how a host keeps its routes out of it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG*.md",
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an endpoint filter's `Response.StatusCode >= 400` guard for failed binding as unreachable: with `RouteHandlerOptions.ThrowOnBadRequest` off, minimal APIs set 400 on a binding failure and still run the filter pipeline, though not the route handler.",
+      "why": "The maintainer confirmed that minimal APIs bind before running filters, so the guard does fire, and a test with a non-throwing host shows it.",
+      "check": "Before flagging such a guard as dead, check whether the host can run with ThrowOnBadRequest off, and whether a test sends a value that fails to bind.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report as unfounded a comment saying `RouteHandlerOptions.ThrowOnBadRequest` is on in Development: ASP.NET Core's default `ConfigureRouteHandlerOptions`, which `AddRouting` registers, sets it to true when `IHostEnvironment.IsDevelopment()` is true.",
+      "why": "The framework sets it itself, so the repository doesn't need code that sets it for the claim to hold.",
+      "check": "Before flagging the claim, recall the framework's default options setup rather than searching the repository for an assignment.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A helper method that is installed as an endpoint's `RequestDelegate` may return `Task` and take no CancellationToken, but make it private and say in its XML doc that it is the body of the delegate.",
+      "why": "Matching the framework's delegate signature is what justifies `Task` without a token. Making it private and documenting it keeps it from looking like an async helper that breaks the ValueTask-and-token convention.",
+      "check": "Look for a non-private `Task`-returning method without a token that only wraps or forms a RequestDelegate. Ask for it to be private and documented, and for its tests to run through the method that installs it.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define the HTTP error status range (400–599) once, in a shared helper with named bounds, and use that helper everywhere code tests whether a status is an error, rather than repeating literal bounds such as 599 or 600.",
+      "why": "`StatusCodes` has no constant for the upper bound, and one shared definition keeps components such as middleware and OpenAPI transformers from disagreeing about the range.",
+      "check": "Look for range checks on status codes with bare numeric bounds, or with separate per-file constants, where a shared error-status helper exists or should exist.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `StatusCodes` constants in place of status-code strings that are keys in an OpenAPI document's responses: they stay strings because they are the document's keys.",
+      "why": "The maintainer applied the StatusCodes-constant convention to numeric comparisons only, and kept the OpenAPI response keys as strings.",
+      "check": "Before flagging a status-code literal, check whether it is a numeric comparison (use a constant) or an OpenAPI response key string (leave it).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a private sealed nested stub that only one test file needs out of that test class: the test conventions prescribe nesting it there.",
+      "why": "The test conventions file exempts single-file test stubs from the no-nested-types rule.",
+      "check": "Before reporting a nested type in a test class, check whether more than one test file uses it, and what the test conventions say about stubs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test-support helper or a declaration walk mirrors a production decision rule, make it follow the same rule as production, and add unit tests for each branch where the two could differ.",
+      "why": "A difference between the production logic and its test-support copy lets a regression pass unnoticed. Here, one counted required string parameters and the other ignored them.",
+      "check": "Compare test-support predicates with the production predicates they mirror, and look for theory cases covering each branch: parameter types, required versus optional, and each default case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put host-factory setup and credential constants that several integration test classes repeat into one shared factory in the test infrastructure folder, rather than copying them into each class.",
+      "why": "Copies drift apart, and changing the configuration means editing several places.",
+      "check": "Look for new test classes that copy an existing `CreateFactory()`, configuration block or client-credential constants instead of using a shared factory.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a comment on a guard branch state the actual condition under which the branch runs, and add a test that reaches the branch through that real path rather than by setting the state by hand.",
+      "why": "A guard whose only test sets the status manually looks like dead code with a misleading comment. A test on the real path proves it can be reached.",
+      "check": "For guard branches in filters or middleware, check that the comment names the triggering condition, and that a test produces that condition end to end.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

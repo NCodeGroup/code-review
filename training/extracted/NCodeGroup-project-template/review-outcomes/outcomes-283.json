@@ -1,0 +1,85 @@
+{
+  "hash": "90a0acb31e215322",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #283",
+  "rules": [
+    {
+      "statement": "In a PowerShell script, check `$?` and `$LASTEXITCODE` after each external or native command whose failure matters, and throw a message naming the failed command and its key arguments; print a success message only after every such command has passed.",
+      "why": "Native commands and scripts that report failure only through an exit code or a non-terminating error otherwise let the script report success, and the problem shows up later as a confusing missing-tool symptom.",
+      "check": "Look for PowerShell scripts that call external tools (installers, version managers, CLIs) and then print a success line without checking `$?`/`$LASTEXITCODE` in between.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for changelog entries to move under `[Unreleased]` when the repository cuts the dated version section in the feature PR itself.",
+      "why": "Some repositories version in each feature PR: the plan names the release version, the shipping step tags it and renumbers it if another plan lands first, so a dated section in the PR is intended.",
+      "check": "Before reporting, look at earlier changelog sections (e.g. previous versions written with the same date in their own PRs) and any plan `Release:` line naming the version.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a changelog bullet that records a test-only change to be dropped when the changelog already records test-only changes in that style.",
+      "why": "The changelog keeps a complete history by recording test-only changes with a bullet such as \"No change for projects made from the template.\"",
+      "check": "Before reporting, search earlier changelog versions for bullets of the same style describing test-only changes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A changelog entry must describe the exact scope of what the change delivers and say which parts are still limited, without claiming effects the code doesn't yet have.",
+      "why": "Users who read an overstated entry expect behavior (such as CI setup) that the change doesn't provide.",
+      "check": "Compare each changelog claim against the diff, for example checking whether CI or other gated paths really changed as the entry says.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change makes an existing architecture decision record's statement untrue, amend that ADR in the same change so the ADRs don't contradict each other.",
+      "why": "Otherwise two ADRs give conflicting accounts of the same behavior.",
+      "check": "For behavior changed in the diff, search the existing ADRs for statements about the old behavior that weren't updated.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an ADR in a PR to link issues for deferred work when the workflow files those issues from the PR's Follow-ups section after the plan lands; describing the gap in prose is enough.",
+      "why": "The follow-up issues don't exist yet when the PR is reviewed; the shipping step creates them after merge.",
+      "check": "Before reporting, check whether the PR description has a Follow-ups section covering the deferred work.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask scripts that must each run standalone to share duplicated logic through a common file; instead, make sure each copy carries a header note naming the other scripts that carry the same text.",
+      "why": "The scripts have to run on their own, with no profile and no shared file, so duplication is deliberate, and the header note keeps a later edit from leaving the other copies stale.",
+      "check": "For duplicated lookup or install logic across standalone scripts, check whether each script's header points to the other copies, not whether the logic was consolidated.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

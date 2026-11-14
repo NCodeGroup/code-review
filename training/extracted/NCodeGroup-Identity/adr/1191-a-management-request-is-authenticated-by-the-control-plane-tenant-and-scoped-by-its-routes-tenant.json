@@ -1,0 +1,103 @@
+{
+  "hash": "f12f47a50862c1e2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1191",
+  "rules": [
+    {
+      "statement": "Authenticate a management (control-plane) API request against the tenant that issued the caller's token, the control-plane tenant, and never against a tenant resolved from the request's host or path.",
+      "why": "Token validation runs against the tenant in the context it is given. A host- or path-resolved tenant may be missing, or may be a workload tenant that did not issue the token, and it changes with the hosting strategy.",
+      "check": "Look for management endpoints, filters or authorization handlers that build or read the request's tenant/OpenID context from host or path resolution instead of from a control-plane context factory, or that accept workload-tenant tokens.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Open the persistence tenant scope for a tenant-bound management route from the route's tenantId value, not from the protocol-resolved current tenant, and return a not-found problem when the route has no tenantId.",
+      "why": "The scope then comes out the same under every hosting strategy and does not collide with the resource's own tenantId. The query filter also fails closed, so a handler that forgets to filter still reads only that tenant.",
+      "check": "Look for tenant-bound management routes that are not nested under a group which opens the ambient tenant scope from the route value, or that take the scope from the resolved request tenant, or that go on without a scope when tenantId is missing.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the same route tenantId for both the data scope and the tenant node that authorization evaluates on a management route.",
+      "why": "When one value drives both, the data scope and the caller's authority cannot diverge.",
+      "check": "Look for management handlers or authorization requirements that take the authorization node from a different source (body, query, resolved tenant) than the tenant that scopes the data.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a tenant-bound resource's owning tenant on create from the route, never from the request body.",
+      "why": "The route's tenant is the one the caller was authorized at and the one that scopes the data. A tenant ID in the body could create rows in another tenant.",
+      "check": "Look for create endpoints or DTOs that read a tenantId from the request body and use it to set the new row's owning tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a management operation runs protocol machinery (token issuance, validation, key use) in the addressed tenant, create that tenant's own context for it instead of reusing the control-plane context that authenticated the request.",
+      "why": "The control-plane context belongs to the security domain that authenticates the caller. Protocol work for the addressed tenant must run in that tenant's own context.",
+      "check": "Look for management handlers that pass the request's control-plane context into protocol services meant to act for the route's tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't open a tenant scope on management routes that act on unscoped platform, team or tenant rows themselves (tenant list, a tenant row's settings, secrets, keys, owners and admins, current-user and capabilities routes).",
+      "why": "Those routes act on rows that no tenant query filter covers, and the routes sit on the root group, outside the tenant-scoped group.",
+      "check": "Look for platform, team or tenant-row routes added under the tenant-scoped group, or an added scope filter on them.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A custom tenant strategy that overrides how the control-plane tenant is named must also override how it is resolved, so the two stay consistent.",
+      "why": "One member names the control-plane tenant from configuration and the other resolves it. Overriding only one lets them disagree.",
+      "check": "Look for ITenantStrategy implementations that override only one of the control-plane members (GetControlPlaneTenantId / ResolveControlPlaneTenantAsync).",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the control-plane tenant ID from configuration alone, without a store read, and probe the shared tenant cache with that ID before any store read. On a miss, materialize the tenant through the same provisioning pipeline that request tenants use.",
+      "why": "A tenant reached through the management API and through its own address then shares one cache entry and is seeded the same way.",
+      "check": "Look for control-plane tenant lookups that read the store before checking the cache, or that build the tenant through a separate path instead of the shared request-tenant creation pipeline.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

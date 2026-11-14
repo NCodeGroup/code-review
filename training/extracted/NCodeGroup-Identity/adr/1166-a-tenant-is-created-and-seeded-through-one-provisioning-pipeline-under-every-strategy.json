@@ -1,0 +1,102 @@
+{
+  "hash": "092915b38e55e0c8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1166",
+  "rules": [
+    {
+      "statement": "A tenant seed contributor (a handler in the seed fan-out) must be idempotent, checking for existing data before writing, so that re-seeding an existing tenant on a later cache miss or deploy never duplicates or breaks data.",
+      "why": "Every cache miss re-runs the contributors for the root tenant and the resolved tenant so tenants get reconciled. A contributor that isn't idempotent corrupts tenants that already exist.",
+      "check": "Look at new or changed seed command handlers that insert data without first looking up whether it already exists, or that fail when it does.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seed contributor must enlist in the shared unit of work it is given and must never open its own unit of work or call save/commit; the coordinator commits the seed once.",
+      "why": "Seeders that each open or commit their own unit of work spread one seed over several transactions, so a partial failure leaves a half-seeded tenant.",
+      "check": "Look for seed handlers that create a new store manager or unit of work, or that call SaveChanges/commit on the shared one.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seed contributor that changes the tenant's settings or secrets must update the seed context's working copy of the tenant, so the contributors that run after it see the change before the commit.",
+      "why": "The contributors that run later read the tenant from the context. A change made only in the store is invisible to them.",
+      "check": "Look for seed handlers that write tenant settings or secrets through the store without assigning the updated tenant back to the seed context.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Side effects that must happen only after a seed commits go through the seed context's run-after-commit registration, not inline in the contributor.",
+      "why": "A seed that loses its commit to a concurrent seed is retried with a fresh context, and the discarded attempt's post-commit steps must never run.",
+      "check": "Look for seed handlers that publish announcements, send messages or do other external work directly instead of registering it to run after commit.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seeder that targets specific tenants (a bootstrap admin, development or conformance seeder) must seed exactly the tenant its required configuration names, and must never fall back to every tenant or to a default tenant when none is configured. Startup validation fails when the setting is missing.",
+      "why": "Falling back to every tenant gave each tenant created at runtime a client whose tokens carry GlobalAdmin, a well-known administrator, or the conformance suite's credentials. A default that changes silently with the strategy is the same kind of guess.",
+      "check": "Look for seeder options whose tenant id is optional or defaulted, or for logic that loops over all tenants when no tenant id is configured, and check that an options validator requires the setting.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a write whose concurrency tokens the save pipeline regenerates, return or materialize the row read back after the commit, not the pre-write copy or a working copy patched with tokens.",
+      "why": "An interceptor regenerates the row token during save, outside any store method. A pre-write copy carries stale tokens, which break ETags, revalidation and polls that compare them.",
+      "check": "Look for code that returns, caches or uses as an ETag source an entity read before its seed or update committed, instead of the row read after the commit.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tenant creation and seeding go through the single provisioning coordinator under every resolution strategy. Do not add a strategy-specific or one-off seeding path, and add new seed data as a registered seed command handler.",
+      "why": "Separate seeding mechanisms produced inconsistent lifecycles, coupled seeding to one strategy, and left existing tenants unreconciled.",
+      "check": "Look for code that seeds tenant data on tenant creation outside the provisioner and the seed command fan-out, for example inside a resolution strategy or a hosted service.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A tenant resolution strategy must never create a tenant that configuration does not define. A request for an unknown tenant is answered 404, and other tenants are created only through the management API.",
+      "why": "Creating tenants on resolution would let a path request for an unknown tenant create it.",
+      "check": "Look for resolution code that creates a tenant when the lookup misses, for anything other than the configured root or static tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

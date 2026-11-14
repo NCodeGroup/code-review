@@ -1,0 +1,73 @@
+{
+  "hash": "41d645529014dfe5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1190",
+  "rules": [
+    {
+      "statement": "Take a hash algorithm as `System.Security.Cryptography.HashAlgorithmName`, not as a library-defined enum or a closed set of algorithm members.",
+      "why": "The set of hash algorithms is open. The framework already owns that vocabulary, as RSA, ECDsa and PBKDF2 show. An enum makes every new algorithm a library change and can encode the digest length in its ordinal.",
+      "check": "Look for new or changed hashing APIs whose algorithm parameter is an enum or a custom algorithm type instead of `HashAlgorithmName`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a digest for a `HashAlgorithmName` with `CryptographicOperations.HashData`/`TryHashData` and take the digest length from the framework, rather than switching over algorithms or keeping your own algorithm registry.",
+      "why": "That way every algorithm the framework implements works without a library change, SHA-384 and SHA-3 included, and an unknown name fails with the framework's `CryptographicException`. A second registry repeats the framework and can drift from what it supports.",
+      "check": "Look for a `switch` or a dictionary over algorithm names that picks SHA256/SHA512 classes, for digest lengths that are hard-coded or derived from an ordinal, and for a library-owned registry of hash algorithms.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an open set of binary-to-text encodings as a string name plus a registered strategy interface whose `Name` property is that name. Register the built-in strategies with `TryAddEnumerable`, so that a package adds an encoding by registering another strategy.",
+      "why": "The set of encodings is open: Base32 is needed for TOTP secrets and human-typed codes. With registered strategies, adding one needs no library change.",
+      "check": "Look for an enum or a `switch` of encodings such as base64url, base64 or hex. Also look for encoder strategies registered with `AddSingleton` instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a service resolves named strategies from an injected collection, build an ordinal name-to-strategy map in its constructor. Throw `InvalidOperationException` when a name is registered twice, and reject an unregistered name with an `ArgumentException` whose message names it.",
+      "why": "Resolving through the registered collection keeps a single place that validates the set. Duplicate registrations are configuration errors, and an unknown name is a caller error.",
+      "check": "Look at how a strategy is looked up by name. Flag a linear search on every call, a comparison that is not ordinal, a silent first-wins or last-wins choice on duplicates, and a missing name that throws a generic exception or one that doesn't name it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an API take the name of an open-vocabulary strategy, such as an encoding, rather than a strategy instance, and resolve the name through the registered collection.",
+      "why": "Settings and stored records carry a name. Resolving it through the registered collection keeps one place that validates the set.",
+      "check": "Look for public methods that take an encoder or strategy instance where callers would have a configured or persisted name.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a mock matches a `HashAlgorithmName` argument, use value equality on `HashAlgorithmName`, and match an encoding argument by its name.",
+      "why": "`HashAlgorithmName` is an open value type compared by its name, and encodings are identified by their string names.",
+      "check": "Look for mock setups that match on reference identity, or that convert the algorithm into some other key, instead of comparing `HashAlgorithmName` values or encoding names.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

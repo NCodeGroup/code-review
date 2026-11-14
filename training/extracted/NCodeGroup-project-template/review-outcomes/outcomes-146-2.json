@@ -1,0 +1,45 @@
+{
+  "hash": "3041e6716d3dcbbb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #146",
+  "rules": [
+    {
+      "statement": "When automation compares the files changed in a range against a protected or allow-listed path set, run `git diff --no-renames --name-only` (or `--name-status`) so a rename lists both the old and the new path.",
+      "why": "By default git diff can detect renames and `--name-only` then prints only the new path. Moving a protected file such as a CI workflow or manifest to an unprotected path would get past the check.",
+      "check": "Look for `git diff --name-only` (or `git log --name-only`) whose output is matched against protected or allowed paths and has no `--no-renames` or `--name-status`; that applies to every copy of the check.",
+      "scope": "domain",
+      "domain": "git-automation",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.yml",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a pattern or rule has no mechanical test until you have read the test suite for it: the suite may already pin the exact string and match it against sample inputs.",
+      "why": "The maintainer declined such a finding because the test script already required the exact pattern in every file and matched it against positive and negative sample inputs.",
+      "check": "Search the repository's test scripts for the pattern or rule text and for sample inputs matched against it before you raise a missing-test finding.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a mismatch between the pull request description and the code when the code reflects a deliberate change requested in an earlier review round, and don't ask an automated run to edit the PR description.",
+      "why": "The shipped code was a tightening the maintainer asked for, and the PR description is the maintainer's to update, not the automated run's.",
+      "check": "Before you report a description/code mismatch, check the earlier review threads on the PR for a requested change that explains the difference.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

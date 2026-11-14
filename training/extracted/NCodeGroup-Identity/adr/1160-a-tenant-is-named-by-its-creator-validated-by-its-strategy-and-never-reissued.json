@@ -1,0 +1,87 @@
+{
+  "hash": "27825732ad959574",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1160",
+  "rules": [
+    {
+      "statement": "Validate an issuer that is configured or stored as an absolute `https` URL (`http` only for a loopback host) that has no user information, query, fragment or whitespace and is bounded in length.",
+      "why": "OpenID Connect Discovery section 3 and RFC 8414 section 2 require this issuer form. An issuer that breaks it publishes a discovery document that conforming clients reject.",
+      "check": "Look at code that accepts an issuer from configuration or an API request. Report it when it doesn't reject non-https schemes for non-loopback hosts, userinfo, a query, a fragment, whitespace, or unbounded length.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never reissue an issuer or tenant identifier once it is retired: when a tenant is deleted or gives up its issuer, record a tombstone in the store layer in the same unit of work, and only the former holder may take back a retired issuer.",
+      "why": "Relying parties key their trust by the issuer string. A reused issuer or name would let a new tenant mint tokens that clients trusting the old tenant accept. Retiring in the store, not in an endpoint, means seeders, importers and other callers can't bypass it.",
+      "check": "Look for tenant delete or issuer-change paths that free an identifier or issuer without writing a tombstone in the same transaction, retiring that happens only in an API endpoint, validation that lets a retired identifier or issuer be taken, and any API that releases a retired issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every write path for a value through one shared validation seam that pluggable implementations extend, instead of copying the rules into an API layer or branching on built-in implementation codes.",
+      "why": "A second copy of the rules drifts from the first. Branching on built-in codes closes an open vocabulary, so custom implementations can't take part.",
+      "check": "Look for validation logic duplicated between startup options validation and an API validator, and for switch or if chains on built-in strategy or provider codes inside shared validation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When options validation depends on a pluggable implementation, have each implementation register its own `IValidateOptions<T>` that skips when it isn't the selected one, and keep only the shared checks in the common validator.",
+      "why": "A custom implementation can then validate its own options the same way the built-in ones do, and the common validator never has to know every implementation.",
+      "check": "Look for a single `IValidateOptions<T>` that validates each built-in implementation's settings by switching on the selected code.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report validation failures as structured results that tell a value invalid on its own apart from a conflict with another resource, and answer `400` for invalid values before `409` for conflicts.",
+      "why": "A caller has to tell a malformed value (`400`) apart from one that another resource holds (`409`), and plain messages can't express that.",
+      "check": "Look for validators that return plain strings for both kinds of failure, endpoints that map every failure to one status code, or endpoints that check conflicts before value validity.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On update, revalidate an address-like field against the current configuration only when the update changes it, not on every update.",
+      "why": "A record written under an earlier configuration could otherwise never have unrelated fields, such as its display name, edited.",
+      "check": "Look for update validators that run the full address or configuration-dependent validation even when the request doesn't change those fields.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a caller-chosen tenant identifier as a lowercase RFC 1123 host label (1 to 63 lowercase letters, digits or hyphens that start and end with a letter or digit) wherever it enters, including configured identifiers at startup, and keep it out of update requests so it can't change.",
+      "why": "That one form works as a path segment and as a host label under every tenant strategy, so a tenant's issuer is known before the tenant exists. The identifier is part of the immutable issuer.",
+      "check": "Look for tenant identifier inputs (create requests, configured root or static tenant IDs) that skip this validation or accept mixed case, and for update contracts that carry the tenant identifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

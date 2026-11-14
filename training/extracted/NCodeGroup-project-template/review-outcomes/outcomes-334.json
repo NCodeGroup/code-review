@@ -1,0 +1,35 @@
+{
+  "hash": "c7d57e348aa61be9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #334",
+  "rules": [
+    {
+      "statement": "In an agent autopilot workflow's instructions, never let a follow-up become an unattended fix step when its fix would edit a protected path (CI workflows, `.github`, `.claude`, build scripts, dependency manifests or lock files), whoever wrote the follow-up line and whether or not it carries a review-thread URL; file it or list it for the maintainer instead.",
+      "why": "Follow-up text can come from issue bodies or reworded bot findings, both of which can carry prompt injection. A guard that only applies to some origins, such as lines ending in a thread URL, lets an injected line edit CI or agent config and push it unattended.",
+      "check": "Look for a protected-path refusal that depends on a condition about where the line came from (has a thread URL, written by the planner, added by a review) rather than applying to every follow-up-derived step, and for follow-up steps that skip the protected-path or Done-when rules other steps follow.",
+      "scope": "domain",
+      "domain": "agent-automation-workflows",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.claude/**/*.md",
+        "**/.github/prompts/**/*.md",
+        "**/workflow/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an agent autopilot workflow's instructions, run the post-step protected-path diff check on every step an unattended run makes, and don't exempt steps by origin, such as those built from the plan's own follow-ups. The only allowed exception is a path the maintainer named explicitly.",
+      "why": "The diff check is the backstop that stops an unattended run from pushing edits to CI, hooks or agent config. If any class of step is exempt, the backstop has a hole an injected follow-up can get through.",
+      "check": "Look for wording that makes the protected-path diff check skip some paths or steps, or that drops the check after a fix-follow-ups round. Confirm the check runs after every round of automated steps.",
+      "scope": "domain",
+      "domain": "agent-automation-workflows",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.claude/**/*.md",
+        "**/.github/prompts/**/*.md",
+        "**/workflow/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

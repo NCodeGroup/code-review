@@ -1,0 +1,47 @@
+{
+  "hash": "f5b383e810c244f5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1084",
+  "rules": [
+    {
+      "statement": "A browser OAuth/OpenID Connect client or flow explorer offers only the authorization-code flow with PKCE `S256`; implicit, hybrid front-channel-token and resource-owner password flows must not be selectable.",
+      "why": "A tool that can emit implicit, hybrid or password flows normalizes insecure patterns and contradicts the OAuth 2.1 / RFC 9700 security-practice default.",
+      "check": "Look for response_type values containing `token` or `id_token` without `code`, `grant_type=password`, PKCE `plain`, or UI options that let a user pick those flows.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A frontend app gets its OAuth client id from the run-time bootstrap endpoint, never from a build-time value such as an environment variable baked into the bundle.",
+      "why": "The client id is a deployment coordinate; a build-time value breaks the 'one bundle, every tier' invariant.",
+      "check": "Look for client ids read from `import.meta.env`, `process.env`, Vite `define` constants or hard-coded literals in frontend app code.",
+      "scope": "domain",
+      "domain": "frontend-web",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep protocol flow orchestration and audit or classification logic in UI-free, framework-free modules with their own unit tests, and compose them from the shared auth primitives rather than embedding them in components.",
+      "why": "Pure, unit-tested logic makes a status or flow change a signal rather than noise and keeps the logic reusable outside the UI.",
+      "check": "Look for PKCE, token-exchange, discovery-audit or classification logic written inside UI components, or new logic modules added without accompanying unit tests.",
+      "scope": "domain",
+      "domain": "frontend-web",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

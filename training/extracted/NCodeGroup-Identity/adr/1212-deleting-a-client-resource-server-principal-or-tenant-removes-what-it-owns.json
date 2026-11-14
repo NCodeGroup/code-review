@@ -1,0 +1,111 @@
+{
+  "hash": "62759dc3129b29b2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1212",
+  "rules": [
+    {
+      "statement": "When a store deletes an owning entity, remove every dependent row it owns through the Entity Framework change tracker in the same unit of work (the same SaveChanges call), so the delete either removes the owner and all its dependents or fails as a whole.",
+      "why": "Every foreign key is Restrict, so a store that removes a row must also remove what references it. Removing them in one unit of work means a partial delete can never leave orphaned rows behind.",
+      "check": "Look for a store RemoveAsync/delete method that removes the parent but not its dependents, or that removes them in separate SaveChanges calls or transactions.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't configure database cascade deletes to remove dependents. Keep foreign keys `DeleteBehavior.Restrict` and let the store remove dependents explicitly, with EF Core ordering the deletes.",
+      "why": "SQL Server refuses multiple cascade paths, the InMemory provider cascades only tracked rows, and some dependents reference their owner by identifier with no foreign key.",
+      "check": "Look for `OnDelete(DeleteBehavior.Cascade)` or `ClientCascade` in model configuration, or migrations that add ON DELETE CASCADE.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test the delete behavior of an Entity Framework store against a provider that enforces foreign keys, such as SQLite, and assert the exact set of rows the removal deletes. Don't rely on the InMemory provider for this.",
+      "why": "The InMemory provider enforces no foreign key, so it can't catch a store that leaves a dependent behind or deletes rows in the wrong order.",
+      "check": "Look for new or changed store removal logic whose only tests use `UseInMemoryDatabase`, or tests that don't assert the dependents are gone.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When erasing everything a tenant owns, find the set of tenant-owned entity types from the Entity Framework model (the same way the tenant query filter does), not from a hardcoded list of entities.",
+      "why": "Then an entity that another package contributes is erased with its tenant without any change to the store.",
+      "check": "Look for tenant deletion code that lists specific DbSets or entity types instead of iterating over the model's entity types that implement the tenant-entity interface.",
+      "scope": "domain",
+      "domain": "multi-tenant-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse to delete a tenant with `409 Conflict` while it holds records an operator created (clients or non-system resource servers). Otherwise erase everything else it owns, including end-user data, local accounts, federated principals, sessions and grants.",
+      "why": "Operator-created records would be destroyed silently. End-user data of a deleted tenant can't be reached once its identifier is retired, so keeping it is a privacy liability (GDPR erasure).",
+      "check": "Look for tenant deletion that silently deletes clients or operator-created resource servers, returns 409 for end-user data, or leaves users, sessions or grants behind.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deleting an OAuth client must remove everything that exists for it: its secrets and key material, its resource-server grants, consents, role assignments at its node (ownership included), and every grant issued to it (authorization codes, tokens, PAR, device and CIBA grants, registration access token). Only authorization may block the delete.",
+      "why": "A client's dependents exist only for it. Leaving them behind leaves orphans, or blocks the delete under Restrict foreign keys.",
+      "check": "Look for client removal code that misses one of these dependent kinds, or that refuses the delete because secrets or grants exist.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deleting a principal whose identifier is global must remove the role assignments it holds in every tenant, not only in its own tenant, plus its consents and grants. Deleting a tenant must also remove the assignments its principals hold in other tenants.",
+      "why": "A principal's identifier is generated by the server and is global, so the principal can hold assignments at the nodes of other tenants.",
+      "check": "Look for principal or tenant removal that filters role assignments by the current tenant only.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An endpoint that deletes an entity, such as client deregistration, should call the store's remove method and rely on it to remove the dependents. It should not remove secrets, tokens or other dependents separately itself.",
+      "why": "Removing dependents is the store's job, done in its own unit of work. Duplicating it in the endpoint splits that unit of work.",
+      "check": "Look for endpoint or handler code that deletes dependent records before or after calling the store's RemoveAsync.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't block the deletion of a resource's last owner, and don't block the deletion of a resource node because role assignments exist at it. Remove those assignments along with the node.",
+      "why": "Deletion is erasure, and the resource stays manageable through roles at the nodes of its ancestors.",
+      "check": "Look for checks that refuse a delete because it would remove the last owner, or because role assignments reference the node.",
+      "scope": "domain",
+      "domain": "authorization-rbac",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

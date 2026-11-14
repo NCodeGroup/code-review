@@ -1,0 +1,95 @@
+{
+  "hash": "ff3ab1da766721ab",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #629",
+  "rules": [
+    {
+      "statement": "When an endpoint creates a resource owned by a parent identified only by a route id, read the parent from its store after authorizing and answer 404 if it doesn't exist, instead of storing the owner id unchecked.",
+      "why": "Authorization at a node built from the route doesn't prove the node exists. A caller with authority above it could create resources owned by a missing or deleted parent, and whoever later creates a parent with that id would gain custody of them.",
+      "check": "Look for create handlers that set an owning/parent id taken from the route and never load the parent. Check that the store manager that adds the resource reads the parent, that 404 is returned when it is missing, and that a test covers an unknown parent.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A query that bypasses the tenant query filter (`IgnoreQueryFilters()`) and filters on a column that is only covered by a composite index leading with `TenantId` needs its own index on that column, or must pass the tenant so the composite index applies.",
+      "why": "Otherwise every call scans the whole table across all tenants, and the cost grows with the total row count.",
+      "check": "For each new `IgnoreQueryFilters()` query, compare its predicate columns with the entity's `[Index]` attributes. Report it when no index leads with the filtered column.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A lookup that spans tenants and returns a single row must match a value that is guaranteed unique across tenants (for example by a unique index), or must fail closed when more than one row matches, rather than taking the first match.",
+      "why": "If the value is only unique per tenant, a first-match lookup reads an arbitrary tenant's row and can wrongly allow or refuse an authorization decision.",
+      "check": "Look for `FirstOrDefault`/`SingleOrDefault` after `IgnoreQueryFilters()`. Confirm that a unique index covers the filtered column across tenants and that the method's contract says so, or that the lookup fetches two rows and returns null on ambiguity.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an index to lead with `TenantId` when the same index also serves a query that runs across tenants with `IgnoreQueryFilters()`.",
+      "why": "An index that leads with `TenantId` can't serve the cross-tenant query. One index without the tenant column serves both that query and the tenant-filtered one.",
+      "check": "Before reporting a missing leading `TenantId`, search for other queries on the same columns that use `IgnoreQueryFilters()`.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two DI registration methods register the same set of shared services, put those `TryAdd` registrations in one private helper that both methods call.",
+      "why": "Duplicate registration lists can drift apart.",
+      "check": "Look for repeated blocks of `TryAddSingleton`/`TryAddScoped`/`TryAddTransient` for the same services in sibling registration methods.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hoist an awaited call into its own local variable instead of nesting it inside a `with` initializer, a cast or another compound expression.",
+      "why": "An `await` buried in a compound expression hides an important side effect and makes the statement hard to read.",
+      "check": "Look for `await` expressions inside object or `with` initializers, casts or nested expressions in a single statement.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a manual mock `Verify(..., Times.X)` on a strict mock as redundant when it asserts a call count, such as a call that must happen exactly once or never.",
+      "why": "A strict mock rejects calls that have no setup, but it doesn't assert how many times a set-up call ran. The test rules allow a `Verify` that checks a call count.",
+      "check": "Before reporting a manual `Verify`, check whether its `Times` argument asserts a count the test depends on, such as `Times.Never` or `Times.Once` to prove a path did or didn't run.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An ADR's Context, including in an ADR that supersedes another, states the present reasoning for the decision rather than describing the superseded decision as a hole or a change.",
+      "why": "Documentation describes the product as it is, not as a delta from what came before.",
+      "check": "In ADR Context sections, look for delta phrasing such as 'leaves a hole', 'previously', 'now' or 'no longer' that describes the superseded decision rather than the current reasoning.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

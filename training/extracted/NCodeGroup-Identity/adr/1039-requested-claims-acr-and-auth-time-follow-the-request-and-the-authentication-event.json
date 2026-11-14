@@ -1,0 +1,102 @@
+{
+  "hash": "9eb8a1cea68b9b39",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1039",
+  "rules": [
+    {
+      "statement": "When an optional protocol parameter is disabled for the server, tenant or client, refuse a request that carries it with a not-supported error instead of accepting it and silently ignoring it.",
+      "why": "A parameter must never be accepted and then ignored, so a client learns its request was not honored.",
+      "check": "Look for code paths where a disabled capability (e.g. claims_parameter_supported=false) lets the request through and simply skips the parameter instead of failing validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat the `value` and `values` constraints of an OIDC `claims` request as advisory: emit only the subject's actual claim and never copy or fabricate a claim value from the request.",
+      "why": "The OP must not fabricate claims; stricter semantics belong in a host-registered higher-priority claims handler.",
+      "check": "Look for claim emission that takes a value from the requested claim's `value`/`values` rather than from the subject or principal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not fail token issuance or a UserInfo response because an essential requested claim is missing, except refuse with `access_denied` an essential `id_token.acr` request whose `values` the principal's `acr` does not satisfy.",
+      "why": "`essential` is best-effort per the decision; only an unsatisfied essential acr is a hard authentication requirement.",
+      "check": "Look for errors raised on a missing essential claim other than acr, or for an unsatisfied essential acr with values that is not rejected with access_denied.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not embed claims requested for the UserInfo endpoint in the access token; persist them server-side in a short-lived grant keyed by the access token's `jti` with the token's lifetime, and write nothing when none are requested.",
+      "why": "Embedding bloats a token sent to every resource server and leaks request intent; refresh-token state only exists with offline_access.",
+      "check": "Look for `claims.userinfo` data added as access-token claims, stored on refresh-token grants, or persisted without the token's jti and lifetime.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve `acr` at authentication time through a replaceable asynchronous resolver and store it with the authentication event (principal and session); never hard-code an `acr` level, and omit `acr` when no policy yields a value.",
+      "why": "The meaning of acr is deployment policy the spec defers to the OP; it is a property of the authentication event like auth_time and amr.",
+      "check": "Look for literal acr values set at login, acr derived lazily at token issuance, or a placeholder acr emitted when the resolver/default_acr gives none.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the component that performs authentication stamp the RFC 8176 `amr` values of the methods it used on the principal (e.g. `pwd` for a password).",
+      "why": "Only the authenticating component knows which methods were performed.",
+      "check": "Look for new verifiers or grants that authenticate a user without recording `amr`, or code that infers amr elsewhere.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always include `auth_time` in the ID token when a `max_age` request was made or `auth_time` was requested as essential, synthesize it only for the ID token and only when required and missing, and put it in the access token only when the principal actually has it.",
+      "why": "OIDC Core makes auth_time conditionally mandatory and RFC 9068 includes it in access tokens only when available.",
+      "check": "Look for auth_time emitted unconditionally, synthesized for the access token, or missing from the ID token when max_age/essential auth_time applies.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an extension point whose replacement may need IO asynchronous, and register its default with `TryAddSingleton` so a host can replace it.",
+      "why": "A real policy may need a database or external lookup, and the host must be able to override the default.",
+      "check": "Look for new pluggable resolver/policy interfaces with synchronous methods, or default implementations registered with `AddSingleton` that block replacement.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

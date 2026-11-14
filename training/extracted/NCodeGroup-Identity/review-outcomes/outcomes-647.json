@@ -1,0 +1,40 @@
+{
+  "hash": "324961ffe3895907",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #647",
+  "rules": [
+    {
+      "statement": "After a committed delete of records that reference external resources (for example KMS keys), destroy those external resources in a `finally` around the later post-commit steps (audit, notifications), so that a failure or cancellation of those steps cannot skip the destroy.",
+      "why": "Otherwise, when the client disconnects or a handler throws after the commit, the row is gone but the external key stays live and nothing points to it.",
+      "check": "Look for handlers that delete stored records and then call an external destroy/cleanup only after audit or notification calls that run on the request's cancellation token. The destroy should sit in a `finally` or run before those steps.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code creates an external resource and then validates what the service returned, treat any parse or import failure during the check (`CryptographicException`, `ArgumentException`, `FormatException`) as a failed check: destroy the created resource and throw the documented exception type, with the original failure as its inner exception.",
+      "why": "An unguarded import throws before the destroy-on-mismatch path runs, leaking a resource no record references, and callers get an undocumented exception type.",
+      "check": "Find create-then-verify paths, such as deserializing a returned public key. Check that exceptions from the verification are caught, that the created resource is cleaned up, and that the documented exception type wraps the cause.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't swallow a failed cleanup of an external resource in an empty `catch`. Route it through a component that logs at least a warning with identifying details (such as the resource id and provider) and runs the cleanup on its own token with an explicit timeout, not on the caller's cancellation token.",
+      "why": "A silently failed or cancelled destroy leaves an orphaned, billable external resource that no stored record or log entry points to.",
+      "check": "Look for `catch (Exception) { }` or other non-logging catches around destroy/cleanup calls, and for cleanup calls that pass the caller's cancellation token instead of a separate one with a timeout.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

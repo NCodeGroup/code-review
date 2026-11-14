@@ -1,0 +1,33 @@
+{
+  "hash": "515c11f5ced61efb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #350",
+  "rules": [
+    {
+      "statement": "When a test or validation check exempts allowed patterns before it searches for a forbidden one, tie each exemption to the file or command where it is legitimate rather than stripping it from every file, and add a self-test that shows the check failing on a misplaced exemption.",
+      "why": "An exemption applied to every file lets a future file use the allowed string where it isn't legitimate, which is the regression the check exists to catch.",
+      "check": "Look for allow-lists or strip/replace steps in test scripts that run over all files before a forbidden-pattern search, with no per-file or per-command key, and for a missing negative fixture proving the check can fail.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a workflow command that works only in its own worktree, and never switches or edits the main checkout, to refuse to start because a root PLAN.md from another session exists in the main checkout.",
+      "why": "That command can't collide with the main checkout, and dropping the refusal is deliberate so a run no longer needs a clean main checkout; a legacy root PLAN.md is still continued in place by /continue-plan.",
+      "check": "Before reporting a missing root PLAN.md stop, confirm whether the command plans, executes and lands entirely in its own worktree and never switches the main checkout; if so, don't report it.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/.github/prompts/*.prompt.md",
+        "**/.github/skills/**/SKILL.md",
+        "**/.claude/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

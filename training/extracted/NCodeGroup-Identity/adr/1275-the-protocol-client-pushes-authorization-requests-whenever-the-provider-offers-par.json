@@ -1,0 +1,127 @@
+{
+  "hash": "1c7f08eceaf9d223",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1275",
+  "rules": [
+    {
+      "statement": "An OAuth client must send its authorization request through Pushed Authorization Requests (RFC 9126) whenever the provider advertises `pushed_authorization_request_endpoint`, and must never fall back to the front channel when PAR is required.",
+      "why": "If the client could fall back or let the caller pick the channel, a caller could skip PAR.",
+      "check": "Look for authorization-URL building that uses the front channel even though discovery metadata includes a PAR endpoint, or that falls back to the front channel after PAR is found to be required.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat PAR as required when the provider advertises `require_pushed_authorization_requests` or the client registration sets `RequirePushedAuthorizationRequests`. When PAR is required but the provider has no PAR endpoint, throw before sending anything.",
+      "why": "RFC 9126 §5 and §6 define both the provider flag and the client flag. Sending the request anyway would break the requirement.",
+      "check": "Check that both flags are read. Check that the missing-endpoint case throws (a provider exception) and doesn't build a front-channel URL or send a request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give authorization requests one public entry point that picks the channel itself, and don't add a public push-only API or a caller-selected channel.",
+      "why": "Otherwise every caller would re-implement the 'PAR required' rule and could skip PAR.",
+      "check": "Look for new public methods that push only, or a parameter that lets the caller choose between front channel and PAR.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An OAuth client must always send `response_type=code` with PKCE `S256` and must compute `code_challenge` itself from the caller's `code_verifier` as BASE64URL(SHA-256(ASCII(verifier))). It must never accept a challenge or challenge method from the caller.",
+      "why": "RFC 9700 requires code flow with PKCE. Taking a challenge from the caller would allow `plain` or a challenge that doesn't match the verifier.",
+      "check": "Look for public request models or parameters that accept `code_challenge` or `code_challenge_method`, for a `plain` method, or for a response_type other than code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a PKCE `code_verifier` when it is constructed: it must be 43 to 128 characters drawn only from `[A-Za-z0-9-._~]`.",
+      "why": "RFC 7636 §4.1 defines this verifier syntax.",
+      "check": "Check that the verifier's length and character set are validated where the request object is created or initialized.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a provider advertises `code_challenge_methods_supported` and the list doesn't include `S256`, fail with a provider exception. When the list is absent, accept the provider.",
+      "why": "The client only supports S256. A missing list doesn't mean S256 is unsupported.",
+      "check": "Check the discovery handling: a missing list must not be rejected, and a list without S256 must not be ignored.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept extension authorization parameters (`prompt`, `max_age`, `login_hint` and others) through an open additional-parameters dictionary copied with ordinal comparison, not through fixed fields. At `init`, reject with `ArgumentException` empty names and any name the client writes itself or that would break the flow, such as response_type, client_id, redirect_uri, state, nonce, scope, resource, response_mode, code_challenge, code_challenge_method, request_uri, client_secret, client_assertion, client_assertion_type and dpop_jkt.",
+      "why": "Protocol vocabularies are open. A caller must not be able to override or duplicate parameters the client controls, and DPoP binding belongs to the client.",
+      "check": "Look for new fixed properties for extension parameters, a dictionary copy that doesn't use StringComparer.Ordinal, or a reserved-name list that misses names the client writes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PAR body, send `client_id` exactly once: add it after client authentication only when the authenticator didn't already add it. Don't add it to token or revocation requests this way.",
+      "why": "RFC 9126 §2.1 requires `client_id` in the push. `client_secret_basic` puts credentials only in the header, while `private_key_jwt` and `client_secret_post` already add `client_id`, so adding it every time would duplicate it.",
+      "check": "Look for code that always adds `client_id` to a form body after authentication, or never adds it, without checking what the authenticator already wrote.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a PAR response as successful only when it is `201` with a JSON object whose `request_uri` is a non-empty string and whose `expires_in` is a positive whole number, read with the shared whole-number reader (so `60.0` is accepted). Return an OAuth error object at any status as result data. Throw a provider exception for a `201` missing either field and for anything else.",
+      "why": "RFC 9126 §2.2 and §2.3 define the response. Whole numbers from a remote party are read strictly through shared readers, and OAuth errors are data, not exceptions.",
+      "check": "Check the response parsing: accepting 200, accepting an empty `request_uri` or `expires_in` that is zero, negative or has a real fraction, hand-rolled number reading, or throwing on an OAuth error body.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build the post-PAR authorization URL from `authorization_endpoint` with only `client_id` and `request_uri`. Validate the authorization endpoint before pushing anything, and throw a provider exception when it is missing or unacceptable.",
+      "why": "RFC 9126 §4 defines the pushed URL. Validating the endpoint first means nothing is pushed when the redirect could never be built.",
+      "check": "Look for extra parameters added to the pushed URL, or for endpoint validation that happens only after the PAR request has been sent.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

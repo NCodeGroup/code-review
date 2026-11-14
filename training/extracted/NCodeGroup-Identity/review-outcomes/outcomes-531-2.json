@@ -1,0 +1,41 @@
+{
+  "hash": "3469318860f84e1d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #531",
+  "rules": [
+    {
+      "statement": "Don't ask a CHANGELOG entry to add migration, legacy-data or 'existing rows keep working' notes for a feature or storage format that has never shipped in a release.",
+      "why": "Nothing has shipped, so there is no stored legacy data and no migration to describe; the entry should describe the capability only.",
+      "check": "Before reporting a missing migration or legacy note, check whether the changed feature or format appears in any released version (earlier CHANGELOG release sections, tags); if it is unreleased, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A concurrency limit on expensive work that unauthenticated callers can trigger, such as PBKDF2 secret verification, must cap the number of waiters and put a timeout on each wait, and must refuse requests that can't get in quickly (for example with 503 temporarily_unavailable) instead of letting them queue without limit.",
+      "why": "A gate with no limit on waiters lets an attacker build a queue that stalls every legitimate verification in the process and ties up connections and memory.",
+      "check": "Look for SemaphoreSlim.WaitAsync or a similar gate around costly crypto or verification on an unauthenticated path that has no timeout and no cap on queue length, or no fast refusal when the gate can't be acquired. Check that the limits come from options that are validated at startup.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make the decision about how a client secret is stored (verifier or reversible, based on the client's token_endpoint_auth_method) in one shared service that every endpoint issuing or updating secrets calls. Don't copy that decision into each endpoint handler.",
+      "why": "If the decision is copied, a later change may update only one copy, and secrets created through the other endpoint get stored in the wrong form and fail to authenticate.",
+      "check": "Look for endpoint handlers, such as dynamic registration, management APIs or seeders, that choose between generating a verifier and generating a reversible secret themselves instead of calling the shared secret-issuing service.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

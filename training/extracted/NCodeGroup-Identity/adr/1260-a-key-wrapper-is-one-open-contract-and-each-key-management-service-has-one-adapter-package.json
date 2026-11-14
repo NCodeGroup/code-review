@@ -1,0 +1,158 @@
+{
+  "hash": "2f7bcf1935c78cb9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1260",
+  "rules": [
+    {
+      "statement": "A method that produces secret key material whose length the caller cannot know in advance writes it into a caller-supplied `IBufferWriter<byte>`, advances the writer only on success, and zeroes whatever it wrote if it fails.",
+      "why": "The caller can't size a buffer for an unwrapped key ahead of time, and a partial or failed write must not leave secret bytes behind in the writer.",
+      "check": "Look at unwrap/decrypt-style methods that return key material. Flag ones that return a fresh `byte[]`, take a fixed-size span for a variable-length result, call `Advance` before the operation has succeeded, or leave bytes they wrote uncleared on an exception path.",
+      "scope": "domain",
+      "domain": "cryptography-key-management",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero a buffer that held decrypted plaintext or an unwrapped key as soon as its contents are copied out or the call returns, and pin managed arrays that hold such plaintext while they are in use.",
+      "why": "Key material left in managed memory after use can leak, and the GC can copy an unpinned array before it is zeroed.",
+      "check": "Look for SDK responses or arrays that hold plaintext keys (for example a decrypt result's bytes) and are never cleared with `CryptographicOperations.ZeroMemory`, or are cleared without being pinned.",
+      "scope": "domain",
+      "domain": "cryptography-key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An adapter for an external cloud service gets credentials only from the SDK's keyless credential chain (workload identity, Application Default Credentials, `DefaultAzureCredential`), and never from a client secret, certificate or service-account key in options or configuration.",
+      "why": "Stored, long-lived credentials are ruled out by the cloud-native operating principles, and the SDK chains already resolve keyless workload identity.",
+      "check": "Flag options properties, configuration keys or constructor arguments that take a secret, certificate, access key or service-account JSON for authenticating to a cloud service.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An adapter that is registered but not selected must stay inert: its options validator skips, and it creates no SDK client or credential until its first real operation.",
+      "why": "A host can register several vendor adapters while using only one, and an unselected adapter must not fail validation or reach a cloud service it doesn't use.",
+      "check": "Look for SDK clients or credentials built in constructors or DI factories, and for validators that require an adapter's settings even when configuration doesn't select that adapter.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a lazily initialized shared client so that a failed creation is not cached, and the next call tries again.",
+      "why": "A transient failure while creating the client must not break every later call for the life of the process.",
+      "check": "Look for `Lazy<T>` with exception caching, or a cached `Task` holding the client, that keeps a faulted result instead of retrying it.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When calling a key management service, map to `CryptographicException` only the specific status that means a wrong ciphertext, key or context (for example HTTP 400, or gRPC `InvalidArgument`), and let every other service exception propagate.",
+      "why": "An outage or an authorization failure must never be mistaken for a wrong key.",
+      "check": "Flag catch blocks around KMS calls that catch `RpcException`, `RequestFailedException` or a broad exception type and turn every failure into `CryptographicException` or a false result.",
+      "scope": "domain",
+      "domain": "cryptography-key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Google Cloud KMS encrypt and decrypt calls send CRC32C checksums (computed with `BitOperations.Crc32C`) on every request and verify them on every response. A failed check, or a response that names a version of a different key, is a retryable `IOException`.",
+      "why": "Google documents CRC32C as the end-to-end integrity check. Without it, a plaintext corrupted in transit would be wrapped and stored, and the failure would show up only after data had been protected under it.",
+      "check": "In Cloud KMS calls, look for requests without `*Crc32C` fields, responses whose checksum or verified flags go unchecked, and responses whose key version isn't confirmed to belong to the configured key.",
+      "scope": "domain",
+      "domain": "google-cloud-kms",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a KMS wrap or encrypt response reports a versioned key identifier, store that versioned identifier with the wrapped key, refuse a result that has no version, and have unwrap name that recorded version, so that rotating the primary key version leaves older wrapped keys unwrapping.",
+      "why": "Rotating the key must not need a configuration change, and keys wrapped earlier must still unwrap under the version that wrapped them.",
+      "check": "Look for wrappers that store the configured, unversioned key identifier instead of the one the response reports, or that accept a response without a version.",
+      "scope": "domain",
+      "domain": "cryptography-key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a root key is RSA, refuse a wrap whose output is shorter than 384 bytes, which means the RSA modulus is under 3072 bits.",
+      "why": "The root key protects master keys for as long as their data lives, so it needs long-term strength.",
+      "check": "Look at RSA key wrap code and check that it verifies the length of the wrapped output or the key size before storing the result.",
+      "scope": "domain",
+      "domain": "cryptography-key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode stored unpadded base64url ciphertext through one shared strict decoder built on `NCode.Base64Url`, instead of each implementation writing its own. Empty or invalid text throws `CryptographicException`, and a destination that is too short throws `ArgumentException`.",
+      "why": "With one strict decoder, every implementation refuses padding and illegal characters with the same exception and message.",
+      "check": "Flag key-wrapper or ciphertext code that calls `Convert.FromBase64String`, a lenient base64url decoder or its own hand-written decoder on stored ciphertext, or that throws a different exception type for malformed input.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each external service one adapter package, named for the service, that holds every role it plays for that service, such as key wrapping and remote keys. Separate the roles by namespace, not by package name segments.",
+      "why": "Splitting a service across packages per role divides its client, credentials and options among packages that configure the same service.",
+      "check": "Flag new projects named for a role plus a vendor (for example `*.KeyWrapping.<Vendor>` or `*.RemoteKeys.<Vendor>`) or with an extra segment like `Kms`, when that service already has a vendor package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a marker interface for a role that configuration selects by name from among registered implementations. Resolve the selected implementation by name through a catalog.",
+      "why": "Any registered implementation can fill the role, so a marker interface adds a type without adding a rule.",
+      "check": "Flag new empty interfaces that derive from a contract only to tag one implementation for a role that a configuration setting picks by name.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a contract that needs only the BCL in the lowest abstractions package whose vocabulary it shares, not in a feature-specific abstractions package (such as persistence) that its consumers would otherwise have to depend on.",
+      "why": "Consumers such as remote JOSE keys must be able to build on the contract without taking a dependency that has nothing to do with them.",
+      "check": "Look at where new contracts are placed and check that the package doesn't force unrelated consumers to take an unneeded dependency.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "hash": "26fdb2e9826dfb7c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #506",
+  "rules": [
+    {
+      "statement": "When a helper must be duplicated across packages that cannot reference each other, give every copy the same contract (same inputs rejected, same null/failure results) and add a comment, or a convention note, saying why the copy is deliberate and that a change to one copy must be made to all.",
+      "why": "Undocumented copies drift: the two form-reading helpers already behaved differently on a non-form content type, and a future fix would land in only one place.",
+      "check": "Look for a new helper whose body repeats an existing helper in another package; compare their edge-case behaviour and check for a comment explaining the duplication.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an options-validation failure message names the configuration key and quotes the rejected value, but withholds a value that may carry a secret (for example a URI containing user info `@`).",
+      "why": "An operator whose host won't start can't tell which constraint failed without seeing the value, but credentials must not leak into logs.",
+      "check": "Look at new or changed IValidateOptions failure messages: does each one include the offending value after the key, and does it suppress values that could contain passwords or other secrets?",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that covers behaviour the change under test does not touch says in its doc comment that it pins existing behaviour, and asserts only what that path actually produces.",
+      "why": "Otherwise a reader takes the test as evidence for the new code even though it passes without that code.",
+      "check": "Look for tests added with a change that exercise an endpoint or path the change doesn't modify; check that their doc comment says they pin existing behaviour.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build absolute redirect URIs and callback URLs from the configured public origin, never from the incoming request's Host header.",
+      "why": "A forged Host header would otherwise steer the redirect_uri to an attacker-controlled origin.",
+      "check": "Look for redirect_uri or callback URL construction that uses HttpRequest.Host, Scheme or similar request-derived values rather than a configured origin.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a security protection that has unit tests (such as rejecting a forged Host) also gets at least one integration test through the fully assembled host.",
+      "why": "Unit tests of the handler don't catch a wiring regression in the composed host.",
+      "check": "When a change adds a security check covered only by unit tests, look for an integration test that drives the real host with the attack input and asserts the protected outcome.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

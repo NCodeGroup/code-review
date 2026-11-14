@@ -1,12 +1,12 @@
 {
   "hash": "baee5de3f1afa7c0",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #341",
   "rules": [
     {
-      "statement": "Give helper methods that only read text a `ReadOnlySpan<char>` parameter instead of `string`, so callers can pass slices without allocating; keep `string` on public contract types such as request properties.",
-      "why": "A `string` converts to `ReadOnlySpan<char>` implicitly, so a span parameter still accepts every existing caller and also takes slices with no allocation.",
-      "check": "Look for new or changed methods that take a `string` they only read (hashing, encoding, comparing) when a `ReadOnlySpan<char>` would work.",
+      "statement": "A method that only reads a text input (and does not store it) takes `ReadOnlySpan<char>` instead of `string`, while properties on public request/contract types stay `string`.",
+      "why": "A `string` converts implicitly to `ReadOnlySpan<char>`, so every existing caller still compiles, and callers can pass a slice without allocating a substring.",
+      "check": "Look for new or changed helper/utility methods with `string` parameters that are only read, encoded or hashed and never kept. Flag them unless they are properties of a public contract type.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -15,9 +15,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Put a setting that a protocol registers per client (for example the OIDC `id_token_signed_response_alg` ID-token signing algorithm) on the per-client registration model, not on a process-wide .NET options class.",
-      "why": "OIDC registers these values per client, and the protocol client must not bind process-wide configuration.",
-      "check": "Look for per-client protocol settings added to an `IOptions<T>` options class rather than to the client registration/settings type.",
+      "statement": "Put a protocol setting that the specification registers per client (such as OIDC client metadata like `id_token_signed_response_alg`) on the client registration model, not on a process-wide `IOptions` configuration class.",
+      "why": "OIDC registers these settings per client, and the protocol client must not bind process-wide configuration for per-client behavior.",
+      "check": "Look for new properties on global options classes that correspond to per-client registration metadata in OAuth/OIDC, such as allowed signing algorithms or response algorithms.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "configuration-and-options",
@@ -27,9 +27,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Use the existing public constant for a well-known protocol value (for example `AlgorithmCodes.DigitalSignature.None` for the JOSE `none` algorithm) instead of declaring a private string constant or literal.",
-      "why": "A shared public constant already exists and other code uses it; duplicating the literal adds a second source of truth.",
-      "check": "Look for private `const string` fields or inline literals such as \"none\" or algorithm names that duplicate a public constant already in the codebase.",
+      "statement": "Use the existing public constant for a well-known protocol value (for example `AlgorithmCodes.DigitalSignature.None` for the JOSE `none` algorithm) instead of declaring a private constant or a string literal that duplicates it.",
+      "why": "Duplicated private constants drift from the shared definition that other components already use.",
+      "check": "Look for new `private const string` fields or inline literals holding algorithm names, claim names or other protocol identifiers that a shared constants class already defines.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -38,22 +38,11 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When the same hash or crypto operation of a fixed output size runs several times in a row, allocate the output buffer once in the caller and pass it in as a `Span<byte>`, instead of letting each call allocate its own.",
-      "why": "Allocating once and reusing the buffer for all the consecutive hashes (for example `at_hash`, `c_hash`, `s_hash`) avoids allocating on every call, and an earlier version that allocated per call was a regression.",
-      "check": "Look for loops or consecutive calls to a hashing helper that allocates or stackallocs its output each time, where the size is the same for every call and a buffer could be passed in.",
+      "statement": "When the same hash function is applied to several values of the same output size in a row, allocate the hash output buffer once in the caller and pass it to each call instead of letting each call allocate its own; if that requires a `Span<byte>` inside an async method, move the work into a synchronous helper.",
+      "why": "Allocating once and reusing the buffer avoids repeated allocations, and dropping this reuse was a performance regression.",
+      "check": "Look for consecutive hash computations (e.g. `at_hash`, `c_hash`, `s_hash`) where each call allocates or stackallocs its own buffer of the same size, rather than reusing one buffer the caller supplies.",
       "scope": "general",
-      "topic": "allocations-and-buffers",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "For temporary encoding buffers, use `stackalloc` up to a small fixed limit (for example 256 bytes) and rent from a pool for anything longer, instead of allocating on the heap.",
-      "why": "This keeps hot paths such as token hash computation and verification free of heap allocations.",
-      "check": "Look for `new byte[]` or `Encoding.GetBytes(string)` that returns an array for a short-lived buffer, where a stackalloc buffer with a rented fallback would work.",
-      "scope": "general",
-      "topic": "allocations-and-buffers",
+      "topic": "performance",
       "applies_to": [
         "**/*.cs"
       ],

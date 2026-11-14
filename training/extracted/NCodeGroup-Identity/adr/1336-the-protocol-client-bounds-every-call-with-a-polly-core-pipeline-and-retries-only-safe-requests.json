@@ -1,0 +1,130 @@
+{
+  "hash": "281705e2bb4df9bf",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1336",
+  "rules": [
+    {
+      "statement": "In production code, set `HttpClient.Timeout` to `Timeout.InfiniteTimeSpan` on a named or typed client whose calls a resilience pipeline bounds, so the pipeline's options are the only bound.",
+      "why": "The default 100-second `HttpClient.Timeout` silently cuts a longer configured total timeout.",
+      "check": "Look for an HttpClient registration with a resilience/timeout handler that leaves `HttpClient.Timeout` at its default or sets it to a finite value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retry an outbound HTTP request only when it is safe to send twice: a GET or HEAD with no body; never resend a request that has content or a non-idempotent method such as POST.",
+      "why": "A retry could replay content an attempt already consumed, and OAuth endpoints honor no idempotency key, so an authorization code or refresh token must never be sent twice.",
+      "check": "Look for a retry strategy or loop that applies to every request, or to POST/PUT/PATCH or requests with `Content`, without a predicate that limits it to bodiless GET/HEAD.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never resend a request that carries a `DPoP` proof through a generic retry; only a `use_dpop_nonce` error (RFC 9449 §8) sends it once more, with a new proof carrying the supplied nonce.",
+      "why": "A DPoP proof's `jti` is single-use (RFC 9449 §11.1), so replaying the same proof is rejected.",
+      "check": "Look for retry predicates that do not exclude requests with a `DPoP` header, or nonce handling that reuses the old proof or retries more than once.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order an outbound call's resilience strategies as total timeout outermost, then retry, then per-attempt timeout, and give every outbound call at least the total timeout.",
+      "why": "The total timeout bounds the whole call including retries and body read, while the per-attempt timeout stops a provider that accepts the connection and never answers from holding the whole budget.",
+      "check": "Look at pipeline builder calls for a different order, a missing per-attempt timeout on retried calls, or a call path with no total timeout.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an HTTP retry handle `HttpRequestException`, the attempt timeout's `TimeoutRejectedException`, and statuses 408, 429 and 5xx, with exponential backoff and jitter, and don't let `Retry-After` extend the delay past the total timeout.",
+      "why": "These are the transient failures, jitter avoids synchronized retries, and the endpoint must not choose the delay because the total timeout is the bound.",
+      "check": "Look for retries with constant or unjittered delays, retries on other 4xx statuses, missing handling of attempt timeouts, or code that waits on `Retry-After`.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose every `HttpResponseMessage` a retry discards before sending the next attempt.",
+      "why": "An undisposed discarded response holds its connection and buffers.",
+      "check": "Look for retry logic or `OnRetry` callbacks that drop the previous outcome's response without disposing it.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build retry and timeout behavior from `Polly.Core` strategies, not a hand-written retry loop, and don't add `Microsoft.Extensions.Http.Resilience` (or `AddStandardResilienceHandler`) to a shipping package.",
+      "why": "Polly's strategies are tested, and the standard resilience package brings Telemetry plus a circuit breaker and rate limiter the client doesn't need.",
+      "check": "Look for `for`/`while` retry loops around `SendAsync`, or new references to `Microsoft.Extensions.Http.Resilience` in shipping projects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Surface a resilience-pipeline timeout like `HttpClient.Timeout` does, as a `TaskCanceledException` with a `TimeoutException` inner exception, and never report a cancellation by the caller's token as a timeout.",
+      "why": "Callers distinguish timeouts from their own cancellation the same way they do for HttpClient's built-in timeout.",
+      "check": "Look for code that lets `TimeoutRejectedException` escape, or that maps any `OperationCanceledException` to a timeout without checking whether the caller's token was cancelled.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate outbound-call timeout and retry options when the host starts: timeouts within a bounded range, the attempt timeout no greater than the total timeout, and retry count and delay bounded.",
+      "why": "An invalid combination must stop the host instead of misbehaving at call time.",
+      "check": "Look for new timeout/retry options with no startup validator, or a validator that doesn't check AttemptTimeout <= TotalTimeout and the ranges.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name outbound HTTP resilience options `TotalTimeout`, `AttemptTimeout`, `MaxRetryAttempts` and `RetryDelay`, matching the existing outbound HTTP options, so the family uses one vocabulary.",
+      "why": "Consistent option names across packages make them one vocabulary for operators.",
+      "check": "Look for new resilience options with other names such as `Timeout`, `RetryCount` or `Backoff`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a library's `Meter` through `IMeterFactory`, not with `new Meter(...)`, when recording retry and timeout counters.",
+      "why": "The source requires the meter to come from `IMeterFactory`, which ties its lifetime to the host's DI container.",
+      "check": "Look for `new Meter(` in library code, or retry/timeout counters on a meter that wasn't created through `IMeterFactory`.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

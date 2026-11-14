@@ -1,0 +1,107 @@
+{
+  "hash": "b10291d15b8099ec",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1412",
+  "rules": [
+    {
+      "statement": "A change announcement broadcast between replicas carries only a hint (an identifier of what changed), never the changed document itself, and the receiver re-reads the committed state.",
+      "why": "A broadcast message can be lost or arrive stale, while a hint that triggers a re-read is always current.",
+      "check": "Look for broadcast or pub/sub message types that carry settings or entity payloads, and receivers that apply the message contents instead of re-reading from the store.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A replica that keeps state refreshed by broadcast announcements must also refresh on missed messages and through a periodic poll, so a lost announcement never leaves it stale.",
+      "why": "The broadcast is best-effort, so a message is only a hint and convergence must not depend on its delivery.",
+      "check": "Check that a new broadcast-driven cache or refresh handler also handles missed-message notifications and has a polling or bounded-lifetime fallback.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, work that follows a committed write (applying it locally, announcing it, reconciling) runs on its own bounded cancellation token, and a failure there is logged and never fails the write.",
+      "why": "The write has already committed, so follow-up work must neither be cancelled by the request nor turn a successful write into an error.",
+      "check": "Look for post-commit announce/apply calls that use the request's CancellationToken or let exceptions propagate to the write's response.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A fingerprint used to detect a configuration change must be computed over a canonical form: entries in name order, and lists that are read as sets sorted ordinally before hashing.",
+      "why": "Order that carries no meaning must not change the fingerprint, otherwise an equal configuration looks like a change and triggers needless work.",
+      "check": "Check that hashing code for change detection sorts keys and set-like lists with an ordinal comparer before hashing, rather than hashing in insertion order.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A lease or dedup key for a reconciliation pass must include the row's concurrency token as well as the content fingerprint, so a return to an earlier state is treated as a new change.",
+      "why": "Keying only on content would skip a revert, leaving items created in between reconciled against the other state only.",
+      "check": "Look at lease or idempotency keys for reconciliation work and verify they include the row version/token, not only a hash of the content.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A write that records what a background pass reconciled against must succeed only while the source row is unchanged since it was read, using optimistic concurrency.",
+      "why": "A concurrent write would otherwise be marked reconciled against settings it never saw; the losing write is answered 412.",
+      "check": "Check that the store update for a reconciliation record is conditioned on the row's concurrency token read at the start of the pass.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A reconciliation pass that follows a change reads only the items the change can affect, comparing the previous and current settings, and falls back to reconciling every item only when the previous state is absent or unreadable.",
+      "why": "A small change must not read the whole deployment; a pass that reads every tenant for one team's change is a smell.",
+      "check": "Look for reconciliation handlers that enumerate all tenants or all items without filtering by what changed between the previous and current settings.",
+      "scope": "domain",
+      "domain": "multi-tenant-services",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A batch reconciliation handler logs an item it cannot handle and continues with the rest, rather than aborting the pass.",
+      "why": "One bad item must not stop the reconciliation of every other item; a later pass or the next materialization covers it.",
+      "check": "Check loops in reconciliation or background passes for exceptions from one item escaping and ending the whole pass.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't refuse to start a service because configuration makes one stored item invalid; report the invalid item and let it fail alone.",
+      "why": "A configuration change cannot be refused, and one bad item would otherwise stop every replica and every tenant.",
+      "check": "Look for startup validation that throws or blocks host start based on the validity of individual stored records rather than logging or reporting them.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

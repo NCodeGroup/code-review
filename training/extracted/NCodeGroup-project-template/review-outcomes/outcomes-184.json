@@ -1,0 +1,31 @@
+{
+  "hash": "0fdb4c2675575060",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #184",
+  "rules": [
+    {
+      "statement": "When a CI workflow's inline script decides whether a security-sensitive action runs (such as enabling auto-merge with write permissions), have a test run that decision logic against fixture inputs, not just check that strings appear in the YAML.",
+      "why": "Checking only for strings lets a bug in the classifier ship with the suite still passing. It could then either auto-merge a pull request that changes more than intended or block every legitimate case.",
+      "check": "Look for new or changed `run:` logic in workflow files that gates merges, deployments or permission use. Confirm a test runs that logic, for example by extracting the step body or moving it into a testable script and running it against a stub `gh` and fixtures. The fixtures should cover the accepted case and each refused case: extra edits, out-of-scope paths, added, removed or renamed files, empty input and no input.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/.github/workflows/*.yml",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you rewrap a paragraph in a comment or help block, wrap it to the same width as the paragraphs around it.",
+      "why": "A line that runs past the block's width makes the comment block wrap unevenly with the paragraphs around it.",
+      "check": "In rewrapped comment or help text, look for a line that runs well past the column width of the lines around it (for example, about 120 columns).",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

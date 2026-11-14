@@ -1,0 +1,138 @@
+{
+  "hash": "e62bb56bc614ce62",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1097",
+  "rules": [
+    {
+      "statement": "Validate a DPoP proof fully per RFC 9449 §4.3: `typ` is `dpop+jwt`, `alg` is an asymmetric algorithm from the advertised `dpop_signing_alg_values_supported` set (never `none` or a symmetric algorithm), the signature verifies with the embedded public JWK, which carries no private material, `htm`/`htu` match the request, `iat` falls within the configured proof lifetime, and `jti` is checked against a replay cache.",
+      "why": "A missing check lets an attacker forge, replay or move a proof to another request, which defeats sender-constraining.",
+      "check": "In DPoP proof validation code, look for any of these checks being missing or loosened, e.g. accepting HS*/none, skipping htu/htm comparison, no iat window, or no jti replay check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Evaluate proof-of-possession (DPoP or certificate binding) once per token request at the token endpoint, after client authentication, and pass the resulting binding explicitly to every grant handler. Grant handlers must not evaluate binding themselves.",
+      "why": "Evaluating binding in each grant repeats the logic, and a new grant could forget it. One evaluation keeps binding uniform across grants.",
+      "check": "Look for a grant handler that parses DPoP headers or client certificates itself, or a new grant that ignores the binding parameter it receives.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Carry cross-cutting request results such as a token's confirmation binding on explicit method parameters or request-object fields, not through ambient state like property bags, HttpContext.Items or AsyncLocal.",
+      "why": "An explicit parameter or field is visible to the compiler and to every reader, so no code path can silently drop it.",
+      "check": "Look for binding or similar per-request data being stashed in and read from ambient property bags or context items instead of being passed explicitly.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit the access token's `cnf` claim and `token_type` from the evaluated binding: `cnf.jkt` (the RFC 7638 JWK thumbprint) with `token_type: DPoP` for DPoP, and `cnf.x5t#S256` (the certificate's SHA-256 thumbprint) with `token_type: Bearer` for mutual-TLS binding.",
+      "why": "RFC 9449 and RFC 8705 §3 define these confirmation members and token types.",
+      "check": "Look for a DPoP-bound token answered as Bearer, a certificate-bound token answered as DPoP, or a thumbprint computed other than as RFC 7638 or SHA-256 of the certificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a token to a client certificate only when the client's certificate-binding requirement is true. Advertised server support or a certificate presented only for `tls_client_auth` must not cause binding, and a client that requires binding but presents no certificate is answered `invalid_request`.",
+      "why": "Support and requirement are separate facts. Support never forces a client to bind.",
+      "check": "Look for binding logic that keys off the server support flag or the mere presence of a certificate, or that silently issues a Bearer token when a required certificate is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a server's support for a capability and a client's requirement of it as separate settings: support merges by replace, and a requirement merges by logical OR so a child scope cannot lift what a parent requires.",
+      "why": "The server's capability and a client's obligation differ and merge differently, and a single setting would let a child weaken a parent's requirement.",
+      "check": "Look for one setting used for both support and requirement, or a requirement setting that merges by replace instead of OR.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a forwarded client certificate only through the configured client-certificate resolver and its registered format decoders, never by reading a hard-coded proxy header or only the connection certificate in issuance logic.",
+      "why": "Behind a proxy the application never sees the connection certificate, and header names and encodings differ per platform. Trust in the header is host configuration.",
+      "check": "Look for issuance or validation code that reads `HttpContext.Connection.ClientCertificate` or a specific forwarded-certificate header directly.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a resource server validates a `cnf.jkt`-bound token, require the `DPoP` authorization scheme and exactly one proof whose `ath` equals the base64url SHA-256 of the access token and whose key thumbprint matches `cnf.jkt`. For a `cnf.x5t#S256` binding, re-resolve the client certificate and compare its thumbprint.",
+      "why": "Without these checks a bound token can be replayed as a plain bearer token.",
+      "check": "Look for resource validation that accepts a jkt-bound token under the Bearer scheme, skips the `ath` check, or doesn't compare thumbprints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist a refresh token's confirmation binding and reject a refresh whose proof doesn't match it, so rotated tokens stay bound to the original key. When an authorization request carries `dpop_jkt`, validate its format and require the redeeming proof's `jkt` to match it.",
+      "why": "Binding must hold end to end. Otherwise refresh or code redemption becomes a way to obtain an unbound or rebound token.",
+      "check": "Look for refresh-token persistence that drops the confirmation, refresh issuance that doesn't compare the proof, or code redemption that ignores `dpop_jkt`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store DPoP `jti` replay entries and server nonces in a shared expiring-key store that every replica can see, not in per-process memory.",
+      "why": "A per-process cache lets a proof replayed to another replica pass.",
+      "check": "Look for replay or nonce tracking that uses `MemoryCache`, static dictionaries or other process-local state.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When DPoP nonces are required and the nonce is missing or invalid, answer with the `use_dpop_nonce` error and a `DPoP-Nonce` response header. Report invalid proofs as `invalid_dpop_proof`.",
+      "why": "RFC 9449 §8 defines this nonce challenge and these error codes.",
+      "check": "Look for nonce failures returned with another error code, no `DPoP-Nonce` header, or proof failures reported as a generic error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

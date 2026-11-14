@@ -1,0 +1,18 @@
+{
+  "hash": "ef2fd483702566ab",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #261",
+  "rules": [
+    {
+      "statement": "When editing a paragraph in a Markdown decision record or other doc, reflow the whole paragraph to the same wrap width the rest of the file uses (about 120 columns), so no short line is left in the middle of the paragraph.",
+      "why": "A mismatched wrap doesn't change how the document reads, but it breaks consistency with the rest of the file and shows up as noise in later diffs of that paragraph.",
+      "check": "Look at edited or re-wrapped Markdown paragraphs for a line that ends well short of the file's usual wrap width but isn't the paragraph's last line, or for lines wrapped at a different width than the surrounding text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

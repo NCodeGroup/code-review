@@ -1,0 +1,32 @@
+{
+  "hash": "d3b52ca2d87c8d33",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #224",
+  "rules": [
+    {
+      "statement": "In a test, compute an expected value from the same input and condition the code under test uses, not from a different input that happens to match it in the current cases.",
+      "why": "A proxy condition hides the real rule, so the assertion doesn't describe what the code does. A future case where the proxy and the real condition differ would fail because of the test, not the code.",
+      "check": "Look for expected values in tests, especially for templates or generated output, that are gated on a different flag or answer than the one the template or production logic checks. Compare the test's condition with the condition in the code under test and with how other assertions in the same suite compute it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a CHANGELOG entry to move from a new dated version section to `## [Unreleased]` when the repository cuts a release with each pull request or plan.",
+      "why": "In repositories that release per plan, the plan's last step writes the dated version section and its compare link, and the merge commit is tagged and published from that section. The dated heading is the intended shape.",
+      "check": "Before reporting, read the repository's contributor or agent guide (for example the landing or release section of AGENTS.md) and any `Release:` line in the plan. Also check whether earlier CHANGELOG sections were added the same way. Report only if the repository releases separately from its feature pull requests.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

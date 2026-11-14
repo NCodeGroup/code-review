@@ -1,0 +1,74 @@
+{
+  "hash": "dbdc2410a16da6b1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1443",
+  "rules": [
+    {
+      "statement": "Record the OAuth client a server-side session was issued to (authority and client id, along with the frontend or tenant name) in the session's integrity-protected metadata, and have each request refuse and end a session whose recorded client differs from the client currently configured for it.",
+      "why": "A frontend registered again as another client would otherwise serve ID tokens, claims and refresh tokens that its new client never issued. Binding the session only to the frontend's name is not enough.",
+      "check": "Look for session creation that stores only a frontend or tenant name and not the authority and client id. Also look for session resolution or connection revalidation that doesn't compare them with the current configuration, end the session and delete the cookie.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make correctness depend on process-local state such as a remembered copy of the previous configuration, and never run work that grows with the number of stored sessions or records inside a request.",
+      "why": "Replicas apply a change at different moments, and none of them sees a change made by restarting them. Per-request work that grows with the number of sessions doesn't scale.",
+      "check": "Look for cleanup or invalidation logic that diffs against an in-memory previous set, or for request handlers that scan or iterate all stored records.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a background reconciliation pass read the persisted store rather than a remembered set, run it at host start and after every change, and coordinate it across replicas with a store lease so that a replica that can't take the lease leaves the work to the holder and retries after a configurable delay.",
+      "why": "Reading the store at every start and change makes restarts and interrupted passes converge. The lease stops replicas from doing the same work twice.",
+      "check": "Look for background services that compute work from in-process state, run only on change events and not at startup, or work without a lease or retry delay in a multi-replica deployment.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a long-running background service, log store failures and any other unexpected failure of a pass instead of letting them stop the service, and when one item can't be processed, log it and keep processing the remaining items.",
+      "why": "The service has to keep running so that the pass runs again after the retry delay or at the next change.",
+      "check": "Look for background loops where an exception escapes ExecuteAsync or aborts the whole batch because one item failed, or where a failure isn't logged with a dedicated event.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End a stored session through an atomic take (remove and return) of its record, and have only the caller whose take actually removed the record write the audit event and update the counters.",
+      "why": "A request and a background pass can end the same session at once. Without an atomic take, the end would be audited and counted twice.",
+      "check": "Look for session-ending code that reads and then deletes in separate steps, or that audits or increments metrics without checking whether this caller's removal succeeded.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a secondary index entry expires, make sure adding a new indexed item can never shorten how long the entry stays listed, for example by bucketing members by the expiry day of their items so that each member expires at the end of its day.",
+      "why": "If a new item shortened the entry's expiry, items still stored would drop out of the index, and reconciliation would never reach them.",
+      "check": "Look for index writes that overwrite an entry's TTL with the newest item's expiry, which can be shorter than that of items already stored.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

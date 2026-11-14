@@ -1,0 +1,43 @@
+{
+  "hash": "5963bd0b5e482753",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #284",
+  "rules": [
+    {
+      "statement": "Don't ask for a CHANGELOG entry to be moved out of a dated version section into Unreleased unless that version has actually been tagged or released; a dated heading alone doesn't mean it has shipped.",
+      "why": "The version section can still be the one being written: the release tooling tags it only after the branch's work merges, so entries for that work belong there.",
+      "check": "Before reporting, compare the section's version with the newest release tag on the remote (e.g. `git tag`/`git ls-remote --tags`). Report only if a tag for that version already exists.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Claude Code permission rule meant to guard a sensitive path (such as a `secrets` folder) matches the bare name, e.g. `Bash(*secrets*)` and `PowerShell(*secrets*)`, not a slash-separated pattern like `*secrets/*`.",
+      "why": "Slash patterns miss backslash paths and variants such as `ls secrets`, and how Claude Code normalizes paths before matching is unconfirmed, so the broader pattern doesn't depend on it.",
+      "check": "Look in `.claude/settings.json` ask/deny rules for path patterns that require a trailing `/` or a specific separator, and so would miss `\\` paths or the bare folder name.",
+      "scope": "domain",
+      "domain": "claude-code-configuration",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/.claude/settings.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When documenting Claude Code permission rules that guard secrets, say that they match the command's text, so they slow down a careless read but are not a sandbox, and point to a sandbox or a PreToolUse hook for real enforcement.",
+      "why": "An agent that misbehaves or has been prompt-injected can get past text-matching rules, so readers must not treat them as a hard boundary.",
+      "check": "Look at README or changelog text that describes secret-guarding permission rules. Report it if it presents them as blocking access and doesn't name a sandbox or hook for enforcement.",
+      "scope": "domain",
+      "domain": "claude-code-configuration",
+      "topic": "documentation",
+      "applies_to": [
+        "**/README.md",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

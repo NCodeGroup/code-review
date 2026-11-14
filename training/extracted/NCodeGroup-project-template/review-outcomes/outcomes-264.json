@@ -1,0 +1,77 @@
+{
+  "hash": "a924c37a1d54468c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #264",
+  "rules": [
+    {
+      "statement": "When a script verifies a download's integrity (such as a SHA-512 or other hash check), add a test that feeds it a mismatched hash and asserts that it throws, installs nothing and leaves no scratch or temporary folder behind.",
+      "why": "If the comparison were inverted, mistyped or bypassed, a tampered or corrupt archive would be installed and CI would still pass, so the promised security property would go unverified.",
+      "check": "In a diff that adds or changes a hash or signature check, look for a test of the rejection path that also checks no partial install and no leftover temp folder remains.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test every selection branch of version-resolution logic (such as each global.json `rollForward` policy, no policy, and a prerelease version) against stand-in metadata so the tests download nothing, not just the default configuration.",
+      "why": "A filtering bug, such as picking a different major version or a band below the pinned one, would reach projects that change the policy without any test catching it.",
+      "check": "Look for version or roll-forward selection code whose tests cover only the default case or depend on live downloads, with no offline case per branch and its expected selection.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cover an installer's error paths (missing archive, unlisted release, invalid version input) with tests that assert the error is thrown and that no partial installation or scratch folder is left behind.",
+      "why": "Without such tests a regression in error handling or cleanup would go unnoticed.",
+      "check": "For each `throw` in an installer or download script, look for a test that triggers it and checks that cleanup happened.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a network-dependent script, test its branches by replacing the network calls with in-process stand-ins rather than adding production parameters or environment variables only so tests can inject data.",
+      "why": "Stand-ins for the metadata and download calls let the tests reach every branch offline while the production script stays unchanged.",
+      "check": "Look for new override parameters or environment variables in a production script that exist only for tests, where the network calls could be mocked instead.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test that downloads from a vendor's live servers as flaky when it is the single end-to-end check against real metadata, the suite already needs the network (for example for NuGet restore), and the branches are also covered offline.",
+      "why": "The live run is the only check that proves the code works with the real metadata, file names and hashes, and that what it installs runs.",
+      "check": "Before reporting a live-network test, check whether the suite already needs the network and whether offline tests with stand-ins cover the same branches.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When documentation describes which version a tool or CI installs, state the behavior for every configuration it supports, such as exactly the named version when there is no roll-forward policy or it is `disable`, not only the template's default.",
+      "why": "A reader who changes the configuration could otherwise think CI still behaves the way it does by default.",
+      "check": "Look for README or doc wording that describes behavior only for the default setting when the code behaves differently under other settings.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

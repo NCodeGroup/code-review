@@ -1,0 +1,90 @@
+{
+  "hash": "4e0bead01fa5f95a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1044",
+  "rules": [
+    {
+      "statement": "A route that only needs an authenticated caller reads the caller from the feature the API's own access-token filter publishes, never from `HttpContext.User.Identity.IsAuthenticated`, and returns `401` when that feature is absent, including when the filter did not run.",
+      "why": "Another host scheme, such as a session cookie, can set `HttpContext.User`. Reading `IsAuthenticated` trusts a principal the API's own token filter may not have set, so the route has to fail closed.",
+      "check": "Look for API endpoints that branch on `HttpContext.User.Identity.IsAuthenticated` or `User.Identity?.IsAuthenticated` to decide an authentication-only answer, or that don't return 401 when the caller feature is null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An API that authenticates its own access tokens overwrites `HttpContext.User` on every request: with the principal from a valid token, or otherwise with an empty `new ClaimsPrincipal(new ClaimsIdentity())`, whatever principal a host scheme set.",
+      "why": "Authorization reads `HttpContext.User`, so a foreign principal, such as a session cookie a browser sends on a cross-site navigation, would otherwise act on the API.",
+      "check": "In the API's authentication filter, look for a code path that leaves `HttpContext.User` unchanged when the request has no valid token, or that falls back to a principal from the host's default scheme.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A who-am-I or capabilities route with no authority check answers an anonymous caller `401` and declares `401` but not `403`. It does not answer an empty `200`.",
+      "why": "An empty 200 describes nobody and hides a missing or expired token from a client that would otherwise sign in again (RFC 6750 section 3). With no authority check, 403 can never happen.",
+      "check": "Look for caller-description endpoints that return 200 with empty content for anonymous requests, or whose OpenAPI metadata declares 403 without any authorization check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Base management authority on role assignments or role claims, not on access-token scopes. Scopes only bind the token's audience.",
+      "why": "Administrative authority crosses planes, and no single scope a client can request represents it.",
+      "check": "Look for authorization handlers or route checks that grant administrative actions because the token holds a scope value, instead of checking role assignments or role claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never log a configured client secret or bootstrap credential, and never generate a token or credential and write it to the logs at startup.",
+      "why": "A secret in logs is a worse posture than a credential the operator supplies out of band. A logged JWT also expires, can't be revoked on its own, and has to be scraped from the logs.",
+      "check": "Look for log statements that include secret, password, token or credential values, especially in seeding and startup code.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a convenience administrator credential only in the development/test registration, and have production startup refuse it when it is configured.",
+      "why": "A long-lived credential that holds global admin authority and sits in configuration is only acceptable as a development and test convenience. A production instance creates its first administrator through a one-time setup.",
+      "check": "Look for options that hold a privileged bootstrap credential being bound in general or production registrations, or production-safety checks that don't reject it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate an API's bearer or DPoP tokens with an endpoint filter that runs after the tenant/request environment is resolved, not with pre-routing middleware or an ASP.NET Core authentication scheme and `.RequireAuthorization()`, when the signing keys and issuer are per tenant.",
+      "why": "Per-tenant keys and issuer are known only inside endpoint execution. A scheme's challenge or forbid can also redirect to an interactive page, which an API never answers.",
+      "check": "Look for `AddJwtBearer`, a pre-routing bearer middleware, or `.RequireAuthorization()` added to a multi-tenant management API that authenticates its own tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "hash": "587aba06ce5e6c51",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1001",
+  "rules": [
+    {
+      "statement": "Implement a capability that callers invoke to get an answer as a plain service, an `IFoo` interface with a `DefaultFoo` implementation registered with `TryAddSingleton<IFoo, DefaultFoo>` and called directly, not as a mediator command.",
+      "why": "A capability called for an answer gains nothing from a message dispatch that hides its handler, so each behavior takes the cheapest shape its requirement allows.",
+      "check": "Look for new `*Command` / `ICommandResponseHandler` pairs whose only caller sends the command to get a computed result, with no need for consumer override or multiple contributors; they should be an injected service instead.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement an open extension point whose caller iterates over or selects among the implementations itself as a strategy collection registered with `TryAddEnumerable`, not as a mediator event or command.",
+      "why": "Caller-owned fan-out needs no priority ordering, post-processing or mediator exception handling, so it carries no mediator ceremony.",
+      "check": "Check new plugin-style extension points: if the caller loops over or picks one implementation, the implementations should be registered with `TryAddEnumerable` and injected as `IEnumerable<T>`, not dispatched as a fan-out mediator command.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a step on the request pipeline that consumers must be able to override, or that many independently registered contributors mutate, an `NCode.Mediator` command (`ICommandHandler<T>` or `ICommandResponseHandler<T, TResponse>`) sent through the request-scoped `IMediator`, using `ISupportMediatorPriority` for ordering and `ICommandResponsePostProcessor` for post-processing.",
+      "why": "Such seams need the mediator's priority ordering, post-processing and unified exception handling, which a directly injected service does not provide.",
+      "check": "Look for overridable pipeline steps or shared collections (claims, metadata, validation) built through a directly injected service, or handlers that hand-roll ordering or post-processing instead of using the mediator's priority and post-processor support.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A service must reach a command handler only by sending the command through `IMediator`, never by injecting or calling the handler directly; handlers may call services.",
+      "why": "The layering rule: endpoints and services orchestrate and compute, the mediator marks the seams that stay open, so a direct reference to a handler closes the seam to overrides and contributors.",
+      "check": "Look for constructors of services or endpoints that take an `ICommandHandler<…>` or `ICommandResponseHandler<…>` (or a concrete handler type) as a dependency, or code that calls `HandleAsync` on a handler instead of `SendAsync` on the mediator.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not implement an open set of variants (such as key, grant or claim types) as a `switch` over the type inside one service class; make each variant a registered implementation in a strategy collection.",
+      "why": "A `switch` over key, grant or claim types inside one class is the family's smell that a service was chosen where a strategy collection belonged.",
+      "check": "Look for `switch` statements or if/else chains over key-type, grant-type, claim-type or similar discriminator strings inside a single service implementation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

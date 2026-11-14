@@ -1,0 +1,195 @@
+{
+  "hash": "8a59bc898e183b6b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #608",
+  "rules": [
+    {
+      "statement": "In a BackgroundService loop, catch every exception (including OperationCanceledException) unless the service's own stopping token is cancelled, log it, and retry after a delay instead of letting it escape ExecuteAsync.",
+      "why": "An escaping exception faults the BackgroundService: under BackgroundServiceExceptionBehavior.StopHost the whole host stops, otherwise the work never runs again for the life of the process.",
+      "check": "Look at ExecuteAsync loops that catch only specific exception types, or that catch OperationCanceledException without checking whether stoppingToken is cancelled.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a batch pass over many independent items, catch and log each item's failure with its identity, continue with the remaining items, and report the pass as incomplete so it is retried, instead of letting one item abort the whole pass.",
+      "why": "One bad item would otherwise block every other item, and the next pass may fail at the same item, so it never gets past it.",
+      "check": "Look for loops over items in a background or maintenance pass where an exception from one item's operation propagates out of the loop without being logged against that item.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a derived value such as a reason or classification once where the decision is made and pass it down, rather than recomputing it later with a `??` fallback that can't be reached.",
+      "why": "An unreachable fallback makes the code read as if the value can be missing, and if the inputs ever diverge it silently records a wrong value.",
+      "check": "Look for a callee that recomputes something its caller already decided, followed by a null-coalescing default.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an equality or matching rule that two code paths must agree on in a single helper that both call, instead of writing the comparison inline in each place.",
+      "why": "If one copy changes and the other doesn't, the two paths disagree about the same data.",
+      "check": "Look for the same multi-field comparison written inline in more than one place.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when production code compares several fields to decide an outcome, cover each field changing on its own with its own test.",
+      "why": "A regression that dropped one field's comparison would otherwise pass every test.",
+      "check": "For a multi-field comparison in a diff, check that there is a test where only that field differs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test the failure path of every method that wraps underlying exceptions into a domain exception, not only its success path, mirroring sibling methods' failure tests.",
+      "why": "If the catch were removed, raw exceptions would reach callers unwrapped and their retry handling would not run, and no test would notice.",
+      "check": "For a method with a catch-and-wrap block, look for a `..._Fails_Throws...` test; compare with sibling methods that have one.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a rejection or failure path logs an event, use a FakeLogger and assert the record's event id and level rather than a NullLogger that only lets the test check state.",
+      "why": "A lost rejection log on the most common failure would otherwise go unnoticed.",
+      "check": "Look for tests of rejection or error paths that pass NullLogger while the code under test logs a specific event.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release repository where nothing is shipped, don't ask for a backfill, a legacy-data fallback, or an upgrade or compatibility note in an ADR or the changelog for stored records written before a data-shape change.",
+      "why": "No stored record exists that the current code did not write; a stored record lacking what the serving code writes is malformed and fails closed, and the repository's direction rules out upgrade notes.",
+      "check": "Before reporting a missing migration or upgrade note, check whether the product has shipped and what the repository instructions and ADRs say about pre-release stored-shape changes.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a trade-off, such as discarding cached state on every reload, that an ADR's decision or Consequences section already records and accepts on purpose.",
+      "why": "The ADR already weighed the cost and chose it deliberately, for example so that a re-registered client never reuses a token.",
+      "check": "Before reporting a design cost, read the governing ADR's decisions and Consequences, and the plan's out-of-scope list.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the shared-store rule about digests of length-prefixed components to store keys only, not to set members or values that the code must parse back into data.",
+      "why": "The rule covers keys; a member that is parsed back has to hold its components, and public identifiers that are escaped so the separator stays unambiguous are acceptable there.",
+      "check": "Before reporting plaintext components, check whether the string is a key or a stored member or value that is read back and parsed.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to turn a classic constructor into a primary constructor when its body branches or subscribes, and don't ask to replace a private field with an auto-property when the field is accessed by ref through Volatile or Interlocked.",
+      "why": "The C# conventions keep a classic constructor for a body with branching, and an auto-property can't be passed by ref.",
+      "check": "Check the constructor body for logic beyond assignments, and check whether the field is passed by ref to Volatile or Interlocked.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report reaching through properties of data or options objects (such as `x.Current.Options.Tokens`) as a Law of Demeter violation.",
+      "why": "The Law of Demeter restricts reaching through collaborators' behavior, not through plain data.",
+      "check": "Check whether the chained members are data or options properties rather than calls on service objects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test project to move a stub, marker or sample type that only one test file needs out of that file, or to merge duplicate one-line markers from two test files into a shared type: the test conventions make it a private sealed nested type in that file.",
+      "why": "The test conventions nest such types in the file that uses them, and a shared top-level type would couple unrelated test classes for no behavior.",
+      "check": "Check whether the nested type is used by only one test file and is private sealed, and whether the test-conventions file allows it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to shorten a fully qualified type name to its simple name when, inside the file's namespace, the simple name resolves to a namespace or another type first.",
+      "why": "Simple names resolve against the enclosing namespaces before using directives, so the shortened form doesn't compile, for example `Options` resolving to a `*.Options` namespace.",
+      "check": "Check whether the enclosing namespace chain contains a namespace or type with the same simple name.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest a collection expression where the target type is ReadOnlyMemory<T> or another type that collection expressions don't convert to; the build's analyzers enforce the collection-expression rule wherever it applies.",
+      "why": "`[1]` doesn't compile for such a target, and the analyzers already accept the line.",
+      "check": "Check the parameter or target type the array is converted to before suggesting a collection expression.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In a test project, don't ask to replace a custom reloadable ConfigurationProvider with setting keys and calling IConfigurationRoot.Reload() when the test needs to delete configuration keys at run time.",
+      "why": "IConfigurationRoot can only set values; a key set to null stays, so its section still binds and the removal can't be expressed.",
+      "check": "Check whether the test removes keys or sections at run time, not only changes their values.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a word like 'replaces' or 'swaps' in a changelog or doc as delta wording when it describes what the product does at run time; the delta rule only covers wording set against an earlier unreleased state.",
+      "why": "The repository keeps a product mechanism in its own words, for example a key that rotation replaces.",
+      "check": "Check whether the sentence describes runtime behavior or compares the code to an earlier version of itself.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

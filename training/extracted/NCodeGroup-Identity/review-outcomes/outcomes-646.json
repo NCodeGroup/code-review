@@ -1,0 +1,52 @@
+{
+  "hash": "84b08bef4f16f9a5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #646",
+  "rules": [
+    {
+      "statement": "Every `uses:` in a GitHub Actions workflow names the full commit SHA of the action's release, with the version in a trailing comment (e.g. `actions/setup-dotnet@<sha> # v6.0.0`), never a mutable tag such as `@v6`.",
+      "why": "A retagged or compromised tag would run new code in jobs that may hold publish credentials; SHA pins are immutable and Dependabot moves them.",
+      "check": "Look for `uses: owner/action@vN` or any branch or tag reference in added or changed workflow steps instead of a 40-character SHA with a `# vX.Y.Z` comment.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/actions/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a workflow step's `working-directory: .` as redundant until you have checked whether the job sets `defaults.run.working-directory`, because the step may need the override to run a script at the repository root.",
+      "why": "When a job sets a default working directory, the step's explicit `.` is what makes a root-level script resolve, just as its neighbouring steps rely on it.",
+      "check": "Before reporting, read the job's `defaults.run.working-directory` and where the step's script lives.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a project built from the project template to move workflow blocks the template generates into a project-local composite action; the deduplication belongs upstream in the template.",
+      "why": "A project-side refactor of template-generated blocks would drift from what every template update merges.",
+      "check": "Before suggesting you deduplicate repeated workflow steps, check whether the project template generates them (e.g. in ci.yml or copilot-setup-steps.yml). If it does, point the change upstream.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't object to a changelog or catalog entry that links the issues it comes from, even issues that track template-alignment work rather than a product capability, because the project-template convention has a catalog entry link the issues behind it.",
+      "why": "Project-template ADR-0015 says a catalog entry links the issues behind it, and those links stay accurate once the issues close.",
+      "check": "Before reporting issue links in a CHANGELOG entry, check whether the linked issues are what the entry comes from.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

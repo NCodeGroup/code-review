@@ -1,0 +1,18 @@
+{
+  "hash": "950c989040e0e918",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #213",
+  "rules": [
+    {
+      "statement": "Don't ask for a CHANGELOG bullet to be reworded or moved when its wording follows a set phrasing that the changelog's earlier entries use the same way, such as a stock opening sentence that applies only to its own bullet.",
+      "why": "The maintainer declined this kind of finding: the phrasing appears in many earlier bullets, also placed after user-facing bullets under the same heading, and rewording one entry would make it the only one that differs.",
+      "check": "Before reporting ambiguous or misleading wording in a changelog bullet, search the rest of CHANGELOG.md for the same phrase. If earlier releases use it the same way, at the start of a bullet and covering only that bullet, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

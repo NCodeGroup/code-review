@@ -1,0 +1,177 @@
+{
+  "hash": "f7fcfa3bbc4fc6ab",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1064",
+  "rules": [
+    {
+      "statement": "Keep presentational React components stateless: they must not read the Redux store, dispatch, or hold fetch/server state, and may keep local state only when it is intrinsic to a control and still renders in isolation.",
+      "why": "Presentational components must render in Storybook and under React Testing Library without a store; state in them breaks that isolation, and the ADR makes breaking the layering a review failure.",
+      "check": "Look for useSelector/useDispatch, typed store hooks, RTK Query hooks, fetch calls or data-loading useEffect inside components in the design-system package or presentational component files.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wire Redux and RTK Query only in containers at the top of a screen, and move non-trivial logic out of components into UI-free modules with their own unit tests.",
+      "why": "Logic in components breaks unit isolation; the layering keeps each layer testable on its own.",
+      "check": "Look for non-trivial computation, parsing or decision logic in component bodies with no UI-free module and unit test, and for store wiring placed below the screen-level container.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use RTK Query for server state by default, not hand-rolled fetch-plus-slice or component-local fetching.",
+      "why": "Redux Toolkit with RTK Query gives one state model for server and client state, matching the stateless and stateful layering.",
+      "check": "Look for new manual fetch/axios calls that store server data in useState or custom slices where an RTK Query endpoint would do.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import a shared workspace package only through its public entry point, never through a deep path into its source.",
+      "why": "Each shared package is used only through its public entry point so that its internals can change without breaking consumers.",
+      "check": "Look for imports like '@scope/pkg/src/...' or relative paths reaching into another package's folder.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the design-system package free of any store dependency and the store, config and API-contract packages free of UI (and the API-contract package free of Redux); put a stateful container used by more than one app in the shared shell package, and keep one used by a single app in that app.",
+      "why": "A store-backed container in the UI package breaks its stateless, store-free contract, and one in the store package makes the UI-free state package depend on Material UI; the shell package is the one place allowed to depend on both.",
+      "check": "Check new package.json dependencies and imports: store/Redux imports in the UI package, MUI/React UI imports in store/config/api packages, and shared containers duplicated across apps or single-app containers placed in a shared package.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx",
+        "frontend/**/package.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't bake tier- or environment-specific values into a frontend bundle at build time; read them at runtime from the configuration document the serving host publishes (or from the host-rendered page).",
+      "why": "A bundle is built once and must run unchanged in every tier; per-environment bundles invite a mismatch between bundle and configuration.",
+      "check": "Look for environment-specific URLs, client ids, issuers or feature flags in import.meta.env, Vite define, .env.* files or hard-coded constants.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx",
+        "frontend/**/vite.config.*",
+        "frontend/**/.env*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Type a name set that new consumers may extend (such as surface or app names) as the known literals plus `(string & {})` rather than a closed union.",
+      "why": "Vocabularies are open unless provably closed; a closed union forces every new consumer to edit a library, while an unknown name falls back to a default and fails visibly.",
+      "check": "Look for new closed string-literal unions in shared packages for values a new app or host could add.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "public-api",
+      "applies_to": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a component that loads data at boot take its loader as a prop (e.g. a `(signal: AbortSignal) => Promise<T>` function) instead of importing and calling a loader module itself.",
+      "why": "A test can then pass its own loader instead of mocking a module, and a surface that loads differently can reuse the component.",
+      "check": "Look for gate or boot components that import a loader directly or choose their load from a string prop, and tests that use vi.mock to control such loading.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "frontend/**/*.tsx",
+        "frontend/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep each app's `main.tsx` as the explicit composition root that creates the root, the store Provider and the boot gate, and bind app-specific identity (such as the surface name) only there; don't hide this in a mount helper or per-app bootstrap module.",
+      "why": "Hiding the Provider hides the requirement that the gate sits inside it, and per-app bootstrap copies differ by one string and drift.",
+      "check": "Look for helpers that wrap createRoot/Provider, new per-app bootstrap.ts files, or app modules other than main.tsx binding the origin or surface name.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "frontend/apps/**/*.ts",
+        "frontend/apps/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default a runtime-configuration request's origin to `location.origin` instead of hard-coding or passing a host origin from app code.",
+      "why": "The serving host is the origin of every bundle, because a standalone dev server proxies the bootstrap document.",
+      "check": "Look for absolute origins or base URLs passed to the configuration loader in app code.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a management UI, model platform, team and tenant scopes as distinct browsing contexts with their own navigation, cache tags and authorization gating, never as one list filtered by scope.",
+      "why": "The management surface has to show the security boundary between platform, team and tenant.",
+      "check": "Look for screens or queries that merge resources across scopes into one filtered list, or share cache tags or authorization checks across scopes.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Get theme tokens and branding through the design system's theme provider, not through hard-coded colors or branding in components.",
+      "why": "Branding arrives at runtime from the bootstrap document or the host-rendered page, so it has to flow through the provider.",
+      "check": "Look for hard-coded colors, logos or brand strings in components instead of theme lookups.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "frontend/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each new stateless design-system component, including loading and error views, Storybook stories.",
+      "why": "Presentational components are meant to render in Storybook without a store; the boot loading and error views ship with stories.",
+      "check": "Look for new components in the design-system package that have no matching *.stories.tsx file.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "testing",
+      "applies_to": [
+        "frontend/packages/ui/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

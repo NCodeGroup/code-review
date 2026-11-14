@@ -1,0 +1,70 @@
+{
+  "hash": "8bd5967f5092e386",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform outcomes of #27",
+  "rules": [
+    {
+      "statement": "When adding a new heading to a Keep a Changelog section, make sure existing entries stay under the heading that fits them (Added, Changed, Fixed, …) rather than ending up under the inserted heading.",
+      "why": "If an entry lands under the wrong heading, the grouping breaks and the release notes misclassify the change, for example listing a version bump as a fix.",
+      "check": "In CHANGELOG.md diffs that insert a `### ` heading, look at the bullets that now sit below the new heading and confirm each one belongs to that category.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test for a check that fails on one specific condition must assert evidence of that condition, such as the reported message, not just a non-zero exit code. Negative cases must assert that the evidence is absent.",
+      "why": "An exit-code-only assertion also passes when the check fails for some unrelated reason. The detection logic could then be deleted or broken while the suite stays green.",
+      "check": "Look for test cases that only compare an exit status when other cases expect the same status for different reasons. Check that they also assert the specific output.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.tests.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, don't discard a setup step's failure (for example with `|| true` or by ignoring its output and status). Assert that setup succeeded, so that only the behavior under test can cause the expected result.",
+      "why": "A swallowed setup failure can produce the outcome the test expects. That hides regressions and leaves fixtures unverified.",
+      "check": "Look for `|| true`, ignored return values, or suppressed output on fixture or setup commands in test scripts and test code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*.tests.sh",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a wrapper or gate applies to several commands, its tests must exercise each wrapped command, not just one of them.",
+      "why": "A command the tests never exercise could stop being gated, and only a live CI run would reveal it.",
+      "check": "Compare the commands that CI or the docs route through the wrapper with the commands the wrapper's test cases actually invoke.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*.tests.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When CI starts running checks through a new script or a stricter gate, update the contributor docs' local-check instructions (AGENTS.md, README) to run them the same way. Say how the gate differs from the plain tool.",
+      "why": "Otherwise contributors run the plain tool locally, see it pass, and then CI fails on the stricter gate.",
+      "check": "In diffs that add a CI wrapper script or change how CI invokes a tool, check that AGENTS.md and README's local-check commands were updated to match.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/AGENTS.md",
+        "**/README.md",
+        "build/**",
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

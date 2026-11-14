@@ -1,0 +1,55 @@
+{
+  "hash": "c0ff20be2d06fed4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #140",
+  "rules": [
+    {
+      "statement": "When a script decides whether an action is needed from a field that may be absent or null, make sure the condition that says the action is needed and the code that performs it treat a missing value the same way, so a missing value is never counted as needed and then silently skipped.",
+      "why": "A missing field passed the 'needs switch' check but became an empty string that the action skipped. The setup was left unchanged and the operator wasn't told.",
+      "check": "Look for a condition like `$x.field -ne 'value'` followed by a separate truthiness test on a derived string (`if ($derived)`). Check that null or empty input either takes the action or is reported, not dropped between the two.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an automation script applies several changes to an external system, run the steps that can be refused before the ones that write lasting state, so that a failure leaves things as they were and a re-run retries the failed step.",
+      "why": "A step that failed after the ruleset had been written left the repository half-configured. Later runs skipped the step, reported success, and never retried it.",
+      "check": "In idempotent setup or baseline scripts, look for a fallible API call placed after other writes whose presence makes later runs skip the lookup that drives that call.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "tools/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every error path that a script reports as a failure a test: make the stand-in for the external command fail for one fixture, and assert both the reported FAILED message and that no success output follows.",
+      "why": "The stand-in answered every call with success, so the failure handling never ran in a test and could regress without any test failing.",
+      "check": "For a new `throw` or failure branch in a script, check whether the test's stand-in or mock ever returns a failure that reaches it, and whether a test asserts the resulting output.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a partial-update API call is missing a body field until you have checked the API's reference: if the reference marks that field optional, and the call only runs when the resource is already in the required state, leaving the field out is correct.",
+      "why": "The maintainer declined such a finding. The GitHub REST reference marks every body field of the update-default-setup endpoint optional, and the script sends the PATCH only after the GET reports the setup as configured.",
+      "check": "Before raising the finding, read the endpoint's documented request-body fields and their required flags, and look at the guard that runs before the call.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

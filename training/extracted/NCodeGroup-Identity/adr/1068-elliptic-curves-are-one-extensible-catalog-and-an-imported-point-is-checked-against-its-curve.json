@@ -1,0 +1,102 @@
+{
+  "hash": "b1889124bf3bce9b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1068",
+  "rules": [
+    {
+      "statement": "Select an elliptic curve by its identity (curve name or named-curve OID), never by key size alone, and use a size lookup only when no other registered curve shares that size.",
+      "why": "A size doesn't identify a curve: secp256k1 and P-256 are both 256-bit. A size-keyed lookup can't generate a chosen same-size curve and gives the wrong curve name for a non-NIST key.",
+      "check": "Look for curve lookups, switches or dictionaries keyed by bit size (256/384/521) that map to a curve or a `crv` value, when same-size curves can exist.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When publishing an EC key as a JWK, take the `crv` value from the key's actual named-curve OID, not from its key size.",
+      "why": "Deriving `crv` from size gives the wrong name for keys on non-NIST curves that share a size with a NIST curve.",
+      "check": "Look at JWK export code that sets `crv` from `KeySize` or a size-based mapping instead of from `ECParameters.Curve.Oid`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep elliptic-curve knowledge in one extensible catalog that generation, validation and JWK publication all read, and don't add a separate curve registry or hard-coded curve list for any one of them.",
+      "why": "Separate registries for generation and publication drift apart, and a curve set fixed in code can't be extended.",
+      "check": "Look for new curve tables, switches or registries in generation, JWKS or UI code that duplicate the shared curve catalog.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before handing an imported elliptic-curve public point (a JWK `x`/`y`, or an ECDH-ES peer key) to the platform, check that each coordinate is exactly the field's byte length (RFC 7518 §6.2.1.2–3), is below the prime p, and satisfies the curve equation, and throw `ArgumentException` if any check fails.",
+      "why": "An off-curve peer point is an invalid-curve attack on key agreement. The platform also rejects such points with different exception types on different operating systems (CNG throws `PlatformNotSupportedException`, OpenSSL throws `CryptographicException`).",
+      "check": "Look for EC public key import paths (`ECDiffieHellman`/`ECDsa.ImportParameters` from JWK or peer input) that skip a coordinate-length, range and on-curve check before import.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Check an elliptic-curve point with the curve's domain constants (p, a, b), not with domain parameters read from the platform at run time such as `ExportExplicitParameters`.",
+      "why": "The platform doesn't offer explicit parameters for every curve on every operating system, so the check would depend on the platform again. Constants make it the same everywhere.",
+      "check": "Look for point validation that calls `ExportExplicitParameters` or otherwise asks the platform for the curve domain during validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't catch `PlatformNotSupportedException` alongside `CryptographicException` to report it as an invalid key. Let the platform's own failures, such as an unsupported curve, surface with their original exception.",
+      "why": "Catching it hides a real unsupported-curve error as an invalid point and leaves validity defined by the platform.",
+      "check": "Look for catch blocks or exception filters around key import that merge `PlatformNotSupportedException` into an invalid-key or `CryptographicException` path.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A key generator rejects parameters that don't apply to its key type: it rejects a requested size that differs from the named curve's size, and symmetric and RSA generators reject a curve argument instead of ignoring it.",
+      "why": "Generation takes the curve by identity, so a mismatched size or a meaningless curve signals a wrong request and must not be silently dropped.",
+      "check": "Look for key-generation code that ignores a supplied curve for RSA or symmetric keys, or accepts a key size that conflicts with the requested curve.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A registered elliptic-curve specification must supply its short-Weierstrass domain (p, a, b), from constants or read from a platform-supported curve, so that its points can be validated.",
+      "why": "Without the domain, points on that curve can't be checked independently of the platform before import.",
+      "check": "Look for new curve specifications or registrations that leave the domain out or set it to null.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

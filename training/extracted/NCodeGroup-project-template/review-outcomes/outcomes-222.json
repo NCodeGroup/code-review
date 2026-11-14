@@ -1,0 +1,77 @@
+{
+  "hash": "82724bc5da7fe67e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #222",
+  "rules": [
+    {
+      "statement": "When an operation must be applied to every item in a collection that matches a condition, process all matches and return only after the loop, rather than returning after the first match.",
+      "why": "An early return inside the loop leaves later matching items unprocessed, so the gap the change meant to close stays open and the run reports success without warning.",
+      "check": "Look for `return` (or `break`) inside a loop that applies a fix or setting to matching items, where the intent is to cover all matches; check that a test with two or more matching items verifies each one is handled.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When updating an existing external resource whose expected sub-object is missing, report it and leave it unchanged instead of writing invented default values for its other fields.",
+      "why": "Writing made-up defaults would silently change settings the owner chose, such as review counts or allowed merge methods, on a resource the code does not own.",
+      "check": "Look for fallback branches that build a full parameter set from literals when the fetched object lacks one, then send it in an update; it should skip and report instead, with a test covering the missing-field case.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a set of configuration values once and reuse it, rather than repeating the same literals in more than one code path.",
+      "why": "Duplicated literal sets can drift apart when the settings change, and nothing flags the drift.",
+      "check": "Look for the same group of parameter literals (e.g. a settings object or request body) written out in two places in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change alters user-visible behavior, update every documentation passage that describes the old behavior so the docs don't contradict each other.",
+      "why": "Stale passages give readers two contradicting accounts of what the tool does.",
+      "check": "For a behavior change in the diff, search usage docs and READMEs for wording that still describes the previous behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before flagging a changelog entry as misplaced or stray, check how earlier release sections place the same kind of entry, and don't report it when it follows that existing pattern.",
+      "why": "The maintainer kept a test-only 'no change for projects' note as the last bullet under Changed because earlier sections put the same kind of note in the same place.",
+      "check": "Compare the entry's position and kind with earlier sections of the same CHANGELOG before reporting it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code, cover each call site of a shared helper with at least one case that reaches it through that call site's own conditions, not only through other paths that happen to call the same helper.",
+      "why": "If a call site is reached only incidentally, a regression there fails no test.",
+      "check": "For a helper called from several branches, check that the tests include fixtures that reach each branch, e.g. inputs that don't match the special-cased names.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

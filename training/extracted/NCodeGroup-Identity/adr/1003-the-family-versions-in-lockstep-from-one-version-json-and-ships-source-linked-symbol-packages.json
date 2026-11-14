@@ -1,0 +1,83 @@
+{
+  "hash": "ee577400b802db02",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1003",
+  "rules": [
+    {
+      "statement": "Don't set a package or assembly version (`Version`, `VersionPrefix`, `PackageVersion`, `AssemblyVersion`) in an individual project file; the whole package family gets one version, stamped from the root `version.json` by Nerdbank.GitVersioning.",
+      "why": "The co-released packages must stay mutually consistent so consumers never hit diamond-dependency version conflicts, and the version stays a property of the commit, so releases can be reproduced from git.",
+      "check": "Look in .csproj/.props/.targets diffs for hard-coded version properties, or for per-package version overrides that break lockstep.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets",
+        "**/version.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `cloudBuild.setVersionVariables` set to `false` in `version.json`; a workflow that needs the version calls `nbgv get-version` explicitly instead of turning the export back on.",
+      "why": "Nerdbank.GitVersioning appends to GITHUB_ENV from parallel MSBuild nodes without a lock. That tears lines in the file and fails jobs whose work succeeded.",
+      "check": "Flag a diff that sets setVersionVariables to true, or a workflow that reads GitBuildVersion or other NBGV variables from the environment instead of calling `nbgv get-version`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/version.json",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `assemblyVersion` precision at `major` in `version.json`, so all builds within a major share one assembly binding identity.",
+      "why": "Minor and patch upgrades then drop in within a major, and different majors load side by side.",
+      "check": "Flag a change to assemblyVersion precision in version.json.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/version.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a public GitHub repository, don't enable `EmbedAllSources` or embed tracked source in PDBs or packages; rely on `Microsoft.SourceLink.GitHub` with `PublishRepositoryUrl`, and use `EmbedUntrackedSources` only for generated files.",
+      "why": "Public source can be fetched from raw.githubusercontent.com without authentication, so embedding it only bloats every package.",
+      "check": "Look for EmbedAllSources, for removal of the SourceLink reference or PublishRepositoryUrl, or for embedded-PDB settings in build files of a public repository.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Packable projects ship a companion `.snupkg` symbol package (`DebugType=portable`, `IncludeSymbols`, `SymbolPackageFormat=snupkg`), and publishing pushes the `.snupkg` beside the `.nupkg`.",
+      "why": "Consumers need step-into debugging and provenance through the standard NuGet.org symbol server.",
+      "check": "Flag build-file changes that drop these symbol settings or switch DebugType to embedded, and publish workflows that push only the .nupkg.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.props",
+        "**/*.targets",
+        "**/*.csproj",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep `ContinuousIntegrationBuild` set to true when `CI` is true for every project, and keep `CentralPackageTransitivePinningEnabled` turned on with Central Package Management.",
+      "why": "CI output must be deterministic and path-normalized, and vulnerable indirect dependencies must be pinned centrally to patched versions.",
+      "check": "Flag removal or narrowing of these properties in Directory.Build.props or Directory.Packages.props.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Directory.Build.props",
+        "**/Directory.Packages.props"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

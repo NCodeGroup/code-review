@@ -1,0 +1,197 @@
+{
+  "hash": "3735a0a0d2b064c6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1407",
+  "rules": [
+    {
+      "statement": "Rotate a key-encryption (master) key by rewrapping the data keys it wraps, never by decrypting and re-encrypting the payloads, and don't bind the master key id into the payload's associated data.",
+      "why": "The data key's wrap is what the master key protects; re-encrypting would touch every payload, and a payload whose associated data named the master key would become invalid after a rewrap.",
+      "check": "Look for rotation or rekey code that reads and rewrites payload ciphertext, or envelope formats whose payload AAD includes the wrapping key id.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A rewrap operation must unwrap the data key under the key the envelope names, wrap it under the active key with a fresh nonce, and copy the payload nonce, tag and ciphertext unchanged. A value already under the active key is copied as it is.",
+      "why": "Rewrap changes only the data key's wrap, so the payload stays valid and a retry is idempotent.",
+      "check": "Check rewrap code for nonce reuse on the new wrap, changes to payload bytes, or a re-wrap of values that are already under the active key.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Status DTOs, API responses, audit events, log messages and exception messages about keys may carry key ids and owners, but never wrapped key material, key check values or plaintext material.",
+      "why": "Key ids aren't secret, but material and key checks must never leave the protector, and the console can't show what the API doesn't return.",
+      "check": "Look for key DTOs, problem documents, audit payloads or CryptographicException messages that include key bytes, wrapped keys or key check values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Destroy a retired key only after a retirement grace period has passed and a scan of every registered protected-value source finds no value that still names it. Provide a switch that keeps retired keys for good.",
+      "why": "In-flight protectors, replicas that missed a broadcast and values protected just before retirement still need the key, and a destroyed key makes its values unreadable.",
+      "check": "Look for key deletion at retirement time, deletion with no reference scan, or deletion when a source reports an error, such as an unreadable store, instead of reporting a reference.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model the holders of protected or encrypted values as an open DI collection of strategy implementations that packages can add to, not as a closed list.",
+      "why": "Packages protect their own values, and a value no source reports is never rewrapped and is lost when its key is destroyed.",
+      "check": "Look for hard-coded enumerations of the stores or tables holding protected values in rotation, rewrap or destroy code.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When swapping an active row under a filtered unique index, retire the old row in one unit of work and insert the successor in another, with concurrency tokens checked. Don't rely on EF Core ordering the update before the insert in a single SaveChanges.",
+      "why": "EF Core doesn't guarantee statement order, so a single unit of work can violate the unique index. Retire-then-insert, with a compensating re-activation if the insert fails, is correct by construction.",
+      "check": "Look for code that deactivates and inserts rows under a unique 'active' filter in one SaveChanges call, or that has no compensation when the insert fails.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do expensive or external calls, such as a root key or KMS wrap, before the window between dependent database writes, not inside it.",
+      "why": "Creating the successor's material first keeps the external call out of the window between retiring the old row and storing the new one.",
+      "check": "Look for external crypto or network calls placed between two writes that must happen close together.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound the age of a cache shared across replicas by refreshing entries older than a configured interval, rather than relying only on best-effort broadcast invalidation.",
+      "why": "A broadcast can be lost, so a bounded refresh delays a stale replica by at most one interval.",
+      "check": "Look for multi-replica caches that are invalidated only by pub/sub messages and have no load timestamp or refresh interval.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bulk rewrite jobs must read rows in keyset pages, write each page in one unit of work with each row's concurrency token checked, and isolate failures per value. Log and count a failed value, skip a vanished row, retry conflicts a bounded number of times, and continue the pass.",
+      "why": "One bad value or a conflicting page must not stop the pass, and a filter on the old state makes retries idempotent.",
+      "check": "Look for batch jobs that load everything at once, abort on the first failed record, skip concurrency checks, or retry without a bound.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a background maintenance pass over many owners or tenants, process each owner in its own try block so that one owner's failure doesn't stop the others.",
+      "why": "The pass must keep going for every owner even when one owner fails.",
+      "check": "Look for loops over tenants or owners in hosted services that have no per-iteration exception handling.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on a non-durable dispatcher or job queue for work that must eventually happen. Back it with a periodic background pass under a distributed lease, and use the dispatched job only to bring the work forward.",
+      "why": "The dispatcher isn't durable, so the leased pass is the durable path.",
+      "check": "Look for required maintenance work, such as rotation, rewrap or cleanup, that is only ever triggered by a dispatched job or a broadcast.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Notify observers and publish audit events only after the commit, on a bounded cancellation token of their own, and log and swallow an observer's failure.",
+      "why": "Work that follows a committed change must not undo it or be cancelled by the caller, and a failing observer must not fail the operation.",
+      "check": "Look for observer or audit calls made before SaveChanges, made with the request token, or whose exceptions propagate to the caller.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name audit events after the action on the resource, not after the owner type (for example `master_key.rotated`, not `tenant.master_key.rotated`), and carry the owner as a resource of the event.",
+      "why": "One name then covers every owner type, and an owner type that a package adds needs no new event name.",
+      "check": "Look for new audit event names that are prefixed or duplicated per owner type.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Option validation messages must name the full configuration key path, and dependent constraints between options, such as a grace period of at least twice the refresh interval, must be validated at startup.",
+      "why": "Options are validated when the host starts, and the full key tells an operator exactly what to fix.",
+      "check": "Look for options validators whose messages use bare property names, or that leave cross-option constraints unchecked.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A management endpoint that acts on an owner must answer 404 for an unknown owner and must never lazily create resources, such as keys, for it.",
+      "why": "Creating a key for an owner that doesn't exist would plant state for an unknown owner.",
+      "check": "Look for get-or-create calls in management handlers that run before the owner's existence is verified.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An operation rejected because it came too soon after a previous one answers 409 with a `Retry-After` header and a `retryAfterSeconds` value in the problem document. Losing a concurrency race answers 412.",
+      "why": "Clients need to know when to retry, and a lost race is a different failure from a rate limit.",
+      "check": "Look for 'too soon' rejections that have no Retry-After, or that map to the same status as concurrency conflicts.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never rewrite or edit ASP.NET Core Data Protection key elements behind `IXmlRepository`. Rotate by letting new ring keys use the new protector, and keep old wrapping keys for as long as a live ring key needs them.",
+      "why": "`IXmlRepository` never rewrites an element, and editing its storage bypasses Data Protection's own cache and format.",
+      "check": "Look for code that updates the stored XML of Data Protection keys or the rows of its table directly.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

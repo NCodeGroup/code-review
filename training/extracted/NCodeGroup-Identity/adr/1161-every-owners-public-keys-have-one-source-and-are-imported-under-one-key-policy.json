@@ -1,0 +1,151 @@
+{
+  "hash": "6efdfadfe06a9082",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1161",
+  "rules": [
+    {
+      "statement": "Give a client's public keys exactly one source: either the keys stored for it or the keys it publishes at its `jwks_uri`, never both and never merged; reject with `409 Conflict` a write that would set a `jwks_uri` while public keys are stored, or store a public key while a `jwks_uri` is set.",
+      "why": "OpenID Connect Dynamic Client Registration 1.0 §2 forbids registering both `jwks` and `jwks_uri`, and merging lets a stale stored key outlive a rotation the client performs at its `jwks_uri`.",
+      "check": "Look for key resolution that combines stored public keys with fetched `jwks_uri` keys, falls back from a failed fetch to stored keys, or settings/key-import paths that don't check the other source before writing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store keys registered by value only in the data-protected secret store, and render a registration's `jwks` by exporting those stored keys; never keep a second copy of a key set in plaintext settings or metadata.",
+      "why": "Keys are secrets managed as resources and data-protected at rest; a second plaintext copy would be stored and echoed but never used, leaving two by-value stores.",
+      "check": "Look for a `jwks` setting, metadata field or column that holds a JWK Set beside the secret store, or a registration response that echoes the submitted `jwks` instead of exporting stored keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every path where a public key enters (dynamic registration, `jwks_uri` fetch, management import for any owner type, key metadata update) through the one shared key-import policy service instead of writing validation checks in each endpoint handler.",
+      "why": "Handlers drift apart, and whether a key is valid doesn't depend on who owns it; an import path that skips the shared importer is named as a sign of a wrong choice.",
+      "check": "Look for a new or changed key import/update endpoint or fetch path that parses or validates JWKs itself rather than calling the shared importer/validator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When importing a public JWK, refuse it if any private or symmetric member (`d`, `p`, `q`, `dp`, `dq`, `qi`, `oth`, `k`, `priv`) is present, if `kid`, `use` or `alg` is not a string, if `use` is not `sig` or `enc`, if `key_ops` has duplicates or mixes uses or disagrees with `use` (RFC 7517 §4.3), or if `alg` is not a registered algorithm of that use that accepts the key's type and size.",
+      "why": "A key's `use`, `key_ops` and `alg` must agree with each other and with the key, and no private material may ever be stored, echoed or used, whoever owns the key and however it arrives.",
+      "check": "Look at JWK import code for missing private-member checks, non-string tolerance of `kid`/`use`/`alg`, missing `key_ops`/`use` consistency checks, or an `alg` check that ignores key type and size.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let a request that imports or updates a JWK repeat the JWK's own `kid`, `use` or `alg`, but refuse it when it contradicts them, and when updating a stored key's `use` or `alg`, validate them against the stored key's type and size and keep its `kid`.",
+      "why": "Metadata rules must hold on every path, including administrator updates, so a key whose metadata contradicts it is refused at both import and update.",
+      "check": "Look for request-level overrides that silently replace a JWK's `kid`/`use`/`alg`, or update handlers that change `use`/`alg` without algorithm/key validation or that drop the `KeyId`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a `kid` as unique only among one owner's keys: allow different clients or tenants to share a `kid`, check for a duplicate within the owner (falling back to the secret identifier when there's no `kid`) when a key is added, and keep the `kid` separate from the opaque secret identifier.",
+      "why": "A `kid` is a publisher's name, not a global resource identifier; key selection only needs it unique within one owner.",
+      "check": "Look for a global uniqueness check or unique index on `kid`, using the `kid` as the secret's resource identifier, or a key-add path that skips the per-owner duplicate check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a registered key whose `kid` is absent, `null` or empty by the base64url SHA-256 JWK thumbprint of its public members (RFC 7638), store it as the key's `kid`, and never invent a server-side name; refuse the set if two keys end up with the same name, whether declared or derived.",
+      "why": "Anyone holding the key can compute the thumbprint, while an invented name or an opaque secret identifier is one the client can't derive.",
+      "check": "Look for generated GUIDs or counters used as `kid`, missing thumbprint naming for kid-less registered keys, or duplicate detection that ignores thumbprint-derived names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a JWK Set registered by value as all-or-nothing (one unusable key fails it with `invalid_client_metadata`), but in a set fetched from a `jwks_uri` ignore keys of unknown type or algorithm, without a `kid`, malformed or self-contradictory, as RFC 7517 §5 directs, and refuse the whole fetched set only for private or symmetric material or two usable keys with one `kid`.",
+      "why": "A published set may serve other parties and algorithms this server doesn't support; only private material or an ambiguous `kid` makes it unsafe.",
+      "check": "Look for a `jwks_uri` fetch that fails the whole set because of one unsupported key, or that silently drops a key with private material instead of refusing the set; also look for registration that partially accepts a `jwks`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve a JWK's `kty` through the registered key-type catalog instead of hard-coding a fixed list such as `RSA`/`EC`, so that any registered key type (for example `OKP` or `AKP`) is accepted at every key entry point.",
+      "why": "The key-type vocabulary is open: a key type the server registers must be accepted wherever keys enter.",
+      "check": "Look for switch statements or allow-lists over `kty` strings in key import or validation code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a JWK's first `x5c` certificate only after verifying that it carries the key's public key, refuse an empty, malformed or mismatched `x5c`, and refuse a JWT signed with such a key when the current UTC time is outside the certificate's validity, allowing the usual clock skew.",
+      "why": "A certificate travels with its key (RFC 7517 §4.7, RFC 8705 §2.2) and must not vouch for a different key or be used outside its validity.",
+      "check": "Look for `x5c` handling that stores the certificate without comparing its public key to the JWK, or signature validation that ignores the certificate's NotBefore/NotAfter.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client registration update (RFC 7592 §2.2) is applied, replace all of the client's stored public keys with the keys of its `jwks`, or remove them all when it publishes a `jwks_uri` instead, and keep its shared secrets.",
+      "why": "A registration update replaces the client's keys, and only one source of public keys may remain.",
+      "check": "Look for registration update code that merges new `jwks` keys with existing ones, keeps stored public keys after a switch to `jwks_uri`, or deletes symmetric secrets.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make a contract field nullable when every caller would then have to apply the same fallback; compute the fallback on the server and make the field required (for example, a key's `KeyId` falls back to its secret identifier).",
+      "why": "With a nullable field, every caller would repeat the fallback.",
+      "check": "Look for new nullable response properties whose documentation or callers all substitute the same default value.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

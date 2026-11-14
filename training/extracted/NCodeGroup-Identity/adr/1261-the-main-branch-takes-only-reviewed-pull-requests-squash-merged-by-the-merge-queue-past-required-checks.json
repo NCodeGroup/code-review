@@ -1,0 +1,19 @@
+{
+  "hash": "cde69f1b06501206",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1261",
+  "rules": [
+    {
+      "statement": "A GitHub Actions workflow whose job is a required merge check must trigger on every pull request and on `merge_group` without trigger-level `paths`/`paths-ignore` filters, deciding inside a detection job whether the real work runs so that a skipped job still reports success.",
+      "why": "A path-filtered workflow never reports on pull requests outside its paths, leaving the required check pending and blocking the merge; the merge queue also needs the check on `merge_group` to merge anything.",
+      "check": "In a workflow file diff that adds or changes a gating workflow, look for `paths`/`paths-ignore` under `on.pull_request` or `on.push`, or a missing `merge_group` trigger; the change-detection logic should be in a job (for example, a detect-changes job whose outputs gate later jobs with `if:`).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "hash": "3ae7e95057bbea62",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #765",
+  "rules": [
+    {
+      "statement": "Don't report that a project edit to a file the review rules list as template-owned will be overwritten by the next template update when `.copier-answers.yml` names that file under `project_owned_files`.",
+      "why": "A file named in `project_owned_files` is the repository's own. A template update leaves it alone and only shows the template's changes to it, so the project's edits stay.",
+      "check": "Before raising a template-ownership finding, check whether `.copier-answers.yml` lists the file under `project_owned_files` and whether AGENTS.md records the file as project-owned.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a decision record overrides a rule from the project template, add it to the list of override records in AGENTS.md, and update that list's count to match.",
+      "why": "Readers check that list to find overrides, so a record left out of it hides the override.",
+      "check": "For any ADR or AGENTS.md text that says it overrides a template rule, confirm the ADR appears in AGENTS.md's list of override records and that the list's count is correct.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "AGENTS.md",
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap prose lines in decision records at 120 columns, and rewrap edited lines so no line runs past that width.",
+      "why": "The records wrap at 120 columns, so a longer line breaks consistency and will be flagged by a wrap check or a later reflow.",
+      "check": "Look for added or edited lines in docs/decisions Markdown files that are longer than 120 characters.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

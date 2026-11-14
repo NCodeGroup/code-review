@@ -1,0 +1,18 @@
+{
+  "hash": "8705cf5c24529aca",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform outcomes of #35",
+  "rules": [
+    {
+      "statement": "When documentation or an Unreleased changelog entry cites an architecture decision record from the shared project template, prefix it as 'project-template ADR-NNNN' rather than giving a bare number, and leave already released changelog sections as they are.",
+      "why": "A bare number can be mistaken for one of the repository's own ADRs. Released notes are historical and stay unchanged.",
+      "check": "Look in changed Markdown, especially the CHANGELOG Unreleased section and AGENTS.md, for ADR numbers that refer to project-template records but lack the 'project-template' prefix. Don't flag entries in released changelog sections.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

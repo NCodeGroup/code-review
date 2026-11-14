@@ -1,0 +1,144 @@
+{
+  "hash": "a5a54ba8de05a744",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1119",
+  "rules": [
+    {
+      "statement": "Keep `*.Abstractions` packages to contracts only; put any type that carries behavior (parsing, hashing, member production) in a separate logic-bearing package that the abstractions packages may reference.",
+      "why": "Abstractions packages contain contracts only, no logic; referencing a model library is fine because the logic then doesn't live in the abstractions package.",
+      "check": "Look for method bodies with real logic, static helpers or behavior-bearing classes added to a project named `*.Abstractions`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a DI-free library, don't add a static mutable registry for an open vocabulary; ship the standard entries as built-in data and take any other entry from the caller as an argument or overload.",
+      "why": "A static mutable registry is global state with registration-order and test-isolation problems, and a DI-free package cannot reach a DI registry.",
+      "check": "Look for static mutable collections, `Register(...)` methods or static `Add` APIs that let callers extend a vocabulary globally in a package without dependency injection.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an open vocabulary as names plus sealed registered data, with the standard entries built in and found through a `TryGet`-style lookup, rather than a closed enum or a per-type converter hierarchy.",
+      "why": "Per the open-vocabulary decision, an open vocabulary is names plus registered data, so contributed entries work with no library change.",
+      "check": "Look for new enums or switch statements over a vocabulary that is defined by an extensible registry (IANA or similar), or abstract per-entry classes where a sealed data descriptor would do.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't derive a registry name or trait from another identifier by string rewriting (for example lowercasing `HashAlgorithmName.Name`); map each known name explicitly and fail for unknown ones instead of guessing.",
+      "why": "No trait is inferred from a name; a name that doesn't match the registry must fail rather than be guessed.",
+      "check": "Look for `ToLowerInvariant`, `Replace` or similar transforms that turn one identifier (algorithm name, enum name) into a registry or wire name.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a set of caller-supplied descriptors as a whole: throw `ArgumentException` for a null entry or for two descriptors with the same name.",
+      "why": "Descriptors are validated as a whole, like the key type catalog, so a duplicate or null entry never silently wins or crashes later.",
+      "check": "Look for constructors or methods taking `IEnumerable<...Descriptor>` that build a lookup without rejecting null entries or duplicate names (e.g., using indexer assignment that overwrites).",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let a constructor adopt an already in-memory value (`JsonElement`, `JsonObject`, a collection) and reserve a static `Parse(string)` for reading text.",
+      "why": "The decision separates adopting an in-memory value (constructor) from reading text (Parse).",
+      "check": "Look for constructors that take a JSON string and parse it, or `Parse` methods that take an already-parsed value.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Back an immutable JSON-wrapping type with a detached `JsonElement` that owns no `JsonDocument`, so it needs no disposal or defensive cloning.",
+      "why": "A detached immutable element leaves nothing to dispose or defensively clone.",
+      "check": "Look for wrapper types that hold a `JsonDocument` field, implement `IDisposable` only to free it, or clone on every access.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When computing an RFC 7638 JWK thumbprint, always include `kty` in the required members and order members ordinally.",
+      "why": "RFC 7638 §3.2 requires `kty` among the thumbprint members and §3.3 requires lexicographic (ordinal) member order.",
+      "check": "Check thumbprint member lists and canonicalization code: `kty` must be present, and sorting must use ordinal comparison, not culture-sensitive comparison.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Detect JWK private key material fail-closed: always treat the standard private member names (`d`, `p`, `q`, `dp`, `dq`, `qi`, `oth`, `k`, `priv`) as private in addition to any key-type-specific private members.",
+      "why": "A contributed key type must not be able to declare a standard private name public, so an RSA key carrying `k` is still rejected.",
+      "check": "Look for private-member checks or public-key projections that rely only on a per-key-type list and could let a standard private member through.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce JWK Thumbprint URIs only with whole-digest hash names; never emit truncated registry names such as `sha-256-128`.",
+      "why": "An RFC 7638 thumbprint is the whole digest, and a truncated key identifier weakens the binding.",
+      "check": "Look for hash-name maps or thumbprint URI code that includes truncated Named Information registry entries or truncates the digest.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a caller-supplied Named Information hash name against the RFC 6920 §3 `alg` rule (`1*unreserved`), and for a hash with a known registry name require exactly that name.",
+      "why": "The open overload must accept unknown registered names but must never mislabel a known hash.",
+      "check": "Look for thumbprint URI or `ni:` URI code that accepts a hash name without checking unreserved characters or without checking it against the known mapping for that algorithm.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reading a JWK Set, skip a key whose `kty` is missing, not a string or empty, using the same test the single-key reader applies, rather than failing the whole set.",
+      "why": "One malformed key must never poison the set.",
+      "check": "Look for JWKS parsing that throws on one bad key, or that uses a different `kty` validity test than the single-key type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

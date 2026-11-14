@@ -1,36 +1,47 @@
 {
-  "hash": "919922c39f1943e0",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "afac1631b08582db",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity .claude/commands/review-plan-diff.md",
   "rules": [
     {
-      "statement": "Do not skip, disable, delete or weaken existing tests or their assertions to make a change pass; fix the code or update the test to the new correct behavior.",
-      "why": "Skipped or weakened tests are a shortcut that hides broken behavior while the checks still pass.",
-      "check": "Look for added Skip attributes, commented-out or deleted tests, loosened assertions (e.g. exact checks replaced with NotNull or broader ranges), or removed test cases without a matching behavior change that justifies it.",
+      "statement": "In a pre-release project, don't add a compatibility shim, migration note or wording that contrasts the product with an earlier state; describe the product only as it is now.",
+      "why": "ADR-0015: a pre-release product has no released users to migrate, so texts and code describe only the current state.",
+      "check": "In a pre-release project's diff, look for obsolete-forwarding members or aliases kept for old callers, 'previously'/'now'/'no longer' wording in docs or changelog, and migration sections.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, don't mark changes as breaking: no `**Breaking:**` changelog label, no conventional-commit `!` marker and no `BREAKING CHANGE:` footer in commit messages or pull request titles.",
+      "why": "ADR-0015: before the first release nothing can break for users, so breaking-change markers misdescribe the product.",
+      "check": "Look in CHANGELOG.md, commit messages and the PR title for `**Breaking:**`, `feat!:`-style markers or `BREAKING CHANGE:` footers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a pre-release project, keep the changelog's `## [Unreleased]` section a catalog under only `### Added` and `### Security` headings.",
+      "why": "ADR-0015: with no prior release, every entry is something the product has, so Changed/Removed/Fixed/Deprecated sections don't apply.",
+      "check": "Check CHANGELOG.md's `## [Unreleased]` section for any subsection other than `### Added` and `### Security`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't skip or weaken tests, swallow errors, hard-code values or leave TODOs to make a change pass its checks.",
+      "why": "These shortcuts make checks pass while the required behavior isn't actually delivered.",
+      "check": "Look for new Skip attributes, loosened assertions or deleted test cases, empty or broad catch blocks, magic literals standing in for computed or configured values, and new TODO/FIXME comments.",
       "scope": "general",
       "topic": "testing",
-      "applies_to": [
-        "**/*Tests/**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Do not swallow exceptions or errors; catch only what you can handle and otherwise propagate, log or surface the failure.",
-      "why": "Swallowed errors are a shortcut that hides failures instead of handling them.",
-      "check": "Look for empty catch blocks, catch-all handlers that discard the exception, or ignored error results without a documented reason.",
-      "scope": "general",
-      "topic": "errors-and-validation",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Do not leave TODO, FIXME or placeholder comments or stub implementations in finished changes; complete the work or file it as a separate follow-up.",
-      "why": "Leftover TODOs mean a step was done with shortcuts instead of done as written.",
-      "check": "Search the diff for added TODO/FIXME/HACK comments, NotImplementedException stubs, or placeholder logic.",
-      "scope": "general",
-      "topic": "code-organization",
       "applies_to": [
         "**/*.cs"
       ],

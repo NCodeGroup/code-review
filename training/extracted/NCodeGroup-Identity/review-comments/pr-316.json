@@ -1,12 +1,12 @@
 {
   "hash": "9ecb2867527505c2",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #316",
   "rules": [
     {
-      "statement": "Do not allocate short-lived, small, fixed-size scratch buffers with `new byte[...]`; use `stackalloc` into a `Span<byte>`, or a pooled buffer (for example from `NCode.Buffers` or `ArrayPool<byte>`), when the buffer doesn't outlive the method.",
-      "why": "The maintainer flagged a `new byte[]` for a fixed-size temporary key buffer as a violation of the project's ADR that limits heap allocations.",
-      "check": "Look for `new byte[size]` (or other new arrays) inside a method where the size is small or known at compile time and the array is only used temporarily and is not returned or stored. Flag it and suggest `stackalloc` or a pooled/rented buffer.",
+      "statement": "Don't allocate a temporary fixed-size byte buffer (such as one for key material sized from a known curve or algorithm constant) with `new byte[]`; use `stackalloc` into a `Span<byte>` or a pooled buffer (for example from `NCode.Buffers`) instead.",
+      "why": "The maintainer pointed to the ADR on heap allocations: short-lived buffers of known size should not add heap allocations.",
+      "check": "Look for `new byte[size]` in a diff where the array is local and short-lived, the size is a small known constant or comes from a descriptor, and the array is not returned or stored. Flag it and suggest `stackalloc` or a pooled or rented buffer.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [

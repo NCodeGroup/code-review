@@ -1,0 +1,121 @@
+{
+  "hash": "11b455e4734016eb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #465",
+  "rules": [
+    {
+      "statement": "In production code, a background service's per-tick catch block filters on the stopping token (`catch (Exception) when (!cancellationToken.IsCancellationRequested)`), not on the exception type (`when (exception is not OperationCanceledException)`).",
+      "why": "A cancellation the stopping token didn't cause, such as a store or command timeout surfacing as TaskCanceledException, otherwise escapes, ends the BackgroundService and under the default BackgroundServiceExceptionBehavior.StopHost stops the whole host, instead of being logged and retried at the next tick.",
+      "check": "Look for catch filters in BackgroundService loops or periodic work that exclude OperationCanceledException/TaskCanceledException by type; they should test the stopping token instead.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change replaces a default timeout, retry count or similar runtime limit that callers relied on, the CHANGELOG breaking-change note names the new defaults and the configuration section that controls them.",
+      "why": "A remote endpoint that worked within the old limit (for example HttpClient's 100 s default) silently fails after the upgrade, and operators can't tell why or how to restore it.",
+      "check": "For diffs that add or change timeouts, retries or limits on existing calls, check that the CHANGELOG breaking entry states the old and new values and the options section.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create HttpMessageHandler instances, including the inner handlers a stub wraps, inside the `ConfigurePrimaryHttpMessageHandler` or `AddHttpMessageHandler` factory lambda, not outside it and captured, when the handler that wraps them disposes them.",
+      "why": "IHttpClientFactory rotates handlers (every 2 minutes by default) and disposes the old chain, so captured shared inner handlers are already disposed when the next chain uses them and calls fail with ObjectDisposedException.",
+      "check": "Look for handler instances created outside an IHttpClientFactory handler factory lambda and captured by it, especially when the wrapping handler disposes them in Dispose.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A build workaround that opts out of an analyzer or source generator has a comment naming its decision record or tracking issue, the guard test that proves the workaround still holds, and when it can be removed.",
+      "why": "Without them, a later maintainer can't tell when removing the workaround becomes safe.",
+      "check": "In Directory.Build.targets/props or project files, check that blocks removing analyzers or generators cite an ADR or issue, a guard test and the removal condition.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/Directory.Build.targets",
+        "**/Directory.Build.props",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a helper type (stub stream, stub HttpMessageHandler and the like) that more than one test class uses lives in one shared internal test type, not copied into each test file.",
+      "why": "Two copies must be kept in step, and a fix to one won't reach the other.",
+      "check": "Look for identical nested or file-local helper classes in two or more test files.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover an option's off or disabled branch (such as retries set to 0) and a caller's cancellation as well as the default path, asserting the behavior that tells them apart (sent exactly once, no TimeoutException inner exception).",
+      "why": "Without these tests, a regression that always adds the strategy or reports a caller's cancellation as a timeout goes unnoticed.",
+      "check": "When a diff adds configurable resilience or timeout behavior, check that there are tests for the disabled setting and for a caller's cancellation while the call is pending.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask that a decision record still contradicting a template record be turned into a `Supersedes` override, or that the issue the PR closes stay open, when the record keeps a `**Conflicts with:**` line linking the issue that tracks the remaining work.",
+      "why": "The conventions record a remaining contradiction with a template record on a `Conflicts with` line linking its tracking issue, so retargeting that link to the issue that does the work settles the issue that asked for it.",
+      "check": "Before reporting, check AGENTS.md's rules for Conflicts with and Supersedes lines, and whether the record's Conflicts with line links an open tracking issue for the gap.",
+      "scope": "domain",
+      "domain": "architecture-decision-records",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a serializer to rent from the non-sensitive buffer pool on a plain path when the same code path also produces plaintext that is later encrypted, and splitting it would need a flag that selects behavior.",
+      "why": "Encryption plaintext is kept in zeroed pooled memory by decision, and the production conventions forbid behavior-selecting flags, so this is a security choice, not a missed hot-path optimization.",
+      "check": "Before reporting `isSensitive: true` as an unneeded cost, check whether the buffer's output also feeds encryption (for example a JWE payload) and whether splitting it would need a boolean mode parameter.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test to reference an internal constant instead of a string literal when the test assembly has no InternalsVisibleTo access, and a rename would still make the tests fail loudly.",
+      "why": "The testing conventions allow InternalsVisibleTo only for the matching test assembly and forbid widening the public surface for tests.",
+      "check": "Before reporting a hard-coded name in tests, check whether the constant is internal, whether this test assembly is the matching one granted InternalsVisibleTo, and whether a mismatch would fail visibly.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report reading `IOptions<T>.Value` in a constructor when the options are fixed at start-up, their validator has no dependencies that could deadlock resolution, and sibling services read them the same way.",
+      "why": "No convention forbids it, and in that case it causes neither a resolution deadlock nor a missed reload.",
+      "check": "Before reporting, check whether the options are meant to reload (IOptionsMonitor or a reload requirement), whether the validator takes dependencies, and how sibling services read the same options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

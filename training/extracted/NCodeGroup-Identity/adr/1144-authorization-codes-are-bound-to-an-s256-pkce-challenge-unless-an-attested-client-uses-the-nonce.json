@@ -1,0 +1,126 @@
+{
+  "hash": "26806642c8e5bb91",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1144",
+  "rules": [
+    {
+      "statement": "Do not implement, register or accept the PKCE `plain` code challenge method; `S256` is the only built-in transformation.",
+      "why": "OAuth 2.1 §7.5.2 forbids `plain`, and RFC 9700 §2.1.1 calls it a downgrade vector because it sends the verifier itself in the authorization request.",
+      "check": "Look for a `plain` ICodeChallengeMethod-style transformation, a `\"plain\"` case in PKCE validation, or `plain` in a supported-methods default or discovery list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare a computed PKCE code challenge with the stored challenge using `CryptographicOperations.FixedTimeEquals`, not `==`, `string.Equals` or `SequenceEqual`.",
+      "why": "The verifier must compare in constant time so that the comparison does not leak the stored challenge through timing.",
+      "check": "In PKCE verification code, look for ordinary string or sequence equality on the challenge values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve PKCE transformations by their `code_challenge_method` name from a registered strategy collection, with the defaults added via `TryAddEnumerable`, instead of a hard-coded `switch` over method names.",
+      "why": "A deployment adds a method by registering another transformation, with no edit to the verifier.",
+      "check": "Look for `switch`/if-chains over code challenge method strings in the verifier, or default transformations registered with `AddSingleton` instead of `TryAddEnumerable`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a `code_challenge` without a `code_challenge_method` as having no method (null), never as a defaulted method. Refuse methods the operator has not listed at the authorization endpoint, and methods with no registered transformation at the token endpoint.",
+      "why": "OAuth 2.1 makes `code_challenge_method` required, and defaulting it would revive the `plain` default from RFC 7636.",
+      "check": "Look for code that defaults a missing code_challenge_method to `plain` or `S256`, or that accepts any registered method without checking the configured supported list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default the advertised `code_challenge_methods_supported` to `S256` alone. Offer a further method only when an operator lists it, not merely because it is registered, and let a child tenant or client only narrow the list (intersect).",
+      "why": "Registration describes a capability, and offering it is an operator decision. A transformation is not guaranteed to keep the verifier secret.",
+      "check": "Look for discovery or a supported-methods setting that is populated from every registered transformation, or a child merge that can widen the list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require PKCE for every code-issuing request from a public client, and make `require_pkce` default to true as a floor. Exempt a request only when all of these hold: the deployment relaxed `require_pkce`, an administrator attested that client per client (a flag that dynamic client registration can never set), the client is confidential, and the request uses the `openid` scope and carries a `nonce`.",
+      "why": "OAuth 2.1 §7.5.1.1 allows skipping PKCE only with per-client, per-request assurance that the client validates the nonce. A request with neither PKCE nor a nonce is unprotected against code injection.",
+      "check": "Look for PKCE exemptions keyed only on a deployment switch, only on a nonce being present, or applied to public or self-registered clients. Also look for a relaxed path that accepts a code request with neither a challenge nor a nonce.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deciding PKCE binding, take the client type from the registered `token_endpoint_auth_method` at the authorization and PAR endpoints. At the token endpoint, take it from how the token request actually authenticated, and use the scopes the token request is effectively for, so that an unbound code is redeemed only by an authenticated client whose request still includes `openid`.",
+      "why": "Otherwise an unbound code could be redeemed by anyone who knows the client_id of a client allowed to authenticate with `none`, or by a request that drops `openid` and with it the ID Token that returns the nonce.",
+      "check": "At the token endpoint, look for a PKCE requirement check that uses the registered client type or the originally granted scopes instead of the actual authentication method and the effective scopes. Also check that one shared policy decides binding at all three endpoints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate that PKCE `code_challenge` and `code_verifier` values are 43 to 128 characters drawn from the unreserved set of RFC 7636.",
+      "why": "RFC 7636 fixes this syntax, and each malformed value maps to a specific error.",
+      "check": "Look for PKCE handling that skips length or character-set validation of the challenge or the verifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return `invalid_request` for a missing or malformed code_challenge at the authorization and PAR endpoints. Return `invalid_grant` for a missing, malformed or mismatched code_verifier, for a verifier presented with a code that has no challenge (PKCE downgrade), and for a method with no registered transformation.",
+      "why": "RFC 7636 §4.4.1 and §4.6 and RFC 9700 §4.8.2 map these failures to these errors. Accepting a verifier for an unbound code would let a PKCE downgrade through.",
+      "check": "Look at the error codes in PKCE failure paths, and at a token handler that ignores a code_verifier when the code was not bound.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an OAuth protocol error that names no specific status code as `400 Bad Request`, including at the pushed authorization request endpoint.",
+      "why": "RFC 6749 §5.2 and RFC 9126 §2.3 say so, which keeps the PAR endpoint consistent with every other OAuth error response.",
+      "check": "Look for OAuth error responses, especially from the PAR endpoint, that default to a status other than 400 when the error does not specify one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}
