@@ -593,6 +593,22 @@ pwsh -File .\tools\Enable-CodeReview.ps1 -Repo identity-platform,Identity
 The `code-review` environment holds no secrets. Anthropic's federation rule trusts only jobs in it, so only
 default-branch jobs get an Anthropic token. `-WhatIf` shows what would change.
 
+## Training
+
+`npm run train` (`training/run.ts`) teaches the bot rules for every NCodeGroup repository. It reads a repository's accepted decision records, its instruction files and the coding conventions in `AGENTS.md`, its review prompts and `docs/`, the maintainer's review comments, and the bot's own findings that the maintainer answered, with the replies and whether each finding was fixed or declined, plus `training/sources/`. A declined finding with a lasting reason teaches what not to report, and a fixed one teaches the rule it enforced. Only the maintainer's replies count. Opus extracts rules into `training/extracted/` and generalizes them by topic into `guidance/`, following `training/feedback.md`. The rules from an instruction file carry its scope, such as production code or test projects. A rerun reuses unchanged extractions, deletes those of sources the repository no longer has (unless `--only` narrows the sources), and finds the repository's folder ignoring case. It runs on Bedrock with `AWS_BEARER_TOKEN_BEDROCK`, and the regenerated guidance is reviewed in a pull request ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
+
+`--list` counts each repository's sources without a model call:
+
+```powershell
+node training/run.ts --repo NCodeGroup/identity --checkout ../identity --list
+node training/run.ts --repo NCodeGroup/identity --checkout ../identity --extract-only
+node training/run.ts --repo NCodeGroup/identity-platform --checkout ../identity-platform --extract-only
+node training/run.ts --repo NCodeGroup/project-template --checkout ../project-template --extract-only
+node training/run.ts --generalize-only
+```
+
+`node training/run.ts --retag` rewrites the tags without a model. Changing `training/prompts/extract.md` makes the next run extract every source again.
+
 ## Evals
 
 `node evals/run.ts` replays the cases in `evals/cases.json` (real pull requests from NCodeGroup repositories with the findings a maintainer expected and the ones that must not appear) through the whole pipeline on Bedrock, and a Sonnet judge compares what the reviewers posted with what was expected. A concern with a `minSeverity` counts only when a finding raises it at that severity or above, so a case can expect a should-fix, or allow a concern as a nit but not as a should-fix. A full run of the first 16 cases cost about $30 without rule checks and $52 with them. It needs `AWS_BEARER_TOKEN_BEDROCK` and, for the checkout of each case, `gh`.
