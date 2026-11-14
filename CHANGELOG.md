@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-14
+
 ### Added
 
 - A `/review` comment from someone with write access that starts with `/review` and then a space or the end of the comment but isn't a command, such as `/review please`, gets a 😕 reaction within seconds, so its author can tell that no review started; the run's log lists the commands. The reaction uses a token of its own that holds only the pull requests permission, minted before setup-node and revoked before the review step, and never in the review step's environment ([#174](https://github.com/NCodeGroup/code-review/issues/174), [ADR-1004](docs/decisions/1004-an-ignored-review-comment-gets-a-confused-reaction.md)).
@@ -21,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The repository follows project-template v0.86.1 (from v0.84.3): Copilot Chat, Copilot CLI and the VS Code agents keep each plan in its own git worktree under `.claude/worktrees/`, as Claude Code does, as `CONTRIBUTING.md` says; `/run-issues` and `/address-feedback` in Copilot work in worktrees of their own and never switch the main checkout, and `/run-issues` in every tool runs the next entry ahead in its own worktree while a draft pull request waits, then lands the entries one at a time, in queue order; `/analyze-architecture` and `/analyze-decision` work in a worktree of their own, where `ANALYSIS.md` stays untracked and a decision record lands with the plan made there, as `docs/decisions/README.md` says, and `/continue-plan` lists and `/finish-plan` removes such worktrees; and `/finish-plan` fast-forwards the default branch without switching a checkout that holds other work.
 - The reviewers settle in the checkout what they would otherwise ask, and don't report a production rule in test code or a C# rule in a script, a rule a line broke before a change that only renames or renumbers on it, compatibility or migration notes in a repository whose conventions say it is pre-release, another repository's process rules, duplication between places that can't share code, a parameter the conventions require as unused, or a date against today's. The rule check reports only what the change writes, synthesis merges one problem raised at several places in one file into one finding, `tests` names the search behind a missing test, and `data-model` and `api-compat` expect no earlier data or callers where nothing is released ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
 - The learned guidance is regenerated from NCodeGroup/identity, identity-platform and project-template: their decision records, instruction files and review prompts, and the bot's findings the maintainer answered on their pull requests. It holds 1,234 rules, 157 of them on what not to report; production and test rules name their scope; and the rules of decision records that no longer exist are gone ([#190](https://github.com/NCodeGroup/code-review/issues/190)).
+- A release is made by merging: a plan whose change reaches consumers carries a `Release:` line, its last step dates the changelog section, and merging its pull request tags and publishes the release, so nobody runs `release.yml`, which stays as the fallback. This repository's own pin of NCode Review follows a release within a weekday: its `github-actions` Dependabot entry runs daily and doesn't hold the action back for its cooldown ([#196](https://github.com/NCodeGroup/code-review/issues/196), [ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)).
 
 ### Fixed
 
@@ -224,7 +227,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.1.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/NCodeGroup/code-review/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/NCodeGroup/code-review/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/NCodeGroup/code-review/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/NCodeGroup/code-review/compare/v1.0.1...v1.1.0
