@@ -202,6 +202,48 @@ test('settleAlreadyRaised returns the results as they are when no finding repeat
   assert.equal(settleAlreadyRaised(r, [], []), r);
 });
 
+const named = finding({ id: 'F3', title: 'Other words entirely', line: 90, repeatsEarlier: { id: 'F7', url: threadUrl } });
+
+test('settleAlreadyRaised lists a finding that names an earlier thread under it, by its link', () => {
+  const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [postedThread(earlierBlocker)], []);
+  assert.deepEqual(settled.findings, []);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);
+});
+
+test('settleAlreadyRaised keeps the verdict when a named repeat matches a dismissed thread', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [named] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.equal(settled.alreadyRaised![0]!.earlier.dismissed, true);
+  assert.equal(settled.verdict, 'comment');
+});
+
+test('settleAlreadyRaised keeps a re-review verdict at its floor when a repeat of a dismissed thread leaves', () => {
+  const reReview = { changedLines: {}, earlier: [], verdictFloor: 'comment' as const };
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat], reReview }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.findings, []);
+  assert.equal(settled.alreadyRaised!.length, 1);
+  assert.equal(settled.alreadyRaised![0]!.earlier.dismissed, true);
+  assert.equal(settled.verdict, 'comment');
+});
+
+test('settleAlreadyRaised lowers a verdict without a floor when a repeat of a dismissed thread leaves', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.findings, []);
+  assert.equal(settled.verdict, 'approve');
+});
+
+test('settleAlreadyRaised leaves a named repeat of a thread not dismissed out of the settled verdict', () => {
+  const unlisted = { ...named, repeatsEarlier: { id: 'F7', url: 'https://github.com/o/r/pull/1#discussion_r2000' } };
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat, unlisted] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => f.id).sort(), ['F1', 'F3']);
+  assert.equal(settled.alreadyRaised!.find((f) => f.id === 'F3')!.earlier.dismissed, false);
+  assert.equal(settled.verdict, 'approve');
+});
+
+test('settleAlreadyRaised lists a named repeat as already raised when its thread is not listed', () => {
+  const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [], []);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);
+});
+
 const raisedFinding = (e: Partial<EarlierThread> = {}): RaisedFinding => ({ ...finding(), earlier: { id: 'F2', url: threadUrl, dismissed: true, ...e } });
 const raisedEntry = '- 🟡 **F1** `src/Rule.cs:25`: ADR-1202 citation removed rather than moved (already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed)';
 const raisedCheckLine = '- **F1 Nit** `src/Rule.cs:25`: **ADR-1202 citation removed rather than moved** p *Fix:* f — already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed.';
@@ -237,4 +279,9 @@ test('checkText lists the already raised findings in a section of their own', ()
   const text = checkText(resultsWith({ alreadyRaised: [raisedFinding()] }));
   assert.ok(text.includes('### Already raised'), text);
   assert.ok(text.includes(raisedCheckLine), text);
+});
+
+test('checkText lists the other places a finding covers after its fix', () => {
+  const text = checkText(resultsWith({ findings: [finding({ places: [{ file: 'src/b.ts', line: 4 }, { file: 'src/c.ts', line: 9 }] })] }));
+  assert.ok(text.includes('*Also at:* `src/b.ts:4`, `src/c.ts:9`'), text);
 });

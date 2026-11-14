@@ -144,6 +144,39 @@ test('mergeSynthesis does not count a finding in another file as merged', () => 
   assert.deepEqual(out.map((f) => [f.title, f.reviewers]), [['helpers', ['conventions']], ['int, not the enum', ['api-compat']]]);
 });
 
+test('mergeSynthesis counts a finding in another file as merged when places names it, and lists that place', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'conventions', ...finding('helpers') },
+    { id: 'R2', reviewer: 'api-compat', ...finding('int, not the enum'), file: 'src/B.cs', line: 40 },
+  ];
+  const out = mergeSynthesis([{ ...finding('helpers'), sources: ['R1', 'R2'], places: [{ file: 'src/B.cs', line: 41 }] }], raw, 10);
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0]!.reviewers, ['conventions', 'api-compat']);
+  assert.deepEqual(out[0]!.places, [{ file: 'src/B.cs', line: 41 }]);
+});
+
+test('mergeSynthesis adds back a source whose place is too far away, and keeps no place without a source', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'conventions', ...finding('helpers') },
+    { id: 'R2', reviewer: 'api-compat', ...finding('int, not the enum'), file: 'src/B.cs', line: 40 },
+  ];
+  const places = [{ file: 'src/B.cs', line: 50 }, { file: 'src/C.cs', line: 3 }];
+  const out = mergeSynthesis([{ ...finding('helpers'), sources: ['R1', 'R2'], places }], raw, 10);
+  assert.deepEqual(out.map((f) => [f.title, f.reviewers]), [['helpers', ['conventions']], ['int, not the enum', ['api-compat']]]);
+  assert.equal(out[0]!.places, undefined);
+});
+
+test('mergeSynthesis drops a place in the finding own file and a repeated place', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'conventions', ...finding('helpers') },
+    { id: 'R2', reviewer: 'api-compat', ...finding('int, not the enum'), file: 'src/B.cs', line: 40 },
+  ];
+  const places = [{ file: 'src/A.cs', line: 1 }, { file: 'src/B.cs', line: 41 }, { file: 'src/B.cs', line: 41 }];
+  const out = mergeSynthesis([{ ...finding('helpers'), sources: ['R1', 'R2'], places }], raw, 10);
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0]!.places, [{ file: 'src/B.cs', line: 41 }]);
+});
+
 test('ruleBatches takes every picked rule once, in catalog order', async () => {
   const { ruleBatches } = await import('../src/review.ts');
   const { ruleChecksOn } = await import('../src/config.ts');

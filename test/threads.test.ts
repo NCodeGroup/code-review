@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ReviewedFinding } from '../src/review.ts';
-import { earlierThread, findingBody, findingTitle, parseFindingComment, parsePosted, reviewBody, threadBody } from '../src/threads.ts';
+import { earlierThread, findingBody, findingTitle, parseFindingComment, parsePosted, placeFindings, reviewBody, threadBody } from '../src/threads.ts';
 
 const finding = (overrides: Partial<ReviewedFinding> = {}): ReviewedFinding => ({
   id: 'F1', severity: 'should-fix', file: 'src/a.ts', line: 12, title: 'Overlapping runs race', problem: 'Two runs write the file.', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9, reviewers: ['correctness'], ...overrides,
@@ -48,7 +48,36 @@ test('earlierThread names a thread posted nearby at the same severity as not dis
   assert.equal(earlierThread(finding({ title: 'Another wording', line: 16 }), [thread!], []), undefined);
 });
 
+test('earlierThread names the thread a re-review finding says it repeats, whatever its words and place', () => {
+  const named = finding({ title: 'Totally different words', file: 'src/z.ts', line: 90, repeatsEarlier: { id: 'F7', url } });
+  assert.deepEqual(earlierThread(named, [thread!], []), { thread, dismissed: false });
+  assert.deepEqual(earlierThread(named, [thread!], [thread!]), { thread, dismissed: true });
+});
+
+test('placeFindings never posts a finding that names an earlier thread', () => {
+  const placement = placeFindings([finding({ repeatsEarlier: { id: 'F7', url: 'https://github.com/o/r/pull/1#discussion_r99' } })], { 'src/a.ts': [12] }, [], []);
+  assert.equal(placement.alreadyPosted.length, 1);
+  assert.equal(placement.inline.length, 0);
+});
+
 test('reviewBody neutralizes mentions in a finding that is not on a changed line', () => {
   const body = reviewBody({ inline: [], inBody: [finding({ title: 'Ping @team' })], alreadyPosted: [], tracked: [] }, 'abcdef1234');
   assert.ok(body.includes('Ping @\u200bteam'), body);
+});
+
+test('threadBody lists the other places a finding covers before its evidence', () => {
+  const body = threadBody(finding({ places: [{ file: 'src/b.ts', line: 4 }, { file: 'src/c.ts', line: 9 }] }));
+  const also = '**Also at:** `src/b.ts:4`, `src/c.ts:9`';
+  assert.ok(body.includes(also), body);
+  assert.ok(body.indexOf(also) < body.indexOf('<details>'), body);
+  assert.ok(findingBody(body).includes('**Also at:**'));
+});
+
+test('threadBody has no also at line for a finding at one place', () => {
+  assert.ok(!threadBody(finding()).includes('Also at'));
+});
+
+test('reviewBody lists the other places of a finding in its body', () => {
+  const body = reviewBody({ inline: [], inBody: [finding({ places: [{ file: 'src/b.ts', line: 4 }] })], alreadyPosted: [], tracked: [] }, 'c'.repeat(40));
+  assert.ok(body.includes('**Also at:** `src/b.ts:4`.'), body);
 });

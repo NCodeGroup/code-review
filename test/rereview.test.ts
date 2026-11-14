@@ -16,6 +16,7 @@ import {
   mergeOverlapping,
   planReReview,
   postable,
+  repeatedFindings,
   readEarlierFindings,
   readReviewThreads,
   reReview,
@@ -219,6 +220,29 @@ test('planReReview reviews in full, and says why, when the last reviewed head ha
   const plan = await planReReview({ gathered: gather(pullRequest(first, reviewed), repo, repo), checkout: repo, lastHead: stranger, fetchCommit: () => true, readEarlier: async () => [], log: (l) => lines.push(l) });
   assert.equal(plan, undefined);
   assert.ok(lines.some((l) => l.startsWith(`Couldn't compare with the last reviewed head ${stranger.slice(0, 7)} (`) && l.endsWith('), so this is a full review.') && !l.includes('\n')));
+});
+
+test('planReReview reviews in full, and says why, when the changed hunks are more than one part holds', async () => {
+  const { repo, first, reviewed, head } = moreRepo();
+  const lines: string[] = [];
+  let reads = 0;
+  const readEarlier = async () => {
+    reads++;
+    return [];
+  };
+  const plan = await planReReview({ gathered: gather(pullRequest(first, head), repo, repo), checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier, log: (l) => lines.push(l), maxDiffChars: 10 });
+  assert.equal(plan, undefined);
+  assert.equal(reads, 0);
+  assert.ok(lines.some((l) => l.startsWith(`The hunks changed since ${reviewed.slice(0, 7)} are `) && l.endsWith('so this is a full review, in parts.')));
+});
+
+test('planReReview keeps the re-review when the changed hunks are exactly one part long, and reviews in full one character past it', async () => {
+  const { repo, first, reviewed, head } = moreRepo();
+  const plan = (maxDiffChars?: number) => planReReview({ gathered: gather(pullRequest(first, head), repo, repo), checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {}, ...(maxDiffChars === undefined ? {} : { maxDiffChars }) });
+  const size = (await plan())?.diff.length;
+  assert.ok(size);
+  assert.equal((await plan(size))?.diff.length, size);
+  assert.equal(await plan(size - 1), undefined);
 });
 
 test('fetchCommit refuses a value that is not a full commit SHA', () => {
@@ -615,7 +639,7 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
     findings: [finding('should-fix', 'a.ts', 25, 'Real'), finding('nit', 'a.ts', 25, 'Style'), finding('blocker', 'a.ts', 56, 'Old code'), { ...finding('should-fix', 'a.ts', 25, 'Doubtful'), confidence: 0.1 }],
     earlier: [{ key: 'E1', status: 'fixed', note: 'Checked.' }, { key: 'E2', status: 'open', note: 'Resolved threads are not checked.' }],
   };
-  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests));
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests), { enabled: false });
   assert.equal(requests.length, 1);
   assert.equal(requests[0]!.role, 'reviewer:correctness');
   assert.equal(requests[0]!.tier, 'sonnet');
@@ -813,6 +837,69 @@ test('reReview keeps an earlier finding open when either reviewer finds it open'
   const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, roleAgent(outputs, []), { enabled: false });
   assert.deepEqual(outcome.earlier.map((e) => [e.finding.id, e.status, e.note]), [['F1', 'open', 'Still leaks.']]);
   assert.equal(outcome.verdict, 'comment');
+});
+
+test('reReview lists a finding that repeats an earlier one apart and leaves it out of the verdict', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const output = {
+    findings: [{ ...finding('should-fix', 'a.ts', 25, 'Same thing in new words'), repeats: 'E1' }],
+    earlier: [{ key: 'E1', status: 'answered', note: 'Declined with a reason.' }],
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.repeatsEarlier]), [['F1', 'Same thing in new words', { id: 'F1', url: 'https://github.com/o/r/pull/1#discussion_r1' }]]);
+  assert.equal(outcome.verdict, 'approve');
+  assert.match(outcome.summary, /1 finding repeats an earlier one, so it is listed as already raised and not posted again\./);
+});
+
+test('reReview gives a verdict floor from the earlier findings it finds waiting', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const output = { findings: [], earlier: [{ key: 'E1', status: 'open', note: 'Still there.' }] };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.equal(outcome.verdictFloor, 'comment');
+});
+
+test('reReview posts a finding whose repeats names no earlier finding', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const output = { findings: [{ ...finding('should-fix', 'a.ts', 25, 'Real'), repeats: 'E9' }], earlier: [] };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.repeatsEarlier]), [['F1', 'Real', undefined]]);
+  assert.equal(outcome.verdict, 'comment');
+});
+
+test('repeatedFindings keeps one finding per earlier thread, the most severe, with every reviewer', () => {
+  const one = { id: 'F1', url: 'https://github.com/o/r/pull/1#discussion_r1' };
+  const two = { id: 'F2', url: 'https://github.com/o/r/pull/1#discussion_r2' };
+  const result = repeatedFindings([
+    { ...finding('should-fix', 'a.ts', 25, 'Lower'), reviewers: ['correctness'], repeatsEarlier: one },
+    { ...finding('blocker', 'a.ts', 26, 'Higher'), reviewers: ['security'], repeatsEarlier: one },
+    { ...finding('should-fix', 'a.ts', 40, 'Other'), reviewers: ['correctness'], repeatsEarlier: two },
+  ], 2);
+  assert.deepEqual(result.map((f) => [f.id, f.title, f.reviewers]), [['F3', 'Higher', ['security', 'correctness']], ['F4', 'Other', ['correctness']]]);
+});
+
+test('reReview counts a nit that names an earlier finding as a nit and lists no repeat', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const output = {
+    findings: [{ ...finding('nit', 'a.ts', 25, 'Style again'), repeats: 'E1' }],
+    earlier: [{ key: 'E1', status: 'answered', note: 'Declined with a reason.' }],
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.deepEqual(outcome.findings, []);
+  assert.equal(outcome.verdict, 'approve');
+  assert.match(outcome.summary, /1 nit/);
+  assert.doesNotMatch(outcome.summary, /repeats an earlier one/);
 });
 
 test('reReview posts nothing and records the last head when one of its reviewers fails', async () => {

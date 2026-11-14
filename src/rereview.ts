@@ -12,7 +12,7 @@ import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
 import { errorText } from './comments.ts';
-import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
+import { budgets, maxChunkChars, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { githubApi } from './github.ts';
 import { writeLog } from './log.ts';
@@ -326,11 +326,15 @@ export interface ReReviewPlan {
 }
 
 // A re-review's plan, or undefined for a full review: on a first review, on a /review of the head already reviewed, and
-// when the last reviewed head can't be fetched (a force-push may have dropped it) or compared.
+// when the last reviewed head can't be fetched (a force-push may have dropped it) or compared. It also returns undefined
+// when the hunks changed since the last review are more than one part of a first review holds: a full review then
+// splits them into parts under the run's cost ceiling and lists the files it couldn't fit.
 export async function planReReview(options: {
   gathered: Gathered;
   checkout: string;
   lastHead: string | undefined;
+  // The most characters of changed hunks one re-review call takes; `maxChunkChars` when absent. Tests set it.
+  maxDiffChars?: number;
   fetchCommit: (sha: string) => boolean;
   readEarlier: () => Promise<EarlierFinding[] | undefined>;
   log: (line: string) => void;
@@ -353,12 +357,18 @@ export async function planReReview(options: {
     log(`Couldn't compare with the last reviewed head ${lastHead.slice(0, 7)} (${errorText(error)}), so this is a full review.`);
     return undefined;
   }
+  const diff = changedHunksDiff(gathered.diff, changed.lines);
+  const budget = options.maxDiffChars ?? maxChunkChars;
+  if (diff.length > budget) {
+    log(`The hunks changed since ${lastHead.slice(0, 7)} are ${diff.length} characters, more than one re-review call takes (${budget}), so this is a full review, in parts.`);
+    return undefined;
+  }
   const read = await options.readEarlier();
   if (!read) log("::warning::Couldn't read the earlier review threads, so the re-review goes without them and won't approve.");
   const earlier = read ?? [];
   const files = Object.keys(changed.lines).length;
   log(`Re-review since ${lastHead.slice(0, 7)}: ${changed.hunks} changed hunks in ${files} files, changes taken back in ${Object.keys(changed.removed).length} files, ${earlier.length} earlier findings`);
-  return { lastHead, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier, earlierUnread: !read };
+  return { lastHead, changed, diff, takenBack: takenBackText(changed.removed), earlier, earlierUnread: !read };
 }
 
 // --- The re-review ---
@@ -395,12 +405,15 @@ export interface EarlierStatus {
 
 export interface ReReview extends Review {
   earlier: EarlierStatus[];
+  // The verdict the earlier findings and the re-review's completeness call for without any new finding; the publish step
+  // never settles the verdict below it.
+  verdictFloor?: Verdict;
 }
 
 const reReviewSchema = {
   type: 'object',
   properties: {
-    findings: { type: 'array', items: { type: 'object', properties: findingProperties, required: findingRequired, additionalProperties: false } },
+    findings: { type: 'array', items: { type: 'object', properties: { ...findingProperties, repeats: { type: 'string' } }, required: [...findingRequired, 'repeats'], additionalProperties: false } },
     earlier: {
       type: 'array',
       items: {
@@ -414,6 +427,12 @@ const reReviewSchema = {
   required: ['findings', 'earlier'],
   additionalProperties: false,
 };
+
+// The earlier finding a key such as `E2` names, numbered as `earlierBlock` numbers them, or undefined when the key names
+// none.
+function earlierByKey(earlier: EarlierFinding[], key: string | undefined): EarlierFinding | undefined {
+  return earlier[Number(/^E(\d+)$/.exec(key ?? '')?.[1] ?? 0) - 1];
+}
 
 // What a re-review posts: blockers and should-fixes on, or next to, a line changed since the last review. Nits are never
 // posted on a re-review, and nor is anything about code the last review already saw.
@@ -492,6 +511,8 @@ export function reReviewSummary(s: {
   // True when the earlier review threads couldn't be read.
   earlierUnread?: boolean;
   posted: Pick<Finding, 'severity'>[];
+  // The findings a reviewer said repeat an earlier one, which are listed as already raised and left out of the rest.
+  repeated?: number;
   nits: number;
   outside: number;
   earlier: EarlierStatus[];
@@ -540,6 +561,8 @@ export function reReviewSummary(s: {
   const verifiedAway = Boolean(v && (v.refuted.length || v.refutedKeptDropped || v.questionedDropped));
   const waiting = s.earlier.filter(pending).length;
   if (s.posted.length) parts.push(`${plural(s.posted.length, 'new finding')} at should-fix or above.`);
+  if (s.repeated === 1) parts.push('1 finding repeats an earlier one, so it is listed as already raised and not posted again.');
+  else if (s.repeated) parts.push(`${s.repeated} findings repeat earlier ones, so they are listed as already raised and not posted again.`);
   if (waiting) parts.push(`${plural(waiting, 'earlier finding')} at should-fix or above ${waiting === 1 ? 'is' : 'are'} unresolved.`);
   if (s.earlierUnread) parts.push("The earlier review threads couldn't be read, so their findings weren't checked.");
   else if (!s.posted.length && !waiting && !verifiedAway && (s.reviewed || !what)) parts.push('No further findings above nits.');
@@ -552,6 +575,21 @@ export function reReviewVerdict(posted: Pick<Finding, 'severity'>[], earlier: Ea
   const waiting = earlier.filter(pending);
   if (posted.some((f) => f.severity === 'blocker') || waiting.some((e) => e.finding.severity === 'blocker')) return 'request-changes';
   return incomplete || posted.length || waiting.length ? 'comment' : 'approve';
+}
+
+// The findings a reviewer said repeat an earlier finding, one per earlier thread: the most severe, then the most confident,
+// as `upstreamFindings` ranks them, with the reviewers of the others taken into it. They are numbered after the findings
+// to post. They are not verified, posted or counted in the verdict; the publish step lists them under "Already raised".
+export function repeatedFindings(findings: (Finding & { reviewers: string[]; repeatsEarlier?: { id: string; url: string } })[], after: number): ReviewedFinding[] {
+  const byThread = new Map<string, Finding & { reviewers: string[]; repeatsEarlier?: { id: string; url: string } }>();
+  const ranked = [...findings].sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
+  for (const f of ranked) {
+    const key = f.repeatsEarlier?.url ?? '';
+    const kept = byThread.get(key);
+    if (kept) kept.reviewers = [...new Set([...kept.reviewers, ...f.reviewers])];
+    else byThread.set(key, { ...f, reviewers: [...f.reviewers] });
+  }
+  return [...byThread.values()].map((f, i) => ({ ...f, id: `F${after + i + 1}` }));
 }
 
 const numberFindings = (kept: (Finding & { reviewers: string[] })[]): ReviewedFinding[] =>
@@ -637,7 +675,7 @@ export async function reReview(
 ): Promise<ReReview> {
   const statuses: EarlierStatus[] = plan.earlier.map((finding) => ({ finding, status: 'unchecked', note: '' }));
   const roster = reReviewRoster(gathered, plan.changed, charters);
-  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification, dropped: DroppedFinding[] = [], upstream: { upstream: ReviewedFinding[]; omitted: number } = { upstream: [], omitted: 0 }): ReReview => {
+  const finish = (outcomes: ReviewerOutcome[], findings: ReviewedFinding[], nits: number, outside: number, calls: Review['calls'], error?: string, verified?: ReReviewVerification, dropped: DroppedFinding[] = [], upstream: { upstream: ReviewedFinding[]; omitted: number } = { upstream: [], omitted: 0 }, repeated: ReviewedFinding[] = []): ReReview => {
     const summary = reReviewSummary({
       lastHead: plan.lastHead,
       changed: plan.changed,
@@ -646,6 +684,7 @@ export async function reReview(
       ...(error ? { error } : {}),
       earlierUnread: plan.earlierUnread,
       posted: findings,
+      repeated: repeated.length,
       nits,
       outside,
       earlier: statuses,
@@ -658,14 +697,16 @@ export async function reReview(
     const verifiedAway = Boolean(verified?.trace.length);
     // Deep only when a reviewer ran on the changes to a sensitive file.
     const deep = outcomes.length > 0 && roster.sensitiveFiles.length > 0;
+    // Whether the re-review left something unchecked, which keeps its verdict from being an approval.
+    const incomplete = Boolean(error) || plan.earlierUnread || unseen || verifiedAway;
     return {
       reviewers: outcomes,
       shadow: [],
       shadowSkipped: [],
       shadowPrompts: [],
       summary: deep ? `${depthLabel.deep}: ${summary}` : summary,
-      verdict: reReviewVerdict(findings, statuses, Boolean(error) || plan.earlierUnread || unseen || verifiedAway),
-      findings,
+      verdict: reReviewVerdict(findings, statuses, incomplete),
+      findings: [...findings, ...repeated],
       upstream: upstream.upstream,
       upstreamOmitted: upstream.omitted,
       dropped,
@@ -678,6 +719,7 @@ export async function reReview(
       depth: deep ? 'deep' : 'standard',
       sensitiveFiles: deep ? roster.sensitiveFiles : [],
       earlier: statuses,
+      verdictFloor: reReviewVerdict([], statuses, incomplete),
     };
   };
   if (!plan.diff && !plan.takenBack) return finish([], [], 0, 0, []);
@@ -698,7 +740,7 @@ export async function reReview(
     roster.reviewers.map(async (name) => {
       // partTiers names every reviewer the roster runs.
       const tier = roster.tiers[name]!;
-      const result = await agent<{ findings: Finding[]; earlier: { key: string; status: Exclude<EarlierState, 'unchecked'>; note: string }[] }>(
+      const result = await agent<{ findings: (Finding & { repeats?: string })[]; earlier: { key: string; status: Exclude<EarlierState, 'unchecked'>; note: string }[] }>(
         { ...run, workdir: mkdtempSync(path.join(tmpdir(), 'code-review-work-')) },
         {
           role: `reviewer:${name}`,
@@ -734,14 +776,17 @@ export async function reReview(
   const caution: Record<EarlierState, number> = { unchecked: 0, fixed: 1, answered: 2, open: 3 };
   for (const { result } of runs) {
     for (const reported of result.output!.earlier) {
-      const index = Number(/^E(\d+)$/.exec(reported.key)?.[1] ?? 0) - 1;
-      const status = statuses[index];
+      const named = earlierByKey(plan.earlier, reported.key);
+      const status = statuses.find((s) => s.finding === named);
       if (status && !status.finding.resolved && caution[reported.status] > caution[status.status]) Object.assign(status, { status: reported.status, note: reported.note });
     }
   }
   const ran = runs.map(({ name, result }) => ({ name, findings: result.output!.findings.filter((f) => f.confidence >= minConfidence) }));
-  const reported = ran.flatMap(({ name, findings }) => findings.map((f) => ({ ...f, reviewers: [name] })));
-  const { kept: onChanged, nits, outside } = postable(reported, plan.changed.lines);
+  const reported = ran.flatMap(({ name, findings }) => findings.map(({ repeats, ...f }) => {
+    const e = earlierByKey(plan.earlier, repeats);
+    return { ...f, reviewers: [name], ...(e && f.severity !== 'nit' ? { repeatsEarlier: { id: e.id, url: e.url } } : {}) };
+  }));
+  const { kept: onChanged, nits, outside } = postable(reported.filter((f) => !f.repeatsEarlier), plan.changed.lines);
   // As for a first review, a finding that says a file the pull request changes isn't changed is left out.
   const { kept, dropped } = dropContradicted(onChanged, gathered.files.map((f) => f.path));
   if (dropped.length) log(`  ${droppedLine(dropped)}`);
@@ -749,10 +794,12 @@ export async function reReview(
   // As for a first review, a finding below blocker on the template's files is listed for the template's repository.
   const placed = byOwner(distinct, gathered.template);
   const upstream = upstreamFindings(placed.upstream);
-  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${merged} merged with another reviewer's, ${near} near another reviewer's, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
+  const numbered = numberFindings(placed.own);
+  const repeated = repeatedFindings(reported.filter((f) => f.repeatsEarlier), numbered.length);
+  log(`  ${roster.reviewers.join(', ')}: ${placed.own.length} findings to post, ${placed.upstream.length} upstream, ${repeated.length} repeating earlier findings, ${merged} merged with another reviewer's, ${near} near another reviewer's, ${nits} nits and ${outside} away from the changed lines left out $${totalCost(records).toFixed(3)}`);
   const sensitive = roster.sensitiveFiles.length ? sensitiveMatcher(gathered.sensitive) : undefined;
-  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numberFindings(placed.own), log, { ...verification, ...(sensitive ? { deep: sensitive } : {}) });
-  return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream);
+  const { findings, calls, verified } = await verifyPosted(run, gathered, charters, numbered, log, { ...verification, ...(sensitive ? { deep: sensitive } : {}) });
+  return finish(ran.map(({ name, findings: own }) => ({ name, status: 'ran', findings: own })), findings, nits, outside, [...records, ...calls], undefined, verified.trace.length ? verified : undefined, dropped, upstream, repeated);
 }
 
 // --- Choosing the review ---
@@ -762,7 +809,7 @@ export interface ReviewRun {
   // The head the summary records as reviewed: see recordedHead.
   recordedHead: string;
   // What the trace adds for a re-review.
-  trace: { reReview?: { lastHead: string; changedLines: Record<string, number[]>; earlierUnread: boolean; earlier: { id: string; url: string; resolved: boolean; status: EarlierState; note: string }[] } };
+  trace: { reReview?: { lastHead: string; changedLines: Record<string, number[]>; earlierUnread: boolean; earlier: { id: string; url: string; resolved: boolean; status: EarlierState; note: string }[]; verdictFloor?: Verdict } };
 }
 
 // A re-review when there's a plan for one, the full review otherwise, and the head the run's summary records.
@@ -783,6 +830,6 @@ export async function runReview(options: {
   return {
     outcome,
     recordedHead: recordedHead(outcome.reviewers, headSha, lastHead),
-    trace: { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlierUnread: plan.earlierUnread, earlier } },
+    trace: { reReview: { lastHead: plan.lastHead, changedLines: plan.changed.lines, earlierUnread: plan.earlierUnread, earlier, ...(outcome.verdictFloor ? { verdictFloor: outcome.verdictFloor } : {}) } },
   };
 }

@@ -314,14 +314,17 @@ To skip the automatic review on a pull request, label it `skip-review` before it
 Each review, all from `ncode-review[bot]`:
 
 - reacts 👀 to a `/review` comment and shows the "Code review" check run in progress within seconds;
-- posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
-  with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
-  request, also comes as a suggestion you can apply with one click, when the pull request's author can write to the
-  repository. On anyone else's pull request the fix is in prose only, and the check run says how many suggestions were
-  held back, so a model-written change prompted by an outsider's code is never one click from being committed. A
-  finding with no changed line to sit on goes in that review's body. A finding already posted on the pull request
-  isn't posted again, so `/review` adds only what's new. Nor is one whose thread someone with write access dismissed,
-  by resolving it while it was still on the code it was posted on or with a 👎, even at another severity;
+- posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix, with
+  the evidence and confidence collapsed. One problem that synthesis finds in several files, such as one rule broken the
+  same way in three of them, is one thread at its first place, whose "Also at" line names the others, so the author
+  answers it once; the check run lists them too ([ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md)). A
+  mechanical fix of up to five lines, all of them added by the pull request, also comes as a suggestion you can apply
+  with one click, when the pull request's author can write to the repository. On anyone else's pull request the fix is
+  in prose only, and the check run says how many suggestions were held back, so a model-written change prompted by an
+  outsider's code is never one click from being committed. A finding with no changed line to sit on goes in that
+  review's body. A finding already posted on the pull request isn't posted again, so `/review` adds only what's new. Nor
+  is one whose thread someone with write access dismissed, by resolving it while it was still on the code it was posted
+  on or with a 👎, even at another severity;
 - lists a finding apart, under "Already raised", when it repeats one of the bot's earlier threads on the pull request,
   posted or dismissed: the summary comment and the check run name the earlier finding, link its thread and say
   "dismissed" when it was, and leave it out of the finding counts and the annotations; a dismissed one is left out of
@@ -460,8 +463,11 @@ of review converge:
   run on Opus, unless `CODE_REVIEW_TIERS` names them, and verification, when it's on, checks the findings in sensitive
   files on Opus. A re-review is never light. Each reviewer gets the earlier findings and the replies in their threads
   (from people with write access) and checks each unresolved finding against the code now (fixed, still open, or
-  answered); when they disagree, still open counts over answered, and answered over fixed. It doesn't raise again
-  what was fixed or answered with a reason, or ask to undo what an earlier finding asked for;
+  answered); when they disagree, still open counts over answered, and answered over fixed. It doesn't raise again what
+  was fixed or answered with a reason, or ask to undo what an earlier finding asked for. A finding a reviewer says
+  repeats an earlier one, in whatever words, names it: it is listed under "Already raised" with a link to the earlier
+  thread, isn't posted again, and doesn't count toward the re-review's verdict
+  ([ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md));
 - it posts a new finding only if it is a blocker or should-fix on a line changed since the last review, never a nit;
 - when `correctness` and `security` report the same problem, in the same file within three lines and with the same title
   words, it posts it once, at the higher severity, with both reviewers; the log counts these and the findings of the two
@@ -482,9 +488,12 @@ of review converge:
   thread.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
-gets a full review instead. A review whose reviewers all failed doesn't count as the last review, nor does a re-review
-any of whose reviewers failed, which posts no findings: its summary records the head reviewed before it, so the next
-re-review still covers what it missed.
+gets a full review instead, and so does a change since the last review whose hunks are more than one part of a first
+review holds (160,000 characters): one re-review call per reviewer can't cover it, while a full review splits it into
+parts under the run's cost ceiling and the check run names the files it couldn't fit
+([ADR-1007](docs/decisions/1007-a-re-review-larger-than-one-part-is-a-full-review.md)). A review whose reviewers all
+failed doesn't count as the last review, nor does a re-review any of whose reviewers failed, which posts no findings:
+its summary records the head reviewed before it, so the next re-review still covers what it missed.
 
 ## Repository settings
 

@@ -16,6 +16,7 @@ import { printable } from './outputs.ts';
 import { settingsFolder, type ProjectCharter } from './settings.ts';
 import { isTemplateOwned, templateVersionFiles, type Template } from './template.ts';
 import { severityRank, type Severity } from './severity.ts';
+import { snapDistance } from './threads.ts';
 import { settleVerdict, verdictFor, verdictRank } from './verdict.ts';
 import { verifyReview, type RefutedFinding, type SynthesizedReview, type VerificationCall } from './verify.ts';
 
@@ -43,9 +44,20 @@ export interface Finding {
   suggestion?: Suggestion;
 }
 
+export interface Place {
+  file: string;
+  line: number;
+}
+
 export interface ReviewedFinding extends Finding {
   id: string;
   reviewers: string[];
+  // The places in other files that have the same problem, which synthesis merged into this finding; its one thread
+  // lists them.
+  places?: Place[];
+  // The earlier finding that a re-review's reviewer said this one repeats, with the URL of its thread's first comment;
+  // the finding is listed under "Already raised" and never posted again.
+  repeatsEarlier?: { id: string; url: string };
   // The open issue that already tracks the problem, which synthesis named: the finding isn't posted as a new thread.
   tracked?: number;
 }
@@ -150,9 +162,18 @@ export const synthesisSchema = {
       type: 'array',
       items: {
         type: 'object',
-        // The ids of the reviewers' findings this one merges, and the open issue that already tracks it, or 0.
-        properties: { ...findingProperties, sources: { type: 'array', items: { type: 'string' } }, tracked: { type: 'integer', minimum: 0 } },
-        required: [...findingRequired, 'sources', 'tracked'],
+        // The ids of the reviewers' findings this one merges, the open issue that already tracks it, or 0, and the
+        // places in other files that have the same problem, or none.
+        properties: {
+          ...findingProperties,
+          sources: { type: 'array', items: { type: 'string' } },
+          tracked: { type: 'integer', minimum: 0 },
+          places: {
+            type: 'array',
+            items: { type: 'object', properties: { file: { type: 'string' }, line: { type: 'integer', minimum: 1 } }, required: ['file', 'line'], additionalProperties: false },
+          },
+        },
+        required: [...findingRequired, 'sources', 'tracked', 'places'],
         additionalProperties: false,
       },
     },
@@ -504,26 +525,40 @@ export function synthesisDiff(gathered: Pick<Gathered, 'diff'>, files: string[],
 }
 
 // Synthesis merges and ranks but never drops: a reviewer's finding no merged finding names as a source is added back
-// after them, most severe first, so the maintainer sees it and decides. A source in another file isn't a duplicate, so
-// naming it doesn't count. Without a limit, it keeps every finding. A merged finding keeps the issue it says tracks it
-// only when that is one of the open issues synthesis was given.
+// after them, most severe first, so the maintainer sees it and decides. A source in another file is merged only when
+// the finding's places name that file within snapDistance of its line, and a finding keeps only the places some kept
+// source backs. Without a limit, it keeps every finding. A merged finding keeps the issue it says tracks it only when
+// that is one of the open issues synthesis was given.
 export function mergeSynthesis(
-  merged: (Finding & { sources: string[]; tracked?: number })[],
+  merged: (Finding & { sources: string[]; tracked?: number; places?: Place[] })[],
   raw: (Finding & { id: string; reviewer: string })[],
   limit?: number,
   openIssues: ReadonlySet<number> = new Set(),
 ): ReviewedFinding[] {
   const byId = new Map(raw.map((f) => [f.id, f]));
-  for (const f of merged) f.sources = f.sources.filter((id) => byId.get(id)?.file === f.file);
+  // A source's place counts as a named place within snapDistance, the distance a finding snaps to a changed line by.
+  // nearby in threads.ts uses repeatDistance, which matches a finding to an earlier round's thread and can change apart
+  // from it.
+  const near = (p: Place, s: Place) => p.file === s.file && Math.abs(p.line - s.line) <= snapDistance;
+  for (const f of merged) {
+    const places = (f.places ?? []).filter((p) => p.file !== f.file);
+    f.sources = f.sources.filter((id) => {
+      const source = byId.get(id);
+      return source !== undefined && (source.file === f.file || places.some((p) => near(p, source)));
+    });
+    const kept = f.sources.map((id) => byId.get(id)!);
+    f.places = places.filter((p, i) => kept.some((s) => near(p, s)) && places.findIndex((q) => q.file === p.file && q.line === p.line) === i);
+  }
   const covered = new Set(merged.flatMap((f) => f.sources));
   const missed = raw
     .filter((f) => !covered.has(f.id))
     .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence);
   const out = [
-    ...merged.map(({ sources, tracked, ...f }) => ({
+    ...merged.map(({ sources, tracked, places, ...f }) => ({
       ...f,
       reviewers: [...new Set(sources.flatMap((id) => (byId.has(id) ? [byId.get(id)!.reviewer] : [])))],
       ...(tracked && openIssues.has(tracked) ? { tracked } : {}),
+      ...(places?.length ? { places } : {}),
     })),
     ...missed.map(({ id: _id, reviewer, ...f }) => ({ ...f, reviewers: [reviewer] })),
   ];
@@ -584,7 +619,7 @@ export function settleUpstream(
   };
 }
 
-type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[]; tracked?: number })[] };
+type SynthesisOutput = { summary: string; verdict: Verdict; findings: (Finding & { sources: string[]; tracked?: number; places?: Place[] })[] };
 
 // What a review posts from synthesis's answer, or from the reviewers' own findings when synthesis failed: the findings
 // that say a changed file isn't changed are dropped before the limit, so each frees its place, and the rest are numbered.

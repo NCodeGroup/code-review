@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { neutralizeProse } from './markdown.ts';
-import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
+import type { Place, ReviewedFinding, Severity, Suggestion } from './review.ts';
 
 // The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
 // because the acknowledgement loads this module before npm ci.
@@ -106,8 +106,21 @@ function repeats(finding: ReviewedFinding, thread: PostedThread, dismissed: bool
   return dismissed && severities.some((severity) => thread.fingerprint === fingerprint({ ...finding, severity }));
 }
 
-// The thread a finding repeats, a dismissed one first, by the rule `repeats` gives.
+// The comment id in a thread's link; GraphQL and REST link a thread's first comment the same way.
+function discussionId(url: string | undefined): string | undefined {
+  return /#discussion_r(\d+)$/.exec(url ?? '')?.[1];
+}
+
+// The thread a finding repeats, a dismissed one first: the thread a finding names as the one it repeats matches first, then
+// the rule `repeats` gives.
 export function earlierThread(finding: ReviewedFinding, posted: PostedThread[], dismissed: PostedThread[] = []): { thread: PostedThread; dismissed: boolean } | undefined {
+  const named = discussionId(finding.repeatsEarlier?.url);
+  if (named) {
+    const namedDismissed = dismissed.find((p) => discussionId(p.url) === named);
+    if (namedDismissed) return { thread: namedDismissed, dismissed: true };
+    const namedPosted = posted.find((p) => discussionId(p.url) === named);
+    if (namedPosted) return { thread: namedPosted, dismissed: false };
+  }
   const dismissedThread = dismissed.find((p) => repeats(finding, p, true));
   if (dismissedThread) return { thread: dismissedThread, dismissed: true };
   const postedThread = posted.find((p) => repeats(finding, p, false));
@@ -125,11 +138,12 @@ export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>,
   return nearby(a, b) && fingerprint({ ...a, severity: 'nit' }) === fingerprint({ ...b, severity: 'nit' });
 }
 
-// `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed.
+// `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed. A finding that names
+// the earlier thread it repeats is never posted again, even when that thread isn't listed.
 export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
   const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
   for (const finding of findings) {
-    if (earlierThread(finding, posted, dismissed)) {
+    if (finding.repeatsEarlier || earlierThread(finding, posted, dismissed)) {
       placement.alreadyPosted.push(finding);
       continue;
     }
@@ -188,6 +202,11 @@ function prose(value: string): string {
   return neutralizeProse(text(value));
 }
 
+// The places in other files that a finding covers, each as a code span, escaped as text() does.
+function placesText(places: Place[]): string {
+  return places.map((p) => '`' + text(p.file) + ':' + p.line + '`').join(', ');
+}
+
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {
   const reviewers = finding.reviewers.map((name) => name.replace(/[^A-Za-z0-9._-]/g, '-')).join(',');
   const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity}${reviewers ? ` reviewer=${reviewers}` : ''} -->`;
@@ -200,6 +219,7 @@ export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): s
     '',
     `**Fix:** ${prose(finding.fix)}`,
     '',
+    ...(finding.places?.length ? [`**Also at:** ${placesText(finding.places)}`, ''] : []),
     ...(suggestion ? [suggestionBlock(suggestion.replacement), ''] : []),
     `<details><summary>Evidence</summary>\n\n${prose(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
     '',
@@ -244,7 +264,7 @@ export function reviewBody(placement: Placement, headSha: string): string {
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}${f.places?.length ? ` **Also at:** ${placesText(f.places)}.` : ''}`);
     }
   }
   return lines.join('\n');

@@ -10,7 +10,7 @@ import type { EarlierState } from './rereview.ts';
 import type { Finding, ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
 import { earlierThread, type PostedThread } from './threads.ts';
-import { settleVerdict } from './verdict.ts';
+import { settleVerdict, verdictRank } from './verdict.ts';
 import type { RefutedFinding } from './verify.ts';
 
 export interface ReviewerResult {
@@ -91,30 +91,39 @@ export interface Results {
   // For a re-review: what it found of each earlier finding, by the URL of its thread's first comment, and the lines
   // changed since the last review, so the publish step can resolve the threads of fixed findings and answer the
   // autopilot once. Each earlier finding comes with its id and the URL of its thread's first comment, so the summary
-  // comment can keep its link live.
-  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[] };
+  // comment can keep its link live. The verdictFloor is the verdict the re-review's earlier findings and completeness
+  // call for, which settling never goes below.
+  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[]; verdictFloor?: Verdict };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
 }
 
 // Findings that repeat one of the bot's earlier threads leave the findings and are listed apart, with the thread each
-// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat of a dismissed thread leaves
-// the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
-// problem is still in the code.
+// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat found by fingerprint or
+// nearness counts toward the settled verdict when its thread is still open, because the problem is still in the code,
+// and leaves it when the thread is dismissed, as settleVerdict says, because the maintainer declined it. A finding that
+// names the earlier finding it repeats is listed as already raised even when no listed thread matches it, with the id
+// and URL it carries, and it never counts toward the settled verdict, whether its thread is open, dismissed or not
+// listed, because the re-review gave its verdict without it; the verdictFloor keeps the weight of the earlier findings
+// still waiting. A re-review's verdict never settles below its verdictFloor.
 export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
   const findings: ReviewedFinding[] = [];
   const raised: RaisedFinding[] = [];
   for (const finding of results.findings) {
     const match = earlierThread(finding, posted, dismissed);
     if (match) raised.push({ ...finding, earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed } });
+    else if (finding.repeatsEarlier) raised.push({ ...finding, earlier: { id: finding.repeatsEarlier.id, url: finding.repeatsEarlier.url, dismissed: false } });
     else findings.push(finding);
   }
   if (!raised.length) return results;
+  const settled = settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed && !f.repeatsEarlier)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict;
+  const floor = results.reReview?.verdictFloor;
   return {
     ...results,
     findings,
     alreadyRaised: raised,
-    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed)) ?? results.verdict,
+    // A re-review gave its verdict without the findings it says repeat earlier ones, so they never settle it.
+    verdict: floor && verdictRank[floor] > verdictRank[settled] ? floor : settled,
   };
 }
 
@@ -479,6 +488,9 @@ export function checkText(results: Results): string {
       '',
       `*Fix:* ${f.fix.replace(/</g, '&lt;')}`,
       '',
+      // The check run escapes each place with cell(), as its own file:line spans do; a thread uses placesText and
+      // text().
+      ...(f.places?.length ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), ''] : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     );
