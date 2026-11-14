@@ -202,6 +202,25 @@ test('settleAlreadyRaised returns the results as they are when no finding repeat
   assert.equal(settleAlreadyRaised(r, [], []), r);
 });
 
+const named = finding({ id: 'F3', title: 'Other words entirely', line: 90, repeatsEarlier: { id: 'F7', url: threadUrl } });
+
+test('settleAlreadyRaised lists a finding that names an earlier thread under it, by its link', () => {
+  const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [postedThread(earlierBlocker)], []);
+  assert.deepEqual(settled.findings, []);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);
+});
+
+test('settleAlreadyRaised keeps the verdict when a named repeat matches a dismissed thread', () => {
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [named] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.equal(settled.alreadyRaised![0]!.earlier.dismissed, true);
+  assert.equal(settled.verdict, 'comment');
+});
+
+test('settleAlreadyRaised lists a named repeat as already raised when its thread is not listed', () => {
+  const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [], []);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);
+});
+
 const raisedFinding = (e: Partial<EarlierThread> = {}): RaisedFinding => ({ ...finding(), earlier: { id: 'F2', url: threadUrl, dismissed: true, ...e } });
 const raisedEntry = '- 🟡 **F1** `src/Rule.cs:25`: ADR-1202 citation removed rather than moved (already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed)';
 const raisedCheckLine = '- **F1 Nit** `src/Rule.cs:25`: **ADR-1202 citation removed rather than moved** p *Fix:* f — already raised as [F2](https://github.com/o/r/pull/1#discussion_r1000), dismissed.';

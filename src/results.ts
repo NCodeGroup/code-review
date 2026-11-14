@@ -100,13 +100,16 @@ export interface Results {
 // Findings that repeat one of the bot's earlier threads leave the findings and are listed apart, with the thread each
 // repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat of a dismissed thread leaves
 // the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
-// problem is still in the code.
+// problem is still in the code. A finding that names the earlier finding it repeats is listed as already raised even when
+// no listed thread matches it, with the id and URL it carries, and it never settles the verdict, because a re-review gave
+// its verdict without it.
 export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
   const findings: ReviewedFinding[] = [];
   const raised: RaisedFinding[] = [];
   for (const finding of results.findings) {
     const match = earlierThread(finding, posted, dismissed);
     if (match) raised.push({ ...finding, earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed } });
+    else if (finding.repeatsEarlier) raised.push({ ...finding, earlier: { id: finding.repeatsEarlier.id, url: finding.repeatsEarlier.url, dismissed: false } });
     else findings.push(finding);
   }
   if (!raised.length) return results;
@@ -114,7 +117,8 @@ export function settleAlreadyRaised(results: Results, posted: PostedThread[], di
     ...results,
     findings,
     alreadyRaised: raised,
-    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed)) ?? results.verdict,
+    // A re-review gave its verdict without the findings it says repeat earlier ones, so they never settle it.
+    verdict: settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict,
   };
 }
 
