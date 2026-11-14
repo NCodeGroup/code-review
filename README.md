@@ -229,12 +229,11 @@ release that isn't marked as a pre-release (see [Dependabot and pre-releases](#d
 Releases are immutable from v0.3.1 on, and the "Protect release tags" ruleset forbids moving or deleting a `v*` tag, so
 the tag in the comment always names the commit it sits beside.
 
-To release, add the version's section to `CHANGELOG.md`, `## [0.2.0] - 2026-10-30` with its entries, in a pull request,
-then run the Release (manual) workflow, `release.yml`, from `main` with the version, such as `0.2.0`. It checks that the
-version is `MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, and that `CHANGELOG.md` has a dated section
-with entries for it (`tools/release-notes.ts`), runs the typecheck and tests on the commit, then creates the tag and a
-GitHub release whose notes are that section. Versions below 1.0.0 are marked as pre-releases. A tag can't be deleted
-afterwards, so a mistake is fixed by releasing the next version.
+A release is made by merging. A plan whose change reaches consumers carries a `Release:` line, such as `v1.2.0`, and its last step moves `## [Unreleased]` in `CHANGELOG.md` into that version's dated section, `## [1.2.0] - 2026-11-14`, with its entries. When its pull request merges, `tag-release.yml` tags the merge commit and publishes a GitHub release whose notes are that section, so nobody runs a workflow ([ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)). A plan that changes only CI, tests or docs has no `Release:` line and releases nothing. A tag can't be deleted afterwards, so a mistake is fixed by releasing the next version.
+
+The Release (manual) workflow, `release.yml`, is the fallback for a release the merge didn't make. Once the version's dated section is on `main`, run it from `main` with the version, such as `1.2.0`. It checks that the version is `MAJOR.MINOR.PATCH`, newer than the latest tag and not taken, and that `CHANGELOG.md` has a dated section with entries for it (`tools/release-notes.ts`), runs the typecheck and tests on the commit, then creates the tag and a GitHub release whose notes are that section. Versions below 1.0.0 are marked as pre-releases.
+
+This repository's own reviews follow its releases. Its `github-actions` Dependabot entry runs every weekday and its cooldown excludes `NCodeGroup/code-review`, and `code-review-auto-merge.yml` merges the minor or patch bump once the checks pass; a major release waits for a person. Dependabot's documentation doesn't say whether a cooldown `exclude` applies to the `github-actions` ecosystem: when it does, a release reaches this repository's reviews within a weekday, and when it doesn't, within about four days. The smoke eval runs on `main` after a change to the prompts, the reviewers or the guidance, and nothing makes the pin wait for its result, so this repository can run a release before the eval finishes. A failing result is fixed by releasing the next version.
 
 ### Dependabot and pre-releases
 
