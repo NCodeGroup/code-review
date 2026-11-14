@@ -829,6 +829,32 @@ test('reReview keeps an earlier finding open when either reviewer finds it open'
   assert.equal(outcome.verdict, 'comment');
 });
 
+test('reReview lists a finding that repeats an earlier one apart and leaves it out of the verdict', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [earlierFinding({ id: 'F1', file: 'a.ts', line: 25 })], log: () => {} });
+  assert.ok(plan);
+  const output = {
+    findings: [{ ...finding('should-fix', 'a.ts', 25, 'Same thing in new words'), repeats: 'E1' }],
+    earlier: [{ key: 'E1', status: 'answered', note: 'Declined with a reason.' }],
+  };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.repeatsEarlier]), [['F1', 'Same thing in new words', { id: 'F1', url: 'https://github.com/o/r/pull/1#discussion_r1' }]]);
+  assert.equal(outcome.verdict, 'approve');
+  assert.match(outcome.summary, /1 finding repeats an earlier one, so it is listed as already raised and not posted again\./);
+});
+
+test('reReview posts a finding whose repeats names no earlier finding', async () => {
+  const { repo, reviewed, main, head } = editedRepo();
+  const gathered = gather(pullRequest(main, head), repo, repo);
+  const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
+  assert.ok(plan);
+  const output = { findings: [{ ...finding('should-fix', 'a.ts', 25, 'Real'), repeats: 'E9' }], earlier: [] };
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, []), { enabled: false });
+  assert.deepEqual(outcome.findings.map((f) => [f.id, f.title, f.repeatsEarlier]), [['F1', 'Real', undefined]]);
+  assert.equal(outcome.verdict, 'comment');
+});
+
 test('reReview posts nothing and records the last head when one of its reviewers fails', async () => {
   const { repo, reviewed, gathered, head } = securityChange();
   const plan = await planReReview({ gathered, checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier: async () => [], log: () => {} });
