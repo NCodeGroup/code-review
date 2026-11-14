@@ -166,6 +166,17 @@ test('mergeSynthesis adds back a source whose place is too far away, and keeps n
   assert.equal(out[0]!.places, undefined);
 });
 
+test('mergeSynthesis drops a place in the finding own file and a repeated place', () => {
+  const raw = [
+    { id: 'R1', reviewer: 'conventions', ...finding('helpers') },
+    { id: 'R2', reviewer: 'api-compat', ...finding('int, not the enum'), file: 'src/B.cs', line: 40 },
+  ];
+  const places = [{ file: 'src/A.cs', line: 1 }, { file: 'src/B.cs', line: 41 }, { file: 'src/B.cs', line: 41 }];
+  const out = mergeSynthesis([{ ...finding('helpers'), sources: ['R1', 'R2'], places }], raw, 10);
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0]!.places, [{ file: 'src/B.cs', line: 41 }]);
+});
+
 test('ruleBatches takes every picked rule once, in catalog order', async () => {
   const { ruleBatches } = await import('../src/review.ts');
   const { ruleChecksOn } = await import('../src/config.ts');
