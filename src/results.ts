@@ -99,11 +99,13 @@ export interface Results {
 }
 
 // Findings that repeat one of the bot's earlier threads leave the findings and are listed apart, with the thread each
-// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat of a dismissed thread leaves
-// the verdict as settleVerdict says, because the maintainer declined it; a repeat of one still open counts, because the
-// problem is still in the code. A finding that names the earlier finding it repeats is listed as already raised even when
-// no listed thread matches it, with the id and URL it carries, and it never settles the verdict, because a re-review gave
-// its verdict without it. A re-review's verdict never settles below its verdictFloor.
+// repeats; ids stay as they are, so the check run, the threads and the trace agree. A repeat found by fingerprint or
+// nearness counts toward the settled verdict when its thread is still open, because the problem is still in the code,
+// and leaves it when the thread is dismissed, as settleVerdict says, because the maintainer declined it. A finding that
+// names the earlier finding it repeats is listed as already raised even when no listed thread matches it, with the id
+// and URL it carries, and it never counts toward the settled verdict, whether its thread is open, dismissed or not
+// listed, because the re-review gave its verdict without it; the verdictFloor keeps the weight of the earlier findings
+// still waiting. A re-review's verdict never settles below its verdictFloor.
 export function settleAlreadyRaised(results: Results, posted: PostedThread[], dismissed: PostedThread[]): Results {
   const findings: ReviewedFinding[] = [];
   const raised: RaisedFinding[] = [];
@@ -114,7 +116,7 @@ export function settleAlreadyRaised(results: Results, posted: PostedThread[], di
     else findings.push(finding);
   }
   if (!raised.length) return results;
-  const settled = settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict;
+  const settled = settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed && !f.repeatsEarlier)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict;
   const floor = results.reReview?.verdictFloor;
   return {
     ...results,
@@ -486,6 +488,8 @@ export function checkText(results: Results): string {
       '',
       `*Fix:* ${f.fix.replace(/</g, '&lt;')}`,
       '',
+      // The check run escapes each place with cell(), as its own file:line spans do; a thread uses placesText and
+      // text().
       ...(f.places?.length ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), ''] : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',

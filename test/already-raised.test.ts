@@ -231,6 +231,14 @@ test('settleAlreadyRaised lowers a verdict without a floor when a repeat of a di
   assert.equal(settled.verdict, 'approve');
 });
 
+test('settleAlreadyRaised leaves a named repeat of a thread not dismissed out of the settled verdict', () => {
+  const unlisted = { ...named, repeatsEarlier: { id: 'F7', url: 'https://github.com/o/r/pull/1#discussion_r2000' } };
+  const settled = settleAlreadyRaised(resultsWith({ verdict: 'comment', findings: [repeat, unlisted] }), [postedThread(earlierBlocker)], [postedThread(earlierBlocker)]);
+  assert.deepEqual(settled.alreadyRaised!.map((f) => f.id).sort(), ['F1', 'F3']);
+  assert.equal(settled.alreadyRaised!.find((f) => f.id === 'F3')!.earlier.dismissed, false);
+  assert.equal(settled.verdict, 'approve');
+});
+
 test('settleAlreadyRaised lists a named repeat as already raised when its thread is not listed', () => {
   const settled = settleAlreadyRaised(resultsWith({ findings: [named] }), [], []);
   assert.deepEqual(settled.alreadyRaised!.map((f) => [f.id, f.earlier]), [['F3', { id: 'F7', url: threadUrl, dismissed: false }]]);
