@@ -221,6 +221,20 @@ test('planReReview reviews in full, and says why, when the last reviewed head ha
   assert.ok(lines.some((l) => l.startsWith(`Couldn't compare with the last reviewed head ${stranger.slice(0, 7)} (`) && l.endsWith('), so this is a full review.') && !l.includes('\n')));
 });
 
+test('planReReview reviews in full, and says why, when the changed hunks are more than one part holds', async () => {
+  const { repo, first, reviewed, head } = moreRepo();
+  const lines: string[] = [];
+  let reads = 0;
+  const readEarlier = async () => {
+    reads++;
+    return [];
+  };
+  const plan = await planReReview({ gathered: gather(pullRequest(first, head), repo, repo), checkout: repo, lastHead: reviewed, fetchCommit: () => true, readEarlier, log: (l) => lines.push(l), maxDiffChars: 10 });
+  assert.equal(plan, undefined);
+  assert.equal(reads, 0);
+  assert.ok(lines.some((l) => l.startsWith(`The hunks changed since ${reviewed.slice(0, 7)} are `) && l.endsWith('so this is a full review, in parts.')));
+});
+
 test('fetchCommit refuses a value that is not a full commit SHA', () => {
   const dir = temp('rereview-nosha-');
   assert.equal(fetchCommit({ path: dir, remoteUrl: 'file:///nowhere', sha: 'HEAD' }), false);

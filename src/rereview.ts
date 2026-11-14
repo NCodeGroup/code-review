@@ -12,7 +12,7 @@ import path from 'node:path';
 import { runAgent, totalCost, type AgentRun, type CallRecord } from './agent.ts';
 import { dropContradicted, droppedLine, type DroppedFinding } from './claims.ts';
 import { errorText } from './comments.ts';
-import { budgets, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
+import { budgets, maxChunkChars, maxTurns, minConfidence, verificationOn, type ModelTier } from './config.ts';
 import { git, isGenerated, splitDiff, type Gathered } from './gather.ts';
 import { githubApi } from './github.ts';
 import { writeLog } from './log.ts';
@@ -326,11 +326,15 @@ export interface ReReviewPlan {
 }
 
 // A re-review's plan, or undefined for a full review: on a first review, on a /review of the head already reviewed, and
-// when the last reviewed head can't be fetched (a force-push may have dropped it) or compared.
+// when the last reviewed head can't be fetched (a force-push may have dropped it) or compared. It also returns undefined
+// when the hunks changed since the last review are more than one part of a first review holds: a full review then
+// splits them into parts under the run's cost ceiling and lists the files it couldn't fit.
 export async function planReReview(options: {
   gathered: Gathered;
   checkout: string;
   lastHead: string | undefined;
+  // The most characters of changed hunks one re-review call takes; `maxChunkChars` when absent. Tests set it.
+  maxDiffChars?: number;
   fetchCommit: (sha: string) => boolean;
   readEarlier: () => Promise<EarlierFinding[] | undefined>;
   log: (line: string) => void;
@@ -353,12 +357,18 @@ export async function planReReview(options: {
     log(`Couldn't compare with the last reviewed head ${lastHead.slice(0, 7)} (${errorText(error)}), so this is a full review.`);
     return undefined;
   }
+  const diff = changedHunksDiff(gathered.diff, changed.lines);
+  const budget = options.maxDiffChars ?? maxChunkChars;
+  if (diff.length > budget) {
+    log(`The hunks changed since ${lastHead.slice(0, 7)} are ${diff.length} characters, more than one re-review call takes (${budget}), so this is a full review, in parts.`);
+    return undefined;
+  }
   const read = await options.readEarlier();
   if (!read) log("::warning::Couldn't read the earlier review threads, so the re-review goes without them and won't approve.");
   const earlier = read ?? [];
   const files = Object.keys(changed.lines).length;
   log(`Re-review since ${lastHead.slice(0, 7)}: ${changed.hunks} changed hunks in ${files} files, changes taken back in ${Object.keys(changed.removed).length} files, ${earlier.length} earlier findings`);
-  return { lastHead, changed, diff: changedHunksDiff(gathered.diff, changed.lines), takenBack: takenBackText(changed.removed), earlier, earlierUnread: !read };
+  return { lastHead, changed, diff, takenBack: takenBackText(changed.removed), earlier, earlierUnread: !read };
 }
 
 // --- The re-review ---
