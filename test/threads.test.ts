@@ -52,3 +52,20 @@ test('reviewBody neutralizes mentions in a finding that is not on a changed line
   const body = reviewBody({ inline: [], inBody: [finding({ title: 'Ping @team' })], alreadyPosted: [], tracked: [] }, 'abcdef1234');
   assert.ok(body.includes('Ping @\u200bteam'), body);
 });
+
+test('threadBody lists the other places a finding covers before its evidence', () => {
+  const body = threadBody(finding({ places: [{ file: 'src/b.ts', line: 4 }, { file: 'src/c.ts', line: 9 }] }));
+  const also = '**Also at:** `src/b.ts:4`, `src/c.ts:9`';
+  assert.ok(body.includes(also), body);
+  assert.ok(body.indexOf(also) < body.indexOf('<details>'), body);
+  assert.ok(findingBody(body).includes('**Also at:**'));
+});
+
+test('threadBody has no also at line for a finding at one place', () => {
+  assert.ok(!threadBody(finding()).includes('Also at'));
+});
+
+test('reviewBody lists the other places of a finding in its body', () => {
+  const body = reviewBody({ inline: [], inBody: [finding({ places: [{ file: 'src/b.ts', line: 4 }] })], alreadyPosted: [], tracked: [] }, 'c'.repeat(40));
+  assert.ok(body.includes('**Also at:** `src/b.ts:4`.'), body);
+});

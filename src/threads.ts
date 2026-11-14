@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { neutralizeProse } from './markdown.ts';
-import type { ReviewedFinding, Severity, Suggestion } from './review.ts';
+import type { Place, ReviewedFinding, Severity, Suggestion } from './review.ts';
 
 // The most lines a suggestion may replace, or write: a longer fix is described in prose only. Kept here, not in config.ts,
 // because the acknowledgement loads this module before npm ci.
@@ -188,6 +188,11 @@ function prose(value: string): string {
   return neutralizeProse(text(value));
 }
 
+// The places in other files that a finding covers, each as a code span, escaped as text() does.
+function placesText(places: Place[]): string {
+  return places.map((p) => '`' + text(p.file) + ':' + p.line + '`').join(', ');
+}
+
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {
   const reviewers = finding.reviewers.map((name) => name.replace(/[^A-Za-z0-9._-]/g, '-')).join(',');
   const marker = `<!-- ncode-review:finding id=${finding.id} fp=${fingerprint(finding)} severity=${finding.severity}${reviewers ? ` reviewer=${reviewers}` : ''} -->`;
@@ -200,6 +205,7 @@ export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): s
     '',
     `**Fix:** ${prose(finding.fix)}`,
     '',
+    ...(finding.places?.length ? [`**Also at:** ${placesText(finding.places)}`, ''] : []),
     ...(suggestion ? [suggestionBlock(suggestion.replacement), ''] : []),
     `<details><summary>Evidence</summary>\n\n${prose(finding.evidence)}\n\nConfidence ${finding.confidence.toFixed(2)}.\n\n</details>`,
     '',
@@ -244,7 +250,7 @@ export function reviewBody(placement: Placement, headSha: string): string {
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}`);
+      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}${f.places?.length ? ` **Also at:** ${placesText(f.places)}.` : ''}`);
     }
   }
   return lines.join('\n');
