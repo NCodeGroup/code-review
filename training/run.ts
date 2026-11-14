@@ -285,7 +285,34 @@ export function reuseExtraction(saved: Extracted | undefined, hash: string, prom
   return { saved: { ...rest, ...(applyTo?.length ? { applyTo } : {}) }, changed };
 }
 
-async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[]): Promise<void> {
+// A repository's extraction folder under `base`: the existing folder whose name equals owner-repository ignoring case,
+// with the repository name spelled as that folder spells it, so the source labels stay the same; otherwise the folder
+// a first run creates, with the repository name as given.
+export function extractedFolder(base: string, repository: string): { dir: string; repoName: string } {
+  const owner = repository.split('/')[0]!;
+  const wanted = repository.replace('/', '-');
+  const found = existsSync(base) ? readdirSync(base, { withFileTypes: true }).find((e) => e.isDirectory() && e.name.toLowerCase() === wanted.toLowerCase()) : undefined;
+  if (found) return { dir: path.join(base, found.name), repoName: found.name.slice(owner.length + 1) };
+  return { dir: path.join(base, wanted), repoName: repository.split('/')[1]! };
+}
+
+// The saved extractions under `dir` whose source no longer exists: the .json files at <dir>/<kind>/<id>.json that no
+// source names, sorted.
+export function staleExtractions(dir: string, sources: Pick<Source, 'kind' | 'id'>[]): string[] {
+  if (!existsSync(dir)) return [];
+  const current = new Set(sources.map((s) => path.join(dir, s.kind, `${s.id}.json`)));
+  const stale: string[] = [];
+  for (const kind of readdirSync(dir, { withFileTypes: true })) {
+    if (!kind.isDirectory()) continue;
+    for (const name of readdirSync(path.join(dir, kind.name))) {
+      const file = path.join(dir, kind.name, name);
+      if (name.endsWith('.json') && !current.has(file)) stale.push(file);
+    }
+  }
+  return stale.sort();
+}
+
+async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[], prune: boolean): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'extract.md'), 'utf8');
   const promptHash = sha(prompt);
   let reused = 0, failed = 0;
@@ -317,6 +344,11 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
     console.log(`  ${source.label}: ${result.output.rules.length} rules, $${totalCost(result.records).toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
+  if (prune) {
+    const stale = staleExtractions(outDir, sources);
+    for (const file of stale) rmSync(file);
+    if (stale.length) console.log(`Removed ${stale.length} extractions of sources that no longer exist.`);
+  }
 }
 
 function readExtracted(): Extracted[] {
@@ -476,7 +508,7 @@ async function main(): Promise<void> {
     if (repository && !process.argv.includes('--generalize-only')) {
       const checkout = arg('checkout');
       if (!checkout) throw new Error('Pass --checkout with a clone of the repository at its default branch.');
-      const repoName = repository.split('/')[1]!;
+      const { dir: extractedDir, repoName } = extractedFolder(path.join(root, 'training', 'extracted'), repository);
       const only = arg('only')?.split(',');
       const maintainer = arg('maintainer') ?? 'polewskm';
       const comments = fetchPullComments(repository);
@@ -493,7 +525,7 @@ async function main(): Promise<void> {
         console.log([...kinds].map(([k, n]) => `${k}: ${n}`).join(', '), `| ${Math.round(sources.reduce((n, s) => n + s.text.length, 0) / 1000)}K characters`);
         return;
       }
-      await extract(run, sources, path.join(root, 'training', 'extracted', repository.replace('/', '-')), calls);
+      await extract(run, sources, extractedDir, calls, !only);
     }
     // The maintainer's own sources, such as review prompts that have worked well, belong to no one repository.
     if (!process.argv.includes('--generalize-only') && !process.argv.includes('--list')) {
@@ -503,7 +535,7 @@ async function main(): Promise<void> {
             kind: 'maintainer', id: name.slice(0, -3), label: `NCodeGroup maintainer: ${name.slice(0, -3)}`, text: readFileSync(path.join(dir, name), 'utf8'),
           }))
         : [];
-      if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls);
+      if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls, true);
     }
     if (!process.argv.includes('--extract-only')) {
       if (!process.argv.includes('--no-taught-rules')) await updateFeedback();

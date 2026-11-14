@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { botLogin } from '../src/results.ts';
 import { useGitHubDotCom } from './github-env.ts';
@@ -50,4 +53,28 @@ test('outcomeSources splits a long pull request into numbered sources with one l
   const sources = outcomeSources([bot(1), bot(2), reply(11, 1, 'Thanks'), reply(12, 2, 'Thanks')], 'Repo', 'polewskm', 200);
   assert.deepEqual(sources.map((s) => s.id), ['outcomes-7-1', 'outcomes-7-2']);
   assert.deepEqual(sources.map((s) => s.label), ['Repo outcomes of #7', 'Repo outcomes of #7']);
+});
+
+test('extractedFolder finds a folder that differs in case and keeps its spelling for the labels', async () => {
+  const { extractedFolder } = await import('../training/run.ts');
+  const base = mkdtempSync(path.join(tmpdir(), 'training-folder-'));
+  mkdirSync(path.join(base, 'NCodeGroup-Identity'));
+  assert.deepEqual(extractedFolder(base, 'NCodeGroup/identity'), { dir: path.join(base, 'NCodeGroup-Identity'), repoName: 'Identity' });
+});
+
+test('extractedFolder names the folder a first run creates when none exists', async () => {
+  const { extractedFolder } = await import('../training/run.ts');
+  const base = mkdtempSync(path.join(tmpdir(), 'training-folder-'));
+  assert.deepEqual(extractedFolder(base, 'NCodeGroup/identity-platform'), { dir: path.join(base, 'NCodeGroup-identity-platform'), repoName: 'identity-platform' });
+});
+
+test('staleExtractions lists a saved extraction no source names and not one a source names', async () => {
+  const { saveExtracted, staleExtractions } = await import('../training/run.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'training-stale-'));
+  const saved = { hash: 'h', promptHash: 'p', label: 'L', rules: [] };
+  saveExtracted(path.join(dir, 'adr', '0204-x.json'), saved);
+  saveExtracted(path.join(dir, 'adr', '0205-y.json'), saved);
+  writeFileSync(path.join(dir, 'adr', 'notes.txt'), 'kept');
+  assert.deepEqual(staleExtractions(dir, [{ kind: 'adr', id: '0205-y' }]), [path.join(dir, 'adr', '0204-x.json')]);
+  assert.deepEqual(staleExtractions(path.join(dir, 'missing'), []), []);
 });
