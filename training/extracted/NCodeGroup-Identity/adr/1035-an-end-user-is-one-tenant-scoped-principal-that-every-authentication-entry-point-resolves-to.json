@@ -1,0 +1,151 @@
+{
+  "hash": "19212ef28ea6935f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1035",
+  "rules": [
+    {
+      "statement": "Key authority, ownership, role assignments, grants, consents, sessions and usage metering on the server-owned, opaque principal identifier, never on the upstream `sub` claim or any other externally provided value.",
+      "why": "A `sub` is unique only per issuer and changes with the external identity. Keying on it breaks server-generated opaque identifiers and counts one human as several actors, which splits revocation, consent and billing.",
+      "check": "Look for persisted or authorization-relevant subject fields (grant, session or consent subject IDs, ownership keys, metering keys) filled from a raw `sub` claim, an upstream subject or a local account ID instead of the resolved principal ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have every authentication entry point (interactive login, password grant, bearer and UserInfo re-authentication, management authorization) resolve the caller to the principal identifier before it creates a session, cookie or ticket.",
+      "why": "If one entry point stamps a raw account identifier while another stamps the resolved principal, one human's grants and sessions get keyed two ways, revocation cannot span both, and an internal identifier leaks.",
+      "check": "In a new or changed authentication handler or grant handler, check that principal resolution runs before the session, cookie or ticket is built, and that the subject stored there is the resolved principal ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build every authentication ticket through the single factory that normalizes the subject claim to the resolved principal identifier, rather than building tickets or setting the `sub` claim by hand.",
+      "why": "A single normalization seam guarantees that `sub` equals the principal ID at every ticket-construction site.",
+      "check": "Look for ticket or authentication-result construction, or `sub` claim assignment, that skips the shared subject-authentication factory or its normalization step.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read the authenticated subject from the resolved principal-ID field, and never add a getter or helper that reads the `sub` claim from the raw `ClaimsPrincipal`.",
+      "why": "A second accessor next to the resolved field would bring back a second source of truth for the subject. The `ClaimsPrincipal` is only raw authentication material.",
+      "check": "Look for code that calls `FindFirst(\"sub\")` or similar on the authenticated principal to identify the user, or for new properties that derive the subject from claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never emit a local account identifier or other internal identifier as the token `sub`: the `sub` must be the opaque principal identifier or its pairwise projection.",
+      "why": "An internal identifier leaking as the `sub` couples clients to internal keys and splits the subject.",
+      "check": "Check token and claim emission code for a `sub` value taken from a local account ID, a database key or an upstream subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use an external identity's (issuer, subject) natural key only to look up that identity, never as the identifier of anything the system owns or references.",
+      "why": "The natural key is external and unstable. Owned resources reference only server-generated identifiers.",
+      "check": "Look for foreign keys, references or authorization decisions built from an upstream issuer/subject pair instead of the identity ID or principal ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In federated identity linking, never automatically merge two established principals, and attach a new identity to an existing principal only through the configured join claim, which must be verified when verification is required.",
+      "why": "Automatic merging is where account-takeover risk concentrates.",
+      "check": "Look at linking logic for paths that merge existing principals, or that attach on an unverified join claim (for example `email` without `email_verified == true`) when verification is required, or that attach in explicit-only mode.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the lookup-only principal resolution, never the resolution that provisions on first sight, in an authorization check that grants management authority.",
+      "why": "A caller that was never provisioned must hold no management authority.",
+      "check": "In authorization handlers, check that the principal is resolved by lookup only, and that a missing principal results in denial rather than provisioning.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep principals and their external identities tenant-scoped: resolve them in the ambient tenant, keep their identifiers and (issuer, subject) keys unique per tenant, and never correlate a principal across tenants.",
+      "why": "Tenant isolation is preferred over a singleton that spans tenants. The same human in two tenants is two principals.",
+      "check": "Look for principal or identity queries that bypass the tenant filter, uniqueness constraints that are not tenant-scoped, or code that links principals across tenants.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a client authenticates as itself, resolve it to its principal without ever provisioning one, and resolve it to no principal while the client is disabled.",
+      "why": "A client is its own principal, and a disabled client must not act.",
+      "check": "In client self-authentication resolution, check that there is no provisioning path and that the client's disabled state is checked before a principal is returned.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reserve the word \"subject\" for the upstream subject value and the emitted `sub` claim, and name the aggregate end-user entity and its identifier \"principal\".",
+      "why": "\"Subject\" is the OpenID term for the upstream `sub`, so reusing it for the aggregate overloads the word.",
+      "check": "Look for new types, properties or parameters named `Subject...` that actually hold the resolved principal aggregate or its ID.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when an authentication entry point is added or changed, assert that the emitted `sub` is stable and opaque rather than a raw account identifier, and that the entry point builds its ticket through the shared subject-authentication factory.",
+      "why": "These assertions guard the single-subject invariant at every entry point.",
+      "check": "For tests of new or changed authentication entry points, check that there is an assertion on the `sub` value's stability and opacity and on the use of the ticket factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

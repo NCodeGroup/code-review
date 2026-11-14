@@ -1,0 +1,76 @@
+{
+  "hash": "75087d1c530e5ad5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1126",
+  "rules": [
+    {
+      "statement": "Use SHA-256 as the Concat KDF digest for ECDH-ES key agreement (ECDH-ES and ECDH-ES+AxxxKW) on every curve and key type, and never pick the digest based on curve size.",
+      "why": "RFC 7518 §4.6.2 makes SHA-256 the required digest. A digest that depends on the curve breaks interop on P-384 and P-521 without raising any error: the only sign is a token that can't be decrypted.",
+      "check": "Look in the ECDH-ES key derivation code for a hash algorithm or digest length (reps computation) that depends on the curve, the key size or the epk crv, or that uses anything other than SHA-256.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the curve only to emit and validate the ephemeral public key (`epk`) `crv` field, never as an input to the ECDH-ES key derivation.",
+      "why": "The digest belongs to the key-agreement algorithm, not to the key, and nothing in the `alg` value or the key encodes a digest choice.",
+      "check": "Look for curve or key-size values flowing into the Concat KDF parameters, beyond the epk crv emission and validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test checks a cryptographic primitive's output against an independent implementation, use an implementation known to conform to the specification on the inputs under test, chosen for conformance and not for convenience or platform.",
+      "why": "Two implementations agreeing proves something only when at least one is known to conform. A non-conforming oracle, such as Windows CNG's Concat KDF on P-384 and P-521, would agree with an implementation that has the same defect.",
+      "check": "For any new or changed cross-check test, confirm the oracle is a conforming path. For JOSE ECDH, the conforming path is jose-jwt's managed `EcdhKeyManagementUnix` over `ECDiffieHellman`. Flag any oracle that goes through CNG (`CngKey`, `EcdhKeyManagementWin` with a CNG key, `NCryptDeriveKey`).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, prefer the specification's own published test vectors as expected values over output taken from a second implementation.",
+      "why": "A second implementation backs up a result only after it is confirmed to conform on the inputs under test. Spec vectors are conforming by definition.",
+      "check": "Look for cryptographic tests whose expected values come only from another library when the RFC or standard publishes test vectors for that primitive.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, never make a test's expected value depend on the host platform, and don't restrict conformance assertions to a subset of inputs (such as P-256 only) to avoid a platform's defect.",
+      "why": "A test whose expected value depends on the host can't express a conformance requirement and ends up asserting the non-conforming behavior on that platform. Narrowing the inputs leaves the suite passing over exactly the cases where a defect would be.",
+      "check": "Look for `OperatingSystem.IsWindows()`, `RuntimeInformation` checks or conditional expected values in crypto tests, and for parameterized cases that skip some curves or key sizes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test projects target the portable TFM (for example `net10.0`), never a platform-specific TFM such as `net10.0-windows` just to reach native cryptography.",
+      "why": "A platform-specific TFM makes the solution unbuildable on Linux CI runners and brings the platform's non-conforming behavior into the assertions.",
+      "check": "Look at `TargetFramework`/`TargetFrameworks` in test .csproj files for platform-suffixed TFMs, and at test code that uses `CngKey` or other Windows-only crypto APIs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.csproj",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

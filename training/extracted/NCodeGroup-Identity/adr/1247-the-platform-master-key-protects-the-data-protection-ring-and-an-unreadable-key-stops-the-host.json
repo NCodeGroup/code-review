@@ -1,0 +1,111 @@
+{
+  "hash": "395869a657256590",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1247",
+  "rules": [
+    {
+      "statement": "Don't put a startup check that depends on work done by a hosted service (such as a warmup that loads keys) in a startup validator or `ValidateOnStart`; make it a hosted service registered after that hosted service.",
+      "why": "Every startup validator runs before any hosted service starts, so the validator runs before the warmup has loaded what the check needs.",
+      "check": "Look for `ValidateOnStart`/`IStartupValidator` logic that reads state a hosted service creates, or a gate hosted service that isn't inserted after the service it depends on.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When startup work must run before every hosted service's `StartAsync`, implement it as an `IHostedLifecycleService` in `StartingAsync` instead of relying on hosted-service registration order.",
+      "why": "`StartingAsync` runs before every `StartAsync` whatever the registration order, so the order can't break.",
+      "check": "Look for code that inserts a hosted service at index 0 or depends on registration order only so that it runs before all other `StartAsync` calls.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate a development convenience that destroys or resets data, such as pruning keys it can't read, behind an explicit configuration opt-in, never an `IsDevelopment()` check.",
+      "why": "The environment name is not an opt-in. A convenience gated on it runs through the production path without anyone setting it on purpose.",
+      "check": "Look for `IsDevelopment()` or environment-name checks that turn on destructive healing or reset behavior.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outside Development, a host whose ASP.NET Core Data Protection key ring holds a live key it can't decrypt must fail startup with an error that names every such key ID and the setting that revokes them, instead of revoking the key automatically or letting Data Protection create a default key.",
+      "why": "Revoking automatically hides a lost master key and silently ends the sessions those keys protected. The operator needs the key IDs to recover.",
+      "check": "Look for key-ring startup code that catches decryption failures and revokes the key, or carries on, when the environment isn't Development, or that throws without listing the key IDs and the revocation setting.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Data Protection key-ring check must skip revoked and expired keys, and must revoke a key listed in configuration without trying to decrypt it.",
+      "why": "A dead key can't protect anything, however unreadable it is. A listed key must be revocable even when it can't be decrypted, so that an operator can recover.",
+      "check": "Look for key-ring validation that reads the `Descriptor` of revoked, expired or listed keys, or fails on them.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Production, validate `KeyManagementOptions` when the host starts and refuse to start when `XmlRepository` or `XmlEncryptor` is null.",
+      "why": "A ring without a repository or an encryptor is not shared or not encrypted at rest, and it must never reach a port.",
+      "check": "Look for production host setup that configures Data Protection without a start-time check that the repository and the encryptor are both set.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A service-registration extension that depends on Data Protection services such as `IKeyManager` must call `AddDataProtection()` itself, and must add `TimeProvider.System` only when the host hasn't already registered a `TimeProvider` (TryAdd).",
+      "why": "The services the extension needs then always resolve, and a time provider the host registered, such as a test clock, isn't overridden.",
+      "check": "Look for registration methods that resolve `IKeyManager` without calling `AddDataProtection()`, or that use `AddSingleton<TimeProvider>` and so replace one the host registered.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every test host must keep its Data Protection key ring in its own store (an in-memory `IXmlRepository` or in-memory database), never the machine's key directory.",
+      "why": "Otherwise the host reads keys that an earlier run wrote under another master key, and the key-ring checks fail.",
+      "check": "Look for test host factories or bare test hosts that start with Data Protection but configure no repository of their own.",
+      "scope": "domain",
+      "domain": "aspnetcore-data-protection",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An opt-in self-heal that replaces keys it can't read must act only on a `CryptographicException` from unwrapping, and must let every other failure propagate.",
+      "why": "Only a failure to decrypt shows that the key was wrapped by a different root key. Other failures must not trigger a destructive reset.",
+      "check": "Look for heal or reset code that catches `Exception` broadly, or that acts on failures other than `CryptographicException`.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

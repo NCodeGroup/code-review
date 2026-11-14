@@ -1,0 +1,88 @@
+{
+  "hash": "6252367705e322ac",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1492",
+  "rules": [
+    {
+      "statement": "Don't hand-edit a file that a generator script writes; change the script, rerun it, and commit its output together with the change.",
+      "why": "Files exported or edited by hand drift apart from each other and from the script's single source geometry, while a script run keeps every output in step and deterministic.",
+      "check": "Look for diffs that touch generated assets (SVG, PNG, ICO or other generator output) with no matching change to the script that writes them, or script changes committed without the regenerated output.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin any bundled third-party material, such as a font, a word list or an archive, to a specific release, have the script that fetches it verify the SHA-256 of the archive and of each file it reads, and record its copyright and license in THIRD-PARTY-NOTICES.md.",
+      "why": "A pinned, hash-verified source and a recorded notice keep third-party inputs reproducible and their licenses honored.",
+      "check": "Look for new downloaded or vendored third-party inputs that have no pinned version, no SHA-256 verification in the fetching script, or no entry in THIRD-PARTY-NOTICES.md.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an SVG used as an image, convert any text, such as a wordmark, to outlines instead of setting it in a font.",
+      "why": "An SVG shown as an image can't load a font and falls back to whatever font the reader's system has, so text in a font renders inconsistently.",
+      "check": "Look for <text> elements or font-family references in SVG logos and icons.",
+      "scope": "domain",
+      "domain": "frontend-assets",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.svg"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Link a web app's favicons from its index.html with relative hrefs so that the bundler content-hashes them into the served assets directory, and don't put them at the site root, in public/, or inline them.",
+      "why": "The hosts serve only the bundle's assets directory with an immutable cache, under img-src 'self', so root URLs would need new routes and an inlined icon breaks that model.",
+      "check": "Look for favicon links that point to root paths such as /favicon.ico, for icons placed in public/, or for build settings that inline icons as data URIs.",
+      "scope": "repository",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "frontend/apps/**/index.html",
+        "frontend/**/vite.config.*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a web manifest (site.webmanifest or a rel=\"manifest\" link) to the sign-in, console or developer web apps.",
+      "why": "A manifest makes the sign-in page installable as an app even though it is a step of a client's authorization request, and it would also need a manifest-src source in the content security policy.",
+      "check": "Look for site.webmanifest files, rel=\"manifest\" links, or manifest-src added to a content security policy.",
+      "scope": "repository",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "frontend/apps/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never use a tenant's or the console branding's logoUrl as the tab icon; use the family icon, or the tenant's own configured favicon in its place.",
+      "why": "logoUrl is a header picture of any shape, which a browser would squash into a 16-pixel square.",
+      "check": "Look for code that emits a rel=\"icon\" link from a logoUrl setting.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the path of any file under brand/ that is referenced by its address on main, such as the chart icon or the package icon.",
+      "why": "The host chart and READMEs outside the repository fetch these files by URL, so moving one breaks them.",
+      "check": "Look for renames or deletions of brand/ files that the chart's icon, Directory.Build.targets or the README reference.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "brand/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

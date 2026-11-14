@@ -1,0 +1,113 @@
+{
+  "hash": "ab2301813eac32f2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1216",
+  "rules": [
+    {
+      "statement": "Always rotate the refresh token of a public client that isn't bound to a proof-of-possession key (DPoP `jkt` or certificate `x5t#S256`), and give no setting or policy value a way to turn that rotation off.",
+      "why": "RFC 9700 §2.2.2/§4.14.2 and OAuth 2.1 §4.3.1 require a public client's refresh token to be sender-constrained or rotated, and a public client has no client authentication to bind it to.",
+      "check": "Look at changes to refresh-token grant handling or rotation settings. Report any path where a public client's unbound refresh token can be reissued without rotation, for example a policy value or flag that skips rotation for that case.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rotate, by default, the refresh token of a confidential client or a refresh token bound to a DPoP key or certificate. Rotate it only when the client explicitly opts in.",
+      "why": "FAPI 2.0 §5.3.2.1 forbids rotation for sender-constrained confidential clients. Rotation adds no security there, and a client that loses a rotation response loses its session.",
+      "check": "Look at the default rotation policy and at profile defaults. Report a default that rotates bound tokens or confidential clients' tokens, or a FAPI 2.0 profile that inherits an 'always rotate' value instead of resetting it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When rotating a refresh token, revoke the presented grant conditionally (only if it is still active) and store its successor in the same unit of work. Never use separate saves, and never use a revoke that silently succeeds when the grant is already revoked.",
+      "why": "If the spend and the successor are stored separately, or the spend doesn't fail when the grant is already revoked, two concurrent refreshes can both get tokens, so the reuse goes undetected. A lineage revocation can also run before the successor exists and leave it active.",
+      "check": "Look at refresh-token rotation code. Report revocation of the old grant and insertion of the new grant in separate SaveChanges calls or transactions, and report a revoke whose result doesn't show whether the grant was active.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a refresh-token grant, spend the presented token after every validation of the token, its binding and the request, and before minting or auditing any access token, ID token or refresh token.",
+      "why": "If tokens are minted before the spend and the spend then loses a race, tokens are minted and audited that are never delivered.",
+      "check": "Look at the order of operations in the refresh grant handler. Report token creation or issued-token auditing that runs before the conditional spend, and report validation that runs after the spend.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a refresh whose spend finds the grant missing or no longer active (including a spend lost to a concurrent request) exactly as a reused revoked refresh token: return `invalid_grant`, apply the reuse policy and revoke the token family. Don't return a 500 or issue tokens.",
+      "why": "The server can't tell an attacker from the client, so RFC 9700 §4.14.2 requires the lost race to be treated as reuse. The winner's successor, committed with the winning spend, is then revoked with the family.",
+      "check": "Look at how a null or false result from the conditional spend is handled. Report a path that throws an unhandled concurrency exception (a 500), issues tokens, or skips the reuse handling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a conditional grant spend or revocation loses an optimistic-concurrency race that left the grant still active, re-read the grant and retry a bounded number of times (three attempts in total). After the last lost attempt, let the store-neutral concurrency exception propagate.",
+      "why": "A lost race that didn't spend the grant shouldn't be mistaken for a spend by another request, but retries must stay bounded.",
+      "check": "Look at catch blocks for concurrency exceptions in grant spend or revoke code. Report retries that never re-read the grant, unbounded loops, and swallowing the exception after the final attempt.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a sliding-expiration update of a grant tolerate a lost concurrency race: keep the other request's change instead of throwing.",
+      "why": "Concurrent requests that each slide a grant's expiration shouldn't fail the request, because the other request's change is an acceptable outcome.",
+      "check": "Look at grant expiration-update code. Report a concurrency exception from that save that propagates to the caller.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a string setting that selects a behavior the server enforces a closed set of allowed values, and reject any unknown value (fail closed) rather than treating it as a default.",
+      "why": "An unknown value of a security-enforcing policy must not silently fall back to weaker behavior.",
+      "check": "Look at new policy settings. Report a setting without a OneOf-style domain validation, and report code that maps unrecognized values to a fallback behavior.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't model a policy as a boolean when one of its values wouldn't actually disable the behavior its name implies. Use an enumerated policy whose values name the behaviors.",
+      "why": "A `false` that still rotates a public client's token misnames the behavior, and a boolean can't express a choice between cases such as bound and unbound tokens.",
+      "check": "Look at new boolean options. Report a boolean where some cases ignore the `false` value because an invariant overrides it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

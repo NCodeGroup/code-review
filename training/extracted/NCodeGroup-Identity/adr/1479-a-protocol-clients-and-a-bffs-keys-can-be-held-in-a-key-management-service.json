@@ -1,0 +1,124 @@
+{
+  "hash": "4448051bb3cbc174",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1479",
+  "rules": [
+    {
+      "statement": "Don't read a key from a key management service lazily inside a synchronously resolved provider or DI factory; read and prove it in the host's startup phase (for example an `IHostedLifecycleService.StartingAsync`) so a broken key stops the host.",
+      "why": "A synchronous resolution that reads from a KMS blocks on I/O, and a key that is unreadable or lacks sign/decrypt permission would only surface at the first login.",
+      "check": "Look for KMS `GetPublicKeyAsync`-style calls made from a keyed service factory, `.GetAwaiter().GetResult()` or `.Result` on key reads, or key loading deferred to first use instead of host start.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a KMS-held key is loaded at startup, prove it with a real operation before use: for a signature algorithm sign random bytes through the KMS and verify with the public half, for a key-management algorithm decrypt random bytes encrypted to the public half, and fail with an exception that names the key and wraps the cause.",
+      "why": "A missing sign or decrypt permission or a mismatched key would otherwise surface only at the first login.",
+      "check": "Check that new remote-key loading paths call the shared prover (not a hand-rolled check, and not just reading the public key) and that the startup failure message names the key id, ring and provider with the cause as inner exception.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve, read and prove remote KMS keys through the one shared remote-key resolver and prover services rather than duplicating that logic in a new consumer.",
+      "why": "The ADR consolidates the generator, serializer, management API and BFF on one path so the resolution and proof logic exists once.",
+      "check": "Look for new code that looks up a remote key provider, calls `GetPublicKeyAsync`, or builds a sign/decrypt proof itself instead of using `IRemoteKeyResolver`/`IRemoteKeyProver`.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set a remote key's `Use` and `Algorithm` metadata from the provider's algorithm row for that key, not from separate configuration or a default.",
+      "why": "The row decides each key's use, so one ring can hold a signing key and a decryption key side by side and the JWKS publishes each with its correct `use`.",
+      "check": "Look for remote key creation that takes `use`/`alg` from configuration or hardcodes signing, or restricts key ring keys to signing only.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw the dedicated remote-key refusal exception for a refused remote-key request (unregistered provider, unknown algorithm, failed proof), and let a provider's documented `ArgumentException`, `CryptographicException` and `IOException` from reading the public key propagate unwrapped.",
+      "why": "One refusal signal lets the management API map refusals to 400 and the serializer wrap them, while genuine provider failures keep their type.",
+      "check": "Look for refusals thrown as `InvalidOperationException`/`ArgumentException`, or catch-and-wrap of provider exceptions from public key reads.",
+      "scope": "repository",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an options validator report one failure message per problem (empty collection, duplicate id, missing id, malformed name, blank required field, non-positive size) so startup fails listing all of them, and leave checks that need other registered services to the load step.",
+      "why": "Startup validation should report every configuration problem at once; registration and provider-row checks happen when the ring loads.",
+      "check": "Check that `IValidateOptions` implementations accumulate failures rather than returning on the first, and don't resolve runtime services such as key providers.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't resolve a key ring's keyed provider from an eager singleton, an options validator or a set/existence check; check existence with a registration query (such as `HasKeyRing`) and resolve the ring only when a request uses it.",
+      "why": "A ring's keyed provider is available only after startup loads it, and earlier resolution throws an `InvalidOperationException`.",
+      "check": "Look for `GetRequiredKeyedService` of a key ring provider in constructors of singletons, validators or startup checks instead of a has/registered check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require every selector field of a configured remote key (provider, key id, algorithm, secret type, key size, curve) explicitly rather than inferring it from the algorithm.",
+      "why": "An algorithm such as RSA fits several key sizes, so inference would be ambiguous.",
+      "check": "Look for configuration binding code that defaults the key size or curve from the algorithm name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a protocol client or BFF create, tag or destroy KMS keys in its key rings, or record them as stored-secret references for the orphaned-key sweep.",
+      "why": "A ring's KMS key belongs to the operator, the BFF has no secret store, and only keys the deployment tagged are swept.",
+      "check": "Look for key creation, tagging, deletion or reference-store writes in client or BFF key ring code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never send a per-session ephemeral DPoP key to a key management service.",
+      "why": "Each DPoP proof would be a KMS round trip with cost and quota, and an ephemeral key gains nothing from being held remotely.",
+      "check": "Look for DPoP key generation per session that creates or uses a remote KMS key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

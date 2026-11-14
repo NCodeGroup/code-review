@@ -1,0 +1,130 @@
+{
+  "hash": "2afc8d463ab112cc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1139",
+  "rules": [
+    {
+      "statement": "Don't let a reader invent or synthesize a descriptor or type for a setting name that has no registered descriptor; every setting that is read or written must be typed by a descriptor contributed through registration, and setting a value under an unregistered name or with a value type other than the descriptor's must throw.",
+      "why": "An ad-hoc descriptor lets a misspelled, stale or uncomposed setting load with nothing reading or reporting it, so it looks like working configuration.",
+      "check": "Look for code that creates a descriptor on the fly for an unknown key, falls back to a default type for an unregistered name, or a setter that accepts names or value types that don't match a registered descriptor.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a settings document that cannot be honored wherever it enters the system (configuration, management API, registration, stored read): an unregistered name, a value the binder cannot convert, a list written as a single value or the reverse, a document that is not a JSON object, or null for a setting with no default; never load it partially, store it, or silently skip the bad entry.",
+      "why": "Configuration that is accepted without being honored is invisible failure; a skipped security control is one the operator configured but the server would not enforce.",
+      "check": "Look for settings parsing that ignores unknown keys, catches conversion failures and continues, treats a non-object document as `{}`, or accepts scalar/list mismatches; an empty array must configure an empty list, not be rejected.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate settings that come from configuration when the host starts, through an `IValidateOptions<T>` registered with `ValidateOnStart`, so a setting that cannot be honored stops the host and names its configuration path.",
+      "why": "Misspelled or stale configuration must be caught at the first start instead of passing as working configuration.",
+      "check": "Look for configuration-sourced settings that are only parsed lazily on first use, or whose validator is not registered with `ValidateOnStart`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a configuration reload contains settings that cannot be honored, reject the whole reload with an error log and keep the previously loaded settings in force; never apply part of the reload.",
+      "why": "A running host cannot be stopped, and applying part of a reload would be worse than applying none of it.",
+      "check": "Look for change-token or `IOptionsMonitor` reload handlers that apply valid entries and drop invalid ones, throw out of the callback, or swallow the failure without an error log.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a settings document written through a management API before storing it, and on failure answer `400` with a validation problem keyed by setting name and store nothing.",
+      "why": "A document stored without validation fails later, in every request that resolves the entity that holds it.",
+      "check": "Look for create or settings-update endpoints that persist the settings document before validating it, validate only some entry points, or return an error not keyed by setting name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deserializing a stored settings document, throw for any document that cannot be honored (including one naming an unregistered setting) rather than loading the rest without the bad entry.",
+      "why": "A stored control whose descriptor is gone is a control the server would not enforce, so the read must fail closed.",
+      "check": "Look for deserialization of stored settings that skips unknown names or unconvertible values, logs and continues, or returns a partial collection.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before the first stable release, rename, remove or narrow a setting by editing or deleting its descriptor and the code that reads it; don't keep a descriptor registered for a name nothing reads, add a retired state to descriptors, or add a migration that rewrites stored settings documents.",
+      "why": "The project is pre-release, so no stored document has a reader that must keep working, and retired descriptors add names, reasons and cleanup nothing depends on.",
+      "check": "Look for retired/obsolete descriptor flags, descriptors kept only for compatibility, or migrations that rewrite stored settings in a pre-release change.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, store RFC 7591 client metadata (`client_name`, `client_uri`, `logo_uri`, `tos_uri`, `policy_uri`, `contacts`, `software_id`, `software_version`) as typed, registered client settings, import a registered `jwks` as the client's keys rather than a setting, and don't store the requested `scope`.",
+      "why": "Untyped metadata is stored without being honored, and scope entitlement comes from resource servers and client grants, so a stored scope would never be consulted.",
+      "check": "Look for registration handlers that store metadata as untyped key/value pairs, store `jwks` as a setting, or persist the requested `scope`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the dynamic client registration response report the scopes the client may actually request, computed from its entitlements, not echo the requested `scope` (RFC 7591 section 3.2.1).",
+      "why": "A response that echoes the requested scope reads as granted even though entitlement comes from resource servers and client grants.",
+      "check": "Look for registration responses that copy the request's `scope` value into the response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't model a first-class entity property as a setting; keep it a typed property of the entity.",
+      "why": "Properties and settings are distinct; a setting duplicating a property creates two sources of truth.",
+      "check": "Look for new setting descriptors whose value duplicates or stands in for a property already on the persisted entity.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a setting name to a library, ensure the composed-server test that pins every defined setting name to a registered descriptor covers it, and test the reader, the startup validator, write validation on each create and update, and the fail-closed read.",
+      "why": "The pinning test catches a setting whose descriptor is not registered before it ships as unhonored configuration.",
+      "check": "Look for new setting-name constants without a registered descriptor, or changes to settings validation without tests for each entry point.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

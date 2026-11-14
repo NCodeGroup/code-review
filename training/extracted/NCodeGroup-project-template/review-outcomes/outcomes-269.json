@@ -1,0 +1,31 @@
+{
+  "hash": "38791cebd217dc15",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #269",
+  "rules": [
+    {
+      "statement": "In test code, when retry logic treats specific status codes or errors as retryable exceptions to a fail-fast rule, cover each exempted code with a test that checks the extra attempt and its wait.",
+      "why": "If one exempted code is dropped from the retry condition, the request would fail on the first attempt and the test suite would still pass.",
+      "check": "Compare the set of status codes or errors the retry helper treats as retryable (e.g. `-notin 408, 429`, 5xx) with the failures the retry tests inject; flag any exempted code no test sends.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code for retry or back-off logic, stub the sleep and random-jitter calls so tests assert the exact wait and never actually sleep.",
+      "why": "Stubbing the sleep and the random source makes the waits exact and checkable, and keeps the offline suite fast.",
+      "check": "Look for retry tests that call real `Start-Sleep`/`Task.Delay` or unstubbed `Get-Random`/`Random`, or that never assert the computed delay, including the Retry-After and cap cases.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

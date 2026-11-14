@@ -1,0 +1,81 @@
+{
+  "hash": "6cdfc535b369ea87",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #183",
+  "rules": [
+    {
+      "statement": "When a script's cleanup path (a `finally` block) handles concurrent calls that were started but never received, stop and dispose them rather than waiting for their results with no timeout.",
+      "why": "Waiting on outstanding calls after an early failure makes a failed run block on the slowest (or a hung) external command before it reports its error.",
+      "check": "Look in `finally` or cleanup blocks for code that awaits or receives the results of background calls (runspaces, jobs, tasks) without a timeout; it should cancel or stop and then dispose them instead.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A catch block that deliberately swallows an exception must have a comment saying why ignoring it is safe, or must write the error to a warning or verbose stream.",
+      "why": "An empty, uncommented catch hides real failures, such as a background call that failed to start, during development.",
+      "check": "Look for catch blocks that discard the error (e.g. `catch { $null = $_ }` or an empty catch) with no explanatory comment and no logging.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test that asserts on wall-clock timing must leave a margin well above normal runner jitter, while still keeping a clear gap between the passing and failing behaviour (for example, concurrent versus serial).",
+      "why": "A thin margin makes the test fail on a busy CI runner even when the code is fine, and contributors learn to just rerun it.",
+      "check": "In timing-based tests, compare the injected delay, the pass threshold and the expected time for the failing behaviour; flag a margin of only about one delay, or less than a few seconds, when it also has to absorb process-startup jitter.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a header comment, help text or PR description says when or how an operation runs (for example, that a call starts right after a fetch), the code must do exactly that, or the text must be corrected.",
+      "why": "Documentation that doesn't match the code hides gaps such as a delay the change was meant to remove, and tests written from the text won't catch them.",
+      "check": "Compare the timing and ordering claims in a changed header, `.DESCRIPTION` or doc comment with the code path that implements them, including the less common branches.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a background or concurrent call to be skipped up front just because its result looks predictable, when the called function makes its own early checks that the start condition would then have to copy, and the cost of starting it is small next to the work it overlaps.",
+      "why": "Skipping the call up front copies the function's decision logic into a second place that has to stay in step, which is the very duplication the finding warns against, and saves only a few milliseconds.",
+      "check": "Before you report it, read the called function to confirm that its answer really is known before it runs on that path (no hook, file or other local check comes first), and compare the start-up cost with the work it runs alongside.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a value that depends on external state, such as running a `git` command, once at the point where it applies and reuse it, instead of running the same check twice for the same moment.",
+      "why": "A repeated check starts an extra process and leaves two places that have to agree on what the condition means.",
+      "check": "Look for the same external command or query run twice with the same arguments and no state change between the two runs; a re-check after something like a fetch has changed the state is legitimate.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "hash": "95edae13a47a515f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1204",
+  "rules": [
+    {
+      "statement": "Register a library's default implementation of a service with `TryAdd*` (for example `TryAddSingleton`), not `Add*`, so a host that registers its own implementation first replaces it.",
+      "why": "The ADR registers the default resolver with `TryAddSingleton` so a host can replace the resolution in one place by registering its own before the library.",
+      "check": "Look for library DI extension methods that register a default service implementation with `AddSingleton`/`AddScoped`/`AddTransient` instead of the `TryAdd` variants.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read `IOptions`/`IOptionsMonitor` values when they are used, not in a service's constructor.",
+      "why": "Reading options on use keeps construction free of dependencies, so services on the path that builds a shared root object don't form a dependency cycle and see current values.",
+      "check": "Look for constructors that read `.Value` or `.CurrentValue` (or `Get(name)`) from injected options and store the result in a field.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that must see a write just committed, such as a seed, a preview or a validation of a proposed change, reads the committed record from the store, not a cached copy that a replica refreshes by polling.",
+      "why": "On the replica that committed a change, the polled copy may not be refreshed yet, so it would give a stale answer.",
+      "check": "Look for seeds, previews or checks that run after a write and read a polled or cached provider when the store holds the authoritative record.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't return an ETag or concurrency token on an HTTP response that shows a merged or computed view across several entities.",
+      "why": "A merged view isn't an entity that can be written back, so a token has nothing to guard.",
+      "check": "Look for read-only merged, effective or preview endpoints that set an ETag header or include a version or concurrency token in the body.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A management endpoint that previews derived data authorizes the same permission as the raw read of that resource, and does so before it resolves or computes anything.",
+      "why": "Resolving only after authorization avoids doing work for, and leaking information to, callers who don't have authority, and the preview gets no weaker protection than the raw data.",
+      "check": "Look for preview or derived-view handlers that resolve data before the authorization check, or that require a different or weaker permission than the raw read endpoint.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add an anonymous override or query option to a public discovery endpoint that exposes settings marked non-discoverable. Expose them only through an authorized management endpoint.",
+      "why": "An anonymous override would disclose settings to callers who don't have authority.",
+      "check": "Look for discovery or metadata endpoints gaining a parameter or flag that includes non-discoverable values without authorization.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a scope's effective settings (the cascade merge plus security-profile expansion) through the single effective-settings resolver service, never with a merge written by hand in the caller.",
+      "why": "Hand-written copies drift: they read the platform from different sources and some skip the profile expansion, so they give a different answer than the runtime.",
+      "check": "Look for new code that merges platform, team, tenant or client settings documents itself, or that deserializes a settings document without going through the resolver.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "hash": "8957badc96a9b597",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #606",
+  "rules": [
+    {
+      "statement": "Don't report an `IValidateOptions<T>` implementation for taking a framework singleton such as `IHostEnvironment` in its constructor; the rule only forbids options validation that constructs strategies with their own dependency graphs.",
+      "why": "The rule exists because resolving a dependency graph inside `IOptions<T>.Value` can deadlock composition, and a framework singleton with no dependencies and no options read can't cause that.",
+      "check": "Before flagging a validator's constructor dependency, see whether it is a framework singleton with no dependency graph and no options read, or a service whose resolution builds further dependencies or reads options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a composition-root package to move its public registration marker type into an Abstractions package; a composition root declares its marker next to its builder.",
+      "why": "Any package that composes the feature references the composition root anyway, so an Abstractions package would hold nothing but the marker.",
+      "check": "Before flagging a public marker declared in an implementation package, check whether the package is documented (for example in an ADR) as a composition root.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't flag `null!` used to pass a deliberate null to the code under test, as in an argument-validation test; the test conventions allow that one use.",
+      "why": "These tests have to pass a null on purpose to prove the code rejects it, and the test conventions name this as the allowed use of the null-forgiving operator.",
+      "check": "Look at whether the `!` value goes straight to the code under test to exercise null handling; flag only other uses.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that code or a test contradicts an ADR, check whether a later ADR amends that decision.",
+      "why": "A later decision can amend an earlier one, with the amendment named in the earlier ADR's Status, so the code and the decision record may already agree.",
+      "check": "Read the cited ADR's Status and search the other ADRs for amendments to the decision before flagging the disagreement.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cap any computed `setTimeout` delay well below 2^31-1 ms, for example at the regular poll interval, so a far-off deadline never arms a timer that fires at once.",
+      "why": "Browsers treat a delay above 2^31-1 ms (about 24.8 days) as 0. A timer that re-arms itself then runs in a tight loop.",
+      "check": "Look for `setTimeout` calls whose delay comes from a remote timestamp or lifetime and has no upper bound.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't silently skip a configuration entry that is only partly configured: log a warning (or fail) that names the missing keys, and treat only an entry that sets nothing as inert.",
+      "why": "A silent skip leaves the developer with an unexplained failure somewhere else instead of a message that names the missing setting.",
+      "check": "Look for code that skips a configured entry when some required values are missing, and check whether it reports which keys are missing.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A seeder that owns a record must reconcile an existing record with the current configuration, replacing it and logging the replacement when they differ, instead of returning early because a record with that id exists.",
+      "why": "With add-only seeding, changed keys or URIs never reach the stored record, and the resulting failures don't point to the seeder.",
+      "check": "Look for seed code that returns as soon as an entity with the same id exists, without comparing its stored settings to the configured ones.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two constants name the same location or value, derive one from the other instead of defining both independently.",
+      "why": "If one is renamed without the other, the mismatch fails silently at runtime (for example, every asset returns 404) instead of at startup.",
+      "check": "Look for literal constants in different types that encode the same path, name or value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't null-check a non-nullable property that always has a default instance; either drop the check or make the property's nullability match it.",
+      "why": "The check hides the contract that the value is always present.",
+      "check": "Look for `is not null` or `!= null` checks on members declared non-nullable with a default initializer.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove a DOM element created only to perform one action, such as a hidden form used to submit a POST, right after the action.",
+      "why": "Repeated calls, in tests or when the browser doesn't navigate away, otherwise leave stray nodes in the DOM.",
+      "check": "Look for elements appended to `document.body` for a one-off action and never removed.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an ASP.NET Core host, fail startup in Production when `AllowedHosts` is missing, empty or contains `*`, and don't set `AllowedHosts` to `*` in the base `appsettings.json`.",
+      "why": "With host filtering off, forged `Host` headers reach code that builds callback and logout URIs.",
+      "check": "Look for `AllowedHosts: \"*\"` in base settings, and for a host that has no production check of host filtering.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/appsettings*.json",
+        "**/Program.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a validation or error message includes a configured URL, show it without user info, query or fragment.",
+      "why": "Those URL parts can carry secrets, and the message ends up in logs and startup errors.",
+      "check": "Look for failure messages that interpolate a raw configured URL value.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "hash": "e93a6ca34c207b01",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1442",
+  "rules": [
+    {
+      "statement": "Don't follow reloadable options through `IOptionsMonitor<T>.CurrentValue` or `OnChange` when an invalid change must not take effect. Register the section's `IOptionsChangeTokenSource<T>`, build a candidate through `IOptionsFactory<T>` when its token fires, and swap it in only if it is valid.",
+      "why": "`CurrentValue` throws on every read after an invalid change, and `OnChange` listeners never see one, so the monitor can't keep the last valid value or say why a change was refused.",
+      "check": "Look for reload logic that reads `IOptionsMonitor<T>.CurrentValue` or subscribes to `OnChange` for options a running host must keep valid, instead of building and validating a candidate through `IOptionsFactory<T>`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When configuration reloads at run time, validate the whole candidate (binding, every `IValidateOptions<T>` and every cross-cutting check), then replace one immutable snapshot atomically. On failure, keep the last valid snapshot and log every failure at `Error`. On first load at startup, fail the host instead.",
+      "why": "A serving host can't refuse to start on a reload, so an invalid change must never replace a working set, and the parts that depend on the snapshot must all see a change at once.",
+      "check": "Look for reload handlers that change state field by field, apply a partly validated change, drop the working value on failure, or swallow validation failures without logging them at Error.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add an opt-in switch that turns runtime configuration reload on or off. Let the configuration source's change tokens decide whether the settings change.",
+      "why": "The options system already says whether a configuration source changes, so a switch would only duplicate that decision.",
+      "check": "Look for new boolean options like `EnableReload` or `WatchForChanges` that gate whether reloadable options are followed.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read all sections of a reloadable options object from one live snapshot accessor. Don't mix `IOptions<T>` reads with the reloaded view, and don't follow only some sections of the options.",
+      "why": "Otherwise some settings would follow a different snapshot from the rest.",
+      "check": "Look for code that injects `IOptions<T>` or `IOptionsSnapshot<T>` for options the component otherwise reads from a reloaded current-snapshot accessor, or reload logic that refreshes only one sub-section.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep state derived from a configuration snapshot on the immutable object built for that snapshot. Examples are computed names, headers, registrations and cached client-credential tokens. Each change then rebuilds it and drops the old state, so you don't need to deep-compare old and new options.",
+      "why": "Rebuilding per snapshot is simple and correct, while a deep comparison of every option is costly and error-prone. A dropped cached token costs only one token request.",
+      "check": "Look for caches or computed values keyed outside the snapshot instance, such as static or singleton dictionaries, that would survive a configuration change, or for deep-equality logic that tries to keep instances across reloads.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve the configuration snapshot once per request and use it for the whole request. A long-lived connection, such as a SignalR hub or a Blazor circuit, must instead look its entry up by name in the current snapshot each time it is used.",
+      "why": "This way a change during a request never mixes two snapshots, and a removed entry ends its connections at their next revalidation.",
+      "check": "Look for request handlers that read the current snapshot more than once, or connections that capture an entry object at connect time and never look it up again.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validation of a reloadable configuration must not depend on another system that reloads the same configuration on its own having already applied the change. Accept references in either order, and report a dangling reference through a later check instead of refusing it.",
+      "why": "The two sides apply one change separately, for example YARP and the BFF. A reference that arrives first would otherwise be refused until the next change.",
+      "check": "Look for load-time validation that refuses an item because a related item, loaded independently from the same configuration, isn't present yet.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several configured entries are selected per request by rules, don't resolve them by first-match ordering. Fail validation when two entries' rule values can match one request, and throw `InvalidOperationException` if a request still matches more than one at run time.",
+      "why": "With first-match ordering, a reordered configuration would silently hand a request to another client. A request that matches two entries, or none, must not reach a session or registration.",
+      "check": "Look for selection code that loops through entries and returns the first match, or that has no overlap validation and no ambiguity exception.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Per-client configuration entries, such as one entry per OAuth client, must not inherit settings from root defaults or from each other. Every setting belongs to the entry that names its client.",
+      "why": "Inheritance hides which client a setting belongs to.",
+      "check": "Look for fallback logic that fills a per-client setting from a root section or another entry when it is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several clients or frontends can share one origin, always put the client's name in the session and login-transaction cookie names, even when only one client is configured. Don't scope them with `Domain` or `Path`: `__Host-` cookies forbid `Domain` and require `Path=/`.",
+      "why": "A `__Host-` cookie can't be scoped by its attributes, so its name has to carry the client. A suffix added only once there are several clients would rename the first client's cookie and end its users' sessions.",
+      "check": "Look for cookie names built conditionally on how many clients there are, or that try to isolate clients with `Domain` or `Path` on `__Host-` cookies.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record the owning client in each session (authenticated as AEAD associated data) and in each login transaction. Ignore and delete a session cookie that belongs to another client, and refuse a callback whose transaction belongs to another client.",
+      "why": "A session must never answer for another frontend, even when a browser sends both cookies to one origin.",
+      "check": "Look for session resolution or callback handling that doesn't compare the stored client or frontend with the current request's, or a stored client name that isn't bound into the encrypted record's associated data.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel logout token must end only the sessions of the client that received it.",
+      "why": "Clients on one deployment are isolated, and a logout for one client must not end another client's sessions.",
+      "check": "Look for back-channel logout handlers that look up sessions by `sid` or `sub` without filtering on the receiving client or frontend.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each OAuth client's callback URI in one deployment must be unique, so validate that across all configured clients. The client must also be selectable from the URLs the OP is told (callback, back-channel logout, JWKS), not only by endpoint routing.",
+      "why": "The OP must be able to tell the clients apart. The callback and back-channel receivers are reached by the OP or a browser, so they have to resolve the right client.",
+      "check": "Look for multi-client configuration validation that doesn't reject duplicate callback URIs, or for client selection that only works through routing such as `RequireHost`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A request that no configured client selects must reach no client-bound endpoint and no session. Security headers for such a request fall back to the strict defaults.",
+      "why": "An unmatched request must not reach a session or a client registration.",
+      "check": "Look for a fallback that picks some default or first client when no selection rule matches, other than the one configured catch-all entry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

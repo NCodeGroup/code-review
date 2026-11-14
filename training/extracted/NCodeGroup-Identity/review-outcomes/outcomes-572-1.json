@@ -1,0 +1,217 @@
+{
+  "hash": "db7c7ef6fb4ae2d6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #572",
+  "rules": [
+    {
+      "statement": "When a caller-supplied key reference or resource identifier names a host the server will call, accept only hosts under an operator-configurable allow-list of domain suffixes, and check it in both the validation path and the call path before any network request.",
+      "why": "Without an allow-list, a tenant can point the server at internal or attacker-controlled HTTPS endpoints (SSRF), and parts of the response can come back in error text.",
+      "check": "Look for caller- or tenant-supplied URLs, key IDs or vault URIs that are only syntax-checked (e.g. any dotted HTTPS host) before the server sends requests to them.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an input longer than its persisted column's maximum length during validation, before any expensive remote call, using a constant shared with the entity's column configuration.",
+      "why": "Otherwise an oversized value costs a remote round trip and then fails at the store with a 500 where the caller should get a 400.",
+      "check": "Look for string inputs that are stored in length-limited columns but are validated only by format, or whose length limit is a separate literal from the column's.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each persisted column its own max-length constant named for that column instead of reusing a constant named for another column.",
+      "why": "Changing the other column's limit would silently resize this one too.",
+      "check": "Look for `HasMaxLength` or `[MaxLength]` on a property that uses a constant named for a different property.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Index the columns that a periodic or background query filters on, unless the table is documented as small by design.",
+      "why": "Without the index, each pass scans the whole table, which grows with usage.",
+      "check": "Look for new scheduled or polling queries whose WHERE columns have no matching index in the entity configuration or migration.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a cache load guards its success path against a concurrent eviction or invalidation, apply the same guard before recording a failure.",
+      "why": "Otherwise a stale load that started before an eviction can record a failure after the eviction cleared it, and refuse requests for the whole retry interval.",
+      "check": "Compare the success and failure paths of a cache load: the failure path should check the same eviction counter or version before it writes.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide a derived fact once, where its data is read, and return it in the method's result instead of flipping a mutable state object deep in a call chain or recomputing it elsewhere.",
+      "why": "When the fact is decided in several places, a later change to its definition can miss one of them.",
+      "check": "Look for a mutable holder object passed into helpers to set a flag, or the same condition recomputed in a caller that a callee already decided.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make a sequence of remote round trips (such as one KMS unwrap per row) while holding a per-key lock on the request path; limit the work to what the request needs, or move it outside the lock or to a background service.",
+      "why": "The first request waits N round trips, and concurrent requests for the same key queue behind it.",
+      "check": "Look for loops of awaited remote calls inside a held SemaphoreSlim or lock on a request path.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce a domain invariant, such as which owners may perform an operation, in the domain service or manager and have the HTTP handler only map its exception to a status code; don't enforce it only in the endpoint handler.",
+      "why": "Another caller of the service would otherwise bypass the check.",
+      "check": "Look for authorization or eligibility checks that exist only in an endpoint handler while the service method it calls accepts any input.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't declare a private constant that duplicates a shared bound (such as a timeout) that already exists in a referenced layer; use the shared one.",
+      "why": "The two values can drift apart.",
+      "check": "Look for new private timeout or limit constants with the same value and purpose as an existing shared constant.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read the clock once per event or record and use that value for every field derived from the time, such as a UUIDv7 id and the event timestamp.",
+      "why": "Separate reads can give the fields different times.",
+      "check": "Look for several `TimeProvider.GetUtcNow()` calls while building one object.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give a public constructor, including an exception constructor, an optional defaulted parameter; expose the optional value as a nullable `init` property instead.",
+      "why": "Adding another optional input later breaks binary compatibility.",
+      "check": "Look for `= null` or other default values on parameters of public constructors in shipped packages.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you edit an XML doc comment or Markdown paragraph, rewrap it to the file's line width (120 columns) and remove stray extra spaces.",
+      "why": "Edited lines that overflow or carry stray spacing break the file's layout, and Markdown lint may flag them.",
+      "check": "Look for edited comment or Markdown lines past 120 columns, or with runs of spaces inside a sentence.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Leave a blank line between a Markdown list or paragraph and the heading that follows it.",
+      "why": "Running content straight into a heading breaks the file's layout and may be flagged by lint.",
+      "check": "Look for a `#` heading line directly after a bullet or text line with no blank line between them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a new shared UI component a Storybook story covering its main states (default, submitting, error, edge cases), as its sibling components have.",
+      "why": "Without one, its states can't be checked visually in isolation.",
+      "check": "Look for a new component in a shared UI package with no matching `.stories.tsx` file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a cache or loader that fails closed on every load failure, without telling outages from revocations, when its remarks document this as deliberate.",
+      "why": "A component that can't tell an outage from a revocation must never serve material it couldn't validate again, so blanket fail-closed with a retry interval is a deliberate security choice.",
+      "check": "Before reporting, read the class remarks and the related ADR for a documented fail-closed decision.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask code behind a provider-neutral store abstraction to catch a typed unique-violation exception when the abstraction has none; detecting a duplicate by reading back the existing row after a failed insert, and rethrowing the original exception when no row exists, is correct.",
+      "why": "If a row exists, the insert could never have succeeded, so reporting a conflict is right whatever the store's exception was.",
+      "check": "Before reporting, check whether the store abstraction exposes a typed duplicate or concurrency exception, and whether the catch rethrows when no conflicting row is found.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask a unit test to replace a mocked event publisher with a recording event handler: unit tests assert what the subject hands to the publisher, and integration tests assert the recorded events through a recording handler.",
+      "why": "A true unit test isolates its subject from the event pipeline.",
+      "check": "Before reporting, check whether the test is a unit test of one class and whether an integration test already covers the recorded events.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to the code under test in an argument-validation test; the test conventions allow it there.",
+      "why": "The test conventions make `null!` the one allowed use of the null-forgiving operator in tests, for argument-validation tests only.",
+      "check": "Before reporting, check whether the `null!` is an argument to the subject in a test of its null-argument handling.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report private nested fake or stub types inside the one test file or test helper that needs them; the no-nested-types rule is for production code, and the test conventions place them there.",
+      "why": "The test conventions say a fake that one test file needs goes in that file as a private nested type.",
+      "check": "Before reporting, check that the nested type is private and used only by its containing test file or helper.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "hash": "b5777c6a1553f895",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1114",
+  "rules": [
+    {
+      "statement": "Keep an `IResult` type in an abstractions package thin: its `ExecuteAsync` resolves a DI-registered `IResultExecutor<TResult>` and delegates, with no serialization, `Accept` parsing or formatter lookup in the result type itself.",
+      "why": "Negotiation and serialization plumbing in a public result type bloats the lean abstractions package. The existing executor seam already carries the delegation, with the executor living in the core package.",
+      "check": "Look for `IResult.ExecuteAsync` implementations in abstractions packages that serialize JSON, parse `Accept` headers, pick formatters or write bodies directly instead of resolving `IResultExecutor<T>` from `HttpContext.RequestServices` and delegating.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a new response representation (HTML page, form_post, XML, problem+json) as a formatter registered into an open strategy collection with `TryAddEnumerable`. Don't add an inline branch on response type or media type inside the result or executor.",
+      "why": "An inline branch favours one response type and one media type, so every further representation would need another code change or another bespoke seam.",
+      "check": "Look for checks like `if (response is SomeError && prefersHtml)` in result or executor code, or new error-specific or media-specific renderer interfaces, where a formatter registration would do. Also check that formatters are registered with `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the default representation (JSON) a formatter in the same negotiated collection, placed as the final candidate, rather than a special-cased fallback path that skips the formatter pipeline.",
+      "why": "The default body then goes through the same pipeline as every alternate representation, with no special-cased branch.",
+      "check": "Look in response executors for JSON written directly in an else or fallback branch instead of by a default formatter registered last in the collection.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In server-driven content negotiation for OAuth/OpenID responses, select an alternate formatter only for an explicit `type/subtype` in `Accept`. A wildcard-only `Accept` (`*/*`) or a missing `Accept` must produce the JSON wire default.",
+      "why": "Programmatic callers and tools like curl send `*/*` and expect the JSON body, which is the OAuth and OpenID Connect wire default. Only a browser that lists `text/html` explicitly should get the HTML page.",
+      "check": "Look at negotiation code for matching that lets `*/*` or `type/*` wildcards select a non-JSON formatter such as HTML.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization error can't be safely redirected (unregistered or invalid `redirect_uri`, or a `client_id` that can't be resolved), never redirect to the untrusted URI. Show the error to the resource owner directly in the response.",
+      "why": "OpenID Connect Core §3.1.2.4 says the OP must not redirect to an untrusted URI and should inform the resource owner.",
+      "check": "Look at authorization endpoint error paths for redirects or form_post to a `redirect_uri` that hasn't been validated against the resolved client's registered URIs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a rendered HTML response body the way the existing HTML writers do: render into a pooled `NCode.Buffers` `Sequence<char>` and encode it to the response with `SecureEncoding.UTF8`, under the page's security headers.",
+      "why": "Reusing the established buffer and encoding idiom keeps HTML output pooled and consistent with the existing pages, including their security headers.",
+      "check": "Look for new HTML response writers that build strings with `StringBuilder` or string concatenation, call `Response.WriteAsync(string)` directly, or skip the security headers the other pages set.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

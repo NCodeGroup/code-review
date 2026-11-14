@@ -1,0 +1,91 @@
+{
+  "hash": "59e795017dd9a141",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1282",
+  "rules": [
+    {
+      "statement": "Do not register or implement the `none` JWS algorithm or the `RSA1_5` (RSAES-PKCS1-v1_5) key management algorithm in a default algorithm registry or in any registration method.",
+      "why": "RFC 8725 §3.2 and draft-ietf-jose-deprecate-none-rsa15 ask for both to be disabled by default. A registered `none` can verify a forged token, and `RSA1_5` is a padding oracle that leaks content keys.",
+      "check": "Look for new algorithm registrations, data sources or extension methods that add `none` or `RSA1_5`, or that use `RSAEncryptionPadding.Pkcs1` for key management.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement RSA key management only with OAEP padding (`RSAEncryptionPadding.CreateOaep(hashAlgorithmName)`), with no branch that can express PKCS#1 v1.5 padding.",
+      "why": "RFC 8725 §3.2 says to avoid every RSA-PKCS1 v1.5 encryption algorithm in favour of RSAES-OAEP, and NIST SP 800-131A disallows PKCS#1 v1.5 key transport.",
+      "check": "Inspect RSA key wrap/unwrap code for `RSAEncryptionPadding.Pkcs1`, or for a padding parameter or flag that lets a caller select PKCS#1 v1.5.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the guards that refuse `none` and `RSA1_5` by name in validators, policies and option validators, even though the default registry lacks them, so that an algorithm a host registers itself is still refused.",
+      "why": "A host can register its own algorithm under either name, and the name guards are what keep the provider and client from accepting it.",
+      "check": "Flag diffs that remove a by-name refusal of `none` or `RSA1_5` on the grounds that the algorithm is no longer registered, or that treat a null allow-list as permission to accept either name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test of a by-name algorithm refusal, register a viable implementation of the refused algorithm next to an accepted control algorithm, so that the test passes only because of the name rule.",
+      "why": "If the algorithm isn't registered, the test would pass because the algorithm is unknown, not because the guard works.",
+      "check": "Look at tests asserting that `none` or `RSA1_5` is refused. Check that they register a working implementation of that algorithm plus a control algorithm that is accepted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decrypting a JWE, check before unwrapping that the recipient's key has a supported key type and a legal size and is compatible with the algorithm, and report a misfit as an `ArgumentException`.",
+      "why": "A key misfit is a configuration error that depends only on the caller's key, never on the token. Diagnosing it precisely reveals nothing about the token.",
+      "check": "Check that key type, size and compatibility are validated before the unwrap call, and that those failures aren't folded into the token-dependent decryption failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE content key unwrap writes the wrong length or throws `CryptographicException`, `JoseException` or `ArgumentException`, fill the CEK buffer from `RandomNumberGenerator` and continue decrypting instead of throwing early. Let any other exception, such as a transport failure or cancellation, propagate.",
+      "why": "RFC 7516 §11.5 requires recipients not to distinguish encrypted-key errors. An early throw differs in timing from a tag failure, and that difference becomes a Bleichenbacher-style oracle for every key management algorithm.",
+      "check": "Look for unwrap failure paths that throw or return before the content decryption runs, for a missing length check on the unwrapped key, or for catch-all handlers that also swallow `OperationCanceledException` and transport errors.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report every JWE decryption failure that depends on the encrypted key, the ciphertext or the authentication tag as one exception type with one fixed message and no inner exception, for both the compact serialization and every recipient of the JSON serialization.",
+      "why": "Distinct messages, or an inner exception's type and message, let anything that logs or serializes the exception tell an unwrap failure from a tag failure, which is the oracle RFC 7516 §11.5 forbids.",
+      "check": "Look for decryption failure throws that pass an inner exception, use different messages for unwrap and tag failures, or log the underlying cause.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

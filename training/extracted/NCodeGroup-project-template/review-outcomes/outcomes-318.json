@@ -1,0 +1,43 @@
+{
+  "hash": "b170abee92667f67",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #318",
+  "rules": [
+    {
+      "statement": "When a session-start hook runs several setup scripts that make network calls (git clone, tool downloads), bound each script with its own timeout (for example GNU `timeout`, which signals the whole process group), report a timeout as a one-line message and continue with the next script.",
+      "why": "With no timeout, a stalled download in one script can use up the shared hook time limit, so the later scripts never run and the session is left without the tools they install.",
+      "check": "Look for hook or setup scripts whose network commands, or the scripts themselves, run without a timeout ahead of other required setup steps. Check that the per-script limits together fit within the hook's overall timeout.",
+      "scope": "domain",
+      "domain": "developer-tooling-hooks",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.claude/hooks/*.sh",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In PowerShell test scripts, don't ask for a failure detail built with member enumeration (such as `$entries.command`) to be narrowed to the first element (`$entries[0].command`) when the check also rejects having more than one entry.",
+      "why": "Member enumeration is never empty when there is an entry, and it shows every entry's value, so the failure message exposes the extra entries the check rejects. `[0]` would hide them.",
+      "check": "Before reporting a mismatch between the checked expression and the failure detail, see whether the check covers a multiple-entry case that the enumerated detail is meant to show.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reflow comment-based help paragraphs (such as `.DESCRIPTION`) so every line fills evenly up to the 120-character limit, with no line much shorter than the rest and none over 120 characters.",
+      "why": "Help text with a short line left after an edit reads unevenly, and lines over the limit break the line-length convention.",
+      "check": "Look in edited help or doc-comment paragraphs for a line that breaks mid-phrase well short of the width, and for any line longer than 120 characters.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

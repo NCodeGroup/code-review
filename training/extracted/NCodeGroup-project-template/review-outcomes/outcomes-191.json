@@ -1,0 +1,20 @@
+{
+  "hash": "6893f13c29c283e7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #191",
+  "rules": [
+    {
+      "statement": "Don't report a GitHub Actions job reading a secret outside an `environment:` gate as a new exposure when the workflow on the base branch already read that same secret without an environment gate; report it only when the change widens who or what can reach the secret.",
+      "why": "The maintainer declined this finding because the old single job already read the organization secret outside any environment, so the pull request didn't widen the exposure. The wider hardening is tracked as separate work.",
+      "check": "Before reporting, compare the base version of the workflow. Did an earlier job read the same `secrets.*` value with no `environment:`, and is the secret an organization or repository secret rather than an environment secret? Report only if the diff moves the secret out of an environment gate, adds it to a job that runs on non-default branches, or newly exposes it.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

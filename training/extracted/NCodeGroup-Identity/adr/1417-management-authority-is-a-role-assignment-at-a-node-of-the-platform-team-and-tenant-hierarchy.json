@@ -1,0 +1,91 @@
+{
+  "hash": "e3ad5efef5c6b05b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1417",
+  "rules": [
+    {
+      "statement": "Grant management authority only through a persisted role assignment of a principal and a role at a node; don't let a role claim in the caller's token confer it, apart from the one documented bootstrap exception.",
+      "why": "A claim shows up in no listing of who holds authority, and no endpoint can grant or revoke it. Matched by the token's tenant id, it can also reach the platform and every team.",
+      "check": "Look for authorization handlers or policies that check `ClaimTypes.Role` or a role claim, or that match the token's `tid` against a resource's tenant, to decide management access.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a resource's ancestor chain (platform, teams, tenant, child) from the resource when authorizing; don't store parent pointers or ancestor chains on role assignments.",
+      "why": "The hierarchy is fixed and can be derived, so a stored chain duplicates it and invites drift without making decisions faster.",
+      "check": "Look for new columns or properties on assignment records holding ancestor ids or paths, and for authorization code that reads them instead of resolving the chain.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep roles and ownership as one role-assignment mechanism; don't add a separate ownership table, store or authorization handler.",
+      "why": "Two mechanisms answer the same question twice and drift apart. A new role that needs a rule outside the single assignment handler means the model is missing a node type.",
+      "check": "Look for new ownership-specific entities, stores or authorization handlers, or for role-specific checks added outside the central assignment handler.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assign the creator of a managed resource the Owner role in the same unit of work as the resource's insert, unless the creator cannot hold that role.",
+      "why": "A resource must always have an owner, and making both changes together means it never exists without one.",
+      "check": "In create handlers, check that the owner assignment is added before the same SaveChanges or commit as the insert, not in a separate later save.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a request to remove a resource's last owner with 409 Conflict.",
+      "why": "A resource keeps at least one owner. The administrators above it can always reassign ownership.",
+      "check": "In owner-revocation endpoints, check for a last-owner guard that returns 409 instead of deleting the assignment.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make granting a role idempotent: back assignments with a unique index on tenant, principal, role, resource type and resource id, and return the existing assignment when the grant already exists.",
+      "why": "Each assignment is held once, so a repeated grant should not create a duplicate or fail.",
+      "check": "Look at the assignment entity configuration for the unique index, and at the grant path for handling of an already-existing assignment.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require the create operation at a node to grant or revoke that node's administrators, so that an Owner, who never creates, cannot manage administrators.",
+      "why": "Administrators are granted from above. An owner manages only its own instance and must not be able to raise anyone to administrator.",
+      "check": "In admin list, grant and revoke endpoints, check that the authorization requirement is the create operation at the node, not owner-level management.",
+      "scope": "domain",
+      "domain": "multi-tenant-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

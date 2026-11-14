@@ -1,0 +1,103 @@
+{
+  "hash": "f7b8c9ab1f385361",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1507",
+  "rules": [
+    {
+      "statement": "In a Helm chart, don't render configuration, annotations or a mode for ingress-nginx or any other retired or archived ingress controller, and have `values.schema.json` reject such a controller value.",
+      "why": "ingress-nginx is retired and archived and gets no security fixes, so a chart that configures it points operators at unpatched software.",
+      "check": "Look for `nginx.ingress.kubernetes.io/*` annotations, an `nginx` option for an ingress controller value, or a schema enum that allows it.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, don't give an enabled Ingress a default ingress controller. Make the operator name it explicitly, and fail rendering through the schema or `fail` when it is missing.",
+      "why": "If the chart guesses the controller, it renders the wrong backend TLS, and the release then serves a failing or unverified hop with no warning.",
+      "check": "Look for a default value for the ingress controller in values.yaml, or templates that fall back to one controller's annotations when none is set.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never give an ingress controller, Gateway or router a Secret that holds the pods' serving private key to verify backend TLS. Verify against an object that holds only the CA (for example a ConfigMap with just `ca.crt`), or against the controller's own Secret.",
+      "why": "A router needs only the CA and its own client certificate, never a pod's private key. `BackendTLSPolicy` also can't read Secrets.",
+      "check": "Check that `BackendTLSPolicy` caCertificateRefs, Traefik `ServersTransport` rootCAs/certificatesSecrets, and similar backend-TLS references point at a CA-only object or the ingress Secret, not at the pods' serving certificate Secret.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, don't use `lookup` to build or populate resources.",
+      "why": "`lookup` returns nothing under `helm template` and Argo CD, so the chart would render differently from how it installs.",
+      "check": "Search templates for `lookup` calls whose result feeds rendered resource content.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, don't render or modify objects the cluster operator owns, such as a shared Gateway (including its backend client certificate) or resources in another component's namespace like a trust-manager `Bundle`. Document the operator's step instead.",
+      "why": "Such objects serve other workloads and belong to the operator, so a chart that sets them writes into objects it doesn't own.",
+      "check": "Look for templates that render a `Gateway`, set `spec.tls.backend.clientCertificateRef`, render a trust-manager `Bundle`, or target a namespace other than the release namespace.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, don't render deprecated Traefik fields such as `ServersTransport` `rootCAsSecrets`. Use `rootCAs` and `certificatesSecrets` instead.",
+      "why": "Traefik deprecates `rootCAsSecrets`.",
+      "check": "Search Traefik CRD templates for `rootCAsSecrets`.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, a hook Job that writes cluster objects should use the official `kubectl` image pinned by digest. It should not use a shell or a third-party image, and should run `kubectl apply` (for example `apply -k` over a projected volume) instead of deleting and recreating the object.",
+      "why": "The official image has no shell, and a third-party image widens the supply chain. Delete-and-recreate leaves dependents without the object for a moment on every upgrade.",
+      "check": "Check hook Job images for a digest pin and a non-official or shell-based image, and check the commands for `sh -c`, `kubectl delete` followed by create, or similar.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a Helm hook Job mounts a Secret to publish part of it, project only the keys it needs (for example only `ca.crt`), never the whole Secret including its private key.",
+      "why": "The publisher needs only the CA certificate, and mounting the key would expose it needlessly.",
+      "check": "Look at the hook Job's projected or secret volume and confirm it uses `items` to select only the public keys.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/templates/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

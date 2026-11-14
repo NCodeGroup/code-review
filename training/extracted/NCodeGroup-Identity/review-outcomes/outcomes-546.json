@@ -1,0 +1,62 @@
+{
+  "hash": "080dc42a529b426d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #546",
+  "rules": [
+    {
+      "statement": "Don't report a check that classifies a type by its base class as a hard-coded rule needing a separate flag when deriving from that base is the documented, defining fact the rest of the design relies on.",
+      "why": "When the derivation is the registered fact (descriptor properties are defined by it, other validation reads it), a separate flag would only restate that fact and could contradict it.",
+      "check": "Before reporting, see whether the base class is what related descriptor properties or docs define the classification by, and whether an ADR or a comment at the check records it. Report only if neither does.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to merge similar error-message formatting code from different packages into one shared helper when the copies format different types, or when sharing would add public API just for a message fragment.",
+      "why": "One formatter can't serve unrelated types. Making it public in an abstractions package to reuse an error-text fragment costs more than it saves, and tests that pin each message already catch wording drift.",
+      "check": "Before reporting duplicate formatting, check whether each copy formats the same type, whether they're in the same package, and whether a shared helper would have to be public. Also check whether tests pin each message's exact text.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every branch of code that builds user-visible error text a test that asserts the exact text, including edge branches such as an exact single value and an open-ended range.",
+      "why": "Otherwise a regression in an untested branch changes the user-visible error text without failing any test.",
+      "check": "When a diff adds or changes a formatter with several branches for error messages, check that tests reach each branch and assert the full text.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give a method a bool parameter that switches what it outputs. Split it into separately named methods, or have the caller pass in the varying behavior.",
+      "why": "A bool flag hides its meaning at the call site.",
+      "check": "Look for new or changed methods whose bool parameter picks between different output formats or behaviors.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, create mocks from the test base's strict, verified MockRepository instead of using a loose Mock.Of, and mark expected calls .Verifiable().",
+      "why": "A loose mock returns null on an unexpected call instead of failing the test, so it hides unintended interactions.",
+      "check": "Look for Mock.Of<T>() or new Mock<T>() with default (loose) behavior in tests. Mocks should come from the base class's MockRepository(MockBehavior.Strict) and be verified on dispose.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

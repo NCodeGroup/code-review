@@ -1,0 +1,106 @@
+{
+  "hash": "a7978c9dbaeb344c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1150",
+  "rules": [
+    {
+      "statement": "Model a vocabulary that may grow as `public const string` names in a static class, compared ordinally and documented as the known values, so consumers and sibling packages extend it by registering instead of editing the library.",
+      "why": "Every vocabulary is open by default. An enum fixes its members at compile time and closes the extension point to any package that didn't exist when it was written.",
+      "check": "Look for a new `enum` or closed type that models names, kinds, scopes, reasons, formats or methods that another package could plausibly add. Also look for string-name comparisons that don't use `StringComparison.Ordinal` or `StringComparer.Ordinal`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Introduce an `enum` only when all three conditions hold: its members are fixed by something that can't grow without this library changing (a finite enumeration of an external specification the library implements in full, the outcome set of a library-owned operation, or a mirror of a framework type); no package other than this one could ever need another member; and a new member would require a change to this library anyway.",
+      "why": "Closing a vocabulary is the exception, and a reviewer must be able to justify it in three sentences. Asking 'does this package own today's members?' led to designs that shut out extensions.",
+      "check": "For each new or changed `enum`, try to state the three-part justification. Flag the enum if a package other than this one could ever need to add a member, or if a member is being added for another package's sake.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace an enum with string names when it passes the three-part test, for example when it mirrors a finite registry or set of parameters defined by an RFC, mirrors a framework type, lists the options of a library-owned converter, or is the outcome set of one library-owned operation.",
+      "why": "A genuinely closed set gains exhaustiveness checking and type safety from an enum. Modeling it as strings would add validation with no extensibility to show for it.",
+      "check": "Before reporting an enum as a closed vocabulary, check whether its members come from a specification the library implements in full, from a framework type, or from the results of a single operation the library owns.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put `[Flags]` on a vocabulary that may grow, and don't encode its hierarchy, compatibility or order in a `switch`, bit mask or hard-coded chain. Derive those relationships from registered data through a catalog.",
+      "why": "A `[Flags]` enum fixes the bit space and the meaning of every combination. Hard-coded relationships close the topology even when the names themselves are strings.",
+      "check": "Look for `[Flags]` enums, masks or `switch` statements that encode a cascade, parent/child order or compatibility among a vocabulary's members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't choose behavior with an exhaustive `switch` over a vocabulary's members. Register each member's behavior as a strategy (through a DI strategy collection or `ICollectionDataSource<T>`) and dispatch to the registered strategy by name.",
+      "why": "A `switch` that grows with each extension closes the behavior to packages that can't edit it, which the ADR names as a smell that the wrong rule was chosen.",
+      "check": "Look for `switch` statements or expressions, or if/else chains, over vocabulary names or enum members that select an implementation, especially ones that would need a new case for each extension.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a vocabulary's members carry registered data or strategies, resolve them through a catalog that validates the whole set when it is composed, rejecting duplicate names, dangling references and cycles.",
+      "why": "Open registration needs validation of the composed set so that a misregistration fails at composition rather than at use.",
+      "check": "Look at new catalogs or registries of named descriptors or strategies: check that composing them detects duplicate names, references to unregistered members and cyclic relationships.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject input that names an unregistered member of a vocabulary instead of ignoring it or falling back to a default.",
+      "why": "An open vocabulary is still closed to unregistered input. A name nobody registered must fail loudly.",
+      "check": "Look for lookups by name that silently skip unknown names, return a default, or continue when nothing is registered under the name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist and transmit a vocabulary member as its name, never as an enum ordinal or numeric value.",
+      "why": "A node that meets an unknown member should fail closed by name instead of misreading a number.",
+      "check": "Look for enums stored as integers in persistence mappings or serialized as numbers in JSON or other wire formats (for example, a missing string enum converter or a cast to int).",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't default to typed name wrappers (such as `readonly record struct Scope(string Name)`) for an open vocabulary. Use `const string` names, and reserve a wrapper for a signature that would otherwise confuse two name parameters.",
+      "why": "Wrappers add a type per vocabulary without adding openness. The family's open vocabularies are `const string` names.",
+      "check": "Look for new wrapper structs or records around a single name string that are introduced for a vocabulary without the motivation of disambiguating parameters.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "hash": "5b66d3d98c815eb5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1028",
+  "rules": [
+    {
+      "statement": "Make the token revocation endpoint answer 200 OK to every authenticated request, whether the token was revoked, unknown or of a type that can't be revoked. Return 400 invalid_request only when the `token` parameter is missing.",
+      "why": "RFC 7009 requires this leniency. Answering 400 or 404 for an unknown or non-revocable token would turn the endpoint into an oracle that tells real tokens from fake ones.",
+      "check": "Look in the revocation endpoint or handler for any non-200 result (404, 400 invalid_grant, an error body) returned for unknown, expired, already-revoked or unsupported tokens, or any response that differs by token state.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Revoke a token only when the authenticated client is the client it was issued to. Compare client IDs with an ordinal comparison, and when they don't match, do nothing and still answer 200.",
+      "why": "RFC 7009 section 2.1 requires it. Without the check, a client that obtained another client's token value could revoke it.",
+      "check": "Check that revocation code compares the grant's client ID with the authenticated client using ordinal (not culture or case-insensitive) equality before revoking. A mismatch must neither revoke the token nor return an error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a revoked refresh token belongs to a rotation lineage, revoke the whole rotation family (every branch), not just the presented token.",
+      "why": "Revocation must end the offline-access line for that grant, so the next refresh attempt from any member of the family fails.",
+      "check": "Look for a revocation path that marks only the single presented refresh-token grant as revoked even though the grant carries a lineage or family identifier.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a token-revoked audit event, including the grant's subject, whenever a token is actually revoked.",
+      "why": "Revocations must be auditable and attributable to the subject whose grant ended.",
+      "check": "Look for a revocation code path that changes a grant to revoked without recording the audit event, or that records it without the subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat revocation of a self-contained JWT access token as an accepted no-op. Don't add a per-token denylist or a per-request lookup to invalidate stateless access tokens; rely on short access-token lifetimes instead.",
+      "why": "A denylist adds server state per access token and a lookup on every resource-server call, which is the cost a stateless JWT exists to avoid.",
+      "check": "Look for new access-token denylist tables or caches, or for revocation-status lookups added to access-token validation for external resource servers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In discovery metadata, set the `revocation_endpoint_auth_methods_supported` and `revocation_endpoint_auth_signing_alg_values_supported` members from the same client-authentication methods and signing algorithms as the token endpoint's members.",
+      "why": "The revocation endpoint authenticates clients the same way the token endpoint does, so discovery must advertise matching capabilities.",
+      "check": "Check that discovery code populating the revocation_endpoint_* members takes its values from the token endpoint's settings rather than from a separate hard-coded or divergent list, and that it advertises `revocation_endpoint`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

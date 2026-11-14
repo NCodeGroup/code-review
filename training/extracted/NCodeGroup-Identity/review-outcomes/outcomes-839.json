@@ -1,0 +1,73 @@
+{
+  "hash": "1a757ce0778a7fb1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #839",
+  "rules": [
+    {
+      "statement": "Within one request, resolve related data in the store manager or unit of work already open for the main read, rather than opening a second one from a projection or mapping function.",
+      "why": "A second store manager costs every request an extra context, connection and query, and the two reads don't share a unit of work.",
+      "check": "Look for a factory call such as `CreateAsync` on a store manager or DbContext factory inside a mapping or projection lambda, or one made after another store manager was already used for the same request. The read function should return the entity together with the related values it needs.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a request handler, run a lookup whose result only feeds a later step, such as an audit record, after input validation has passed, not before it.",
+      "why": "Doing the lookup first adds a query to every request, including requests that then fail validation.",
+      "check": "Check whether a store or database query runs before a validate call even though its result is only used after the validation succeeds. Move it below the validation.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an Entity Framework `Include` to be removed from a store lookup when the entity mapping function it calls reads that navigation, or when the lookup returns the same persisted model as its sibling lookups.",
+      "why": "The mapper needs those navigations to build each returned model, so removing them would break the mapping. A batch lookup returns the same model as the single lookup, so it loads the same navigations.",
+      "check": "Before reporting an unneeded include, read the mapping function (e.g. `MapFromEntityAsync`) to see which navigations it accesses, and compare the includes with those of sibling lookups that return the same type.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On per-request hot paths, fill lists and dictionaries with `foreach` loops into collections created with a known capacity and held in named locals, instead of using LINQ `Select`/`ToList`/`ToDictionary` or collection-expression spreads passed inline as arguments.",
+      "why": "LINQ adds delegate and enumerator allocations on every request, and building collections inline inside arguments makes the code harder to read.",
+      "check": "Look for `.Select(...)`, `.ToList()`, `.ToDictionary(...)` or `[.. x.Select(...)]` on per-request code paths, especially when passed straight as a call argument, where the source count is known.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't nest one method call inside another call's argument list. Assign the inner result to a named local first.",
+      "why": "Nested calls are harder to read and debug.",
+      "check": "Look for call arguments that are themselves method invocations, such as `Outer(Inner(a, b))`, and ask for the inner call to be hoisted into a `var` local.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, each test checks one behavior and its name describes that behavior. Move assertions on other behaviors into their own tests instead of adding them to a test whose name doesn't mention them.",
+      "why": "When a test checks several behaviors under a name that mentions only one, a regression in another behavior fails that test and the name doesn't say what broke.",
+      "check": "Compare what a test asserts with what its name says. Flag a test that asserts on extra operations or responses (e.g. get and list answers in a create-then-grant test) that the name doesn't cover.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "hash": "9dc1efdb32de3e02",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1302",
+  "rules": [
+    {
+      "statement": "A workflow that publishes NuGet packages must authenticate through nuget.org trusted publishing (`NuGet/login` exchanging the job's OIDC token for a job-lived key), never through a long-lived API key stored in a secret.",
+      "why": "Trusted publishing issues a key that lives only for the job and is scoped to the repository, workflow and environment, so no long-lived key exists to leak.",
+      "check": "Look in publish workflows for `dotnet nuget push --api-key ${{ secrets.* }}` or any NuGet API key secret, instead of a `NuGet/login` step with `id-token: write`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split package publishing into a read-only build job that runs the build, tests and packing and uploads the packages, and a separate publish job that runs in a protected deployment environment with only `contents: read` and `id-token: write`.",
+      "why": "Write-scoped or token-minting permissions must stay out of the job that runs third-party build and test code, and the environment records the required reviewers' approval against the deployment.",
+      "check": "Check that the job running `dotnet build`/`test`/`pack` has no write or `id-token` permission, and that the push job declares an `environment:` and grants no permissions beyond `contents: read` and `id-token: write`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trigger package publishing only deliberately, from a version tag or a manual run on a protected branch, never on every push or merge to the trunk.",
+      "why": "nuget.org versions are permanent, and a version per merge buries the ones a deployment needs.",
+      "check": "Look for a publish workflow with an `on: push: branches: [main]` trigger, or any trigger other than version tags and `workflow_dispatch`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A tag-triggered publish workflow must verify that the tagged commit is already held by the trunk or a release line, and that the tag names exactly the version the packages were packed with, before publishing.",
+      "why": "A tag on an unreviewed commit must publish nothing, and the published version must be the one the tag names.",
+      "check": "In a tag-triggered publish workflow, look for the absence of a check that the tag's commit is an ancestor of `main` or a `release/v*` branch, or of a check comparing the tag to the packed package version.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A NuGet publish step must fail when every package of the version is already on nuget.org, push with `--skip-duplicate` so a partially failed run completes when rerun, and push each package's `.snupkg` to the symbol server.",
+      "why": "A run on an unchanged version must fail instead of reporting success for nothing, while a rerun after a partial failure must still complete.",
+      "check": "Check the push step for `--skip-duplicate`, symbol package pushes, and a preceding check that refuses an already fully published version.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml",
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put a `{height}` or other commit-height suffix in the prerelease version in `version.json`; a prerelease name is set explicitly by bumping the version.",
+      "why": "A prerelease name is a decision, not a counter, and a tag must be able to name the version before the commit exists.",
+      "check": "Look for `{height}` in the `version` field of `version.json`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/version.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Gate promotion to a hosted environment through a GitHub deployment environment with its own required reviewers and secrets, not through which branch the workflow runs on.",
+      "why": "A branch records no approval for a deployment; an environment records the approval against the deployment.",
+      "check": "Look for deploy jobs that rely only on a branch condition (`if: github.ref == ...`) and declare no `environment:`, or that read deployment secrets from repository-level secrets.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**/*.yml",
+        ".github/workflows/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

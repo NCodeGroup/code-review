@@ -1,0 +1,120 @@
+{
+  "hash": "377e6479f168d45b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #555",
+  "rules": [
+    {
+      "statement": "When evicting a cache whose entries are built from another cache, clear the source cache first and await it before clearing the derived cache; don't run both clears fire-and-forget or in reverse order.",
+      "why": "A derived entry built between the two clears would be rebuilt from a stale source entry and serve stale settings until it expires.",
+      "check": "Look for cache-invalidation code that clears a derived cache before its source, or starts both clears without awaiting them in dependency order.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When one change evicts several related caches one after another, isolate each eviction (separate try/catch that logs, or the dependent eviction in a `finally`) so that a failed eviction doesn't skip the others.",
+      "why": "If the first eviction throws, the dependent entries stay cached with stale data until their lifetime expires.",
+      "check": "Look for back-to-back cache `RemoveAsync`/clear calls with no isolation between them, where an exception from the first would skip the second.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a recovery or fallback operation runs after a failure, don't let an exception from the recovery replace the original exception; rethrow the original with the recovery failure attached (for example via `ExceptionDispatchInfo` or an `AggregateException`).",
+      "why": "Otherwise the logs show the secondary failure instead of the one that caused it, and nothing logged the original before the recovery ran.",
+      "check": "Look for catch blocks that call another fallible operation (such as a re-read after a failed insert) without a try around it that keeps the original exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a mechanical rename or search-and-replace sweep, check the doc comments and prose it touched for unrelated words that were also replaced, including matches that span a line break.",
+      "why": "A blind replacement can make public IntelliSense text name an entity that doesn't exist, contradicting the surrounding docs.",
+      "check": "In rename diffs, read the changed doc-comment lines for replaced terms that no longer make sense in context, such as compound terms altered by mistake.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `cref` or type name in a member's XML doc must name the type the member actually returns or uses, not a sibling type.",
+      "why": "A public API doc that points at the wrong type misleads readers.",
+      "check": "Compare `<see cref>` targets in property and method summaries with the declared return and parameter types, especially on lines the diff edits.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove constructor-injected dependencies that the class stores but never reads.",
+      "why": "A dead dependency makes readers check it for nothing and makes DI resolve a service for nothing.",
+      "check": "Look for constructor parameters or properties (such as a `TimeProvider` carried over from copied code) that no member of the class reads.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing `SectionName` constant on an options type that is a subsection of a parent options type and is bound through the parent's `SectionName`.",
+      "why": "Subsection options are bound as part of their parent, so only the root options type needs its own section-name constant.",
+      "check": "Before reporting, check whether the options type is a property of a parent options class that has its own `SectionName` and is bound as a unit.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a configuration section rename as a violation of the no-rename-in-refactor rule when an ADR records the rename as part of an intended model change under the pre-release posture (renamed outright with no alias) and every config file, program and chart in the repository uses the new name.",
+      "why": "In the pre-release family, ADRs call for renaming configuration sections outright when the model changes, rather than keeping aliases.",
+      "check": "Before reporting, look for an ADR that names the new section, and check that appsettings files, host programs, charts and docs all use the new name.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that paired management operations check whether a tenant is served differently when one acts through the tenant's runtime (so it materializes the tenant and refuses a tenant that isn't served) and the other changes stored configuration only.",
+      "why": "A route that acts through a tenant's runtime must materialize the tenant before it writes, while stored configuration stays manageable for a disabled tenant.",
+      "check": "Before reporting, see whether each operation touches runtime state (such as ending sessions) or only persisted configuration.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an `as object` cast that passes a `data-*` attribute (such as a test id) into MUI's typed `slotProps`, because those slot prop types don't declare `data-*` attributes.",
+      "why": "Without the cast the attribute can't reach the typed input slot props.",
+      "check": "Before reporting, check whether the cast object only adds `data-*` attributes to an MUI slot.",
+      "scope": "domain",
+      "domain": "frontend-react-mui",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

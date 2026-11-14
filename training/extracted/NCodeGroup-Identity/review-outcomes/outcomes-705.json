@@ -1,0 +1,62 @@
+{
+  "hash": "3d2c7b4ef53e659b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #705",
+  "rules": [
+    {
+      "statement": "In a test project, a test for an endpoint that answers an error with a problem document asserts the result is a `ProblemHttpResult` with the expected status code, not just the status through `IStatusCodeHttpResult`.",
+      "why": "A status-only assertion still passes if the route goes back to a bare `TypedResults.NotFound()`, which would break the route's declared `ProducesProblem` contract without any test failing.",
+      "check": "Look for error-path endpoint tests that cast to `IStatusCodeHttpResult` or check only `StatusCode` when the route is meant to answer a problem document; they should `Assert.IsType<ProblemHttpResult>` and check the status.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when an endpoint's problem response has a fixed detail string, the test asserts `ProblemDetails.Detail` equals that string as well as the status.",
+      "why": "Without pinning the detail, the test still passes if the detail regresses to something else, such as a leaked exception message, so it doesn't check the rule it names.",
+      "check": "Look for tests of conflict/precondition/not-found problem responses with a defined fixed detail that assert only the status code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, create a problem response that several handlers return (same status and detail wording) from one shared factory method instead of repeating the `TypedResults.Problem(...)` call at each site.",
+      "why": "Copies let the wording and shape of the problem drift between routes, and any later change, such as adding an extension member, has to be made in every copy.",
+      "check": "Look for the same `TypedResults.Problem(detail: ..., statusCode: ...)` block repeated across handlers, especially when a sibling shared helper already exists for another status.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when production code rewrites results based on a compound predicate, add tests for the pass-through branches (inputs that fail each part of the predicate) asserting the original instance comes back unchanged.",
+      "why": "If one part of the predicate broke, results that should pass through would be rewritten and no test would catch it, even when no production route reaches those branches today.",
+      "check": "For a new filter or middleware that transforms some results, check that tests cover both the transformed case and each excluded case, using `Assert.Same` for pass-through.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give private helper methods that define behaviour callers rely on (such as a comparison mode or a null-when-missing result) a `///` XML doc summary, parameters and return, not just a `//` comment.",
+      "why": "The behaviour, such as an OrdinalIgnoreCase match, should be documented where the helper is defined.",
+      "check": "Look for new private or private static helper methods with no `/// <summary>`, especially ones that encode lookup semantics or return null on no match.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

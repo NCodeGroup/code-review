@@ -1,0 +1,69 @@
+{
+  "hash": "0d7fe5c6b3cf6588",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1170",
+  "rules": [
+    {
+      "statement": "Don't report a workflow command that exists both as a `.prompt.md` file and as a `SKILL.md` as duplication, and don't suggest converting prompts to skills or deleting either copy: both runtime adapters are permanently supported.",
+      "why": "Local prompts keep prompt-specific agent, model and tool selection that skills drop, and Copilot sessions only load skills, so the two copies are adapters of one workflow, not competing definitions.",
+      "check": "Before flagging a prompt/skill pair or a Copilot 'Convert Prompt to Skills' notice, confirm it is the sanctioned dual-runtime adapter pair; only differences in name, description or workflow body are real findings.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.prompt.md",
+        "**/SKILL.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep each prompt and its skill counterpart identical in name, description and ordered workflow body, put no prompt-only `agent`, `model` or `tools` settings in a skill, and add no `disable-model-invocation` or `user-invocable` flag to a skill.",
+      "why": "The adapters must not drift, and `disable-model-invocation` has broken explicit skill invocation.",
+      "check": "Look for a skill that differs from its prompt beyond placeholder and relative-link adjustments, has prompt-only metadata, or has an invocation-control flag.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.prompt.md",
+        "**/SKILL.md"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Change shared agent-workflow files (agents, prompts, skills, template instructions) in project-template and pull them in through the template update, not by hand-editing a repository's copy; put a repository-specific rule in the repository's instruction files instead.",
+      "why": "The template owns the workflow files, and a generated agent hand-edited locally drifts from the template; a model error in a session is never a reason to hand-edit a generated agent.",
+      "check": "Flag a diff that hand-edits template-owned `.github/agents/`, prompt or skill files outside a template update, or that puts a repository-specific rule into those files instead of the instruction files.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/agents/**",
+        "**/*.prompt.md",
+        "**/SKILL.md",
+        ".github/instructions/project-template.instructions.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't merge a `PLAN.md`; promote its Decisions into ADRs, instruction files or issues before the plan's final review.",
+      "why": "A plan never outlives its change: issues track pending work and ADRs carry the reasoning.",
+      "check": "Flag a diff that adds or keeps `PLAN.md` at the point of final review or merge, or that removes it while its Decisions have not been recorded in an ADR, instruction file or issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/PLAN.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write model names in agent, prompt and editor settings files as the exact literal names the tool offers (for example the name from the `chat.planAgent.defaultModel` dropdown, or a Copilot CLI ID such as `claude-opus-5.5`).",
+      "why": "VS Code silently ignores an unknown model name and answers with the current model, so a misspelled name fails without a message.",
+      "check": "Compare every `model` value in changed agent, prompt or `.vscode/settings.json` entries against the tool's exact model names; flag guessed, abbreviated or misspelled names.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/agents/**",
+        "**/*.prompt.md",
+        ".vscode/settings.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,252 @@
+{
+  "hash": "f48cd0d8448a9e35",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1290",
+  "rules": [
+    {
+      "statement": "Never use a browser-held session handle directly as the server-side store key; derive the store key from the handle with a one-way KDF (for example HKDF-SHA-256 with a purpose-specific info string), so a leaked store key cannot be replayed as the cookie.",
+      "why": "If the store key equals the handle, anyone who can read the store can take over every session.",
+      "check": "Look for session/transaction store lookups keyed by the raw cookie value or handle, not by a derived digest/HKDF output.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt server-side session payloads under a key derived from the per-session browser secret (for example HKDF of the handle), not under a single server-wide key.",
+      "why": "A server-wide key lets whoever reads the store, or a replacement store, read every session; a per-handle key means nothing can read a session without its cookie.",
+      "check": "Look for session or login-state encryption using a static, configured or shared key instead of one derived from the cookie's secret.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an AEAD-encrypted record is stored next to plaintext metadata, include the store key, the record version and the plaintext metadata in the associated data.",
+      "why": "Then a changed metadata field (such as an expiry pushed out), a record moved to another key or one replayed at another version fails decryption.",
+      "check": "Look at AES-GCM or other AEAD calls on stored records: the associated data must be present and cover the key, the version and any plaintext fields stored with the ciphertext.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Consume a single-use value such as an OAuth `state` or login transaction with an atomic take from the shared store before decrypting or validating it, not with a read followed by a later delete.",
+      "why": "An atomic take makes the value single-use on every replica, and a wrong initiator cannot probe the same transaction twice.",
+      "check": "Look for callback handlers that read a transaction, validate or decrypt it, and only then delete it, or that rely on per-replica state for single use.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always mint a fresh session handle when a login completes; never reuse or accept an existing handle.",
+      "why": "Minting a new handle at every login prevents session fixation.",
+      "check": "Look at login completion code: it must generate a new random handle and must not keep one from the incoming request.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an OAuth client's authorization callback, validate the `iss` response parameter (RFC 9207) before exchanging the authorization code.",
+      "why": "Checking `iss` first stops a mix-up attack from sending the code to the wrong provider's token endpoint.",
+      "check": "Look at callback handlers that call the token endpoint before comparing `iss` with the expected issuer, or that never check it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a login transaction to the browser that started it with a random secret in a separate short-lived `__Host-` cookie, use that secret to derive the transaction's encryption key, and delete the login cookie on every callback path.",
+      "why": "Only the browser that started the login can complete it, and no login cookie is left behind on success or failure.",
+      "check": "Look for callbacks that trust `state` alone, or that skip deleting the login cookie on error or early-return paths.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue session cookies with the `__Host-` prefix, `Secure`, `HttpOnly`, `Path=/`, no `Domain`, and `SameSite=Strict` or `Lax`; refuse a configuration that selects `SameSite=None`.",
+      "why": "These attributes keep the cookie from script access, subdomains and cross-site sends (RFC 6265bis).",
+      "check": "Look at cookie options for session cookies: a missing prefix, a missing Secure or HttpOnly, a Domain set, or SameSite=None allowed.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ignore a session cookie whose value does not have the exact expected encoded length before doing any lookup or crypto on it.",
+      "why": "A strict shape check rejects malformed or attacker-chosen values cheaply.",
+      "check": "Look for cookie handles passed to the KDF or the store without a length check.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build store keys from attacker-supplied values (issuer, subject, sid, client id) as a fixed prefix plus base64url(SHA-256) of the length-prefixed components, never by concatenating the raw values.",
+      "why": "Hashing length-prefixed values stops a supplied value from making a key ambiguous or unbounded.",
+      "check": "Look for cache or store keys built by string interpolation or concatenation of external values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Translate any exception from a session or state store adapter into a dedicated store-unavailable exception that is answered with 503, never with 401 or as an anonymous request.",
+      "why": "An outage of the store must not look like a logged-out user or a failed authentication.",
+      "check": "Look for store calls in authentication paths whose exceptions are swallowed, treated as 'no session', or mapped to 401.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Classify a provider that cannot be reached or read (metadata, keys, token endpoint, `HttpRequestException`, or a timeout the caller did not cause) as one shared 'provider unavailable' failure, and keep a caller-requested cancellation out of it.",
+      "why": "Login, refresh, logout and back-channel logout share one classification, and a caller's own cancellation is not a provider fault.",
+      "check": "Look for catch blocks around provider calls that treat every `OperationCanceledException` as a timeout, or that use a different failure code from the shared one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a shared versioned session record as a read-modify-write with a compare-and-replace on the version, retried a bounded number of times on a version conflict, never as a blind overwrite.",
+      "why": "Concurrent requests across replicas must not lose each other's updates.",
+      "check": "Look for session updates that call an unconditional set, or that retry a version conflict without limit.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Slide a session's idle expiry only on real user activity, not on a polling endpoint such as the user-info endpoint, and only once a set fraction of the idle timeout has passed since the last write.",
+      "why": "Polling then cannot keep a session alive forever, and a busy session does not write to the store on every call.",
+      "check": "Look for idle-expiry updates on every request, or on polling or status endpoints.",
+      "scope": "domain",
+      "domain": "web-sessions",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build claims from a validated ID token with the shared JWT stack's claim mapping (for example the validation result's `Identity`), never with a second hand-written JSON-to-claims mapping.",
+      "why": "A second mapping beside the JWT stack's would drift from it.",
+      "check": "Look for code that walks ID token JSON payload properties to create `Claim` objects.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Drop protocol-only claims (`nonce`, `at_hash`, `c_hash`, `s_hash`, `exp`, `iat`, `nbf`, `aud`, `azp`) from an ID token before you persist it as a session principal.",
+      "why": "These claims validate the token itself and carry no meaning about the user's session.",
+      "check": "Look for code that persists every ID token claim into a session or principal without filtering.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An extension point that lets plugins shape session claims or response fields must refuse changes to the reserved anchoring entries (such as `iss`, `sub`, `sid`, `auth_time`, `acr`, `amr`, or reserved response names) and refuse a name that was already added.",
+      "why": "Those entries tie the session to the provider's authentication, and a plugin must not be able to change them.",
+      "check": "Look at contributor or context APIs that add or remove claims or fields without checking a reserved list or duplicate names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an extension point a gate or validator that can only reject a login or end a session; it must never be able to grant access or skip a check.",
+      "why": "Plugins can then only make the system stricter.",
+      "check": "Look at gate or validator interfaces whose result can override a failed validation or approve on its own.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never log or audit a token, a session handle, a cookie value, an OAuth `state`, an authorization code or a secret.",
+      "why": "These values grant access, and logs and audit records are read far more widely than the store.",
+      "check": "Look at log messages, audit event properties and exception messages for these values or the variables that hold them.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An implementation package references only abstraction and foundation packages; only the composition-root package references other implementation packages and composes them.",
+      "why": "Keeping implementations apart lets a host choose or replace each one, and only the composition root fixes that choice.",
+      "check": "Look for `PackageReference` or `ProjectReference` from an implementation project to another implementation (non-Abstractions) package, outside the composition root.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a library's configuration section strictly, so unknown keys are rejected rather than ignored.",
+      "why": "A misspelled setting must fail at startup instead of silently falling back to a default.",
+      "check": "Look for configuration binding added without the strict, error-on-unknown option the family uses.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

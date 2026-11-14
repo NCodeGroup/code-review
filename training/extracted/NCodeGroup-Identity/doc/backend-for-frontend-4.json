@@ -1,0 +1,77 @@
+{
+  "hash": "838a495087c60ba0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity docs/backend-for-frontend.md",
+  "rules": [
+    {
+      "statement": "In a test project, unit tests must be hermetic: they don't touch the network, real clock, file system or other external state, and fake every dependency instead.",
+      "why": "The family's testing conventions require unit tests to be hermetic so they are deterministic and run anywhere.",
+      "check": "Look for unit tests that make real HTTP calls, read real files or environment state, use the system clock, or depend on external services instead of fakes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, create mocks with `MockBehavior.Strict`, not the default loose behavior.",
+      "why": "The family's testing conventions require strict mocks so an unexpected call fails the test instead of silently returning a default.",
+      "check": "Look for `new Mock<T>()` or `Mock.Of<T>()` without `MockBehavior.Strict`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name unit test methods `Method_State_Expected`.",
+      "why": "The family's testing conventions name each test for the member under test, the state it runs in and the expected outcome.",
+      "check": "Look for test methods whose names don't follow the three-part `Method_State_Expected` pattern.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep end-to-end suites that need containers or real browsers out of the regular unit-test run, and run them only in their own dedicated CI check.",
+      "why": "End-to-end suites against containerized identity providers and real browsers run in their own CI gate and never in the Definition of Done.",
+      "check": "Look for container- or browser-based end-to-end tests added to the default test run or the Definition-of-Done build instead of the dedicated end-to-end check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "build/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a backend-for-frontend, use a non-standard `refresh_token_expires_in` from the token response only to shorten the session's lifetime, never to extend it.",
+      "why": "OPs don't advertise a refresh token's absolute expiry in a standard way, so the BFF honors the value from any OP that sends it, but only as a cap on the session.",
+      "check": "Look for code that sets or extends a session expiry from `refresh_token_expires_in` without taking the minimum with the existing expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a backend-for-frontend, never send access or refresh tokens to browser code, including Blazor WebAssembly components: they call through the BFF using the session cookie.",
+      "why": "The BFF is the confidential client, and a WebAssembly client never holds a token.",
+      "check": "Look for endpoints, render-state or component parameters that serialize tokens to the browser or WebAssembly client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.razor"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "hash": "747b47502c9833cf",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #615",
+  "rules": [
+    {
+      "statement": "Don't ask for upgrade notes, compatibility shims, readers for older formats, or startup detection of old configuration keys for a change to something that has never shipped in a release.",
+      "why": "Nothing has been shipped, so no deployment carries the old keys or format to keep honoring or to detect. Standing direction forbids upgrade notes and compatibility shims for anything that has only existed in the repository.",
+      "check": "Before reporting a missing upgrade signal for a renamed key, value or format, check whether the old form was ever in a published release (chart, package or CHANGELOG release entry). If it was not, don't report it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a CHANGELOG entry that records a rename, a breaking change or upgrade steps: the changelog is a present-tense catalog of what exists.",
+      "why": "ADR-1393 keeps the changelog a present-tense catalog, and change tracking in it is ruled out.",
+      "check": "When a finding's fix is 'note the rename/breaking change in the CHANGELOG upgrade notes', don't raise it. Check instead that the CHANGELOG and docs describe the current names correctly.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report the rename of a configuration section or key as a refactor side effect when a decision record states why the new name was chosen.",
+      "why": "A rename that an ADR justifies is a design decision, not an accidental rename during a move, so the rule against renaming configuration during refactors doesn't apply.",
+      "check": "Before flagging a configuration section or key rename, look for an ADR in the change or the repository that records the reason for the new name. If one exists, don't report it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't bind forwarded-header trust or other host options to the `ReverseProxy` configuration section, and don't ask a host to reject that section, because YARP reads its routes from it.",
+      "why": "Strict binding of a non-YARP options type to `ReverseProxy` would refuse YARP's route keys, and rejecting the section would break every host that uses YARP.",
+      "check": "Look for options bound to the `ReverseProxy` section other than by YARP, and for suggestions to fail startup when `ReverseProxy` contains keys. Forwarded-header trust belongs in its own section, such as `ForwardedHeaders`.",
+      "scope": "domain",
+      "domain": "aspnet-core-hosting",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't use a fixed delay (such as `Task.Delay` or a sleep) to wait out an interval. Wait deterministically on an observable state that only the path under test produces.",
+      "why": "A fixed sleep adds run time and a timing dependency, and when the end state is the same either way, the test still passes even if the behavior it targets regresses.",
+      "check": "Look for `Task.Delay`, `Thread.Sleep` or fixed waits in tests. Check whether the assertions would pass without the delay, and whether a deterministic wait on a state change could replace it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every setup on a strict mock ends with `.Verifiable()`. A shared setup that some tests never read is made only for the tests that read it, for example through a helper parameter.",
+      "why": "An unverified setup breaks the strict-mock convention, and verify-on-dispose then can't detect that a test never reads the member.",
+      "check": "Look for `Setup`/`SetupGet` calls on strict mocks, especially in constructors or shared helpers, that lack `.Verifiable()`. If not every test reads the member, check that the setup is conditional or moved into the tests that read it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a new decision record amends or replaces a concept, it must amend every existing record that names that concept, and each amended record keeps its accepted text and points to the new record from its Status line and its index row.",
+      "why": "Otherwise an older record tells readers to use names that no longer exist and contradicts the code and the new record. Accepted text is kept as the decisions README requires.",
+      "check": "When an ADR renames or replaces an API or configuration section, search the other decision records for the old name. Check that each one is listed as amended by the new ADR and carries an amended-by pointer in its Status line and index row, without its accepted text being rewritten.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Markdown docs, each list item starts on its own line. Don't let an added bullet run into the next one.",
+      "why": "Two bullets on one line render as one garbled item, so one of the listed items disappears from the published reference.",
+      "check": "Look in changed Markdown for a line that contains `- ` partway through, right after a bullet's text ends.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

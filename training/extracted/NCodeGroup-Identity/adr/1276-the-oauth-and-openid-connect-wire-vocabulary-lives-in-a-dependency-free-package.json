@@ -1,0 +1,93 @@
+{
+  "hash": "327ef53efe25b89a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1276",
+  "rules": [
+    {
+      "statement": "Don't write OAuth 2.0 or OpenID Connect wire names (parameter names, error codes, grant types, response types, discovery metadata members, media types, well-known paths) as string literals or redeclare them in a local constants class; reference the single shared protocol-vocabulary constant.",
+      "why": "A name repeated as a literal or a private constant has several copies that drift apart (issue #353); each wire name should exist once.",
+      "check": "Look for string literals like \"client_id\", \"invalid_grant\", \"authorization_code\", \"application/x-www-form-urlencoded\", \"jwks_uri\" or new constant classes holding such names in client, BFF or server code, where the shared protocol vocabulary already defines them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a new name that crosses the wire in the dependency-free protocol-vocabulary class, and put a name only the server uses (endpoint names, internal `$`-prefixed parameters, persisted grant types, policy codes) in the server's own constants class.",
+      "why": "Relying parties can only reach the dependency-free package, so wire names placed in the server's constants force duplication, and server-only names placed in the protocol package pollute the shared vocabulary.",
+      "check": "For each added constant, check whether it appears on the wire; a wire name added to the server constants class, or a server-only or internal name added to the protocol vocabulary, is misplaced.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the protocol-vocabulary abstractions package a leaf with no project, package or framework references; when a name in it seems to need a reference, move that name somewhere else.",
+      "why": "Relying parties must be able to reference the vocabulary without pulling in persistence, settings, ASP.NET Core or other server abstractions.",
+      "check": "Look for added ProjectReference, PackageReference or FrameworkReference entries in the protocol abstractions project file.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't let relying-party packages (protocol client, backend-for-frontend) reference OpenID Provider packages; they get protocol names only from the dependency-free vocabulary package.",
+      "why": "The design forbids relying parties from depending on the OP's packages.",
+      "check": "Look for project or package references from client or BFF projects to OP packages, or usings of OP-only namespaces in them.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Take JWT and JOSE claim names from `JoseClaimNames` and don't redefine them in the OAuth/OIDC protocol vocabulary; the protocol vocabulary keeps only protocol-specific values such as event names.",
+      "why": "A claim name is JOSE vocabulary, and duplicating it in the protocol constants would create a second copy (e.g. the back-channel logout `events` claim is `JoseClaimNames.Payload.Events`, RFC 8417).",
+      "check": "Look for claim-name constants or literals (\"sub\", \"events\", \"iss\", ...) added to the protocol vocabulary or used directly instead of `JoseClaimNames`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define server endpoint names and discoverable setting names from the matching protocol discovery-metadata constant rather than a separate literal, but don't alias a different concept that only shares the spelling.",
+      "why": "Each discovery name should have one copy, while a different concept (such as a client-registration `jwks_uri` setting) aliased to it would couple unrelated meanings.",
+      "check": "Look for server constants that redeclare a discovery metadata name as a literal, and for aliases that tie a same-spelled but semantically different setting to the metadata constant.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't treat protocol vocabulary constants (grant types, client-authentication methods, response types and the like) as a closed set; code must still accept values registered by consumers or sibling packages.",
+      "why": "The constants name well-known members of open vocabularies and close no vocabulary.",
+      "check": "Look for validation, switches or enums that reject any value not among the well-known constants where the vocabulary is open.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

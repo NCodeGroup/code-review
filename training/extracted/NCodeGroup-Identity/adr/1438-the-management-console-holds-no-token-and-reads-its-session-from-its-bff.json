@@ -1,0 +1,109 @@
+{
+  "hash": "b2e1bdee4605b307",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1438",
+  "rules": [
+    {
+      "statement": "A frontend bundle served by a BFF must hold no access, refresh or ID token: it reads its session from the BFF's user endpoint and calls its API with the session cookie and same-origin credentials, never with an `Authorization` header.",
+      "why": "The browser takes no part in the OpenID flow when a BFF serves it, and keeping tokens out of the browser means no script on the origin can read one (RFC 10017 §6.2).",
+      "check": "Look in BFF-served frontend code for token storage or a token slice, for code that sets an `Authorization: Bearer` header, or for fetches that omit same-origin credentials.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every API call from a BFF-served frontend sends the anti-forgery header that its BFF requires.",
+      "why": "The BFF rejects cookie-authenticated calls that lack its anti-forgery header, and the header protects those calls against CSRF.",
+      "check": "Look for a base query or fetch wrapper in a BFF-served frontend that sends cookie credentials but no configured anti-forgery header, such as `X-CSRF: 1`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a BFF-served frontend learns that its session ended (through a logout, a `401`, an expiry or a failed refresh), it must show a sign-in screen whose button starts the login, and must never navigate to the BFF login endpoint on its own.",
+      "why": "If tabs navigate to login by themselves, a logout in one tab races a login in another, and a failing login loops between the BFF's error redirect and the next login.",
+      "check": "Look for code that sets `window.location` to the login endpoint, or redirects there, from a session-ended, 401 or expiry handler instead of changing the state to signed-out and showing the sign-in screen.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A BFF-served frontend's runtime configuration must carry only the API base, the BFF endpoint prefix and the anti-forgery header, with no issuer, client id or scopes, and its loader must not fetch an OpenID discovery document.",
+      "why": "The BFF runs the OpenID flow, so the browser needs no OpenID parameters.",
+      "check": "Look for issuer, client_id or scope fields in a BFF surface's bootstrap or config, or for a fetch of `.well-known/openid-configuration` in its config loader.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model configuration that differs by kind of surface as a union of types with a `kind` field that tells them apart, not as one type with optional members for each kind.",
+      "why": "With one type, every consumer would test for members its surface always has. With a union, a consumer checks `kind` once and then holds only the members its surface has.",
+      "check": "Look for a config type that gains optional members used by only one kind of consumer, and for consumers that null-check members their surface always has.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A BFF-served frontend signs out by POSTing the BFF's logout form with the session id (`sid`) and a return URL, not by sending a GET to a logout link.",
+      "why": "The BFF's logout is a form post bound to the session id.",
+      "check": "Look for sign-out code that sends a GET to, or links to, the logout endpoint without posting `sid`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A host that serves a single-page app's HTML puts a fresh nonce into each response and sends a CSP with nonce-based `script-src` and `style-src` plus `'strict-dynamic'`, `connect-src 'self'`, `form-action` limited to self and the authority, `base-uri 'none'` and `frame-ancestors 'none'`.",
+      "why": "With a fresh nonce on each page and a strict policy, only the bundle's own scripts and styles run, and the page cannot be framed or have its base rewritten.",
+      "check": "Look for a cached or reused nonce, a CSP with `unsafe-inline` or a host allowlist for scripts, or missing `base-uri` or `frame-ancestors` directives on an HTML response.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A host that serves a static frontend bundle answers `503` when the bundle is missing and must not fail startup because of it.",
+      "why": "A missing bundle must not stop the host from starting.",
+      "check": "Look for startup code that throws when the bundle's files or `index.html` are missing, instead of answering `503` at request time.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

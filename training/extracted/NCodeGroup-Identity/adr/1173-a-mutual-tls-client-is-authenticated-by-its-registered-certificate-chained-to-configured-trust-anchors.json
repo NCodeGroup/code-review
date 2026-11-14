@@ -1,0 +1,125 @@
+{
+  "hash": "60568d79fe3ab57a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1173",
+  "rules": [
+    {
+      "statement": "When authenticating a `tls_client_auth` client, validate the presented certificate's chain against the trust anchors configured for that tenant or client before matching its subject or SAN, and never rely on the TLS-terminating proxy to have validated the chain.",
+      "why": "A proxy that only requests a certificate forwards self-signed certificates unvalidated, so a self-signed certificate carrying a registered subject DN would otherwise authenticate as that client.",
+      "check": "Look for mutual-TLS client authentication code that matches subject DN/SAN without first running chain validation against configured anchors, or that assumes the proxy validated the chain.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no trust anchors are configured for a PKI-based client certificate, trust no certificate (fail closed, with a warning naming the client), and never fall back to the machine or platform trust store.",
+      "why": "Falling back to the platform store would accept any certificate from any public CA that carries the registered subject.",
+      "check": "Look for chain validation that uses the system store, `X509ChainTrustMode.System`, or treats an empty anchor list as 'trust default roots' instead of failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When building an `X509Chain` to validate a client certificate, use `X509ChainTrustMode.CustomRootTrust` with the configured anchors, pass intermediates as `ExtraStore`, disable certificate downloads, set `X509RevocationMode.NoCheck` (revocation is checked separately by the server), require the `clientAuth` EKU as the application policy, and set the verification time from `TimeProvider`.",
+      "why": "This keeps the machine store untrusted, stops the platform engine from fetching AIA/CRL/OCSP locations a certificate names (letting it reach internal addresses), and makes validity checks testable and deterministic.",
+      "check": "Inspect `X509ChainPolicy` setup: flag a missing CustomRootTrust, `DisableCertificateDownloads = false`, `X509RevocationMode.Online`/`Offline`, a missing clientAuth application policy, or `VerificationTime` taken from `DateTime.Now`/default instead of `TimeProvider`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fetch certificate revocation data (CRL, OCSP) only through the guarded outbound HTTP client for caller-supplied URLs, never through the platform chain engine or an unguarded `HttpClient`.",
+      "why": "A certificate's revocation locations are attacker-controlled and could otherwise direct the server to an internal address.",
+      "check": "Look for revocation fetching via `X509RevocationMode.Online` or a plain `HttpClient` call to URLs taken from a certificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare certificate thumbprints with `CryptographicOperations.FixedTimeEquals`, hashing into `stackalloc` buffers and reading the stored certificate's raw DER rather than constructing an `X509Certificate2` per candidate.",
+      "why": "Constant-time comparison avoids timing leaks, and hashing raw DER into stack buffers avoids per-candidate certificate allocations.",
+      "check": "Flag thumbprint comparisons using `==`, `SequenceEqual`, or string compares, heap-allocated hash arrays, or `new X509Certificate2(...)` inside a loop over registered keys.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Match X.500 distinguished names using RFC 4517 `distinguishedNameMatch` (same RDN count and order, equal attribute OIDs, string values prepared per RFC 4518), never by comparing DER bytes or `X500DistinguishedName.Name` strings.",
+      "why": "Byte or string comparison fails when CAs choose different string types (PrintableString vs UTF8String) or letter case, which the RFC treats as equal.",
+      "check": "Look for DN equality via `RawData` comparison, `X500DistinguishedName.Name`/`Subject` string equality, or ad-hoc string parsing of DNs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a trust-anchor list, treat only self-issued CA certificates as anchors; treat other entries as intermediates that may complete a chain but are never trusted on their own, and reject entries that are not a single certificate with CA basic constraints.",
+      "why": "Pinning only an intermediate must not make it an anchor, and non-CA entries cannot be valid anchors.",
+      "check": "Look for anchor-loading code that adds every configured certificate to `CustomTrustStore` without checking subject == issuer and the CA basic constraint.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a certificate that fails trust validation with a failure reason distinct from one that is trusted but does not match the registration.",
+      "why": "Distinct audit reasons (e.g. untrusted vs mismatch) let operators tell a PKI configuration problem from a wrong certificate.",
+      "check": "Look for client certificate authentication paths that collapse chain-validation failure and identity mismatch into the same error/audit reason.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A client authentication handler claims a request only when the client's registered `token_endpoint_auth_method` equals the handler's method, and once it claims the request a missing or non-matching credential is a conclusive `invalid_client`.",
+      "why": "A certificate presented only for token binding must not be treated as an authentication attempt, and methods must not collide; once owned, there's no fallback to another method.",
+      "check": "Look for handlers that trigger on the mere presence of a certificate or credential, or that fall through to other handlers after claiming a request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a setting value with the same parser its consumer uses, so the setting can only hold values the consumer can process.",
+      "why": "If the setting rule and the consumer parse differently, a stored value can be accepted but never match at runtime.",
+      "check": "Look for setting validation rules that use a regex or separate ad-hoc parser instead of the parser the consuming code uses for the same value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

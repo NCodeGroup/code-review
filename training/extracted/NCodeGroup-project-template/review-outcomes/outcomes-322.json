@@ -1,0 +1,18 @@
+{
+  "hash": "845aef2fc8cdaa04",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #322",
+  "rules": [
+    {
+      "statement": "Don't flag a pull request for adding its changelog entry under a new dated version section, leaving `## [Unreleased]` empty and moving the compare links, when the pull request's plan or description has a `Release:` line naming that version and the repository's release workflow tags the merge commit from the newest changelog section.",
+      "why": "In these repositories the release is cut in the pull request on purpose. The plan's `Release:` line names the version, the plan's last step writes the changelog section, and after the merge the Release workflow tags the merge commit with that section's version. The new section and its compare link point at the tag the merge creates.",
+      "check": "Before reporting a changelog entry that isn't under [Unreleased], look for a `Release: vX.Y.Z` line in the pull request description or plan. Also check that AGENTS.md (Landing section) and .github/workflows/release.yml derive the tag from the newest CHANGELOG.md section. Report it only if the section's version doesn't match the `Release:` line, or if the repository has no such release flow.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

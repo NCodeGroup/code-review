@@ -1,0 +1,78 @@
+{
+  "hash": "f882ed12ca4e9aba",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1425",
+  "rules": [
+    {
+      "statement": "Code that copies configuration from one tenant or environment to another must never copy secrets, keys, principals, grants, consents, sessions or role assignments; each environment keeps its own credentials.",
+      "why": "One credential would otherwise serve two environments, and a bulk response would carry secret material that is revealed only once, at creation.",
+      "check": "In a copy, export or promotion path, look for secret or key material, user grants, sessions, principals or role assignments being read from the source and written to the target or returned in the response.",
+      "scope": "domain",
+      "domain": "identity-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark a setting whose value belongs to one environment (redirect URIs, logout URIs, JWKS URIs, mTLS subjects, pairwise salts and similar) as environment-bound on its setting descriptor, and don't hard-code a list of setting names that cross-environment copies skip.",
+      "why": "Vocabularies are open, so each package marks its own descriptors. Copying these values would make production accept, for example, a sandbox redirect URI.",
+      "check": "Look for a new environment-specific setting descriptor that isn't flagged as environment-bound, or for code that names specific setting keys to exclude when copying settings.",
+      "scope": "domain",
+      "domain": "identity-management",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A multi-step write operation that offers a preview must run every validation and authorization check in a planning phase before its first write, and the preview path must write nothing.",
+      "why": "Then an apply fails only on a concurrent write or a fault, and running it again finishes an operation that stopped part way without a single transaction.",
+      "check": "In a plan/apply or preview/apply flow, look for validation, authorization or 403/409 decisions made inside the apply step after some writes have happened, or for any persistence call reached from the preview path.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an operation copies configuration into a target, it must create and update only, never delete target items, and must match existing items by their stable identifiers (such as client_id or audience identifier) so that running it again gives the same result.",
+      "why": "Matching by stable identifiers keeps the operation convergent and lets an application keep its client_id across environments. Names aren't unique.",
+      "check": "Look for delete calls in a copy or promotion path, or for target items matched by display name instead of stable identifier.",
+      "scope": "domain",
+      "domain": "identity-management",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A bulk or composite operation that writes resources must record the same resource-change audit event for each write as that resource's own endpoint records, plus one summary event for the whole operation.",
+      "why": "The audit trail of a resource then looks the same no matter which path changed it.",
+      "check": "Look for a bulk write path that creates or updates resources without emitting the per-resource audit events that the single-resource endpoints emit.",
+      "scope": "domain",
+      "domain": "identity-management",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A write that copies settings into an existing document and changes a limit must check update authority at the node above that document's scope, as a direct settings PATCH would, and must refuse with the same 403.",
+      "why": "A limit is set by the authority above the scope whose document carries it, and a copied document is a settings write to the target.",
+      "check": "In a settings copy or merge path, check that changed limits are found and authorized at the parent node before the write, not skipped because the change comes from a copy.",
+      "scope": "domain",
+      "domain": "identity-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

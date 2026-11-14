@@ -1,0 +1,125 @@
+{
+  "hash": "5ec2f18f9fe0cebc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1202",
+  "rules": [
+    {
+      "statement": "Express a security profile only as ceilings, defaults and requirements, and never branch on a profile's name inside an enforcement point.",
+      "why": "If enforcement points branch on profiles, every point has to know each profile by name. Ceilings, defaults and requirements keep the profile as data, and adding a profile needs no new mechanism.",
+      "check": "Look for code in endpoints, handlers or validators that compares a profile identifier (such as \"fapi2\" or \"fapi1-advanced\") or type-checks a profile class to change its behavior.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an authorization request carries a request object, read every authorization parameter from the object alone (RFC 9101 §6.3), for any client and any profile, and never merge the outer query into it.",
+      "why": "Merging the query in, as OpenID Connect Core §6.1 does, would let an unsigned outer parameter such as response_mode change a signed request. FAPI 1.0 Advanced, FAPI 2.0 Message Signing and RFC 9101 §6.3 forbid this.",
+      "check": "Look for code that falls back to the outer query or form value for a parameter such as response_mode, state, nonce, redirect_uri or scope when a request object is present, or that limits the object-only rule to FAPI profiles.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a request object that lacks response_type, scope, redirect_uri or client_id with invalid_request_object. Also refuse it when an outer response_type, redirect_uri or client_id was sent and differs from the object's value. Ignore an outer scope rather than comparing it.",
+      "why": "A code must never be sent to one URI and be redeemable only with another. OpenID Connect Core §6.1 lets the object's scope supersede the outer one.",
+      "check": "Check how the request object is validated: required members must be enforced, any outer response_type, redirect_uri or client_id that was sent must be compared for equality, and an outer client_id must be used only when the object omits it, with the object still required to carry a matching one.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare redirect URIs as written, with ordinal string comparison, and never with the equality of a parsed System.Uri.",
+      "why": "Uri equality ignores the case of the host, so two URIs that differ as written could be treated as the same.",
+      "check": "Look for redirect_uri matching that uses Uri.Equals, Uri ==, Uri.Compare or a parsed Uri, instead of an ordinal string comparison.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether a response mode is JWT-secured from a property its registered handler declares, not by inspecting its name, for example a \".jwt\" suffix.",
+      "why": "A requirement that judges the handler's declared capability lists no modes and infers nothing from a name.",
+      "check": "Look for string checks such as EndsWith(\".jwt\") or hard-coded lists of response mode names used to decide whether a response is signed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive an authorization response's redirect target, response mode and state once per request as a single value. Show an error raised before a safe redirect target is known to the user agent instead of redirecting it.",
+      "why": "Deriving the three values once lets every later response, including a signed error, use the verified state and response_mode. Redirecting before a safe target is known would send the error to an unverified URI.",
+      "check": "Look for code that recomputes redirect_uri, response_mode or state separately in different places, or that redirects an error to a URI that is not yet verified (for example, before the request object is verified when no outer redirect_uri was sent).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a pushed authorization request's redirect_uri and response delivery when the request is pushed, so the PAR endpoint refuses a redirect_uri that is not registered (RFC 9126 §2.1).",
+      "why": "RFC 9126 §2.1 requires the PAR endpoint to refuse a redirect_uri that is not registered, instead of deferring the check to the authorization endpoint.",
+      "check": "Check that the PAR endpoint resolves and validates the redirect target and response delivery before it issues a request_uri.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In library code, never call Kestrel's ConfigureHttpsDefaults or other single-action host configuration. Leave TLS settings such as AllowAnyClientCertificate to the host's own composition.",
+      "why": "ConfigureHttpsDefaults keeps only its last action, so a package that called it would silently replace the host's HTTPS defaults, or be replaced by them.",
+      "check": "Look for ConfigureKestrel, ConfigureHttpsDefaults or similar last-wins configuration calls inside library or DI-registration code rather than in a host project.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a profile requires certificate-bound (mutual TLS) access tokens, fail a token request that has no client certificate even when it carries a DPoP proof.",
+      "why": "FAPI 1.0 names mutual TLS (RFC 8705) as its sender-constraining mechanism, and a client that wants DPoP selects a profile that allows it.",
+      "check": "Check that sender-constraint enforcement does not accept a DPoP proof in place of a client certificate when mutual-TLS binding is required.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write private keys and certificates that test or conformance tooling generates to a gitignored location, and never commit them.",
+      "why": "This keeps private keys out of the repository.",
+      "check": "Look for key or certificate files (.pem, .pfx, .key, JWKS with private members) added to the diff, or tooling that writes them to a tracked path.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

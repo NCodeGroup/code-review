@@ -1,0 +1,18 @@
+{
+  "hash": "fdf793d855ae5c15",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #718",
+  "rules": [
+    {
+      "statement": "In an architecture decision record, state the Context's forces as they hold, without describing how the code, chart or system was before the change the record decides.",
+      "why": "After merge, a Context that describes the earlier state seems to contradict the system the record decides on, and reads as change tracking instead of a lasting record.",
+      "check": "In the Context section of a new or edited decision record, look for wording that describes the earlier state of the thing the same record changes (\"currently only\", \"wires X only as Y\", \"today it does not\"). The same force should instead be stated in present terms that stay true after the decision.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

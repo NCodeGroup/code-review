@@ -1,0 +1,89 @@
+{
+  "hash": "91aa7192ea927e42",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1504",
+  "rules": [
+    {
+      "statement": "A startup check that depends on the server's endpoints or certificates must run after the server has bound, such as in an `IHostedLifecycleService` at `StartedAsync`, and read the bound endpoints from `IServerAddressesFeature.Addresses` rather than scanning configuration before binding.",
+      "why": "Endpoints and certificates come from configuration, environment variables such as `ASPNETCORE_URLS` and `ASPNETCORE_HTTP_PORTS`, code and selectors, and only the bound addresses list each endpoint with its real scheme. A configuration scan misses some of them and duplicates Kestrel's binding rules.",
+      "check": "Look for startup validation of endpoints or TLS that parses `Kestrel:*` configuration or `ASPNETCORE_URLS`, or that runs in `StartAsync` or `StartingAsync` before binding, instead of reading `IServerAddressesFeature` at `StartedAsync`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A startup check must collect every failure it finds and throw a single `InvalidOperationException` that lists all of them, instead of stopping at the first failure.",
+      "why": "The operator sees every problem at once when the host fails to start.",
+      "check": "Look for startup validation code that throws on the first failed condition when it checks several independent conditions.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, do not add a setting that turns off a Production transport security check or allows plain-HTTP endpoints in Production.",
+      "why": "A plain-HTTP hop between the proxy and the pod is the defect itself. A setting that allows it hands the defect to every operator who sets it, and transport security has to hold by construction.",
+      "check": "Look for options, flags or environment checks that skip the HTTPS-only startup check, or that allow `http` endpoints, Unix sockets or named pipes in Production.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add HTTPS redirection middleware to the Production pipeline; add it only outside Production, where HTTP and HTTPS endpoints are bound together.",
+      "why": "Production binds no plain-HTTP endpoint, so it has nothing to redirect. Behind a TLS-terminating proxy, the redirect middleware has no HTTPS port to redirect to and logs warnings.",
+      "check": "Look for an unconditional `app.UseHttpsRedirection()` in a host pipeline, or one that is not gated to environments other than Production.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Verify a served TLS certificate with a real loopback TLS handshake against the bound endpoint, not by parsing the server's certificate configuration, and make the probe accept any certificate only to read it, without sending data or trusting it for anything.",
+      "why": "A completed handshake reads the certificate the endpoint actually serves and proves that its private key is present and usable. Configuration parsing never sees certificates that code or a selector supplies.",
+      "check": "Look for certificate validation that loads certificate files or configuration paths instead of handshaking with the endpoint, and for a probe that treats a handshake that completes no TLS as a success or sends application data.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject a server certificate in Production when it is outside its validity period, when its key is weaker than RSA 2048 bits or ECDSA 256 bits, when it is not signed with RSA PKCS#1/PSS or ECDSA using SHA-256, SHA-384 or SHA-512, or when it carries the ASP.NET Core development certificate extension `1.3.6.1.4.1.311.84.1.1`. Do not reject a certificate only because it is self-signed.",
+      "why": "These are the certificate rules a usable Production certificate has to meet. Trusting the pod's certificate is the proxy's and the platform's job, so a self-signed certificate is acceptable.",
+      "check": "Look at certificate validation code for missing key-size, signature-algorithm, validity or development-certificate checks, or for a check that wrongly rejects self-signed certificates.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse to pass a TLS-only startup check when the server is not Kestrel or when any bound endpoint is not `https` on a TCP port.",
+      "why": "The check cannot prove TLS on any other server, and plain-HTTP endpoints, Unix sockets and named pipes carry no verified TLS.",
+      "check": "Look for a transport security check that skips the server-type check or lets non-HTTPS addresses through.",
+      "scope": "domain",
+      "domain": "aspnetcore-hosting",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

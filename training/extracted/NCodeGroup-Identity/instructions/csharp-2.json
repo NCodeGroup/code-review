@@ -1,0 +1,810 @@
+{
+  "hash": "f2071733a7fbf4ac",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity csharp.instructions.md",
+  "applyTo": [
+    "**/*.cs"
+  ],
+  "rules": [
+    {
+      "statement": "Build every absolute URL the app publishes (email links, redirects, discovery documents) from a configured, validated origin, never from the request's Host header.",
+      "why": "The Host header is attacker-controlled, so URLs built from it can be poisoned.",
+      "check": "Look for Request.Host, Request.Scheme or HttpContext.Request URL building used to form published absolute URLs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outside Development, AllowedHosts lists the real host names, never `*`, and a response that still varies by host sends `Cache-Control: no-store`.",
+      "why": "A wildcard host list and host-varying cached responses enable host-header and cache-poisoning attacks.",
+      "check": "Check appsettings and host setup for AllowedHosts `*` outside Development and host-dependent responses without no-store.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Persist the Data Protection key ring to a store shared by every instance and encrypt it at rest with `ProtectKeysWith*`; outside Development the host refuses to start without both and stops when it can't decrypt a live key.",
+      "why": "Otherwise Data Protection silently creates a new key that invalidates every cookie and antiforgery token.",
+      "check": "Look at AddDataProtection calls for a missing PersistKeysTo* or ProtectKeysWith*, or no startup guard outside Development.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Follow a return URL only when it is local, using `LocalRedirect` or `Url.IsLocalUrl`.",
+      "why": "A sign-in round trip must not become an open redirect.",
+      "check": "Look for Redirect(returnUrl) or similar without a local-URL check.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `GET` endpoint never changes state, and every cookie-authenticated form post, logout included, validates an antiforgery token.",
+      "why": "State-changing GETs and unvalidated posts are open to CSRF.",
+      "check": "Look for GET handlers that write state and POST handlers with cookie auth that disable or skip antiforgery validation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Session and authentication cookies are host-only: `__Host-` prefix, `Secure`, `Path=/` and no `Domain`.",
+      "why": "A sibling subdomain must be unable to read or overwrite them.",
+      "check": "Inspect cookie options for a missing __Host- prefix, a set Domain, a non-root Path or non-secure policy.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Scope a read by the caller in the query rather than fetching and then hiding, and answer a resource the caller may not see with `404`, not `403`.",
+      "why": "Fetch-then-hide leaks data and a 403 lets a caller probe whether a resource exists.",
+      "check": "Look for loading a resource and then checking ownership afterwards, or returning Forbid/403 for resources of another owner.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never bind a server-managed field (owner, tenant, role, status, id) from a request body; derive it from the authenticated context and re-read server state instead of trusting a posted copy.",
+      "why": "Binding such fields allows mass assignment and tampering.",
+      "check": "Look for request DTOs carrying owner/tenant/role/status/id fields that are copied into entities, or posted copies of server state used without re-reading.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split health checks into liveness and readiness: liveness checks only the process, never an external dependency, and readiness includes every dependency a request needs.",
+      "why": "A lost database must not restart every instance.",
+      "check": "Look for database or external-service checks tagged for liveness, or readiness missing a required dependency.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep methods to zero to two parameters, rarely more than three, and turn a recurring group of parameters into a type; a trailing CancellationToken and a Try-pattern out parameter don't count.",
+      "why": "Few parameters keep functions small and readable.",
+      "check": "Look for new methods with more than three parameters or the same parameter group repeated across methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply command-query separation: a method either performs an action or returns an answer, never both.",
+      "why": "Mixing the two hides side effects behind queries.",
+      "check": "Look for methods that both mutate state and return a computed answer (other than Try-pattern).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Push filtering into the database through an intent-named store method that filters in the query and projects only needed columns; never load a whole set and filter in memory, and keep the store contract free of `IQueryable` and `Expression`.",
+      "why": "In-memory filtering wastes I/O and leaky store contracts couple callers to the query provider.",
+      "check": "Look for loading a full collection then Where/filtering it, or store interfaces exposing IQueryable or Expression parameters.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't pass or return `null` where an empty form exists; return an empty collection.",
+      "why": "Null collections force callers into null checks and cause NullReferenceExceptions.",
+      "check": "Look for methods returning null for collection types or callers passing null instead of an empty collection.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use intention-revealing, searchable names: no `Manager` or `Helper` catch-all types and no type encodings in names.",
+      "why": "Catch-all names hide responsibility and encodings add noise.",
+      "check": "Look for new types named *Manager or *Helper, or Hungarian-style prefixes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a string literal used in more than one place (a header name, a dictionary key) a named `const` in one place, and prefix a key in a shared dictionary such as `HttpContext.Items` with a project prefix.",
+      "why": "Duplicated literals drift apart and unprefixed shared keys collide.",
+      "check": "Look for the same string literal repeated across files and unprefixed HttpContext.Items keys.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Signal failures with typed exceptions carrying context rather than error codes, never write an empty `catch` or `async void`, and give failures callers act on a machine-readable code instead of matching message text.",
+      "why": "Callers need typed, actionable failures; message matching is brittle.",
+      "check": "Look for empty catch blocks, async void methods, returned error codes, or code comparing exception Message strings.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide a precondition (exists, unique, has no dependents) on a queried fact, and catch only the specific exception that signals a race such as a unique or foreign-key violation; never infer a domain condition from a broad exception like `InvalidOperationException`.",
+      "why": "Broad exceptions have many causes and misreport domain conditions.",
+      "check": "Look for catch blocks on InvalidOperationException/DbUpdateException without checking the specific constraint, used to infer not-found or duplicate.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Talk to immediate collaborators and avoid `a.B().C().D()` call chains.",
+      "why": "Train-wreck chains couple code to distant structure.",
+      "check": "Look for chained navigation through several objects' members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write comments that say why, never what, and leave no commented-out code.",
+      "why": "What-comments duplicate code and commented-out code rots.",
+      "check": "Look for comments restating the next line and blocks of commented-out code.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a concept with invariants as its own type rather than a bare `string`, `int` or `bool`.",
+      "why": "A type enforces the invariant once instead of at every use.",
+      "check": "Look for primitives passed around with repeated validation for the same concept.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't nest a call inside another call's arguments; hoist it into a named local first.",
+      "why": "Named locals make intent and debugging clearer.",
+      "check": "Look for method invocations used directly as arguments to other calls.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose what you own with a `using` or `await using` declaration, unless ownership moves to a type that disposes it.",
+      "why": "Owned disposables must be released deterministically.",
+      "check": "Look for locally created IDisposable/IAsyncDisposable without a using declaration, or try/finally Dispose patterns.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prefer `ReadOnlySpan<byte>`/`ReadOnlyMemory<byte>` inputs and an `IBufferWriter<byte>` output over returning a new `byte[]`, rent transient buffers from `ArrayPool<T>.Shared` or use a small fixed `stackalloc`, and clear a buffer that held secret material before returning it.",
+      "why": "Avoids per-call allocations and leaving secrets in pooled memory.",
+      "check": "Look for new byte[] returns in hot APIs, new arrays for temporary buffers, and rented buffers holding keys returned without clearing.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce a string once with `string.Create`, not by filling a rented `char` buffer and then copying it into a new string.",
+      "why": "The copy is a needless extra allocation and pass.",
+      "check": "Look for ArrayPool<char> rentals followed by new string(...) or AsSpan().ToString().",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Size a collection when the count is known, return a shared empty instance (`[]`, `FrozenSet<T>.Empty`), create possibly-empty collections lazily, and write `list ?? (IReadOnlyCollection<T>)[]` rather than `list ?? []`.",
+      "why": "`list ?? []` allocates a new list, and unsized collections reallocate as they grow.",
+      "check": "Look for new List<T>() without capacity when count is known, `?? []` on a List-typed expression, and eagerly created collections that often stay empty.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On a path that runs per request, use a `foreach` loop instead of LINQ such as `Any` or `Where(...).ToList()`.",
+      "why": "LINQ allocates enumerators and delegates on hot paths.",
+      "check": "Look for LINQ calls in middleware, handlers and other per-request code.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a fixed-segment string with `MemoryExtensions.Split` into a `stackalloc Range[expected + 1]` and reject any count other than `expected`.",
+      "why": "Without the spare slot, extra segments fold into the last range and pass validation.",
+      "check": "Look for string.Split on fixed-format input, or Range buffers sized exactly to the expected count.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prefer an instance service behind an interface registered as a singleton over a `static` utility class; keep `static` for pure functions, constants, extension entry points and immutable thread-safe shared instances such as a cached `JsonSerializerOptions`, and never use static mutable or ambient state.",
+      "why": "Static utilities with dependencies can't be swapped in tests, and static mutable state leaks between callers.",
+      "check": "Look for new static classes holding dependencies or mutable static fields.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never store request or ambient context (`HttpContext`, a request-scoped `IServiceProvider`, a `ClaimsPrincipal`) in a field; read it where used or take it as a parameter.",
+      "why": "Captured request context outlives the request and leaks across requests.",
+      "check": "Look for fields or properties of type HttpContext, IServiceProvider from a scope, or ClaimsPrincipal.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Constructor-inject every dependency with no `new` of a collaborator inside a method and no service location, except a singleton resolving a scoped service or a service chosen by a generic type argument at call time; inject `IEnumerable<T>` for a fixed set of singletons.",
+      "why": "Injected dependencies keep code testable and lifetimes explicit.",
+      "check": "Look for `new` of service collaborators in methods and GetService/GetRequiredService calls outside the allowed exceptions.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Inject `TimeProvider` for the clock instead of reading `DateTime.UtcNow` or `DateTimeOffset.UtcNow`, and wrap other uncontrollable dependencies such as `Guid.NewGuid()` or a random number generator in a thin `internal interface` with an `internal sealed` forwarding implementation registered in DI.",
+      "why": "Tests must control time, ids and randomness.",
+      "check": "Look for DateTime.UtcNow, DateTimeOffset.UtcNow, DateTime.Now, Guid.NewGuid() or Random use in production code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `internal virtual` as the override seam for a helper a test must stub when extracting an interface would be overkill, and leave internal implementations unsealed so Moq can proxy them.",
+      "why": "Moq needs non-sealed types and virtual members to stub; CA1852 stays quiet in assemblies that grant InternalsVisibleTo.",
+      "check": "Don't ask to seal internal types in an assembly under test; flag sealed internal classes tests need to mock.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every type or member you add or whose signature or behavior you change a `///` comment with a substantive `<summary>`, plus `<param>`, `<returns>` and `<remarks>` where they help, and update the comment when renaming or changing a member; don't add comments to code you aren't otherwise changing.",
+      "why": "Docs ship to consumers and must match the code; a NuGet package build fails on undocumented public members (CS1591).",
+      "check": "Look for added or changed members missing /// docs or with stale docs, and unrelated doc-only edits.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write `///` and `//` comments that describe the code as it is, never the change: no 'now', 'new', 'previously', 'no longer' or 'renamed', and never the name of a removed or renamed member.",
+      "why": "Change narration becomes wrong once the change is merged.",
+      "check": "Look for those words or references to removed members in comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Open and close `<summary>` on their own lines, and start a property summary with 'Gets or sets', 'Gets' or 'Sets' according to its accessors, using 'Gets' for an `init`-only property.",
+      "why": "Consistent doc format; init-only properties are read-only after construction.",
+      "check": "Look for single-line <summary> elements and property summaries with the wrong verb for their accessors.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never cite an ADR, a repository path or an internal implementation name in a `///` comment; put those in a `//` comment.",
+      "why": "`///` ships to consumers via IntelliSense and OpenAPI.",
+      "check": "Look for ADR numbers, file paths or internal type names inside /// comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Document a minimal-API handler with either XML `///` comments or fluent `.WithSummary()`/`.WithDescription()`, never both, and declare a non-200 response with `.Produces(...)` before describing it with `<response code=\"...\">`.",
+      "why": "XML docs reach OpenAPI only with Microsoft.AspNetCore.OpenApi and AddOpenApi, an internal-or-wider handler and no fluent metadata.",
+      "check": "Look for endpoints with both XML docs and WithSummary/WithDescription, or <response> tags without a matching Produces.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library never adds or removes logging providers; the host chooses them and logs to standard output.",
+      "why": "Provider choice belongs to the host.",
+      "check": "Look for ClearProviders or AddConsole/AddProvider calls in library code.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log through source-generated `[LoggerMessage]` methods grouped as an `internal static partial class Log` of `ILogger` extension methods, never `ILogger.Log*` with an interpolated message.",
+      "why": "Source-generated logging is allocation-free and structured.",
+      "check": "Look for direct logger.LogInformation/LogError calls and interpolated log messages.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a constant message template with named placeholders and pass each value as its own type, not a pre-built `ToString()`.",
+      "why": "Structured values stay queryable.",
+      "check": "Look for log arguments with .ToString() or string formatting.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define log event IDs as named append-only constants (`Base + n`) named like their log methods, reference the constant in `[LoggerMessage(EventId = ...)]` rather than a literal, never renumber or reuse a shipped value, and give each runtime project a disjoint 1000-wide band.",
+      "why": "Event IDs must stay stable and unique across the solution.",
+      "check": "Look for literal EventId values, changed or reused existing IDs, or overlapping bands.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A logged request context carries the path, never the query string.",
+      "why": "Query strings can carry codes or tokens.",
+      "check": "Look for logging Request.QueryString, full URLs or GetDisplayUrl.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Measure a signal once through its owner: don't add instruments for request count, latency or status (ASP.NET Core's `http.server.request.duration`) or outbound HTTP calls (System.Net.Http).",
+      "why": "Duplicate instruments double-count and drift.",
+      "check": "Look for custom counters or histograms that duplicate built-in HTTP server or client metrics.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create meters through `IMeterFactory`, one per project named after the project as a public constant; name instruments `{product}.{area}.{name}`, reuse OpenTelemetry semantic-convention names, and use UCUM units with durations as histograms in seconds.",
+      "why": "Consistent naming and units make metrics comparable.",
+      "check": "Look for `new Meter(...)`, ad hoc instrument names, millisecond durations or non-histogram durations.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take metric attribute values only from a vocabulary the code controls, recording an unknown request value as `_OTHER`, and never use a user id, customer id, address or any value echoed from the request.",
+      "why": "Unbounded attributes explode cardinality and leak personal data; those belong in logs and traces.",
+      "check": "Look for tags populated from request input or identifiers.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Trace only your own mechanisms through one static `ActivitySource` per project named like its meter, and never put a token, cookie, key or personal data on a span.",
+      "why": "Spans are exported widely and must not leak secrets.",
+      "check": "Look for multiple ActivitySources per project and span tags containing tokens, cookies, keys or PII.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Update the project's metrics catalog (name, unit, attributes and bounded values, owner) in the same change that adds, renames or removes an instrument or span.",
+      "why": "The catalog must match what is emitted.",
+      "check": "Look for instrument or span changes without a matching catalog doc change.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs",
+        "**/docs/metrics.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test instruments with `MetricCollector<T>` and spans with an `ActivityListener`.",
+      "why": "These are the supported ways to observe metrics and traces in tests.",
+      "check": "Look for telemetry tests using other ad hoc mechanisms.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read configuration through a strongly typed options class, never `IConfiguration` deep in the code; inject `IOptions<T>` for startup-fixed values and `IOptionsMonitor<T>` for runtime-changing ones, and make the options class `sealed` with `init` or get-only members and correct defaults.",
+      "why": "Typed options are validated and testable.",
+      "check": "Look for IConfiguration injected into services, and non-sealed or mutable options classes.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind a whole options section with `ErrorOnUnknownConfiguration = true` and `ValidateOnStart()`, express rules the binder can't in an `IValidateOptions<T>`, and never read single keys such as `configuration[\"Orders:Limit\"]`.",
+      "why": "A misspelled key must stop the host instead of passing as absent.",
+      "check": "Look for AddOptions/Bind without ErrorOnUnknownConfiguration or ValidateOnStart, and indexer reads of single configuration keys.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Start a collection option empty and apply its default only when nothing is configured, and never make a host's own identifiers (client id, callback URL) a library default.",
+      "why": "The binder appends configured values to whatever the initializer put there.",
+      "check": "Look for options collections initialized with default items, and library defaults for host-specific identifiers.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a configured value the way it will be used and reject one that parses to something other than what was written, since `IPAddress.TryParse`, `IPNetwork.TryParse` and `Uri.TryCreate` are lenient, and validate enums with `Enum.IsDefined`.",
+      "why": "Lenient parsers turn typos into other values, and the binder reads enums from numbers.",
+      "check": "Look for options validation relying only on TryParse/TryCreate success, or enum options without Enum.IsDefined.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a period handed to a timer at startup to be between 1 ms and 4,294,967,294 ms, with an error naming the option's configuration key.",
+      "why": "That is the range PeriodicTimer and CancellationTokenSource accept.",
+      "check": "Look for TimeSpan options used by timers without range validation.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each strategy's own `IValidateOptions<T>` beside it, skipping when another strategy is selected, rather than a shared validator branching on the strategy name.",
+      "why": "Only settings in force should be validated.",
+      "check": "Look for validators switching on a strategy/mode name.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validator reads only dependency-free registrations (descriptors, constants), never services that read the options it validates.",
+      "why": "Resolving such services inside IOptions<T>.Value can deadlock.",
+      "check": "Look for IValidateOptions implementations injecting or resolving services with dependencies.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When configuration supplies a default for a value a write omits, resolve, validate and store it at write time, never fill the gap at read time.",
+      "why": "Otherwise a later configuration change silently moves existing data.",
+      "check": "Look for reads substituting configured defaults for null stored values.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never let an unset target mean 'everything': a seeder or job that writes credentials, accounts or grants requires its target, validated at host start.",
+      "why": "An empty target must not broaden a privileged write.",
+      "check": "Look for seeders/jobs treating null or empty target as all.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a development convenience (generated keys, seeded users, permissive CORS) an explicit named opt-in that is inert until configured and seeds through the production code path, and default a guardrail setting to the safe value.",
+      "why": "Conveniences must not activate silently or diverge from production behavior.",
+      "check": "Look for dev features enabled by default, bypassing production code, or guardrails defaulting to unsafe.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Production, refuse to start on a development-only setting (ephemeral key provider, inline secret, wildcard AllowedHosts, development seeder) and report all such findings in one failure.",
+      "why": "Operators should see every problem at once rather than fixing them one by one.",
+      "check": "Look for production guards that throw on the first finding or omit a development-only setting.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never set `AssemblyVersion` by hand; versions come from the SemVer release tag and AssemblyVersion moves only with the major version.",
+      "why": "Minor and patch upgrades must be drop-in replacements.",
+      "check": "Look for AssemblyVersion or Version set in project files or attributes.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outside test projects, don't use the null-forgiving operator.",
+      "why": "It hides nullability bugs; Nullable.Extended.Analyzer fails the build (NX0001-NX0004).",
+      "check": "Look for `!` null-forgiving in production code.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Relax a warning with a justified `.editorconfig` entry or a tight `#pragma warning disable/restore` with a reason, never with `TreatWarningsAsErrors=false`.",
+      "why": "Warnings are errors in every project, tests included.",
+      "check": "Look for TreatWarningsAsErrors=false, NoWarn without reason, or pragmas without restore or justification.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj",
+        "**/*.props",
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove unused `using` directives.",
+      "why": "IDE0005 fails the build.",
+      "check": "Unused usings.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Keep package versions in `Directory.Packages.props`; a `PackageReference` never carries a `Version`.",
+      "why": "Central package management keeps versions consistent.",
+      "check": "Look for Version attributes on PackageReference.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ban a ruled-out API in a project's own `BannedSymbols.<name>.txt` and list each overload's full documentation ID, not a bare `M:Type.Method`.",
+      "why": "A bare ID matches only the parameterless overload.",
+      "check": "Look for banned-symbol entries without parameter lists for overloaded methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/BannedSymbols*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Ship every EF Core entity or model configuration change with its migration.",
+      "why": "`dotnet ef migrations has-pending-model-changes` fails when the model differs from the last migration.",
+      "check": "Look for entity/configuration changes without a migration or snapshot update.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an EF Core migration expand-only so the previous release keeps working: add tables, nullable or defaulted columns and indexes, and never drop, rename, make required, narrow, or add unique/primary-key/check/foreign-key constraints to an existing table in the same release as the expansion.",
+      "why": "The previous release serves during the migration and after a rollback; EF writes explicit NULL for columns it maps as nullable.",
+      "check": "Look in migrations for DropColumn, RenameColumn, AlterColumn to non-nullable or narrower types, and new unique indexes or constraints on existing tables.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an EF Core migration folder `Migrations/<Name>` using the context class name without its `DbContext` or `Context` suffix, never the context class name itself.",
+      "why": "The folder becomes a namespace segment that hides the class and the scaffolded `[DbContext(typeof(...))]` fails with CS0118.",
+      "check": "Look for migration output folders named exactly like the DbContext class.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outside Development, never apply EF Core migrations at host startup; apply them as a deliberate pipeline step and keep migrations in the host project, not a library.",
+      "why": "Migrations must run once, deliberately, before rollout.",
+      "check": "Look for Database.Migrate/MigrateAsync at startup without a Development guard, or migrations inside libraries.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Quote identifiers in raw SQL model fragments (`HasFilter`, `HasDefaultValueSql`, `HasComputedColumnSql`) when the provider folds unquoted names.",
+      "why": "PostgreSQL folds unquoted names to lower case, so a fragment passing on SQLite fails in production.",
+      "check": "Look for unquoted column names in those calls.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Deleting an aggregate root removes what it owns in the same unit of work and answers `409` while the root still holds records belonging to another party, never leaving orphans or surfacing a foreign-key violation as `500`.",
+      "why": "Deletes must be consistent and report conflicts properly.",
+      "check": "Look for delete handlers that don't remove owned records or let FK exceptions bubble.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `SaveChangesInterceptor` overrides both `SavingChanges` and `SavingChangesAsync`.",
+      "why": "Overriding only the synchronous one never runs on SaveChangesAsync.",
+      "check": "Look for interceptors overriding only one of the pair.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

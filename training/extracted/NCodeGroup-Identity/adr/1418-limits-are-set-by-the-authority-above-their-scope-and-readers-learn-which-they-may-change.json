@@ -1,0 +1,65 @@
+{
+  "hash": "7a58ac3aeb7f2bb4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1418",
+  "rules": [
+    {
+      "statement": "Don't add caller-specific fields (such as what the current caller is permitted to do) to a resource that represents a stored document with its own ETag; expose them from a separate read-only sub-resource that carries no ETag.",
+      "why": "The document resource is the audit snapshot and its ETag must depend only on the document, while permission answers depend on who asks.",
+      "check": "Look for permission or caller-derived properties added to a versioned/ETagged resource model, or ETags emitted on responses whose content varies by caller.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep authorization decisions on the server and expose the result to the client as a simple flag rather than having the browser compute who holds authority over a node.",
+      "why": "Computing authority in the browser duplicates the authority chain, including nested hierarchies, and drifts from the server's rules.",
+      "check": "Look for client or console code that reconstructs the hierarchy or role chain to decide editability instead of reading a server-provided capability flag.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A setting marked as a limit must merge with a meet, and building the descriptor collection must refuse a limit descriptor whose merge is not a meet.",
+      "why": "Otherwise a scope beneath could override the value set above it, so the limit would only be advice.",
+      "check": "Look at new setting descriptors with IsLimit set and confirm their merge is a meet; check the collection builder still rejects non-meet limits.",
+      "scope": "domain",
+      "domain": "multi-tenant-settings",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A settings write that adds, removes or changes the JSON value of a limit must require Update permission at the node above the document's node, and fail closed with 403 naming the limits; the node's own administrators cannot raise, lower or remove it.",
+      "why": "A bound holds only while the scope that wrote it is the only one that can change it, so each limit value has a single author.",
+      "check": "Look for settings write paths that persist limit changes without checking authority at the parent node, or that compare limits other than by JSON value.",
+      "scope": "domain",
+      "domain": "multi-tenant-settings",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A package marks its own settings that bound lower scopes as limits on the descriptor itself, instead of the host keeping a list of limit names or the descriptor naming a fixed writing tier.",
+      "why": "The host needs no list, and a fixed tier would tie the setting to tier names and stop a team from limiting its own tenants.",
+      "check": "Look for new quota or rate-limit settings without the limit flag, or hardcoded lists of limit names in the host.",
+      "scope": "domain",
+      "domain": "multi-tenant-settings",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

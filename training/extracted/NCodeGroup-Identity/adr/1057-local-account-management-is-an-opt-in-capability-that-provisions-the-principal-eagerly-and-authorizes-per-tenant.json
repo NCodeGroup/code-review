@@ -1,0 +1,112 @@
+{
+  "hash": "3ced419f30b345c7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1057",
+  "rules": [
+    {
+      "statement": "Put an optional capability in its own opt-in package that depends only on the general slice's abstractions, and never make a general package (or its implementation) reference that capability's packages.",
+      "why": "Coupling a general slice to one optional capability forces every host to carry it whether or not it wants it, and leaks the capability's shapes into the general abstractions.",
+      "check": "Look for a project reference or using from a general/base package to an optional capability's package, or a capability package referencing the base implementation package instead of its abstractions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a capability-specific method to a shared base abstraction (such as an audit recorder); expose one generic entry point that takes a caller-supplied event subtype, and let each capability own its event type and a convenience extension method.",
+      "why": "A per-capability method puts a capability's shape on a general abstraction; one generic entry point serves every capability.",
+      "check": "Look for new methods on a shared interface or base class named after one specific feature or resource type, or event types/resource-type constants for a capability declared in the base package.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make an opt-in library check at runtime whether it is itself registered (for example returning 501 when a feature is missing); treat registration as presence and enforce prerequisites at compile time by having the registration extension take the prerequisite's service builder as a required parameter.",
+      "why": "Self-detection is meaningless once the feature is an opt-in package, and a required builder parameter turns a missing prerequisite into a compile error instead of a startup or resolution failure.",
+      "check": "Look for endpoints or services that probe the container for their own registration or return 501 Not Implemented, and for Add* extensions whose required dependency is only resolved at runtime rather than demanded as a parameter.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a capability package needs base-class plumbing that lives in another package's implementation, make it a public base type in that package's abstractions and derive from it, rather than copying the plumbing into the capability package.",
+      "why": "Duplicated endpoint plumbing (authorization, paging, error mapping, serialization) drifts from the original.",
+      "check": "Look for a new package that reimplements helpers or a base handler already present internally elsewhere, instead of deriving from a public abstraction.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize every end-user account management operation against the tenant scope resource, and don't model end-user accounts as ownable resources with an owners sub-resource.",
+      "why": "Authority over an end-user subject is tenant administration, so an owner model adds a resource type and sub-resource for no authority a tenant administrator lacks.",
+      "check": "Look for account management handlers that authorize against an account-level or ownable resource rather than the tenant scope, or that add owner endpoints for accounts.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When creating a local account, write the account, its principal and its self-issued identity in one unit of work rather than creating the principal lazily on first login or first metadata write.",
+      "why": "Metadata and authority need a principal as target from the moment the account exists, and lazy creation scatters provisioning across read paths and leaves a window with no principal.",
+      "check": "Look for account create paths that don't create the principal and identity in the same transaction, or metadata/login paths that materialize a missing principal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow server-trusted (system) subject metadata to be written only through administrator-gated paths such as account create and the administrator metadata endpoint, never through an end-user-reachable path or folded into a general account update.",
+      "why": "System metadata carries the owner-versus-server trust boundary and must never be writable by an end user.",
+      "check": "Look for new write paths to system metadata, especially ones reachable by end users or added to a general account update operation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deleting an end-user account, end the principal's sessions before removing it (and remove the principal when it was its last identity); when disabling an account or resetting its password, end its sessions after the commit.",
+      "why": "A disabled, deleted or reset end user must lose its existing sessions.",
+      "check": "Look for delete, disable or password-reset handlers that don't revoke sessions, or that revoke them in the wrong order relative to the commit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge every password that is set (account create, password reset) with the single password policy service and answer a refusal with a 400 problem response.",
+      "why": "A password is judged by one policy wherever it is set.",
+      "check": "Look for password-setting code paths that skip the password policy, apply their own checks, or return a status other than a 400 problem on refusal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

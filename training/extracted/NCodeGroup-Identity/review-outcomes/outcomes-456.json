@@ -1,0 +1,44 @@
+{
+  "hash": "a51ed288ea878727",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #456",
+  "rules": [
+    {
+      "statement": "When a decision record is marked superseded, keep any earlier partial-supersession pointers in its status line and its decisions-index row alongside the new superseding record (e.g. \"Superseded by ADR-B (its protection was already superseded by ADR-A)\").",
+      "why": "Without the earlier pointer, someone who reads the superseded record first gets an incomplete history of it.",
+      "check": "In a diff that changes an ADR's status to Superseded, compare against the old status: if it mentioned another record that had already overturned part of it, confirm that pointer survives in the new status and in the index row.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When references to a superseded decision record are replaced, point each one at every record that now owns the decision it cited, not just one of them.",
+      "why": "Dropping one of the replacements means the document no longer links to part of the decision, such as the release-line record.",
+      "check": "In a diff that replaces citations of a superseded ADR in README or config comments, confirm each citation names every successor record relevant to what that text is about.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.yml",
+        "**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep edited comment lines within the wrap width the rest of that comment block uses (about 120 columns), rewrapping so text moves to the next line.",
+      "why": "A line past the block's width means the next reflow of that comment has to touch it again.",
+      "check": "Look for edited comment lines in config or source files that are noticeably longer than the neighbouring lines of the same comment block.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.yml",
+        "**/*.yaml",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

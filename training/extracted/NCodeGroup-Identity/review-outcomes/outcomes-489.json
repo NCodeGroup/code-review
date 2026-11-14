@@ -1,0 +1,29 @@
+{
+  "hash": "bf0f3a702a2d488f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #489",
+  "rules": [
+    {
+      "statement": "In a test project, a mock-setup helper needed by several test classes lives in one shared internal helper (such as an extension method on the mock type) with a single signature, not as diverging private copies in each test class.",
+      "why": "A fix to one private copy doesn't reach the others, and copies with different signatures leave readers unsure which one is the pattern to follow.",
+      "check": "Look for the same private helper method (same name or same body) being added to a test class when copies already exist in other test classes, especially with different parameter lists.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Markdown documentation, keep an inline code span on a single line; when wrapping prose, break before or after the span, or use a fenced code block for long snippets.",
+      "why": "Markdown renders a line break inside a code span as a space, so the snippet no longer matches the code it describes and copying it requires rejoining it by hand.",
+      "check": "In changed .md files, look for a backtick code span that opens on one line and closes on the next.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

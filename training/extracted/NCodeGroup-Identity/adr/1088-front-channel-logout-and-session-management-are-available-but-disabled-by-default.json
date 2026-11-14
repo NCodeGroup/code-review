@@ -1,0 +1,115 @@
+{
+  "hash": "17240a9e25cdb12e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1088",
+  "rules": [
+    {
+      "statement": "Keep browser-mediated, third-party-cookie-dependent OpenID Connect mechanisms (Front-Channel Logout 1.0, Session Management 1.0) disabled by default: their settings default to false, and a stock provider advertises neither one and sets no browser-state cookie.",
+      "why": "These mechanisms depend on third-party cookies in iframes, which browsers are removing. The secure default must stay the cookie-independent pair: RP-Initiated Logout and Back-Channel Logout.",
+      "check": "Look for new or changed defaults for frontchannel_logout_supported, frontchannel_logout_session_supported, session_management_supported or similar settings that become true. Also look for a check_session_iframe or browser-state cookie that is emitted when nothing has enabled it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose an optional protocol capability as an operator-controlled setting that is off by default and drives its discovery advertisement, so enabling it needs only a settings change and no code change or fork.",
+      "why": "This follows the repository's available-but-off pattern (as with backchannel_logout_supported and code_challenge_methods_supported). It keeps the secure default while letting a deployment that accepts the trade-off turn the capability on.",
+      "check": "Look for an optional protocol feature that is hard-wired on, enabled through code, or advertised in discovery by a constant instead of by the setting that gates its behavior.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject client registration or configuration that uses a capability the provider's discovery settings mark unsupported, such as a frontchannel_logout_uri while frontchannel_logout_supported is false, or frontchannel_logout_session_required while frontchannel_logout_session_supported is false.",
+      "why": "What the provider does must always match what it advertises.",
+      "check": "Look for new per-client settings tied to a discovery capability that lack a coherence or validation rule refusing them while the capability is disabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When rendering front-channel logout iframes, append the iss and sid query parameters only while frontchannel_logout_session_supported is enabled.",
+      "why": "The provider must send session parameters only when it advertises that it supports them.",
+      "check": "Look at the code that builds front-channel logout URIs and confirm it gates iss/sid on the session-supported setting rather than adding them unconditionally.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat Front-Channel Logout as a best-effort layer added on top of Back-Channel Logout: enabling it must never disable or bypass back-channel notification.",
+      "why": "Back-Channel Logout stays the preferred, reliable mechanism. Using the front channel as a replacement is a named smell.",
+      "check": "Look for logout code paths where enabling front-channel logout skips, replaces or short-circuits back-channel logout_token delivery.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute the OpenID Connect session_state as a salted SHA-256 digest over the client id, the origin of the client's redirect URI and the opaque OP browser state, and emit it only while session management is enabled.",
+      "why": "This is the Session Management 1.0 computation the check_session_iframe script recomputes. The origin comes from the redirect URI so that the relying party's iframe origin matches.",
+      "check": "Look for a session_state computation that leaves out the salt, uses a different hash or a different origin source, or is stamped on authorization responses while session management is disabled.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Delete the session-management browser-state cookie on logout.",
+      "why": "The browser-state cookie must change when the session ends so that relying parties polling check_session_iframe detect the change.",
+      "check": "Look at logout and end-session handlers when session management is enabled and confirm they clear the browser-state cookie.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow relying parties to frame only the check_session_iframe page, and let the front-channel logout page frame only the registered clients' logout origins; every other page keeps forbidding framing.",
+      "why": "Every page the server writes has a strict Content Security Policy and is framed only by design.",
+      "check": "Look for frame-ancestors or frame-src CSP changes, or X-Frame-Options changes, that allow framing beyond check_session_iframe or allow frame sources other than the clients' front-channel logout origins.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement front-channel logout and session management on top of the existing end-user session model and end-session pipeline, without adding persistence, tables or migrations of their own.",
+      "why": "These mechanisms add no state of their own, so enabling them should be a settings change only.",
+      "check": "Look for new entities, tables, stores or migrations introduced solely for front-channel logout or session management.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

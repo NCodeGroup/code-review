@@ -1,0 +1,18 @@
+{
+  "hash": "f6ac70d85e90cd01",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #346",
+  "rules": [
+    {
+      "statement": "When a changelog entry describes a behavior that comes from shared code or a shared included rule, credit it to every command or component that uses that shared piece, or describe it generally, not just the one that prompted the change.",
+      "why": "Crediting a shared behavior to a single consumer gives readers the wrong idea of which commands behave this way.",
+      "check": "For each changelog entry that names one command or component, check whether the changed logic lives in a shared file that other commands also include or call. If it does, flag the entry when it names only one of them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

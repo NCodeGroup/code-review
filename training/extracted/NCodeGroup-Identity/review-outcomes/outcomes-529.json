@@ -1,0 +1,108 @@
+{
+  "hash": "0afdf5ae5a2439ad",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #529",
+  "rules": [
+    {
+      "statement": "Don't report a new direct package reference as added dependency weight when the package already arrives transitively through an existing reference; check the restore graph first.",
+      "why": "The maintainer declined this: the direct reference adds nothing to restore and only names where the API it uses comes from.",
+      "check": "Before flagging a new PackageReference, check whether an existing reference already depends on it (for example in project.assets.json or the package's dependency list).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest leaving a library's infrastructure registration (such as `AddMetrics()`) to the host; a package's DI registration registers what its own services need.",
+      "why": "Leaving it to the host would break the convention that each package registers its own services' dependencies.",
+      "check": "When a package's registration method calls `AddMetrics()` or a similar infrastructure registration its own services depend on, treat it as intended.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change contradicts what an accepted decision record states, such as its list of a package's direct dependencies, amend that record in the same change with a dated amendment that gives the reason.",
+      "why": "If the accepted record contradicts the code, it misleads the next reader.",
+      "check": "Look for new package references or design changes that an ADR enumerates or forbids, and confirm the diff includes an ADR amendment and an updated index row.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to deduplicate helpers copied between two packages when the dependency rules forbid any shared home, each copy has a comment naming its twin, and tests pin both copies to the same values.",
+      "why": "The maintainer declined this: no package both can reference is allowed to take the needed dependencies, and the comments and pinning tests already record the duplication and catch drift.",
+      "check": "Before reporting cross-package duplication, check the ADRs on allowed package references, look for twin-naming comments, and look for tests that assert the same values in both suites.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a named constant, preferably an existing shared one, for bounded metric attribute values such as `_OTHER` or `timeout`, not bare string literals. Where the shared constant can't be referenced, define a local constant with a comment saying which one it mirrors.",
+      "why": "Bare literals let a metric drift from the shared bounded vocabulary that other metrics use.",
+      "check": "Look for string literals used as metric tag values or error.type values where a shared constant exists or should exist.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, metric tests assert each published instrument's meter name and unit, not just its measurements.",
+      "why": "Otherwise a rename of the meter name, or a change to the units that dashboards key on, would ship without a failing test.",
+      "check": "Look for MeterListener-based test helpers that filter only on meter scope and never read `instrument.Meter.Name` or `instrument.Unit`, and for missing assertions on those values.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep an explanatory comment directly above the code it explains; don't insert unrelated code between them.",
+      "why": "A reader can take the comment as describing the unrelated code that was inserted.",
+      "check": "Look for new statements inserted between an existing rationale comment and the line or block that comment explains.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when an argument-validation test uses it to pass a deliberate null to the code under test. Do report other null-forgiving uses, which should narrow with `Assert.NotNull` and use a local.",
+      "why": "The test conventions explicitly allow `null!` for deliberate null arguments in argument-validation tests, and sibling tests do the same.",
+      "check": "Check whether the `null!` is the deliberate null argument of a test asserting ArgumentNullException, and check the test conventions file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a public type in a sub-namespace as breaking the flat-namespace rule when the namespace matches its folder, the package's other public types use the same folder-based sub-namespaces, and it mirrors a sibling package's equivalent type.",
+      "why": "The maintainer declined this: consistency with the sibling type, so hosts find both the same way, and with the package's existing folder-based namespaces settles it.",
+      "check": "Before flagging, check the package's other public types' namespaces and the equivalent type in sibling packages.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

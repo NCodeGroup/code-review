@@ -1,0 +1,51 @@
+{
+  "hash": "1037ba72d1d67526",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #336",
+  "rules": [
+    {
+      "statement": "When a change removes the behavior a variable, function or block was named for, rename it, and its loop variables, after what it does now.",
+      "why": "A name kept from removed behavior makes readers think the code still does the old job.",
+      "check": "Look in the diff for identifiers that still name a feature, rule or check the diff removes but that now serve a different purpose.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that a coupling or detection heuristic would break silently with no test catching it, check whether existing tests already assert the observable outcome, and don't report it when they do.",
+      "why": "The maintainer declined such a finding because tests already asserted the output each branch produces, so renaming or moving the matched element would already fail the suite.",
+      "check": "Search the test suite for assertions on the output or behavior that depends on the match, covering both the positive and the fallback case, before raising the finding.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for tests that assert the absence of hypothetical future additions, such as a key or condition the code doesn't have today, when the existing tests already pin what the change is about.",
+      "why": "The maintainer declined this because such assertions pin the code's shape further than the change needs.",
+      "check": "When proposing an extra assertion, confirm that it guards behavior the diff introduces or changes, not a speculative future edit.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change alters behavior that downstream users will notice, such as when CI triggers run, say so in the pull request description, not only in the CHANGELOG.",
+      "why": "Reviewers who read only the description would miss a behavior change that downstream projects will see.",
+      "check": "Compare the user-visible behavior changes in the diff, such as removed triggers, changed defaults or dropped checks, with the PR description, and flag any that it leaves out.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "hash": "4a45f361eec0c0ac",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #129",
+  "rules": [
+    {
+      "statement": "A control or self-test for a lint or analysis gate runs the whole gate, including the findings loop and the exit code, on a fixture with a known finding, and asserts the reported failure line and a non-zero exit, rather than only checking that the analyzer reports something.",
+      "why": "If the gate breaks (findings filtered out, exit code lost), CI passes with real warnings while a control that checks only the analyzer stays green.",
+      "check": "Look for a gate control that calls the analyzer directly on a fixture and stops before the code that turns findings into a failure. It should run the same path the repository files take and assert both the FAIL output and the exit code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a changelog, cite an issue or pull request as a full Markdown link to its URL, not as a bare `#123` reference.",
+      "why": "Bare references resolve only in GitHub's own rendering, not in a project's copy of the changelog.",
+      "check": "Look for bare `(#NNN)` references in CHANGELOG.md entries. Each one should be a `[#NNN](https://github.com/<org>/<repo>/issues/NNN)` link with the right org and repository.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A script that updates existing repository protection settings, such as rulesets, keeps any rule that is already there and that the script can't prove it added, rather than removing it based on a detected setup state.",
+      "why": "Detection such as CodeQL default setup reporting `not-configured` can't tell a rule the script added from one a person added. Removing the rule silently takes protection away from the repository.",
+      "check": "In the update path of repository-baseline or ruleset tooling, look for code that drops an existing rule because of a lookup result. The rule should be kept as it is, and the lookup should only decide whether to add a rule that's missing.",
+      "scope": "domain",
+      "domain": "repository-administration-tooling",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a hand-copied helper function as duplication that should be moved into a shared module when one copy is in a script that ships standalone to projects and a test fails if the copies differ.",
+      "why": "A script that ships to projects on its own can't load a shared file, and the test already keeps the copies in sync.",
+      "check": "Before reporting, check whether one of the copies is in a script that's distributed standalone (for example, through the template) and whether a test compares the function bodies.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a copy-consistency test to include generated copies of a file when another test already fails if those generated copies differ from their source.",
+      "why": "The two checks together already hold every copy in line: one compares the generated copies with their source, and the other compares the source with the other hand-kept copy.",
+      "check": "Before reporting a missing copy, search the test suite for an existing check that compares the generated copies with their source file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a separate test of a trivial guard branch in a gate script when a control run already goes through the same code (for example, the same file enumeration) and would break if that code broke.",
+      "why": "The control run already proves the gate fails on a real finding, and it uses the same file enumeration, so a broken filter would also break the control.",
+      "check": "Before reporting an untested guard branch, check whether an existing control or self-test runs through the same code that the guard protects.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

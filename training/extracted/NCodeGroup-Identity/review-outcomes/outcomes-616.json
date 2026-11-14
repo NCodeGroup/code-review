@@ -1,0 +1,40 @@
+{
+  "hash": "adfc23b0fcadc517",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #616",
+  "rules": [
+    {
+      "statement": "In a test project, give every write route or handler method that runs an authorization check its own refusal test, which stubs the authorization to refuse and asserts the error result and that no store read or write happened.",
+      "why": "If one route loses its authorize call and only some sibling routes have refusal tests, no test fails. A shared validator path doesn't protect the untested routes.",
+      "check": "When a diff adds or moves an authorization call into several handler methods, check that each method has a WhenUnauthorized-style test, not just some of them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an integration test to be split into a `[Theory]` per route when it builds one hosted server and one arrangement to prove one behavior across several routes, and each assertion names its route through the request it checks.",
+      "why": "A theory would rebuild the host and the arrangement once per route to prove the same claim. Each assertion already identifies its route, so a failure still says which route broke.",
+      "check": "Before reporting a multi-assertion integration test, check whether it proves one behavior over one shared hosted arrangement and whether each assertion's request names the route. If both hold, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End every text file, including Markdown docs and indexes, with exactly one trailing LF.",
+      "why": "Without a final newline, the next line appended makes a noisy diff, and tools that expect a final LF may complain.",
+      "check": "Look for diffs that show '\\ No newline at end of file' on a changed file, or a file that ends in more than one blank line.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

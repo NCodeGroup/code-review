@@ -1,0 +1,31 @@
+{
+  "hash": "bd3eb2c353a97e4d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #282",
+  "rules": [
+    {
+      "statement": "In a shell script that may run a command through sudo, set environment variables for that command with `$sudo env VAR=value cmd`, not `VAR=value $sudo cmd`.",
+      "why": "A `VAR=value` prefix sets the variable for sudo itself, and sudo's default `env_reset` drops it, so in a non-root session the variable (such as DEBIAN_FRONTEND=noninteractive) never reaches the command and the install can prompt or fail.",
+      "check": "Look for a variable assignment placed before `sudo` or a `$sudo` variable on the same command line, and check whether the variable is meant for the command that runs after sudo.",
+      "scope": "domain",
+      "domain": "shell-scripts",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a shell script that installs packages with apt-get, deal with empty or stale apt lists: run `apt-get update` before the install, or retry the install once after `apt-get update` if it fails.",
+      "why": "In a container with empty or stale apt lists, the install fails to pull in dependencies. Retrying only after a failure means a warm container still skips the update.",
+      "check": "Look for `apt-get install` (including a local .deb that pulls in dependencies) with no `apt-get update` before it and no retry after an update when it fails.",
+      "scope": "domain",
+      "domain": "shell-scripts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

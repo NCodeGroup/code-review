@@ -5,7 +5,9 @@
 //   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules]
 //   node training/run.ts --retag
 //
-// 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The result
+// 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The bot's own
+//    findings that the maintainer answered are a source too, one per pull request, with the replies and whether the
+//    finding was fixed or declined. The result
 //    is saved under training/extracted/<repository>/ with the source's content hash, so a rerun reads only sources that
 //    changed. An instruction file's rules also keep the file's applyTo globs.
 // 2. Generalize: Opus merges every repository's extracted rules, topic by topic, into guidance/<topic>.md, which the
@@ -30,8 +32,11 @@ import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agen
 import { mapWithConcurrency } from '../src/concurrency.ts';
 import { applyToGlobs } from '../src/gather.ts';
 import { bulletGlobs, formatBullet, parseBullet, type GuidanceRule } from '../src/guidance.ts';
+import { isDeclining } from '../src/outcomes.ts';
 import { startProxy } from '../src/proxy.ts';
+import { botLogin } from '../src/results.ts';
 import { orgGuidanceRepository } from '../src/teach.ts';
+import { findingBody, findingTitle, parseFindingComment } from '../src/threads.ts';
 import { fetchGuidanceIssues, taughtRules, withTaughtRules } from './guidance-issues.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +47,7 @@ const topics = [
 ] as const;
 
 // applyTo: the globs of the instruction file a source comes from, as its frontmatter lists them.
-interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
+export interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
 interface Rule {
   statement: string;
   why: string;
@@ -60,8 +65,9 @@ function arg(name: string): string | undefined {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-// The source labels the eval cases draw on: the review of each pull request a case names, and each decision record its
-// source cites. Labels look like "Identity review of #341" and "Identity ADR-0266".
+// The source labels the eval cases draw on: the review and the answered bot findings of each pull request a case names,
+// and each decision record its source cites. Labels look like "Identity review of #341", "Identity outcomes of #341"
+// and "Identity ADR-0266".
 export function holdoutLabels(cases: { id: string; repository: string; pullRequest?: number; source?: string }[]): Set<string> {
   const labels = new Set<string>();
   for (const c of cases) {
@@ -69,7 +75,10 @@ export function holdoutLabels(cases: { id: string; repository: string; pullReque
     const text = `${c.id} ${c.source ?? ''}`;
     const pulls = new Set<number>(c.pullRequest ? [c.pullRequest] : []);
     for (const m of text.matchAll(/(?:\/pull\/|#|^comments-)(\d+)/g)) pulls.add(Number(m[1]));
-    for (const pull of pulls) labels.add(`${repo} review of #${pull}`);
+    for (const pull of pulls) {
+      labels.add(`${repo} review of #${pull}`);
+      labels.add(`${repo} outcomes of #${pull}`);
+    }
     for (const m of text.matchAll(/ADR-(\d{4})/g)) labels.add(`${repo} ADR-${m[1]}`);
   }
   return labels;
@@ -143,11 +152,22 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
   return sources;
 }
 
+// Every review comment on a repository's pull requests, as GitHub's REST API lists them. It asks for each page by number
+// instead of following GitHub's next-page links, which name the repository by its numeric id, a path that some
+// proxies refuse, such as a Claude Code cloud session's.
+function fetchPullComments(repository: string): PullComment[] {
+  const comments: PullComment[] = [];
+  for (let page = 1; ; page++) {
+    const raw = execFileSync('gh', ['api', `repos/${repository}/pulls/comments?per_page=100&page=${page}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const batch = JSON.parse(raw) as PullComment[];
+    comments.push(...batch);
+    if (batch.length < 100) return comments;
+  }
+}
+
 // The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
-function reviewComments(repository: string, repoName: string, maintainer: string): Source[] {
-  const raw = execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repository}/pulls/comments?per_page=100`], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  const comments = (JSON.parse(raw) as any[][]).flat();
-  const replies = new Map<number, any[]>();
+export function maintainerComments(comments: PullComment[], repoName: string, maintainer: string): Source[] {
+  const replies = new Map<number, PullComment[]>();
   for (const c of comments) if (c.in_reply_to_id) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
   const byPull = new Map<string, string[]>();
   for (const c of comments.filter((c) => c.user?.login === maintainer && !c.in_reply_to_id)) {
@@ -162,6 +182,62 @@ function reviewComments(repository: string, repoName: string, maintainer: string
     label: `${repoName} review of #${pull}`,
     text: `Review comments by the maintainer on pull request #${pull}:\n\n${threads.join('\n\n---\n\n')}`,
   }));
+}
+
+// How much of a finding's body and of each reply a review-outcomes source keeps, and what separates its threads.
+const maxOutcomeFindingChars = 1_500;
+const maxOutcomeReplyChars = 1_000;
+const threadSeparator = '\n\n---\n\n';
+
+// One review comment as GitHub's REST API lists it for a repository's pull requests.
+export interface PullComment { id: number; in_reply_to_id?: number; user?: { login?: string }; body?: string; path?: string; line?: number | null; original_line?: number | null; diff_hunk?: string; pull_request_url?: string }
+
+// The bot's findings that the maintainer replied to, one source per pull request, with the replies and a verdict read
+// from the last reply: fixed, declined or answered. Only the maintainer's replies count. A pull request whose threads
+// exceed `size` characters is split into several sources that share one label.
+export function outcomeSources(comments: PullComment[], repoName: string, maintainer: string, size = 30_000): Source[] {
+  const replies = new Map<number, PullComment[]>();
+  for (const c of comments) {
+    if (c.in_reply_to_id && c.user?.login?.toLowerCase() === maintainer.toLowerCase()) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
+  }
+  const byPull = new Map<string, string[]>();
+  for (const c of comments) {
+    if (c.in_reply_to_id || c.user?.login !== botLogin) continue;
+    const body = c.body ?? '';
+    const finding = parseFindingComment(body);
+    const answers = replies.get(c.id);
+    if (!finding || !answers?.length) continue;
+    const last = answers.at(-1)!.body ?? '';
+    const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last) ? 'fixed' : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last) ? 'declined' : 'answered';
+    const thread = [
+      `Finding ${finding.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
+      findingBody(body).slice(0, maxOutcomeFindingChars),
+      `Outcome: ${verdict}`,
+      ...answers.map((r) => `Maintainer: ${(r.body ?? '').slice(0, maxOutcomeReplyChars)}`),
+    ].join('\n');
+    const pull = String(c.pull_request_url).split('/').pop()!;
+    byPull.set(pull, [...(byPull.get(pull) ?? []), thread]);
+  }
+  const sources: Source[] = [];
+  for (const [pull, threads] of byPull) {
+    const pieces: string[] = [];
+    let current = '';
+    for (const thread of threads) {
+      if (current && current.length + threadSeparator.length + thread.length > size) {
+        pieces.push(current);
+        current = '';
+      }
+      current = current ? `${current}${threadSeparator}${thread}` : thread;
+    }
+    if (current) pieces.push(current);
+    pieces.forEach((piece, i) => sources.push({
+      kind: 'review-outcomes',
+      id: pieces.length === 1 ? `outcomes-${pull}` : `outcomes-${pull}-${i + 1}`,
+      label: `${repoName} outcomes of #${pull}`,
+      text: `The review bot's findings on pull request #${pull} that the maintainer answered, with the replies:\n\n${piece}`,
+    }));
+  }
+  return sources;
 }
 
 const ruleSchema = {
@@ -221,7 +297,41 @@ export function reuseExtraction(saved: Extracted | undefined, hash: string, prom
   return { saved: { ...rest, ...(applyTo?.length ? { applyTo } : {}) }, changed };
 }
 
-async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[]): Promise<void> {
+// A repository's extraction folder under `base`: the existing folder whose name equals owner-repository ignoring case,
+// with the repository name spelled as that folder spells it, so the source labels stay the same; otherwise the folder
+// a first run creates, with the repository name as given.
+export function extractedFolder(base: string, repository: string): { dir: string; repoName: string } {
+  const owner = repository.split('/')[0]!;
+  const wanted = repository.replace('/', '-');
+  const found = existsSync(base) ? readdirSync(base, { withFileTypes: true }).find((e) => e.isDirectory() && e.name.toLowerCase() === wanted.toLowerCase()) : undefined;
+  if (found) return { dir: path.join(base, found.name), repoName: found.name.slice(owner.length + 1) };
+  return { dir: path.join(base, wanted), repoName: repository.split('/')[1]! };
+}
+
+// The saved extractions under `dir` whose source no longer exists: the .json files at <dir>/<kind>/<id>.json that no
+// source names, sorted.
+export function staleExtractions(dir: string, sources: Pick<Source, 'kind' | 'id'>[]): string[] {
+  if (!existsSync(dir)) return [];
+  const current = new Set(sources.map((s) => path.join(dir, s.kind, `${s.id}.json`)));
+  const stale: string[] = [];
+  for (const kind of readdirSync(dir, { withFileTypes: true })) {
+    if (!kind.isDirectory()) continue;
+    for (const name of readdirSync(path.join(dir, kind.name))) {
+      const file = path.join(dir, kind.name, name);
+      if (name.endsWith('.json') && !current.has(file)) stale.push(file);
+    }
+  }
+  return stale.sort();
+}
+
+// The request the model reads for one source: its label, the files it applies to when it is an instruction file, and
+// its text.
+export function extractRequest(source: Pick<Source, 'label' | 'text' | 'applyTo'>): string {
+  const applies = source.applyTo?.length ? `Applies to: ${source.applyTo.join(', ')}\n` : '';
+  return `Source: ${source.label}\n${applies}\n<source>\n${source.text}\n</source>`;
+}
+
+async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[], prune: boolean): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'extract.md'), 'utf8');
   const promptHash = sha(prompt);
   let reused = 0, failed = 0;
@@ -241,7 +351,7 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
       role: `extract:${source.kind}`,
       tier: 'opus',
       systemPrompt: prompt,
-      prompt: `Source: ${source.label}\n\n<source>\n${source.text}\n</source>`,
+      prompt: extractRequest(source),
       schema: extractSchema,
       maxTurns: 3,
       budgetUsd: 3,
@@ -253,6 +363,11 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
     console.log(`  ${source.label}: ${result.output.rules.length} rules, $${totalCost(result.records).toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
+  if (prune) {
+    const stale = staleExtractions(outDir, sources);
+    for (const file of stale) rmSync(file);
+    if (stale.length) console.log(`Removed ${stale.length} extractions of sources that no longer exist.`);
+  }
 }
 
 function readExtracted(): Extracted[] {
@@ -276,7 +391,7 @@ function loadExtracted(): { rule: Rule; source: string }[] {
 // The files each instruction-file source applies to, by its label, as globs for any NCodeGroup repository.
 export function sourceScopes(extracted: Pick<Extracted, 'label' | 'applyTo'>[] = readExtracted()): Map<string, string[]> {
   const scopes = new Map<string, string[]>();
-  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, applyTo.map(generalGlob));
+  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, [...new Set(applyTo.map(generalGlob))]);
   return scopes;
 }
 
@@ -412,12 +527,15 @@ async function main(): Promise<void> {
     if (repository && !process.argv.includes('--generalize-only')) {
       const checkout = arg('checkout');
       if (!checkout) throw new Error('Pass --checkout with a clone of the repository at its default branch.');
-      const repoName = repository.split('/')[1]!;
+      const { dir: extractedDir, repoName } = extractedFolder(path.join(root, 'training', 'extracted'), repository);
       const only = arg('only')?.split(',');
+      const maintainer = arg('maintainer') ?? 'polewskm';
+      const comments = fetchPullComments(repository);
       const sources = [
         ...decisionRecords(checkout, repoName),
         ...conventionFiles(checkout, repoName),
-        ...reviewComments(repository, repoName, arg('maintainer') ?? 'polewskm'),
+        ...maintainerComments(comments, repoName, maintainer),
+        ...outcomeSources(comments, repoName, maintainer),
       ].filter((s) => !only || only.some((o) => s.id.includes(o)));
       console.log(`${sources.length} sources from ${repository}`);
       if (process.argv.includes('--list')) {
@@ -426,7 +544,7 @@ async function main(): Promise<void> {
         console.log([...kinds].map(([k, n]) => `${k}: ${n}`).join(', '), `| ${Math.round(sources.reduce((n, s) => n + s.text.length, 0) / 1000)}K characters`);
         return;
       }
-      await extract(run, sources, path.join(root, 'training', 'extracted', repository.replace('/', '-')), calls);
+      await extract(run, sources, extractedDir, calls, !only);
     }
     // The maintainer's own sources, such as review prompts that have worked well, belong to no one repository.
     if (!process.argv.includes('--generalize-only') && !process.argv.includes('--list')) {
@@ -436,7 +554,7 @@ async function main(): Promise<void> {
             kind: 'maintainer', id: name.slice(0, -3), label: `NCodeGroup maintainer: ${name.slice(0, -3)}`, text: readFileSync(path.join(dir, name), 'utf8'),
           }))
         : [];
-      if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls);
+      if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls, true);
     }
     if (!process.argv.includes('--extract-only')) {
       if (!process.argv.includes('--no-taught-rules')) await updateFeedback();

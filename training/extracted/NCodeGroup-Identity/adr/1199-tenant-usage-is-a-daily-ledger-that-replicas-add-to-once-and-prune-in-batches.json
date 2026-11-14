@@ -1,0 +1,139 @@
+{
+  "hash": "14fceb3f0e211424",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1199",
+  "rules": [
+    {
+      "statement": "When a periodic background writer adds counts to shared rows and a save can fail with an unknown outcome, make the add idempotent: number each replica's batches and record the replica's last applied batch number in the same unit of work, skipping any batch numbered at or below it.",
+      "why": "A timeout after commit looks the same as one before, so a blind retry adds the counts twice, and data such as billing must not overcount.",
+      "check": "Look for retry loops or retried flushes that increment persisted counters without a per-writer checkpoint saved in the same transaction; flag 'document the overcount' approaches.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several replicas add to the same persisted row, serialize them with the row's concurrency token and the change tracker rather than bulk update or set-based delete statements such as ExecuteUpdate/ExecuteDelete.",
+      "why": "Not every Entity Framework provider supports bulk statements (InMemory included), and the concurrency token plus change tracker gives the same correctness on every provider.",
+      "check": "Flag ExecuteUpdateAsync/ExecuteDeleteAsync or raw bulk SQL in stores meant to run on any EF provider; check shared mutable rows carry a concurrency token.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prune data that grows with use in bounded batches, each its own unit of work, repeating while a batch comes back full, never as one unbounded delete.",
+      "why": "One unbounded prune holds a transaction and change tracker over everything past retention, which grows without limit after an outage of the prune.",
+      "check": "Look at retention/prune code: it must take a limit, return the count staged, and loop while the batch is full; flag single queries removing all expired rows.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a prune run by several replicas at once, treat a batch lost to another replica's concurrent removal as progress, and log any other failure and retry on the next tick instead of coordinating replicas.",
+      "why": "Concurrent pruning needs no coordination if a concurrency conflict just means the rows are already gone.",
+      "check": "Check the prune loop catches concurrency exceptions as success and logs other exceptions without killing the background service.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record high-frequency per-request accounting as an in-memory increment under a lock with no I/O on the request path, and flush it to storage periodically in bounded batches.",
+      "why": "A row or write per request is log-level write load on the database; an in-memory count costs nothing per request and the database sees one small unit of work per replica per interval.",
+      "check": "Flag per-request database writes or awaits for usage/accounting on the request path; check the flush batches have a fixed maximum size.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a periodic flush fails, keep the failed batch at the head of the queue and retry it before anything else, holding new data in the accumulator until the queue is empty.",
+      "why": "Memory stays bounded and a later batch never commits before an earlier one.",
+      "check": "Look at flush retry logic for failed batches being dropped, re-queued at the tail, or unbounded queue growth while failures persist.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A background flush cancelled by shutdown must not log an error or warning for the cancellation.",
+      "why": "Cancellation is an expected stop, not a failure.",
+      "check": "Check catch blocks in hosted services: OperationCanceledException from the stopping token should be swallowed silently, not logged.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted service that flushes buffered data on stop must memoize one final flush so concurrent StopAsync calls await the same task, serialize it with the periodic flush, and log any data it could not save or that it still held when the stop token expired as a warning with a defined event id.",
+      "why": "Repeated or concurrent stops must not flush twice or race the periodic flush, and lost data must be visible.",
+      "check": "Inspect StopAsync for unguarded repeated flushes, missing serialization with the timer loop, or data silently dropped on stop timeout.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run periodic background work on a PeriodicTimer created with the registered TimeProvider, with its period taken from validated options.",
+      "why": "The registered TimeProvider keeps timing testable, and timer periods are validated at startup like other options.",
+      "check": "Flag Task.Delay loops, System.Threading.Timer, or TimeProvider.System used directly in hosted services, and hardcoded periods not bound from options.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not put per-tenant identifiers or usage as metric attributes; keep per-tenant usage in a durable store read through an API.",
+      "why": "A tenant attribute on a metric creates a series per tenant, making cardinality unbounded.",
+      "check": "Look for tenant ids or similar unbounded keys added as tags on Meter instruments or metric attributes.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a value at the API call that accepts it for deferred processing (for example a name to be stored later) so a bad value throws at its caller, not later during a background flush.",
+      "why": "A bad name otherwise fails at every flush, far from the code that supplied it.",
+      "check": "Check record/enqueue methods validate their arguments eagerly and throw ArgumentException types, including ArgumentOutOfRangeException for empty batches or numbers below range.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An API that queries a date range must default the range when omitted and reject a range longer than a fixed maximum span.",
+      "why": "Bounded ranges keep reads bounded however much history the store holds.",
+      "check": "Look at endpoints taking from/to parameters for a missing default or missing maximum-span validation.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

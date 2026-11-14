@@ -1,0 +1,174 @@
+{
+  "hash": "18fc68afe6e8c00e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1168",
+  "rules": [
+    {
+      "statement": "When a token is inactive, the introspection endpoint must return exactly `{\"active\": false}` with no other members, so the response never says why the token failed.",
+      "why": "RFC 7662 says an inactive token returns only `active: false`, so callers learn nothing about why it failed.",
+      "check": "Look at the introspection response paths for invalid, expired, revoked, foreign or wrong-caller tokens. Flag any that add claims, error codes or descriptions next to `active: false`, or that return a non-200 status.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The introspection endpoint answers `400 invalid_request` only when the `token` parameter is missing, and answers every other request with `200`.",
+      "why": "The endpoint never reveals token state through status codes. An inactive token is a normal 200 response.",
+      "check": "Flag introspection code that returns 4xx/5xx for an unknown, malformed or invalid token, or that returns something other than invalid_request when `token` is missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Introspection reports a token active only to the party that consumes it: an access token only to a resource server whose identifier is in `aud`, and a refresh token only to the client it was issued to. Every other caller gets `{\"active\": false}`.",
+      "why": "RFC 7662 §4 and RFC 9701 §5 require this. Otherwise a token's own client could read claims that encryption hides from it (RFC 9068 §6).",
+      "check": "Flag introspection logic that reports a token active to any authenticated client without checking that the caller is the token's audience (access tokens) or its issued-to client (refresh tokens).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An active introspection response must reduce `aud` to the calling resource server's identifier and `scope` to that resource server's scopes, and must leave `scope` out when none remain, instead of returning the token's full claim set.",
+      "why": "RFC 7662 §4 and RFC 9701 §5 ask the server to limit the response to the caller. Another audience's scopes are not this resource server's business.",
+      "check": "Flag introspection responses that copy `aud`, `scope` or the full claim set from the token without filtering them to the caller, or that send an empty `scope`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Introspection must reflect current revocation and lifetime state: a token whose session is revoked, a refresh token whose grant is no longer active, and a refresh token past its family's expiry horizon are all reported inactive.",
+      "why": "Introspection must agree with the lifetimes and revocation state used everywhere else on the server.",
+      "check": "Flag introspection paths that check only the signature or `exp` and skip session revocation, grant status or the refresh-token family's horizon.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A resource server calls introspection as an OAuth client bound to it. That client must be confidential and authenticates through the ordinary client-authentication path; do not add a separate principal type with its own credentials, and do not match a client ID against an audience.",
+      "why": "RFC 9701 §3 treats a resource server as a client. A second principal type would duplicate client authentication and its hardening, and matching client IDs to audiences would invent a binding nobody registered.",
+      "check": "Flag new resource-server credentials or a separate authentication path for introspection callers. Flag code that treats a caller as a resource server because its client_id equals an audience URI. Flag public clients accepted as resource-server callers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Restrict a special class of principal to certain endpoints through opt-in endpoint metadata that the central resolver checks, so the principal is refused by default. Do not add deny checks endpoint by endpoint.",
+      "why": "An endpoint added later would forget a per-endpoint check, while opt-in metadata fails closed.",
+      "check": "Flag restrictions written as `if (client is X) reject` inside individual endpoints, and flag a resolver that accepts the restricted principal when an endpoint carries no metadata or when no endpoint is present, such as in background work.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A client bound to a resource server for introspection must not be accepted at any other endpoint, including token, authorize and endpoints added later.",
+      "why": "RFC 9701 §3 requires that an introspecting resource server be limited to introspection. A bound client that could request tokens could mint the tokens it is trusted to read.",
+      "check": "Flag any endpoint other than introspection that opts in to accepting resource-server clients.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Binding a client to a resource server is set once at creation and cannot change later. It requires the resource server to be an enabled, non-system resource server in the client's tenant, and requires the caller to be authorized to update that resource server.",
+      "why": "A bound client can read every token issued to that resource server, so creating the binding needs the same rights as modifying the resource server.",
+      "check": "Flag update paths that change a client's resource-server binding, binding that skips the tenant or system-resource-server validation (400), and binding that skips the update-permission check on the resource server (401/403).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWT introspection response (RFC 9701) uses `typ` `token-introspection+jwt`, carries only `iss`, `aud` (the resource server's identifier) and `iat` as top-level claims with the result under `token_introspection`, and never has a top-level `sub` or `exp`.",
+      "why": "With no top-level `sub` or `exp`, the response cannot be mistaken for an access token.",
+      "check": "Flag JWT introspection responses with another `typ`, with the result claims flattened to the top level, or with a top-level `sub` or `exp`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer introspection with `406` when an ordinary client asks for `application/token-introspection+jwt`, and when a resource-server client that registered response encryption asks for plain JSON. A response is never weaker than what the client registered.",
+      "why": "RFC 9701 defines JWT responses only for resource servers, and downgrading to unencrypted JSON would bypass the client's registered protection.",
+      "check": "Flag content negotiation that gives JWT responses to non-resource-server clients, or that falls back to JSON for a client registered for encrypted introspection responses.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign and encrypt JWT introspection responses with the client's registered `introspection_signed_response_alg` (default `RS256`, `PS256` under FAPI 2.0) and `introspection_encrypted_response_{alg,enc}`, using the same credential selection and ceilings as ID tokens and UserInfo responses.",
+      "why": "RFC 9701 §6 sets these defaults, and every JWT exchanged with a client follows its registered metadata within the effective ceilings.",
+      "check": "Flag hard-coded introspection algorithms, defaults that differ from these, or a separate credential-selection path for introspection JWTs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When one client-authentication service serves several endpoints, discovery must mirror `token_endpoint_auth_methods_supported` and `token_endpoint_auth_signing_alg_values_supported` into the matching `introspection_endpoint_*` and `revocation_endpoint_*` members.",
+      "why": "RFC 8414 §2 defines per-endpoint members, and the advertised values must match the shared authentication service.",
+      "check": "Flag discovery metadata that advertises introspection or revocation endpoints without the mirrored auth-method and signing-alg members, or with values that differ from the token endpoint's.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model protocol responses whose claims vary by token and by extension as a few typed members plus a `[JsonExtensionData]` dictionary flattened into the top-level object, not a fixed strongly typed DTO. Add claims through additional handlers instead of changing the endpoint or the response type.",
+      "why": "The extension dictionary keeps the result open to enrichment without a public-API change for each claim.",
+      "check": "Flag new hard-coded claim properties on an open-ended protocol response type, or endpoint edits that add claims which an extra handler registration could provide.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

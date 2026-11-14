@@ -1,0 +1,161 @@
+{
+  "hash": "a1f2163aebf4908b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #827",
+  "rules": [
+    {
+      "statement": "Don't report upgrade, backfill, migration or backward-compatibility concerns for data or identifiers in a repository whose standing instructions say it is pre-release with no shipped release or deployed database.",
+      "why": "With nothing shipped, no stored data or existing deployment can be affected. The repository records no upgrade path for things that have only existed inside it.",
+      "check": "Before raising an upgrade or compatibility finding, read the repository's instructions and ADRs for a pre-release direction. If there is one, don't report the finding.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a catch that recovers from an insert race to be narrowed to a duplicate-key or concurrency exception unless the persistence abstraction actually defines one for that failure. A broad catch is acceptable when it re-reads the row and rethrows if none exists.",
+      "why": "If the abstraction has no duplicate-key type, the unique-key race comes back as the provider's generic update exception. A narrower catch would then rethrow the very race it exists to handle.",
+      "check": "Check which exceptions the store's save method maps. Then check whether the catch returns a result only after a fresh read finds the persisted row and rethrows otherwise.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After deserializing a request body, check every property that must not be null (including `required` ones) and answer 400 when one is null.",
+      "why": "`required` doesn't reject an explicit JSON null. The null then reaches an argument guard, and the client gets an unhandled exception and a 500 instead of the documented 400.",
+      "check": "Look for request DTOs with `required` or non-nullable reference properties whose handler passes them on without a null check after deserialization.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A helper called inside an existing unit of work takes the caller's store manager or unit of work and stages its changes without saving. It must not open and save its own.",
+      "why": "A second store manager commits outside the caller's unit of work, leaves the precondition read out of the transaction and costs an extra connection.",
+      "check": "Look for helpers that create a new store manager or DbContext and call SaveChanges while their caller already holds one.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put access-gating logic that several endpoints of one route group share in one place, such as a shared service or an endpoint filter on the group. Don't copy it into each handler.",
+      "why": "If one copy changes, the endpoints disagree about when the surface is served, which weakens guarantees such as every route answering 404.",
+      "check": "Look for identical gating methods (environment, HTTPS or state checks) in more than one handler of the same route group.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pull request that says `Closes #N` must meet that issue's acceptance criteria. Otherwise, state in the PR and the issue that the issue is superseded, or reference it without closing it.",
+      "why": "Merging closes the issue as done even when its Done-when items aren't met, silently replacing the requested design with another.",
+      "check": "Compare the issue's Done-when list with the changed files when the PR description says it closes an issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep one implementation of a validation rule or helper (identifier format, JSON coercion, error conversion, command-line argument handling) and call it from every place that applies it. Don't copy the body into another class or package.",
+      "why": "Copies drift, for example in edge-case handling, so validation at startup and at runtime can disagree.",
+      "check": "Look for private methods whose bodies match another class's method, especially validation rules copied between an options validator and an API.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write route paths or prefixes owned by another component as inline literals. Use that component's shared constants, or use named constants with a comment saying which routes they mirror.",
+      "why": "If the owning routes change, the literals go stale, for example leaving registered clients with outdated redirect or logout URIs.",
+      "check": "Look for string literals such as `/bff/callback` or route prefixes that duplicate routes defined elsewhere.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A list of reserved names that mirrors route prefixes must be built from the route constants or be covered by a test asserting that each mapped prefix is reserved.",
+      "why": "If a top-level segment is added or renamed without updating the list, a resource with that name is shadowed by the route and can't be reached.",
+      "check": "Look for hard-coded reserved-name lists that nothing ties to the route prefix constants or checks with a test.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validation failure message names the configuration key, the allowed range and the configured value that was refused.",
+      "why": "Without the configured value, an operator has to look up which value was rejected.",
+      "check": "Look in IValidateOptions implementations for failure messages that leave out the actual configured value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log each privileged principal or client that a provisioning or setup path creates, with its identifiers (for example client id and tenant id), not only the primary account.",
+      "why": "Otherwise an operator can't see in the logs that setup created a privileged client.",
+      "check": "In setup or provisioning code, look for clients, accounts or role grants that are created without a log message after the save.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An XML doc comment on an interface method describes only what the default implementation actually does. Don't claim validations it doesn't perform.",
+      "why": "Callers and authors of custom implementations may count on checks that don't happen.",
+      "check": "Compare doc summaries that claim validation with the default implementation's code.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A rate limiter keyed by client address partitions on a normalized address, with IPv6 grouped by /64 and IPv4-mapped IPv6 converted to IPv4, not on the raw `RemoteIpAddress.ToString()`.",
+      "why": "An attacker holding one /64 can rotate addresses and never reach the limit, and one client can get two buckets through its mapped and unmapped forms.",
+      "check": "Look for RateLimitPartition keys built directly from `Connection.RemoteIpAddress.ToString()`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A Helm chart fails at render time (in its validate helper or schema) for any configuration the host would refuse at runtime, such as a client rendered without its required key set.",
+      "why": "Otherwise `helm install` succeeds and the Job fails at runtime, retrying until backoffLimit and leaving the system unconfigured.",
+      "check": "Look for chart values that are rendered conditionally while the values they depend on aren't required by the validate template or schema.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

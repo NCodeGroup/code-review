@@ -1,0 +1,62 @@
+{
+  "hash": "7ca520771fa42731",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #722",
+  "rules": [
+    {
+      "statement": "In a test project, when the code under test is expected to make exactly one call or produce exactly one item, assert the exact count (for example `Assert.Single`) instead of only checking that the collection is non-empty.",
+      "why": "A loosened `Assert.NotEmpty` lets a duplicated or extra call pass the test unnoticed.",
+      "check": "Look for tests that replaced `Assert.Single` or an exact-count assertion with `Assert.NotEmpty` or a `>= 1` check, where the expected count is actually one and no comment explains why more are allowed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two handlers repeat the same guard logic, such as reading a feature, null-checking it and returning the same problem result, move it into one private helper that both call.",
+      "why": "Separate copies of a fail-closed check can drift apart when the rule changes.",
+      "check": "Look for the same feature lookup, null check and early-return error result copied across sibling handler methods in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report calling `IHttpMessageHandlerFactory.CreateHandler` and wrapping the result in a new `HttpMessageInvoker` on each request as a per-request handler allocation, and don't ask for the invoker to be cached.",
+      "why": "`CreateHandler` returns the cached handler of the name's active entry, so the only per-request cost is a small invoker that disposes nothing. Caching the invoker would break the handler rotation the factory owns.",
+      "check": "Before reporting, confirm the handler comes from `IHttpMessageHandlerFactory` and the invoker is created with `disposeHandler: false` or doesn't own the handler. Also look for tests that require the factory to be asked on every request.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change narrows or moves what a type sets up, rename the type and update its doc comment so both describe what it does now.",
+      "why": "A stale name or summary sends readers looking for setup the class no longer owns.",
+      "check": "Look for classes whose body was reduced or moved to a base class in the diff while the class name and `<summary>` still describe the old responsibilities.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a mechanical conversion in a file as unrelated churn when the pull request description says it covers that kind of conversion and the file's history shows the file falls within that scope.",
+      "why": "Such a change is in scope by design, so the finding is a false positive.",
+      "check": "Before reporting out-of-scope churn, read the pull request description and check which earlier commits or pull requests touched the file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

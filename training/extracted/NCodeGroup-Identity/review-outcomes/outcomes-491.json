@@ -1,0 +1,84 @@
+{
+  "hash": "75408a1f9dff7a9b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #491",
+  "rules": [
+    {
+      "statement": "When a catch filter lets a handler's exception escape because the caller's token was cancelled, check the exception type too (`exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested`), so only a cancellation escapes and any other handler failure is logged and the remaining handlers still run.",
+      "why": "A filter that checks only the token lets any ordinary handler failure reach the publisher once the token is cancelled, so the remaining handlers never get the message.",
+      "check": "Look for `catch (Exception ...) when (!token.IsCancellationRequested)` or similar filters in fan-out or dispatch loops that test the token but not whether the exception is an OperationCanceledException.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare a timeout or bound that several classes share in one shared internal place, and when several classes repeat the same bounded-token pattern (CancellationTokenSource with timeout plus try/catch/log), move it into one small helper.",
+      "why": "If the value is copied into each class, changing it in one class and not the others makes them disagree, and the single bound the design describes no longer holds.",
+      "check": "Look for the same TimeSpan literal or constant declared in more than one class for the same purpose, or the same CancellationTokenSource(timeout, TimeProvider) plus try/catch/log block repeated across handlers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report reading `IOptions<T>.Value` in a singleton's constructor or field initializer when the options are fixed at start-up (`IOptions<T>`, not a monitor) and their validators have no dependencies.",
+      "why": "Those values never reload, and a validator with no dependencies can't start a construction cycle, so the read at construction is safe. The maintainer has given this answer on several pull requests.",
+      "check": "Before reporting, confirm the type is `IOptions<T>` rather than `IOptionsMonitor<T>`/`IOptionsSnapshot<T>`, and check whether the options validator injects any services.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a configured value from one source within a class. When a helper holds the value it acts on, expose it from the helper and log that value instead of reading options again.",
+      "why": "If two paths read the value separately, the logged value and the value actually used can drift apart.",
+      "check": "Look for a class that passes `options.Value.X` to a helper and also reads `Options.X` again elsewhere, for example in a log message.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a manual mock `Verify(..., Times.Exactly(n))` that checks a call count, but do report a manual `Verify` of a setup that is already `.Verifiable()` on a strict mock.",
+      "why": "The test conventions allow a manual Verify to check a call count. A Verify on a setup that is already verifiable is redundant because the setup is verified on dispose.",
+      "check": "For each manual `mock.Verify` in a test, check whether it asserts a specific count (allowed) or repeats a setup already marked `.Verifiable()` (redundant).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, have a stub of an async method fail by returning a faulted task (`Task.FromException<T>(...)`) instead of throwing synchronously.",
+      "why": "A synchronous throw doesn't model a real async failure, and the test could behave differently if the code under test changes how it wraps the call.",
+      "check": "Look for test callbacks or stubs that return Task/ValueTask but `throw` directly instead of returning a faulted task.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give an async method that runs under a bounded timeout a `CancellationToken` as its last parameter, and have the caller or a shared helper create the bounded token and pass it in, rather than having the method create its own token and take none.",
+      "why": "The async-signature convention requires a trailing CancellationToken, and passing in the bounded token keeps that convention while still bounding the work.",
+      "check": "Look for async methods, including private ones, that take no CancellationToken because they create a `new CancellationTokenSource(timeout)` internally.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

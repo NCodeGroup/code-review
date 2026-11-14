@@ -1,0 +1,84 @@
+{
+  "hash": "34b8ec6c93a2c18f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #244",
+  "rules": [
+    {
+      "statement": "When a GitHub CLI command is replaced by its REST API form, carry over the ordering the caller relies on, e.g. pass `sort=updated` and `order=desc` to `search/issues` when the most recently updated items are expected.",
+      "why": "Without explicit sort parameters GitHub's search returns best-match order, so a limited result set is no longer the most recently updated items the caller promises.",
+      "check": "Look for `gh api` calls to `search/issues` or other list endpoints that replace a `gh issue list`/`gh pr list` call; check they pass the sort/order parameters the consuming step assumes.",
+      "scope": "domain",
+      "domain": "github-automation",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A call to a paginated REST list endpoint that reads only one page must either loop over pages or carry a comment next to it stating the cap and why it is enough.",
+      "why": "Otherwise results beyond the first page are dropped silently, and a reader can't tell whether the truncation was intended.",
+      "check": "Find list calls with `per_page=` and no page loop; flag them when no adjacent comment names the cap and justifies it.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a page loop or a test of paging on a single-page list call whose comment states the cap and why the filtered result stays below it.",
+      "why": "The maintainer accepts a documented cap that matches the previous limit when the filter keeps results far below it; a loop and test would add nothing.",
+      "check": "Before reporting a missing page loop, read the comment above the call; if it states the cap and the justification, don't report it.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each fallback path for a failed external read (non-zero exit, unparsable response, non-404 error) a test that forces the failure and asserts the fallback value.",
+      "why": "Without one, a regression could misreport state or throw, or make a failed read look like an empty result, and no check would fail.",
+      "check": "For new or changed failure branches around API or CLI reads, look for a test case that makes the read fail and asserts the resulting state.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test escaping or encoding logic with input that contains characters the escaping actually changes, and assert the encoded value.",
+      "why": "Input that needs no escaping lets a regression that drops the escaping pass unnoticed.",
+      "check": "Look at tests of URL or data escaping; flag them when every input is unchanged by the escape function, e.g. a branch name with no `/`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a cross-reference in a template points to the wrong section until you've checked where its included partials expand in the generated output.",
+      "why": "Included partials can place content inside the referenced section of the generated copies even though it isn't in the template source.",
+      "check": "Trace the include directives, e.g. `{{PROMPT:...}}`, in the referenced section and look at the generated copy before reporting a cross-reference as wrong.",
+      "scope": "domain",
+      "domain": "generated-prompt-templates",
+      "topic": "documentation",
+      "applies_to": [
+        "**/templates/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

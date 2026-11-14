@@ -1,0 +1,183 @@
+{
+  "hash": "466bdae6c6d0db82",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #551",
+  "rules": [
+    {
+      "statement": "When a plan applies several changes to the same stored record in sequence, build each change from the record as the earlier changes left it, not from the copy the plan originally read.",
+      "why": "Building a later change from the originally read record writes the earlier change's fields back, so the second write silently undoes the first (for example an extension that reverts an activation).",
+      "check": "Look for apply loops that construct updates from the plan's captured record (e.g. `change.Secret`) rather than from a working map updated after each change; check for a test that combines two changes to one record.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, run work that follows a committed unit of work (audit publishing, change announcements) on its own bounded token rather than the caller's or host's stopping token, and run the announcement in a `finally` so it happens whatever the publishing did.",
+      "why": "If the host stops or a publish fails between the commit and the follow-up work, the committed change gets no audit record and other replicas keep stale state, and nothing re-emits it later.",
+      "check": "After `SaveChangesAsync` or a commit, look for audit/event publishing or cache/tenant announcements that receive `stoppingToken`/the request token, or where a publish exception skips the announcement.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, wrap each step that runs after a commit in its own catch that logs the failure and continues with the remaining steps, so a step failure never fails an operation whose data is already committed.",
+      "why": "An exception escaping after the commit fails a committed operation and loses the remaining steps' work, such as later audit events.",
+      "check": "Look for post-commit step lists or callbacks run without per-step exception handling, or where an exception (including a timeout from the step's own bound) propagates to the caller after the commit.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint accepts a request field that a particular operation variant cannot honor, refuse the request with `400` before doing any work, rather than validating the field and then silently dropping it.",
+      "why": "A request that is accepted but only partly applied returns success with no sign that the caller's intent was ignored, for example a credential that is active at once although a future activation was requested.",
+      "check": "Follow each validated request field into every branch of the handler, and flag branches that build the downstream request without the field while still returning success.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't initialize a list or collection property of a configuration-bound options class with default entries; start it empty and apply the defaults in an `IPostConfigureOptions<T>` only when configuration supplies none.",
+      "why": "The configuration binder appends to an existing list, so configuration could add entries but never remove or replace a default, and entries listed in configuration would appear twice.",
+      "check": "Look for options properties like `public List<string> X { get; set; } = [\"a\", \"b\"];` or `IList<T>` collection initializers on bound options types.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't log each domain change inline when the same change is also published as an audit event; log only the mechanics (lost races, failures) and let the audit pipeline report the changes.",
+      "why": "Two streams report the same fact and can drift apart, and inline logs written before the commit record changes that a lost race later discards.",
+      "check": "Look for logger calls (and their EventIds/Log methods) next to code that builds an audit event for the same change, especially before the commit.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep each business rule in one implementation; when two types or extension sets need the same rule (or the same resolve-and-copy block recurs across handlers), have them delegate to one shared helper rather than restating it.",
+      "why": "Separately stated copies drift, so for example a stored secret and its runtime key could disagree about whether the key is active, and a new member has to be added in several places.",
+      "check": "Look for duplicated condition logic or copy blocks across extension classes or sibling handlers in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To copy a record with a few members changed, use a `with` expression that sets only those members, not a constructor or initializer that lists every member by hand.",
+      "why": "A member added to the record later is silently reset to its default by a hand-written copy, with no compiler error.",
+      "check": "Look for `new SomeRecord { A = src.A, B = src.B, ... }` copies of an existing record instance, where most members are taken over unchanged.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep the injected `IOptions<T>` and read `.Value` where the options are used, not in the constructor.",
+      "why": "Reading `.Value` at construction builds and validates the options during composition, not lazily on first use.",
+      "check": "Look for constructors or primary-constructor property initializers that evaluate `optionsAccessor.Value`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give private and private static helper methods a `///` summary too; the doc-comment convention isn't limited to public members.",
+      "why": "The maintainer applied the doc-comment rule to new private helpers such as `Min`/`Max` and validators.",
+      "check": "Look for new private methods in the diff that have no `///` summary or only a `//` comment.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a pure, dependency-free judgment on a data contract's own members (an extension or static helper that guards the contract's invariant) in an `*.Abstractions` package as a violation of the contracts-only rule.",
+      "why": "One implementation that every path calls guards the contract's invariant, and implementation packages that reference only abstractions need it. Comparable helpers already sit beside their contracts as recorded exceptions.",
+      "check": "Before reporting, check whether the logic only reads the contract's own members with no service dependencies, and whether an ADR or sibling helper (e.g. an existing `*Extensions` with bodies) already records the exception.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a re-read-and-retry, or a higher log level, for an optimistic-concurrency conflict when both contenders plan from the same stored state through the same planner and a later pass replans anyway.",
+      "why": "The winner already wrote what the loser would have written, so a retry would produce an empty plan. The lost race is an expected outcome, not a fault, so logging it at Debug is correct.",
+      "check": "Before reporting, check whether the competing writers derive their changes deterministically from the same stored data, and whether a design record says a later pass picks up the work.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a loose mock used as a settings/value-provider stub where a value the test leaves unset must read as absent; the testing conventions sanction that loose case, provided its setups end with `.Verifiable()`.",
+      "why": "A strict mock would throw on reads of unset names that the code under test legitimately treats as absent.",
+      "check": "Check the testing instructions' list of sanctioned loose mocks and whether the mocked type is a value-provider such as a settings collection, before asking for a strict mock.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a fake, view or factory type that only one test file needs out of that file; the test conventions require it to be a `private sealed` nested type there, and the no-nested-types rule applies to production code.",
+      "why": "The maintainer declined this repeatedly because the test conventions nest such types in the one file that uses them.",
+      "check": "Before reporting a nested type in a test file, check whether any other test file uses it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an integration test, don't insist on swapping the host's `TimeProvider` for a fake when the host reads the system clock, the test notes why it uses the wall clock, and its asserted instants derive from stored records rather than from the wall clock.",
+      "why": "Swapping the host's `TimeProvider` freezes every token and timer in the host for one assertion. Deriving assertions from stored values with a margin keeps the test deterministic.",
+      "check": "Check whether the asserted instants come from persisted values (e.g. `CreatedWhen.AddDays(n)`) and whether a comment explains the wall-clock use, before reporting `DateTimeOffset.UtcNow` in an integration test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, keep a test's assertions to the behavior its name states, and move an assertion about another behavior into its own test.",
+      "why": "A regression in an unrelated behavior otherwise fails a test named for something else, which misleads the reader.",
+      "check": "Compare each test's assertions to its method name, and flag assertions on properties or behaviors the name doesn't mention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

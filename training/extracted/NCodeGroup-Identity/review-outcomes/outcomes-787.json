@@ -1,0 +1,87 @@
+{
+  "hash": "691423885837bf53",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #787",
+  "rules": [
+    {
+      "statement": "When a Helm chart configures an ingress controller to verify TLS to backend pods, point the controller at a Secret that holds only the CA certificate (`ca.crt`), never at the pods' serving Secret that contains `tls.key`.",
+      "why": "Naming the serving Secret hands the pods' private key to the ingress controller, so anyone who compromises the controller also gets the backend TLS private keys.",
+      "check": "Look at ingress annotations such as `nginx.ingress.kubernetes.io/proxy-ssl-secret` and Traefik `ServersTransport` root CA settings; flag them when they reference the serving certificate Secret rather than a CA-only Secret.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/*.yaml",
+        "**/charts/**/*.tpl"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When classifying Kestrel binding addresses parsed with `System.Uri` as TCP endpoints, exclude the `pipe` host (named pipes) as well as `unix` (Unix sockets) instead of relying on `Uri.Port`.",
+      "why": "`Uri` reads `https://pipe:/<name>` with the scheme's default port 443, so a named-pipe binding passes a port check and is mistaken for a TCP endpoint, giving the operator a misleading error.",
+      "check": "Look for code that decides whether a server address is a TCP endpoint by its host and `Uri.Port`; flag it if `pipe` addresses aren't excluded and there's no test for the named-pipe forms.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a probe or check catches exceptions and reports a failure, carry the exception type and message, or the timeout, into the failure message instead of discarding them.",
+      "why": "Without the reason, the operator can't tell a protocol or cipher mismatch, a refused connection and a timeout apart.",
+      "check": "Look for catch blocks that return null or false without keeping the exception, where the caller later builds an error or refusal message that only says the operation failed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert each failure message a validator can produce through its public entry point, not only through the helper that decides the condition.",
+      "why": "Testing only the helper leaves the wording and wiring of that failure branch untested, so changes to either go unnoticed.",
+      "check": "For each failure branch added to a validation method, check that some test calls the public method with input that reaches that branch and asserts the message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when adding HTTPS redirection together with trusted forwarded-headers middleware, add a test that sends a plain-HTTP request with `X-Forwarded-Proto: https` from a trusted proxy through both and asserts that no `Location` header is written.",
+      "why": "Otherwise nothing tests how the two middlewares work together, and a change in middleware order could cause redirect loops behind a proxy without any test failing.",
+      "check": "When a diff wires `UseForwardedHeaders` (or a wrapper) with `UseHttpsRedirection` (or a wrapper), look for a test that combines them with a forwarded-HTTPS request.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an ADR index or amendment note says one decision amends another, describe only what the amending decision changes in the amended one.",
+      "why": "A reader who follows the amendment to the amended ADR expects to find that subject there; crediting it with content it doesn't contain sends them to the wrong place.",
+      "check": "Compare the wording of each 'amended by' note in a decision index against the amended ADR's body and the amending ADR's decisions.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for upgrade, migration or compatibility notes for breaking changes in a pre-release project whose direction allows breaking changes and requires every text to describe the product as it is.",
+      "why": "The repository's standing direction forbids such notes; the README and values already describe the current behavior.",
+      "check": "Check the repository's AGENTS.md and instructions for a pre-release direction that forbids upgrade or migration notes before reporting a missing one.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/values.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

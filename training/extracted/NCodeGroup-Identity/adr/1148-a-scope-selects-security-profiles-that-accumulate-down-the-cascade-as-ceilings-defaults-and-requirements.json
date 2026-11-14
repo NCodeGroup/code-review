@@ -1,0 +1,127 @@
+{
+  "hash": "54ba39047cfd6531",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1148",
+  "rules": [
+    {
+      "statement": "Never gate protocol enforcement on a security-profile name check such as `if (profile == \"fapi2\")` or a closed set of requirement flags; express the rule as a registered, typed profile requirement that the enforcement point evaluates through the profile catalog.",
+      "why": "Consumers and sibling packages add profiles by registering them, so the requirement set must stay open and enforcement points must stay profile-agnostic.",
+      "check": "Look for string comparisons against profile names, enums or boolean flags per profile, or switch statements on profile identity in endpoint, validation or token-issuance code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A security profile ceiling may only target a setting whose cascade merge is a lattice (Min, Max, And, Or, Intersect or Union), and a profile default may only target a setting with a non-lattice merge.",
+      "why": "A ceiling on a projection merge (Replace or Keep) is overridden or ignored by a child and makes the outcome depend on profile order; lattice merges make ceilings bind and compose by conjunction.",
+      "check": "In a new or changed profile's ceiling or defaults, confirm each referenced setting's merge kind; flag ceilings on Replace/Keep settings, defaults on lattice settings, or separate merge-kind metadata that duplicates the descriptor's.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A setting that selects security profiles must merge as a Union down the cascade so a child scope can add profiles but never remove a parent's selection.",
+      "why": "Clearing or replacing a parent's selection would keep its merged ceilings but silently drop its requirements, and a single replaceable name cannot select layered profiles.",
+      "check": "Flag changes that make the profile-selection setting a single value, or merge it with Replace or Keep, or that let a child scope clear the inherited list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass the settings of every scope (platform root, team, tenant, client and any effective-settings preview) through the same security-profile expansion, with the caller supplying the scope name explicitly rather than inferring it from the settings.",
+      "why": "If only some scopes are expanded, a profile selected higher up would enforce requirements without its ceilings, and discovery, enforcement and previews would disagree; inferring the scope would apply defaults where settings don't apply.",
+      "check": "Look for code paths that compute effective settings, discovery metadata or previews without calling the catalog's expansion, or that guess the scope from setting contents.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Iterate selected security profiles in ordinal name order when merging ceilings or resolving defaults, so the result never depends on registration or selection order.",
+      "why": "Deterministic ordering ensures the first-ordinal profile wins a default conflict and ceilings compose the same way everywhere.",
+      "check": "Flag profile enumeration that relies on registration, dictionary or list order, or uses culture-sensitive comparison instead of StringComparer.Ordinal.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Contradictory or invalid security-profile ceilings must fail closed (a set but empty list) or throw at expansion, never silently drop or filter a ceiling.",
+      "why": "Filtering ceilings by scope or skipping bad ones would let a mandated constraint disappear without a signal.",
+      "check": "Flag expansion code that skips, catches and ignores, or scope-filters ceilings, or that treats an empty intersected list as unrestricted.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a requirement shared by several selected security profiles fails, report it once and name 'a selected security profile' rather than a specific profile.",
+      "why": "Requirements are deduplicated across profiles, so attributing a failure to one profile would be arbitrary.",
+      "check": "Look at error descriptions from profile requirements for hard-coded profile names or duplicate evaluation of the same requirement.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply protocol rules that are correct for every client unconditionally rather than gating them on a security profile: single-use authorization codes, exact redirect_uri matching, validating client assertions and request objects with the effective clock skew, and the RFC 9207 `iss` authorization response parameter enabled by default.",
+      "why": "These FAPI 2.0 rules are simply correct for any client, so only rules a mandated profile should impose belong to a profile.",
+      "check": "Flag changes that wrap these behaviors in a profile check, relax redirect_uri matching to prefix/partial, allow code reuse, ignore clock skew settings, or default the iss parameter off.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return an authorization response redirect with HTTP 303 and a login challenge redirect with HTTP 302, never 307.",
+      "why": "A 307 would replay a POST body (including credentials) to the next location; FAPI 2.0 requires 303 and this is correct for every client.",
+      "check": "Look for redirect status codes in authorization response writers and login challenge handlers; flag 307 or a non-303 authorization response redirect.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a security profile's ceiling excludes a protocol default value (such as RS256), the profile must also supply a default that lies within its ceiling.",
+      "why": "Without a profile default every client under the profile would need an explicit choice and would fail at issuance.",
+      "check": "In a new or changed profile, compare ceilings against the descriptor defaults of the same settings; flag a ceiling that excludes the default with no profile default inside the ceiling.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

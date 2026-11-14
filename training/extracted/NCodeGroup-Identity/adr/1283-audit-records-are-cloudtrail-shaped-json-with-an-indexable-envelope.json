@@ -1,0 +1,221 @@
+{
+  "hash": "0a3d6d41ce9559b1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1283",
+  "rules": [
+    {
+      "statement": "Never put a secret, token, authorization code or query string in an audit record or its details; record an identifier or a hash of the value instead.",
+      "why": "Audit records are persisted and indexed, so any secret they carry leaks into the store, the logs and the traces.",
+      "check": "Look at audit event properties and WriteAuditDetails implementations for client secrets, access/refresh/ID tokens, authorization codes, passwords or raw query strings being written.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When capturing the HTTP request context for an audit record, never include the query string, cut the User-Agent at 512 characters, and take the source address from Connection.RemoteIpAddress rather than parsing forwarding headers.",
+      "why": "The query string can carry codes or tokens, and the host has already corrected RemoteIpAddress for a trusted forwarding proxy.",
+      "check": "Look for Request.QueryString, Request.Query or the full URL in audit request capture, an untruncated User-Agent, or reading X-Forwarded-For directly.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Capture the audit request context when the event is published, not inside a sink or background handler that may run after the request has completed.",
+      "why": "Sinks run in the background after the request ends, when the HttpContext is no longer valid.",
+      "check": "Look for audit sinks or background handlers reading HttpContext or IHttpContextAccessor instead of the request context stored on the event.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give an audit failure a required machine-readable error code (with optional message and status code), and don't add a free-text reason field to an audit event.",
+      "why": "Operators have to group failures by a code. Free text can't be filtered without parsing prose.",
+      "check": "Look for audit errors built without a code, or new event properties such as Reason or Description of type string used in place of an error code.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an audit event write its event-specific details through a typed method that takes a Utf8JsonWriter, never through an IDictionary<string, object> bag or a [JsonExtensionData] member.",
+      "why": "A dynamic bag lets any value, including a secret, reach the persisted record and invites magic-string keys. A typed writer stays reviewed and is trimming- and AOT-safe.",
+      "check": "Look for dictionary/object bags, [JsonExtensionData], or reflection-based serialization of audit event details.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't model an open set of event or record types as a closed polymorphic [JsonDerivedType] hierarchy listed on the base type.",
+      "why": "A package that adds an event would have to edit the library, which breaks the rule that vocabularies are open.",
+      "check": "Look for [JsonDerivedType] attributes listing every event subtype on an audit or event base type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the audit record's field names, declared once in a constants class, for the log state keys, span tags and metric attributes, rather than inventing names or repeating string literals.",
+      "why": "One set of names lets an operator pivot from a record to its log entry, trace and metric. The log state isn't checked by a source generator, so the constants are the only guard.",
+      "check": "Look for audit log, span or metric keys written as inline string literals, or names that differ from the record's snake_case field names.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Limit audit metric attributes to bounded fields such as event name, category and outcome, and never tag metrics with subject, client, tenant or request identifiers.",
+      "why": "Metric dimensions must be bounded. The unbounded identifiers belong in the record, the log entry and the span.",
+      "check": "Look at metric tag lists in audit and telemetry code for ids, IP addresses, user agents or other unbounded values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a direct ILogger.Log call in the audit logging handler as a breach of the [LoggerMessage]-only rule, but do require a // comment at the call that cites the decision allowing it.",
+      "why": "A source-generated logging method has a fixed parameter list, while the audit.* state keys vary for each event. That makes this a documented exception.",
+      "check": "Before flagging ILogger.Log, check whether it is the audit handler that logs flattened audit.* state. If it is, check only that the citing comment is present.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log a structured audit record as flattened key/value state (objects dotted, numbers kept as numbers), not as a single JSON string property or a text template sentence.",
+      "why": "A collector can't index fields that are inside one opaque string or inside prose.",
+      "check": "Look for audit logging that passes the serialized record as one {Record} placeholder or renders the event into a message sentence.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate audit event ids with Guid.CreateVersion7 and write event times as UTC RFC 3339 with a Z suffix.",
+      "why": "Time-ordered UUIDv7 identifiers index and paginate well, and a UTC Z timestamp is unambiguous.",
+      "check": "Look for Guid.NewGuid for audit event ids, local times or offsets other than Z, or non-RFC 3339 formats.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a custom correlation id to an audit record. Use the W3C trace and span ids of the current Activity and HttpContext.TraceIdentifier as the request id.",
+      "why": "These identifiers let a record pivot straight to traces and to the host's HTTP logs.",
+      "check": "Look for new correlation-id fields, headers or generated ids in audit records instead of Activity.Current trace and span ids.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep one schema version for the whole audit record, bump its minor version when a field is added to a released schema, and give no individual event type a schema version of its own.",
+      "why": "A single record version gives consumers one thing to check, and per-event versions fragment the schema.",
+      "check": "Look for new envelope fields added without a schema version change, or SchemaVersion properties on individual event types.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Omit audit record members that have no value, including an empty resources array, rather than writing nulls or empty values.",
+      "why": "The record format leaves out absent members. Nulls and empty values add noise to the indexed store.",
+      "check": "Look for audit writer code that writes null values, empty strings or an empty resources array.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute an audit event's resources from its typed properties, listing the target first and then the entity that owns it, rather than having the recorder set them.",
+      "why": "Deriving resources from typed properties keeps every acted-on entity in the record consistently, and the order states the ownership.",
+      "check": "Look for recorder code that assigns resources by hand, or resource lists where the owning entity comes before the target.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "State the actor type explicitly for each audit recorder method, and derive the log level from the event's severity (info is Information, warning is Warning, critical is Critical).",
+      "why": "The caller has to be stated in the record, not implied by the event type, and the log level must match the severity an operator alerts on.",
+      "check": "Look for new recorder methods that don't set an actor type, or audit log levels chosen independently of severity.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a JSON record into a pooled buffer writer without allocating a byte[], and read it back with JsonElement.Parse rather than JsonDocument.",
+      "why": "Binary data uses pooled rentals and allocates no byte[]. JsonElement.Parse avoids a disposable document.",
+      "check": "Look for ToArray(), new byte[] or MemoryStream in record serialization, or JsonDocument.Parse used to read a record back.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a matching entry to the audit-records event catalog document when an audit event is added or renamed.",
+      "why": "Adding or renaming an event is a reviewed change to the catalog that operators rely on.",
+      "check": "Look for a new or renamed audit event name constant without a matching change to the audit-records documentation.",
+      "scope": "domain",
+      "domain": "identity-audit",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

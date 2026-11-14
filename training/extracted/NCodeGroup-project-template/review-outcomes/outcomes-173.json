@@ -1,0 +1,20 @@
+{
+  "hash": "9977fe35be961dea",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #173",
+  "rules": [
+    {
+      "statement": "In test code, when two or more test suites need the same helper functions or fixture constants, define them once in a shared helper file that each suite imports (dot-sources), instead of copying them into each suite.",
+      "why": "Copies drift apart: a later fix to one copy can miss the other, and the suites diverge without anyone noticing.",
+      "check": "Look for helper functions or constants (such as fixture builders or embedded base64 data) in a new or changed test file that are also defined, with the same or near-identical body, in another test file. If you find a copy, ask for it to move into a shared helper. The shared helper must not be picked up as a test suite by the runner.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

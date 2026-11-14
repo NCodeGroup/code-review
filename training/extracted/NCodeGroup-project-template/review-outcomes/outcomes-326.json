@@ -1,0 +1,58 @@
+{
+  "hash": "03f859ff89b9a71c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #326",
+  "rules": [
+    {
+      "statement": "When a script or workflow branches on `git merge-base --is-ancestor`, treat only exit code 1 as \"not an ancestor\" and exit 0 as \"is an ancestor\", and stop and report any other non-zero code as a failed check instead of acting on it.",
+      "why": "`git merge-base --is-ancestor` exits 128 or another code on errors such as a missing or unfetched ref, so reading any non-zero exit as \"not an ancestor\" runs destructive steps, like deleting a branch on origin, on an answer the check never gave.",
+      "check": "Look for `git merge-base --is-ancestor` (or other git commands with distinct error codes) whose result is tested only as zero vs non-zero, especially when the non-zero branch deletes, force-pushes or otherwise changes remote state.",
+      "scope": "domain",
+      "domain": "git-automation-scripts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow a destructive remote git operation such as `git push origin --delete` only on a branch name the automation created or configured itself and validated (branch-name pattern plus `git check-ref-format`). Never run it on a name taken from a tracked upstream or other inferred source.",
+      "why": "A branch name taken from a local upstream can point at another long-lived origin branch, such as a release branch level with main, and the automation would then delete that branch.",
+      "check": "Find remote branch deletes or force-pushes and trace where the branch name comes from. Flag any name not tied to the validated, configured push branch, and any name put into a command without validation.",
+      "scope": "domain",
+      "domain": "git-automation-scripts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a file is generated from a template, make the fix in the template source and regenerate every generated copy. Never hand-edit just one of the generated copies.",
+      "why": "The generated copies (prompt, skill, command and template variants) all come from one source, so an edit to one copy leaves the others wrong and is lost the next time they are regenerated.",
+      "check": "In a diff that changes a generated file, check that its template source changed too and that all sibling generated copies match it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code for a decision function with several guard paths or provider-specific calls, add a test that reaches each guard path and each provider variant's call arguments, not only the shared happy path.",
+      "why": "Paths that no test reaches, such as an unknown-commit guard, a remote tip ahead of HEAD, or the argument passed to one provider's CLI, can regress and no test would fail.",
+      "check": "For new or changed branching logic, check that some test reaches each early-return guard and each per-provider call, and asserts the arguments that call receives.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*",
+        "**/tests/**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

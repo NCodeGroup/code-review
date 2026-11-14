@@ -1,0 +1,18 @@
+{
+  "hash": "9a3a1576ce8845c3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #452",
+  "rules": [
+    {
+      "statement": "Don't report a convention violation on a line that a mechanical bulk edit (such as renumbering or renaming references) only rewrote, when the violation was already there before the edit and fixing it is a separate cross-cutting change.",
+      "why": "The maintainer declined every such finding: the violating text predates the pull request, the edit only rewrote one token on the line, and moving it is its own change across many files that is tracked separately.",
+      "check": "Before reporting, compare the old and new versions of the changed line. If the only difference is the mechanical substitution (for example `ADR-0NNN` changed to `ADR-1NNN`) and the violation, such as an internal citation in `///` text, was there before, don't raise it in this pull request.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

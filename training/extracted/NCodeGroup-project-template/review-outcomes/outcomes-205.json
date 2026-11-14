@@ -1,0 +1,80 @@
+{
+  "hash": "37f3de4d263bb41f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #205",
+  "rules": [
+    {
+      "statement": "In test code, a test or helper whose result depends on an environment variable sets that variable explicitly for every case, saves its original value first and restores it in a `finally` block, rather than relying on the ambient value or deleting it afterward.",
+      "why": "An ambient CI variable (such as GITLAB_CI or GITHUB_ACTIONS) can change the behaviour under test and make assertions fail, and removing it unconditionally leaks the change into the rest of the process.",
+      "check": "Look for tests that read or set environment variables: is each relevant variable set explicitly for every case, and is the saved original restored (not removed) in a finally that covers every branch?",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1",
+        "**/*.Tests.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code splits or parses multi-line text that can come from an external source, include a test whose input uses CRLF line endings (and, where relevant, a lone CR), not only LF.",
+      "why": "Sources such as GitHub often send text with CRLF line endings; without such a test a regression in line-ending handling goes unnoticed.",
+      "check": "For new or changed line-splitting code (for example `-split '\\r?\\n'` or `Split('\\n')`), check whether any test supplies CRLF input and asserts the expected result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When output differs by platform or environment, test each variant of the user-facing message, not just one of them.",
+      "why": "If an untested variant breaks, the tests still pass and users on that platform lose the guidance.",
+      "check": "Where code chooses wording per platform (for example GitHub vs GitLab), confirm each branch's distinctive text is asserted by some test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Evaluate an environment or platform detection condition once into a variable and reuse it, rather than repeating the same test in several places.",
+      "why": "If one copy changes and the others don't, the output can mix wording or behaviour from different platforms.",
+      "check": "Look for the same condition (for example `$env:GITLAB_CI -eq 'true'`) repeated for several related values in one script or method.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a GitHub Actions workflow command such as `::error` carries external text (for example pull request content), escape `%`, CR and LF in it, and replace control characters in any external text printed to the log.",
+      "why": "Unescaped characters in external text can break or inject into the workflow command and corrupt the printed findings.",
+      "check": "Find `::error`, `::warning` or similar workflow commands and console output built from pull request or user-supplied text, and check for `%`/`\\r`/`\\n` escaping and control-character replacement.",
+      "scope": "domain",
+      "domain": "ci-scripts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/.github/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a gap in decision-record numbering as missing or skipped until you have checked whether the missing number is already used on the main branch or by another recently merged pull request.",
+      "why": "Records are numbered concurrently across pull requests, so a number that looks skipped on a branch is often taken by a record that landed on main meanwhile.",
+      "check": "Before flagging a numbering gap in an ADR index, look at the main branch's decisions folder and recently merged pull requests for the missing number.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

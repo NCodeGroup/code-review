@@ -1,0 +1,51 @@
+{
+  "hash": "718630192dc91bfd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #630",
+  "rules": [
+    {
+      "statement": "When code skips a follow-up effect because a lookup returned null, add a test for the null branch that asserts the effect does not run and the work outside the guard still happens.",
+      "why": "If every test sets up the found case, a regression that drops the null guard, or moves unconditional work inside it, passes a null id along or skips required work, and no test catches it.",
+      "check": "For each new or moved null guard around a call in production code, look for a test where the lookup returns null. It should verify the guarded call is not made (for example, a strict mock with no setup for it) and that calls outside the guard and the audit or response still happen.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a decision record to replace `**Refines:**` with `**Conflicts with:**` only because it rejects an option the referenced record is named for, when the referenced decision itself splits cases and the new record applies one of its branches.",
+      "why": "Choosing the branch the earlier decision already provides for a case is a refinement, not a contradiction, so no conflict line or tracking issue is needed.",
+      "check": "Before reporting a Refines/Conflicts mismatch, read the referenced record's decisions. Check whether they already allow the alternative the new record picks (for example, inline handling versus an outbox) for the case it covers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a decision record lists the fields its log entries carry, it must state them per entry exactly as the code logs them, and must not claim a field for every entry when some entries omit it.",
+      "why": "A record that misdescribes the code leads operators to look for fields, such as a subject id, that a given log entry does not contain.",
+      "check": "Compare the fields a decision record claims for its log entries with the parameters of each LoggerMessage method it covers. Report any entry the record describes with fields the code does not log.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For each best-effort operation that runs on its own time limit and catches and logs failures instead of throwing, add a test where the dependency throws and a test where the time limit elapses, each asserting that it does not throw and logs the expected event at the expected level.",
+      "why": "A regression that rethrows from the catch or mishandles the timeout would fail an already-committed operation or go unnoticed if only the success path, or only one sibling method's failure paths, are tested.",
+      "check": "For every method of this shape in the diff, look for both a throwing-dependency test and a bound-elapsed test. The elapsed test should advance a fake TimeProvider past the bound inside the dependency call. Both should assert the specific EventId and LogLevel and that no exception propagates.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "hash": "c50379ee451af25b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #189",
+  "rules": [
+    {
+      "statement": "When the same multi-step resource cleanup sequence (such as disposing an object and then the resource it owns) is needed in more than one place, put it in one shared helper and call that helper from every path instead of repeating the steps.",
+      "why": "If a later change to how the resource is closed updates one copy and misses the other, the leak comes back on that path.",
+      "check": "Look for two or more copies of the same capture/dispose/close steps for one kind of resource, for example in a normal-completion function and in a finally block. Flag them when they are not routed through a single helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When cleanup disposes an object and then a resource it depends on, dispose the object inside a try and release the dependent resource in the finally, so the resource is still released when the first Dispose() throws.",
+      "why": "If the first disposal throws, a plain sequential cleanup skips the second step and the resource (for example, a runspace) leaks.",
+      "check": "Look for cleanup code that calls Dispose() on several related objects one after another with no try/finally. Flag it when an exception from an earlier call would skip a later release.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

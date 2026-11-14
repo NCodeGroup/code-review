@@ -1,0 +1,137 @@
+{
+  "hash": "3fef4706a550e302",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1155",
+  "rules": [
+    {
+      "statement": "When issuing a JWT addressed to a client (ID token, logout token, UserInfo, introspection or authorization response), protect it with exactly the signing and encryption algorithms the client registered. Never substitute another permitted algorithm, and if the registered algorithm is not permitted, fail with `server_error`.",
+      "why": "The client can only verify with the algorithm it registered. A silent substitution either fails at the client or weakens what it expects, and failing names the misconfiguration.",
+      "check": "Look for issuance code that picks an algorithm from a `*_values_supported` list or falls back to another algorithm when the registered one is excluded, instead of failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt a JWT addressed to a client only to an asymmetric public key from the client's own `jwks` or `jwks_uri`. Never encrypt to a server or tenant key, or to a key derived from the client secret.",
+      "why": "The client can only decrypt with a key it published, and a key derived from a shared secret ties confidentiality to a secret the server also stores and that some clients don't have.",
+      "check": "Look for encryption credentials for client-addressed tokens resolved from tenant keys or client secrets instead of the client's resolved public keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't admit `RSA1_5` or shared-key key-management algorithms (`A*KW`, `A*GCMKW`, `PBES2-*`) in JWE encryption algorithm lists for ID tokens, UserInfo or request objects. Allow only asymmetric key management (`RSA-OAEP*`, `ECDH-ES*`).",
+      "why": "RFC 8725 §3.2 says to avoid `RSA1_5`, and shared-key algorithms need a key that both parties hold, which a registration doesn't establish.",
+      "check": "Look at algorithm setting domains, defaults and supported lists for RSA1_5, AES key wrap, AES-GCM key wrap or PBES2 entries.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never compress a JWE payload (no `zip` header), and don't offer compression as an opt-in.",
+      "why": "RFC 8725 §3.6 says not to combine compression with encryption, and an opt-in invites people to enable it.",
+      "check": "Look for a `zip`/DEF compression setting or option on JWT encryption.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At inbound trust boundaries (request objects, signed CIBA requests, client assertions), treat the permitted algorithm list as an allow-list that fails closed. An unset or missing list permits no algorithm, and a registered single algorithm narrows the list to that one value.",
+      "why": "An unset list can only be a removed one, and it must not widen acceptance to every algorithm the JOSE implementation registers.",
+      "check": "Look for validation code that treats a null or empty allowed-algorithm list as 'any algorithm', or that ignores the client's registered single algorithm.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse an encrypted CIBA authentication request, and verify a signed one only with asymmetric signature algorithms.",
+      "why": "CIBA Core §7.1.1 defines no encrypted authentication request, and a signed one uses an asymmetric signature.",
+      "check": "Look for CIBA request handling that decrypts JWE input or accepts HMAC algorithms.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authenticate the UserInfo endpoint only with an access token, sent in the `Authorization` header or the form body, whose audience includes the OpenID resource server, never with a session cookie. Answer an unknown or disabled client with `401` `invalid_token`.",
+      "why": "OpenID Connect Core §5.3 defines UserInfo as an OAuth 2.0 protected resource, and a session cookie is an ambient credential that names no client to address the response to.",
+      "check": "Look for UserInfo or other protected-resource endpoints that authenticate through the session or cookie scheme, or that skip the audience check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In dynamic client registration, reject registered algorithm metadata outside the effective `*_values_supported` list with `invalid_client_metadata`. Require `jwks` or `jwks_uri` (not both) when a client registers an encrypted response, and accept an `*_enc` value only together with its `*_alg`.",
+      "why": "A registered value must lie within its ceiling, and an encrypted response needs a client public key to encrypt to.",
+      "check": "Look at registration validation for missing list-membership checks, missing jwks requirements, or an accepted `_enc` without its `_alg`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A required-encryption flag must require that the client registered an encryption algorithm, never pick one for it. A token that cannot be protected as registered is not sent, and the skip is logged.",
+      "why": "Picking an algorithm the client didn't register produces a token the client can't decrypt, or weaker protection than it expects.",
+      "check": "Look for code that defaults an encryption algorithm when encryption is required, or that sends a logout token unprotected or protected differently instead of skipping it and logging the skip.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a public service is meant to be replaceable and its products need a shared policy, expose that policy as a public interface seam that replacements resolve. Register the default implementation as internal and only when no other implementation is registered (TryAdd).",
+      "why": "Otherwise every replacement reimplements the policy and the copies drift, and exposing only a concrete class fixes the policy's dependencies into the public API.",
+      "check": "Look for policy logic that a public replaceable service needs but that is kept internal, for public concrete default classes used as the seam, and for defaults registered unconditionally.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A settings write validator that checks the entities it governs must report only mismatches the change introduces, by comparing state before and after the change, and must skip that check entirely when none of the settings it reads changed.",
+      "why": "A mismatch that predates the change must not block an unrelated write, and an unrelated change shouldn't pay for walking every client.",
+      "check": "Look for coherence or validation rules that report existing violations on any write, or that load all dependent entities regardless of which settings changed, or that load them tracked or with secrets.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

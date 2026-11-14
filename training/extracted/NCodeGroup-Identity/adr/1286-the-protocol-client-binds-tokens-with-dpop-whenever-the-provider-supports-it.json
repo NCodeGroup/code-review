@@ -1,0 +1,127 @@
+{
+  "hash": "3253443de67a8794",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1286",
+  "rules": [
+    {
+      "statement": "When an OAuth client sends a DPoP proof with a token request, reject any successful response whose `token_type` is not `DPoP` (compared case-insensitively) as a downgrade and throw, never silently accepting a `Bearer` token.",
+      "why": "Accepting a Bearer response to a proof is a silent downgrade of sender-constrained tokens; RFC 6749 §5.1 makes token_type case-insensitive.",
+      "check": "Look at token response handling after a DPoP proof was sent: is token_type checked, is the comparison ordinal-ignore-case, and does a mismatch throw instead of returning the tokens?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Retry a request that fails with the `use_dpop_nonce` error and a `DPoP-Nonce` header only once, with a new proof. Rebuild the request form from a fresh copy of the caller's parameters and run client authentication again, so a client assertion is never replayed.",
+      "why": "Retrying more than once or replaying the same form would replay a `private_key_jwt` client assertion.",
+      "check": "In DPoP nonce retry logic, look for loops that retry more than once, reuse of a form or content object that was already sent, or a client assertion reused instead of regenerated.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a fresh DPoP proof for every token request, with `htm` `POST`, `htu` set to the endpoint actually called (including its mTLS alias) and no `ath`. Include `ath` and the cached nonce only on proofs for resource requests.",
+      "why": "RFC 9449 §4/§7 define `ath` only for proofs that present an access token, and each proof must be new.",
+      "check": "Look at how proofs are built: are proofs cached or reused across requests, is `htu` wrong for mTLS aliases, is `ath` present on token-endpoint proofs, or missing on resource proofs?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take DPoP signing keys from a dedicated, named and rotatable key ring shared by the application, not from a key generated per session or stored next to the session's tokens, and not from the client-authentication key ring under the same name.",
+      "why": "Storing the key next to the tokens defeats sender-constraining, and mixing key purposes blocks independent rotation.",
+      "check": "Look for DPoP keys generated per session or user, serialized into session or token storage, or taken implicitly from the client's signing ring.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Choose DPoP signing algorithms only from asymmetric keys, filtered to the provider's advertised `dpop_signing_alg_values_supported`. Never choose a MAC algorithm or `none`.",
+      "why": "DPoP proofs need asymmetric keys, so symmetric keys and `none` must never be candidates.",
+      "check": "Look at key and algorithm selection for proofs: are symmetric keys or `none` filtered out, and is the choice intersected with the provider's metadata?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin a session's DPoP key by its RFC 7638 SHA-256 JWK thumbprint (`jkt`), so the session keeps using the key it was bound with across key-ring rotation, and report the `jkt` used, or null when no proof was sent.",
+      "why": "The provider binds tokens to `cnf.jkt`, so the session must keep presenting proofs from that key after the ring rotates.",
+      "check": "Look for code that picks the newest or current key for a session that already has a bound `jkt`, or that computes the thumbprint some other way than RFC 7638.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When DPoP is required but cannot be used, throw before sending anything. Use `InvalidOperationException` for a client configuration problem (no key ring, an empty ring, an unknown pinned key) and a provider exception when the provider advertises no usable algorithm.",
+      "why": "A required binding must never fall back to an unbound request, and configuration errors are a different kind of failure from provider errors.",
+      "check": "Look at the required-DPoP paths: does any of them send the request without a proof, or throw the wrong kind of exception?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Key a DPoP nonce cache by the request's origin (scheme, host and port) and give it a fixed size limit. When it is full, clear it rather than letting it grow without bound.",
+      "why": "Nonces are issued per server (RFC 9449 §8). The cache is in-process, and a stale or evicted nonce costs only one retry.",
+      "check": "Look at nonce cache code: is the key the full URI instead of the authority, or is there no limit on its size?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat protocol parameters the client writes itself, such as `dpop_jkt`, as reserved names, and reject them in caller-supplied additional authorization parameters.",
+      "why": "The client must control the binding parameter so that callers cannot override or duplicate it.",
+      "check": "Look at how additional parameters are validated: are client-written names like `dpop_jkt` refused?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't attach a DPoP proof to token revocation requests.",
+      "why": "Neither RFC 7009 nor RFC 9449 defines a proof for revocation.",
+      "check": "Look for a DPoP header added to revocation endpoint calls.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "hash": "cbf04a2d521581a0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1218",
+  "rules": [
+    {
+      "statement": "In a background prune service that deletes in bounded batches, treat a batch whose save fails because another replica already deleted some of its rows as progress (count it as a full batch and read the next batch), rather than as a failure that stops the prune.",
+      "why": "Every replica runs the prune without leader election, so concurrent prunes are expected; a lost race means the rows are gone and wastes at most one batch.",
+      "check": "Look at the batch loop of a prune/cleanup hosted service: a concurrency exception (e.g. DbUpdateConcurrencyException) on save should continue the loop as if the batch were full, not abort or be logged as an error.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a timer-driven hosted service, catch and log any failure of a run (other than cancellation by the host's stopping token) and try again at the next tick, so that only the stopping token ends the service.",
+      "why": "A transient failure must not stop the periodic prune for good; the next tick retries it.",
+      "check": "Check that the PeriodicTimer loop wraps each run in a catch that logs a warning and continues, and that only OperationCanceledException from the stopping token exits the loop.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement a bounded-batch removal in an Entity Framework store by reading up to the limit of rows and removing them through the change tracker inside the unit of work, not with set-based deletes such as ExecuteDelete.",
+      "why": "The EF InMemory provider does not support set-based deletes, and going through the change tracker gives every provider one code path.",
+      "check": "Look for ExecuteDelete/ExecuteDeleteAsync or raw DELETE SQL in pruning store methods; they should query with Take(limit) and Remove the entities instead.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a store method that stages a bounded batch for removal a limit parameter that throws ArgumentOutOfRangeException when it is below one, order the batch by a stable key such as the Id, and return how many rows it staged.",
+      "why": "With a stable order and a returned count, the caller can tell a full batch from the last one and keep each batch bounded.",
+      "check": "In new batch-removal store methods, check for the guard (for example ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1)), an OrderBy on the key before Take(limit), and a returned count.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Index every timestamp column that a pruning predicate filters on.",
+      "why": "The prune reads the rows that have ended through an index instead of scanning a table that grows with use.",
+      "check": "When a prune query filters on a column such as RevokedWhen or ExpiresWhen, check that the entity configuration or migration declares an index on that column.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate retention and prune-interval options when the host starts: a retention must not be negative, and an interval must be a period that PeriodicTimer accepts.",
+      "why": "An invalid retention or timer period should fail at startup, not when the hosted service first runs.",
+      "check": "Check that a new retention or interval options type is registered with startup validation (ValidateOnStart) and has rules for a non-negative retention and a valid timer period.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't delete a revoked or expired grant (refresh token, authorization code, session) as soon as it ends; remove it only after a retention period.",
+      "why": "Ended grants are still read to detect refresh-token reuse and authorization-code replay; deleting them early turns a reuse into an unknown token.",
+      "check": "Look for revocation or cleanup code that deletes grant rows right away, or prune predicates that skip the retention cutoff (now minus retention).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

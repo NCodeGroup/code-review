@@ -1,0 +1,134 @@
+{
+  "hash": "d1610a10fae8c01e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1051",
+  "rules": [
+    {
+      "statement": "Pass a password across an asynchronous API as `ReadOnlyMemory<byte>`, encoded with `SecureEncoding.UTF8` into a caller-owned buffer rented from the pinned, zeroing `SecureMemoryPool<byte>`. Never pass it as a managed `string`.",
+      "why": "A managed string leaves the raw password on the GC heap. A pinned, zeroing buffer gets wiped, and a span can't cross an async boundary.",
+      "check": "Look for password or secret parameters typed `string` on store or credential methods, and for callers that build the bytes with `Encoding.UTF8` or a non-secure array instead of `SecureEncoding.UTF8` into `SecureMemoryPool<byte>`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a credential store contract expose hashing and verification as first-class operations, such as add or set a password and verify a credential. Never expose a raw password-hash field or property.",
+      "why": "Exposing the hash leaks hashing semantics onto the public contract and forces every backend to reimplement it. The store should hash, compare and upgrade the hash itself.",
+      "check": "Look for store interfaces or public account models that have a `PasswordHash` (or similar) member, or that expect callers to hash or compare passwords themselves.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a store rotate the account's security stamp on every credential change, such as setting a password or adding an account with a password, and keep the stamp read-only to callers.",
+      "why": "The security stamp is a store-managed value that each credential change rotates. This is the pattern borrowed from ASP.NET Core Identity.",
+      "check": "Look for password-setting store code that doesn't regenerate the security stamp, or for a stamp with a public setter on the account contract.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement default password hashing as PBKDF2-HMAC-SHA256 through `Rfc2898DeriveBytes.Pbkdf2`, with versioned parameters and a rehash when a successful verification finds an outdated hash.",
+      "why": "Versioned parameters with rehash-on-verify let stored hashes be upgraded over time without forcing password resets.",
+      "check": "Look for hashers that use a different primitive, store unversioned parameters, or never upgrade the hash after a successful verify.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a DI extension method for a capability that needs a backing store take the store registration's marker builder, such as `IServiceBuilder<TLibrary>`, as a required parameter, and make every store registration (custom stores included) return that marker.",
+      "why": "A capability registered without a store then fails to compile, instead of failing at runtime.",
+      "check": "Look for capability registration methods that don't require the store's marker builder, and for store registrations that return a plain `IServiceCollection` or builder instead of the marker.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When more than one registration method can add the same strategy handler, register it with `TryAddEnumerable` so it ends up registered only once.",
+      "why": "Several capability registrations add the same enricher and subject validator, and each one must still run only once.",
+      "check": "Look for `AddSingleton`, `AddScoped` or `AddTransient` of a collection-style handler inside registration methods that hosts may call together.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decide whether an optional protocol feature is supported by whether its capability handler is registered (a default handler answers 'unsupported' until an opt-in package replaces it), not by a configuration flag.",
+      "why": "This lets the core avoid depending on the capability's package, and only hosts that opt in pay for the feature's stack.",
+      "check": "Look for boolean options such as `EnablePasswordGrant` that gate a grant or feature, or for core packages that reference the capability's package directly.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an OAuth token endpoint, answer a password-grant request with a rejected credential with `invalid_grant`. Use `unsupported_grant_type` only when no handler for the grant is registered.",
+      "why": "A rejected credential is an authentication failure, not a missing capability.",
+      "check": "Look for password-grant handlers that return `unsupported_grant_type` for a bad user name or password, or `invalid_grant` when the grant isn't configured at all.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model a local account as an identity link whose issuer is this server (a self-issued issuer) and whose subject is the account id, with credential, profile and status data in a 1:1 companion record. Don't add password or profile columns to the identity link or to the principal.",
+      "why": "Keeping one link concept and one resolution path for local and external connections avoids always-null columns on external identities and prevents one human from being counted twice.",
+      "check": "Look for credential or profile fields added to principal or federated-identity entities, or for a second resolution path that maps accounts straight to principals.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep persisted payloads as concrete data-contract records and express pluggability through a store interface. Don't turn the record into an interface.",
+      "why": "Pluggability belongs to the store seam, and the payload should stay a plain data contract like every other.",
+      "check": "Look for interfaces introduced over persisted model records, such as an `IAccount` that a store's own type implements.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an abstractions package, keep public signatures on BCL types such as `ReadOnlyMemory<byte>`. Take `NCode.Buffers` or other implementation dependencies only in implementation packages.",
+      "why": "This keeps the abstraction free of implementation dependencies, so other backends can implement it without taking those dependencies.",
+      "check": "Look for new `NCode.Buffers` (or similar) package references, or buffer types from those packages, in `*.Abstractions` projects' public APIs.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs",
+        "**/*.Abstractions/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

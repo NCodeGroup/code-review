@@ -1,0 +1,19 @@
+{
+  "hash": "c13b52aa9876245e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #820",
+  "rules": [
+    {
+      "statement": "When several hosts each apply the same hardening setting, such as suppressing the Kestrel Server header, give every host that has an integration test project its own host-level test that builds that host and asserts the setting, for example `KestrelServerOptions.AddServerHeader == false`.",
+      "why": "If only one host is tested, another host can drop the call and start sending the header again without any test failing. A unit test of the registration doesn't catch a host that stops calling it.",
+      "check": "In a diff that adds or changes a hardening call in a host's Program.cs, check that each host making the call has a host-level test building that host and asserting the result. A test that builds only one of the hosts doesn't count for the others.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/Program.cs",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

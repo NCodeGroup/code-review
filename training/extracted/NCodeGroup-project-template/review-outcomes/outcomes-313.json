@@ -1,0 +1,19 @@
+{
+  "hash": "9b8a074989d9c82b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #313",
+  "rules": [
+    {
+      "statement": "When a script's comment-based help (such as `.SYNOPSIS`) names the workflows or scripts that run it, name every caller that actually runs it, each by its current file name.",
+      "why": "Help that names only one of several callers, or a renamed one, sends readers to the wrong workflow and causes the naming confusion renames are meant to remove.",
+      "check": "For a changed `.SYNOPSIS`/`.DESCRIPTION` that names a calling workflow, search the `.github/workflows` files (and any template workflows) for invocations of the script, and confirm the help names all of them by their current names.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

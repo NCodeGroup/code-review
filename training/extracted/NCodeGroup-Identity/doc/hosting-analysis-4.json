@@ -1,0 +1,65 @@
+{
+  "hash": "35f695e243537f3c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity docs/hosting-analysis.md",
+  "rules": [
+    {
+      "statement": "A database migration must only expand the schema (add tables, columns or indexes) so the previous release keeps working against the migrated database; don't drop, rename or tighten anything the running release still uses in the same migration.",
+      "why": "Migrations run in a Job before each rollout, while the previous release is still serving traffic, so every migration has to keep that release working.",
+      "check": "In new migration files, look for DropColumn, DropTable, RenameColumn, RenameTable, AlterColumn to non-nullable, or new required columns without defaults that the previous release's code would break on.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a host must refuse to start in the Production environment when development-only settings are configured, such as developer signing keys, wildcard `AllowedHosts`, developer CORS policies or data seeders.",
+      "why": "Development conveniences left on in Production would expose the service, so the host fails fast instead of running with them.",
+      "check": "When a diff adds a development-only option, key source, CORS policy or seeder, check that the startup validation rejects it when `IHostEnvironment.IsProduction()` and that nothing enables it silently in Production.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, trust forwarded headers (`X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`) only from configured known proxies or networks; don't clear `ForwardedHeadersOptions.KnownProxies`/`KnownNetworks` or accept them from any source.",
+      "why": "Forwarded headers decide the scheme and host the server trusts, so accepting them from arbitrary clients would let callers spoof the issuer and origin.",
+      "check": "Look for `ForwardedHeadersOptions` setup that clears `KnownProxies`/`KnownNetworks`, sets `ForwardLimit = null` without restricting sources, or reads forwarded headers directly from the request.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit secrets (cluster secrets, keys, connection-string passwords, tokens) to Git in plaintext; commit them encrypted (such as with SOPS and age) or reference an external secret store.",
+      "why": "Cluster secrets must never sit in Git as plaintext; they are encrypted with SOPS and age or synced from the key vault by External Secrets Operator.",
+      "check": "In Kubernetes manifests, Helm values, appsettings and env files in the diff, look for literal passwords, keys or tokens in fields that aren't SOPS-encrypted or ExternalSecret references.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml",
+        "**/appsettings*.json",
+        "**/*.env"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, persisted private values such as signing keys, client secrets and the Data Protection key ring must be stored encrypted under a key hierarchy whose root key is held outside the database, and never written in plaintext.",
+      "why": "These secrets share a database with everything else, so a database backup would otherwise hold everything needed to use them.",
+      "check": "Look for new persisted fields or stores that hold private key material or secrets and confirm they go through the encryption/protection layer, not straight into a column as raw bytes or strings.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

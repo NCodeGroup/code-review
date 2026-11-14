@@ -1,0 +1,211 @@
+{
+  "hash": "89ae21b9db74ef92",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1256",
+  "rules": [
+    {
+      "statement": "Every server-written `text/html` response sets its Content-Security-Policy and related security headers through the shared page-security writer and a page-security policy value; it never writes those headers by hand or leaves them out.",
+      "why": "A page that writes its own headers has only what its author remembered, and the ADR counts a `text/html` write that skips the shared writer as a defect.",
+      "check": "Find new or changed code that writes `text/html` (e.g. `ContentType = \"text/html\"`, HTML results) and check that it calls the shared writer (`SetHtmlPageSecurity` or its equivalent) rather than setting `Content-Security-Policy`/`X-Frame-Options` directly or not at all.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A page's Content-Security-Policy starts from `default-src 'none'`, lists only the sources the page needs, and always states `frame-ancestors` explicitly ('none' unless the page is meant to be framed), along with `base-uri` and `form-action`.",
+      "why": "`frame-ancestors` does not fall back to `default-src`, so a policy that leaves it out lets any origin frame the page (clickjacking, RFC 9700 §4.16).",
+      "check": "Look at CSP strings or policies built for pages: is `default-src 'none'` there, and is `frame-ancestors` either present or deliberately opened only for a page that is framed by design?",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on ASP.NET Core antiforgery's `X-Frame-Options` header to protect a page from framing. Set the framing policy explicitly on every response.",
+      "why": "Antiforgery adds `X-Frame-Options: SAMEORIGIN` only when it stores a cookie, so a returning browser gets the page with no framing policy.",
+      "check": "A page that depends on antiforgery for framing protection and never sets its own `X-Frame-Options`/`frame-ancestors`.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assign response security headers, overwriting earlier values; don't append to them.",
+      "why": "Assigning replaces the `SAMEORIGIN` value that antiforgery adds, so every response carries exactly the stated policy.",
+      "check": "Look for `Headers.Append`/`Add` on `Content-Security-Policy`, `X-Frame-Options`, `Referrer-Policy` or `X-Content-Type-Options`, where an indexer assignment should be used.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't admit scripts or styles with `'unsafe-inline'` or by origin alone. Use a per-response nonce (16 random bytes, Base64Url-encoded, from a cryptographic RNG) with `'strict-dynamic'` for scripts, or a hash of a fixed inline script.",
+      "why": "`'unsafe-inline'` admits every injected script and style, and an origin source admits any script that origin serves. A nonce admits only what this response carries.",
+      "check": "CSP `script-src`/`style-src` values that contain `'unsafe-inline'` or only `'self'`, or a nonce that is reused across responses or not generated with enough cryptographic randomness.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute a CSP script hash over the script's UTF-8 bytes with a strict (throwing) UTF-8 encoding, not `Encoding.UTF8`.",
+      "why": "The hash must match the exact script the browser runs, and `Encoding.UTF8` silently replaces invalid characters, which breaks the strict-encoding rule.",
+      "check": "`Sha256`/hash-source code that calls `Encoding.UTF8.GetBytes` on the script text.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate CSP directive names (`[a-z0-9-]+`) and source values (printable characters `!`–`~` except `;` and `,`), and throw `ArgumentException` for anything outside the grammar.",
+      "why": "A value that contains `;` or `,` could start another directive, which would let input inject policy.",
+      "check": "Code that builds CSP header text from variable values (origins, hashes, nonces) without validating them against the CSP Level 3 grammar.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a server-rendered page under a strict CSP, hide elements with the `hidden` attribute, never an inline `style` attribute.",
+      "why": "A strict `style-src` blocks inline style attributes, and allowing them would need `'unsafe-inline'`.",
+      "check": "Server-written HTML markup that uses `style=\"display:none\"` or other inline style attributes.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a host replaces a CSP nonce placeholder in a built frontend bundle, do the replacement only inside the bundle's own static segments, never inside rendered or user-supplied values.",
+      "why": "Replacing inside rendered values would let injected content that contains the placeholder receive a valid nonce.",
+      "check": "String replacement of the nonce placeholder over the whole rendered HTML, rather than over the bundle's prelude, head and tail segments only.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set `Referrer-Policy: same-origin` on server pages, not `no-referrer`.",
+      "why": "Both send no referrer cross-origin, but `no-referrer` makes a same-origin form or fetch POST send `Origin: null`.",
+      "check": "Page security headers that set `Referrer-Policy: no-referrer`.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that an identity server's pages lack `Cross-Origin-Opener-Policy`, `Permissions-Policy`, `Cross-Origin-Resource-Policy` or `Strict-Transport-Security`; the server leaves them out on purpose.",
+      "why": "COOP severs `window.opener` for pop-up sign-in, the pages use no powerful features, CORP applies only to subresources, and HSTS belongs to the host's transport pipeline.",
+      "check": "Before you report a missing header, check whether it is one of these four, which are left out by design.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing `form-action` restriction on a page whose form submission redirects to a client (login, consent, logout or the `form_post` response). On a page with no form, do require `form-action 'none'`.",
+      "why": "Chrome and Safari check `form-action` against every redirect after a submission, and the clients' redirect targets can't be listed. Protection on those pages rests on HTML encoding, the nonce and `base-uri`.",
+      "check": "Whether the page posts a form that redirects through to a client's redirect URI. If it has no form at all, `form-action` must be 'none'.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow cross-origin framing only for a page that is framed by design: any origin for the `check_session_iframe`, and only the client's redirect-URI origin for a `form_post` response. Every other page forbids framing.",
+      "why": "Relying parties frame the session-check iframe and receive `prompt=none` `form_post` responses in an iframe (Session Management 1.0). Framing any other page is a clickjacking risk.",
+      "check": "A page policy that opens framing (removes `X-Frame-Options` or lists `frame-ancestors` sources), and whether it is one of these two pages with the correct scope.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing page CSP on JSON or `text/plain` responses; only HTML pages get a page-security policy.",
+      "why": "Those responses are not pages, and the ADR says they get no policy.",
+      "check": "The response's content type, before you ask for CSP headers.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put `DisableCorsAttribute` or other CORS metadata on a navigation-only (front-channel) endpoint to exclude it from CORS. Mark it with a dedicated, non-CORS endpoint metadata and branch the CORS middleware on that.",
+      "why": "`DisableCorsAttribute` fails every request when no CORS middleware ran, so a host without CORS middleware would break the endpoint.",
+      "check": "`DisableCors`/`RequireCors` on endpoints such as authorization, end-session or interactive pages that browsers navigate to.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every server-written HTML page sends `Cache-Control: no-store, no-cache, max-age=0` and `Pragma: no-cache` through the shared no-store helper, not through headers it writes itself.",
+      "why": "Every page carries per-response or per-user content, and one writer keeps pages and secret-revealing responses from drifting apart.",
+      "check": "Page or secret responses that set `Cache-Control`/`Pragma` by hand, or leave them unset.",
+      "scope": "domain",
+      "domain": "aspnetcore-web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't give a general-purpose helper type a protocol prefix (such as `OpenId`) when it holds no concept from that protocol.",
+      "why": "The prefix tells a reader that the type is part of the protocol.",
+      "check": "New helper types named with a protocol prefix whose members don't reference that protocol.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "hash": "26dbedf65ee4cfb7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #585",
+  "rules": [
+    {
+      "statement": "Resolve a principal from a presented token (such as a token exchange `subject_token`) only from its subject claim; never fall back to its `client_id` claim, and reserve client-as-principal resolution for paths where the authenticated caller is that client acting for itself.",
+      "why": "A `client_id` claim in a presented token comes from the token, not from the authenticated caller, so falling back to it lets a token's audience or an external issuer impersonate a client's principal as a user subject.",
+      "check": "Look for a shared principal resolver that falls back to `client_id` when `sub` is missing, and check whether token exchange or other grant handlers call it on a presented token instead of answering `invalid_grant`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several endpoints need the same authorization or refusal check, put the check and its error result into one shared step (a helper returning `IResult?` or an endpoint filter) instead of pasting the block into each handler.",
+      "why": "An endpoint added or changed later can leave out a pasted guard, which opens a privilege gap, and the copies drift apart.",
+      "check": "Look for the same `if (!await ...) return Forbidden/AuthorizationFailed(...)` block, or the same lookup feeding it, repeated across handlers of one route group.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reuse the existing entity-to-resource mapper and shared listing helpers instead of copying them into a new endpoint handler.",
+      "why": "Copied mappers and loops drift apart when a resource gains a field or a fix lands in one copy only.",
+      "check": "Look for new `To...Resource` methods or listing loops that duplicate ones already in sibling handlers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't fetch entities one store call per id inside a loop; add or use a batched get-many store method that reads them in one query.",
+      "why": "A per-id loop costs one database round trip per entity on every request.",
+      "check": "Look for `await store.GetOrDefaultAsync(id)` or similar inside a `foreach` over ids.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give new private helper methods `///` XML doc summaries, with `<returns>` saying what a bool result means, not just a `//` comment.",
+      "why": "Without it the meaning of the return value (for example, true means the caller may act) is undocumented.",
+      "check": "Look for new private methods, especially ones returning bool, that have no `/// <summary>`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an endpoint that opens its ambient tenant scope by hand when its route has no tenant id parameter for the shared route-group tenant filter to read and sibling code opens a fixed tenant scope the same way.",
+      "why": "The shared filter scopes a route by its `{tenantId}` segment and has nothing to read on routes that name no tenant.",
+      "check": "Before reporting, check whether the route template has a tenant id segment and how sibling authorization code opens the same fixed scope.",
+      "scope": "domain",
+      "domain": "multi-tenant",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag case-insensitive deduplication or comparison of identifiers as a bug when the stores key those identifiers by a normalized form and match them case-insensitively.",
+      "why": "Ids differing only by case name the same entity, so case-insensitive dedup is correct and an ordinal sort only makes order stable.",
+      "check": "Before reporting a comparer mismatch, check how the store keys and normalizes the identifier.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a new index for an unbounded predicate on a rarely run operation such as a delete when sibling stores already use the same pattern under a recorded decision.",
+      "why": "An index is warranted only when that operation at scale needs it.",
+      "check": "Before reporting, check how often the operation runs and whether sibling stores use the same predicate.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for Storybook stories for an app-local frontend component; stories cover the shared `packages/*` components, and app components are covered by their tests.",
+      "why": "The convention scopes Storybook to shared package components.",
+      "check": "Before reporting a missing story, check whether the component lives under a shared package or inside an app.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

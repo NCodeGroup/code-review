@@ -1,0 +1,102 @@
+{
+  "hash": "6d06df5eb1bcc8e7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1025",
+  "rules": [
+    {
+      "statement": "Before a product's first stable release, don't ask for a deprecation cycle, compatibility shim, dual code path or migration path for a breaking change; judge the change by design quality alone and prefer a clean cutover.",
+      "why": "No external consumer exists to protect, so compatibility machinery buys nothing, and a half-migrated two-sources-of-truth state is the worse outcome.",
+      "check": "Before raising a compatibility concern or accepting a shim, check whether the repository is pre-release (e.g. `pre-release: untracked` in AGENTS.md's Landing section). If it is, flag shims, [Obsolete] forwarding members or dual paths kept only for compatibility, and don't report renames, removed settings, tightened nullability or reshaped contracts as breaking.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every packable project references Microsoft.CodeAnalysis.PublicApiAnalyzers and has a `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` pair, so the public surface changes only through a reviewable edit to those files.",
+      "why": "Accidental public-surface changes such as renamed methods, removed overloads or flipped nullability are easy to miss, and reviewer vigilance does not scale. RS0016/RS0017 keep the files in sync with the code.",
+      "check": "A new packable project with no PublicAPI.*.txt pair, or one that opts out of the analyzer. When reviewing, read the PublicAPI.*.txt diff to see the surface changes. The build enforces that the files stay in sync.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.csproj",
+        "**/PublicAPI.*.txt",
+        "Directory.Build.targets"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Before the first stable release, record public API entries in `PublicAPI.Unshipped.txt` and keep `PublicAPI.Shipped.txt` holding only `#nullable enable`; don't report churn in the Unshipped file as a problem.",
+      "why": "Before release the surface is not a contract. Unshipped churn is the routine signal of evolution, and the surface moves to Shipped at the first stable release.",
+      "check": "A pre-release diff that adds entries to PublicAPI.Shipped.txt, or a review comment that treats Unshipped removals or renames as a smell.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.*.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Once a stable release has shipped, evolve the shipped public surface backward-compatibly: make additive changes only, add a new overload instead of changing a signature, take required inputs as constructor parameters and optional inputs as `init` properties, append wire-enum members without renumbering them, and remove a member by marking it `[Obsolete]` first and deleting it only in a major version.",
+      "why": "After release the shipped surface is a consumer contract, and any breaking change requires a major version.",
+      "check": "In a released project: removed or changed entries in PublicAPI.Shipped.txt, changed signatures where an overload would do, new required properties instead of constructor parameters, renumbered or inserted enum members, or deletions without a prior [Obsolete].",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/PublicAPI.Shipped.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bump a schema or format version number only for a change to a released version; a field added to a schema that has never shipped belongs in the current unreleased version without a bump.",
+      "why": "A version number tells consumers such as SIEM pipelines that a released shape changed. Versions that count states only the repository held protect no consumer and would ship invented history.",
+      "check": "Look for a version constant (e.g. a schema_version) bumped in a pre-release diff, or a docs change that describes intermediate unreleased versions. Reject the bump.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't reserve the ID of a removed log event, enum member or wire value that never shipped: no comment or record keeps it, and a later item may reuse it.",
+      "why": "A reservation protects only a consumer that saw the ID, and an identifier that existed only in the repository had no consumer.",
+      "check": "Look for comments such as '// reserved', placeholder enum members, or doc entries that keep the IDs of removed pre-release events or values. Reject them. An ID list should list assigned IDs only.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never renumber assigned log event IDs, enum members or wire values to close a gap, and never renumber or reuse an ID that has shipped.",
+      "why": "A gap costs nothing, and renumbering changes every ID after it. Operators' log filters, alerts and parsers key on shipped IDs.",
+      "check": "Look for diffs that change the numeric values of existing EventId constants or enum members, or that give a shipped ID to a new event.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model identity-server concepts on Auth0's vocabulary and shapes (resource servers, scopes and permissions, client grants, tenants). Justify each deviation as a control Auth0 lacks that keeps the Auth0 mental model at low complexity, and implement it through a general, data-driven mechanism rather than a hard-coded special case.",
+      "why": "Auth0's model lowers onboarding cost and is battle-tested. Cheap, principled improvements are worth making early, but novelty for its own sake raises onboarding and review cost.",
+      "check": "Look for feature code or design text that renames or reshapes an Auth0 concept without a stated justification, or that hard-codes a special case (e.g. OIDC-only branches) where a general property of the entity would serve.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

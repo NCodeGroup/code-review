@@ -1,0 +1,124 @@
+{
+  "hash": "fcc908c0b687adde",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1169",
+  "rules": [
+    {
+      "statement": "Code that provisions default signing or encryption keys must only fill gaps: it never replaces, regenerates or adds beside a key the tenant already holds that satisfies the same specification.",
+      "why": "Overriding a held key silently changes the keys relying parties trust and invalidates issued tokens; operators keep control of their own keys.",
+      "check": "Look for key-generation paths that delete, overwrite or always create keys rather than first checking whether a held key already satisfies the algorithm.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generated or held keys are persisted and protected, never held only in memory, when they sign or encrypt tokens outside development.",
+      "why": "In-memory keys are regenerated on every restart, which invalidates every issued token, and each replica would mint its own keys.",
+      "check": "Look for production code paths that create signing or encryption keys in memory (e.g. RSA.Create in a singleton) without storing them through the protected secret store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse symmetric and `none` algorithms for keys that are published in a JSON Web Key Set or used across trust boundaries.",
+      "why": "A published tenant key is used across trust boundaries, so a shared secret or an unsigned algorithm cannot serve it.",
+      "check": "Check key provisioning or key-configuration validation accepts only asymmetric algorithms and rejects `HS*`, `dir`/`A*KW`-style symmetric algorithms and `none`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bind each provisioned key to the single algorithm it is used with by setting its `alg`, rather than having one key without `alg` serve several algorithms such as RS256 and PS256.",
+      "why": "RFC 8725 section 3.1 requires a key to be used with one algorithm.",
+      "check": "Look for key generation that creates one key for multiple algorithms or leaves `alg` unset on a generated key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Default generated RSA keys to 3072 bits, not 2048.",
+      "why": "NIST SP 800-57 accepts 2048-bit RSA only through 2030.",
+      "check": "Look for default RSA key sizes of 2048 in key-generation options or defaults.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When deciding whether a held key can serve an algorithm, don't count public-only encodings (`spki`, `x509`) or keys whose `alg`, `use`, key type, curve or custody the runtime credential selector would reject.",
+      "why": "A held key satisfies a specification only when the server could actually select it for signing or decryption; otherwise the gap stays unfilled and nothing can be signed.",
+      "check": "Inspect key-satisfaction logic for checks that accept a key by algorithm family alone without excluding public-only keys or reusing the runtime selector's acceptance rules.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A persisted key that cannot be unprotected must fail the load with a message naming the owner and the lost or changed key, not be silently deleted or regenerated outside an explicit development opt-in.",
+      "why": "Regenerating an unreadable key in production hides a lost key and silently changes the keys relying parties trust.",
+      "check": "Look for catch blocks around key unprotection that skip, delete or replace the key, or that fail without identifying the tenant and key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options validation and the runtime code that consumes those options must share one rule set (a single policy service), so any configuration accepted at startup is one the runtime can honor.",
+      "why": "Separate validation and execution rules drift, letting the host accept a configuration that later fails at runtime.",
+      "check": "Look for an IValidateOptions implementation that reimplements rules the consuming service applies separately instead of calling a shared policy.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A configured list option that replaces defaults must be the whole set when set, not appended to the default values.",
+      "why": "Operators who configure a list expect exactly that set; merging with defaults would provision items they excluded.",
+      "check": "Check option binding or post-configure code for lists that concatenate configured entries onto defaults.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Seed or provisioning contributors must be idempotent, and a seed that can run concurrently on several replicas must guard its commit with a concurrency token and retry in a fresh unit of work.",
+      "why": "Two replicas or two requests that missed a cache may seed the same entity at once; the token stops both committing, and idempotency lets the retry add only what the winner did not.",
+      "check": "Look for seed handlers that insert unconditionally, lack an optimistic-concurrency check on the parent row, or retry within the same failed DbContext/unit of work.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

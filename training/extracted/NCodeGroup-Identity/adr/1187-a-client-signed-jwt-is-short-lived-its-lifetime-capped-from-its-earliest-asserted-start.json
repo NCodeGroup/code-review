@@ -1,0 +1,115 @@
+{
+  "hash": "2a92d746dd64aa10",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1187",
+  "rules": [
+    {
+      "statement": "When validating a JWT's lifetime, treat `iat` as a validated time claim: a present `iat` must be a valid NumericDate (fail closed if unreadable) and must be refused when it is later than the clock skew in the future.",
+      "why": "A client chooses `iat`, so a lifetime cap based on it can be gamed unless it is validated, and FAPI 2.0 §5.3.2.1 requires rejecting a JWT whose `iat` or `nbf` is more than 60 seconds in the future.",
+      "check": "Look for JWT lifetime validation that checks `nbf` and `exp` but ignores `iat`, accepts an unparseable `iat`, or allows `iat` beyond now plus clock skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Measure a JWT's maximum lifetime as `exp` minus the earlier of `iat` and `nbf`, or minus the validation time plus clock skew when the token asserts neither, and require `exp` whenever a maximum is set.",
+      "why": "Measuring from `iat` alone can be gamed and ignores an earlier `nbf`, measuring from now alone accepts stale pre-minted tokens, and a token without `exp` has an unbounded lifetime.",
+      "check": "Look for lifetime caps computed as `exp - now` only or `exp - iat` only, or a set maximum lifetime that still accepts a token with no `exp`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put JWT lifetime policy (maximum lifetime, required `nbf`/`iat`) in the shared JWT validation requirement and pass it through validation options, not into an individual consumer such as a client-assertion handler.",
+      "why": "Every consumer (client assertions, request objects, CIBA requests, access tokens) reuses the one requirement, so the policy is enforced consistently.",
+      "check": "Look for a handler or endpoint that checks `exp - iat` or claim presence itself instead of setting the lifetime requirement's options.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a validation requirement makes a JWT claim mandatory, fail a token that lacks it with a message that names the missing claim, and when a lifetime cap is exceeded, log a failure that names the exceeded maximum.",
+      "why": "Diagnosing a rejected token needs the failure to say which claim or bound caused it.",
+      "check": "Look for required-claim or max-lifetime failures that return a generic message without naming the claim or the maximum.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a client assertion's `jti` replay record until `exp` plus the effective clock skew for that client, with the skew floored at zero and the sum saturating at `DateTimeOffset.MaxValue` rather than overflowing.",
+      "why": "An assertion validates until `exp` plus clock skew, so a record that expires earlier leaves a window where a replay is accepted.",
+      "check": "Look for replay-cache entries whose expiry is just `exp`, that use a global rather than the client's effective skew, or that add a TimeSpan to a DateTimeOffset without guarding overflow or negative skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always validate a request object's `aud` against the configured expected audience or, when none is configured, the authorization server's issuer, and refuse a request object without `aud` with `invalid_request_object`.",
+      "why": "RFC 9101 and FAPI expect the issuer as audience, and an unchecked `aud` lets a request object meant for another authorization server be replayed here.",
+      "check": "Look for request-object (JAR) loading that skips the `aud` check when no expected audience is configured or accepts a missing `aud`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a request object loader for not requiring the `typ` header `oauth-authz-req+jwt`: the purpose is bound by `iss` equal to the client, `aud` equal to the issuer and the client's signature.",
+      "why": "Requiring the explicit `typ` would refuse every OpenID Connect Core client and the conformance suite, and the audience and issuer checks already prevent confusion with other client-signed JWTs.",
+      "check": "Before raising a missing-`typ` finding on request objects, confirm the code validates `iss` against the client, `aud` against the issuer, and the signature.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a CIBA signed authentication request by requiring `iat`, `nbf`, `exp` and a non-empty `jti`, applying the request-object maximum lifetime and using the client's clock skew, the same as the authorization endpoint does for request objects.",
+      "why": "CIBA Core §7.1.1 requires these claims on a signed authentication request.",
+      "check": "Look for CIBA request loading that leaves any of `iat`, `nbf`, `exp` or `jti` optional, accepts an empty `jti`, skips the lifetime cap, or uses a default rather than the client's clock skew.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Merge a security setting that bounds a client-signed JWT's lifetime with a minimum (lower levels may only shorten it), and a setting that makes a claim mandatory with a logical OR (lower levels may only turn it on).",
+      "why": "A tenant, client or security profile must not be able to loosen a ceiling that a higher level or profile set.",
+      "check": "Look for new lifetime-cap or claim-requirement settings registered with a last-wins or Max merge that lets a client weaken the bound.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

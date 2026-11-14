@@ -1,0 +1,40 @@
+{
+  "hash": "98907e855736c57e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #484",
+  "rules": [
+    {
+      "statement": "When several callers share a single in-flight asynchronous operation, such as a cached retrieval, run the shared operation with `CancellationToken.None` bounded by its own timeout, and have each caller wait on it with `WaitAsync(cancellationToken)`.",
+      "why": "If one caller's token cancels the shared operation, that caller breaks the retrieval for every other caller waiting on it. With `WaitAsync`, a caller that cancels just stops waiting.",
+      "check": "Look for code that deduplicates or shares a task across callers, for example a cached `Task`, a `Lazy<Task>` or a dictionary of in-flight tasks, and passes one caller's `CancellationToken` into the shared work. Also flag shared work that has no timeout of its own.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Seal an internal type unless a derived type, or a test reaching it through `InternalsVisibleTo`/`DynamicProxyGenAssembly2`, subclasses or mocks it.",
+      "why": "CA1852 is enabled with warnings as errors. It flags unsealed internal types only in assemblies that grant no `InternalsVisibleTo`, so mockable internals in assemblies that grant it to their tests can stay unsealed.",
+      "check": "Look for new internal classes left unsealed in an assembly that has no `InternalsVisibleTo`, and for convention text claiming internal types always stay unsealed.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Keep convention and instruction documents consistent with the analyzer rules the build enforces, and state the exact condition under which an enforced rule applies.",
+      "why": "A contributor or agent who follows a convention that contradicts an enforced analyzer writes code that fails the build under warnings as errors.",
+      "check": "When a diff turns an analyzer rule on or off, check that the convention documents describing that behavior are updated so they don't contradict it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

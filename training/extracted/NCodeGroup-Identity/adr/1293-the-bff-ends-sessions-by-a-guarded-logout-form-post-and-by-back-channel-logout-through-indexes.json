@@ -1,0 +1,129 @@
+{
+  "hash": "7bbf16c99930ed63",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1293",
+  "rules": [
+    {
+      "statement": "Do not end a session or change any other state on an HTTP GET; an RP-initiated logout endpoint takes only a form POST, and its GET answers 405.",
+      "why": "A GET runs on browser prefetch and can be triggered cross-site, and a GET link that carries a guard leaks it into history, server logs and the Referer header.",
+      "check": "Look for logout or other state-changing endpoints mapped to GET, or logout links (`<a href>`) where a `<form method=\"post\">` is needed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.html"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Guard a cookie-authenticated logout POST with a random per-session token carried in the form body. Reject the request with 400 and keep the session when the request is not a form post or the token is missing, mismatched or repeated, and ignore any copy of the token in the query string.",
+      "why": "Logout is a top-level navigation that can't carry the anti-forgery header, so the per-session synchronizer token prevents logout CSRF. Keeping it in the body keeps it out of URLs.",
+      "check": "Check that the logout handler reads the guard only from the form body, requires exactly one value, ignores query-string values and answers 400 without ending the session on failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare secret tokens such as anti-forgery or logout guards with `CryptographicOperations.FixedTimeEquals`, not with `==` or `string.Equals`.",
+      "why": "A comparison that takes the same time whatever the input doesn't leak the guard through timing.",
+      "check": "Look for guard, token or secret values compared with `==`, `Equals` or `SequenceEqual`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a logout return URL against the configured allowlist, require it to appear at most once, and answer 400 when it fails; when it is absent, use a safe default such as `/`.",
+      "why": "Without that check, the logout endpoint becomes an open redirect.",
+      "check": "Look for a returnUrl or post_logout_redirect_uri taken from the request and used without an allowlist check, or without rejecting duplicate values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make logout idempotent: when there is no session, redirect to the return URL instead of failing.",
+      "why": "A second click or a stale tab should do no harm.",
+      "check": "Check that the logout handler doesn't return an error when the session is already gone.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At logout, first remove the server-side session and delete the cookie with `CancellationToken.None`. Then revoke the refresh token (RFC 7009) with `CancellationToken.None`, bounded by a timeout, and log any failure from that revocation, a cancellation included, without failing the logout.",
+      "why": "A client that disconnects must not leave the session behind, and the user asked to leave, so the session ends locally whatever happens at the provider.",
+      "check": "Look for session removal or revocation that passes the request's aborted token, revocation done before the local session is removed, or a revocation failure that fails the logout.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a back-channel logout receiver, find the sessions through `sid`/`sub` indexes rather than by scanning or listing the store. Before ending a candidate session, check that it matches the token's issuer, matches its `sid` when the token has one, and belongs to the receiving client.",
+      "why": "Scanning doesn't scale and needs a store that can list keys. The matching checks stop one logout token from ending sessions that belong to another issuer or client.",
+      "check": "Look for store enumeration in the back-channel handler, or sessions ended without checking issuer, sid and client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a logout token's `jti` as handled only after the sessions it names have ended. When handling fails, answer 400 without recording the `jti`.",
+      "why": "If the `jti` is recorded first, a store failure turns the provider's retry into a refused replay.",
+      "check": "Check the order of operations in the back-channel handler: the replay or `jti` record must come after the sessions have ended, and must not happen on an error path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require `sid` in back-channel logout tokens by default, matching the client's registered `backchannel_logout_session_required=true`. Accept `sub`-only tokens only when an explicit option turns this off.",
+      "why": "Otherwise one provider session could end every session the user has.",
+      "check": "Look for a session-required option that defaults to false, or a handler that accepts `sub`-only tokens without the option being set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel logout endpoint answers 200 with `Cache-Control: no-store` on success, and 400 when the request or token is invalid, the provider's keys can't be read, or a session can't be ended.",
+      "why": "These are the responses OpenID Connect Back-Channel Logout specifies, and a 400 makes the provider retry.",
+      "check": "Check the receiver's status codes and that the success response sets `Cache-Control: no-store`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

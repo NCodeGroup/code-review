@@ -1,0 +1,112 @@
+{
+  "hash": "9ad2856c65372025",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1134",
+  "rules": [
+    {
+      "statement": "In production service code, don't keep state that matters beyond a single request in process memory; put durable state in the database and shared ephemeral state behind a shared-state abstraction backed by a distributed store, so any replica can serve any request.",
+      "why": "Services run as interchangeable, disposable replicas with no sticky sessions; state held in one process is lost when that replica is replaced and is invisible to the other replicas.",
+      "check": "Look for static or singleton dictionaries, caches, queues or in-process job stores holding data that other requests or replicas depend on, and for designs that need session affinity.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a feature that relies on sticky sessions or request affinity to a specific replica.",
+      "why": "Any replica must serve any request, so a feature that only works when follow-up requests reach the same instance breaks behind a load balancer.",
+      "check": "Look for per-user or per-flow data cached locally and read back on a later request, or configuration enabling session affinity.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Outbound calls to other services use an explicit timeout and bounded retries with jitter, never unbounded or fixed-interval retry loops.",
+      "why": "The service must stay available when a dependency fails; without timeouts and with unbounded or synchronized retries, a failure spreads and turns into a retry storm.",
+      "check": "Look for HttpClient or other remote calls without a timeout, retry loops with no maximum attempt count, and retry delays with no random jitter.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read service configuration from the environment and the configuration system, and send logs to stdout rather than to local files.",
+      "why": "Following twelve-factor operation lets the same immutable artifact run in every environment, and containers run with read-only root filesystems.",
+      "check": "Look for hard-coded per-environment values, configuration or log files written to the local filesystem, and file log sinks.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/appsettings*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production service code, don't write to the container's local filesystem at runtime outside an explicitly mounted writable volume or temporary directory.",
+      "why": "Containers run with read-only root filesystems, and a change ships as a new release, never as an edit in place.",
+      "check": "Look for File/Directory writes to paths under the app directory or other fixed paths, and for code that changes deployed files at runtime.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make services start fast and shut down gracefully: honor the host's stopping token, and let in-flight work finish or hand it off durably.",
+      "why": "Replicas are replaced routinely during rollouts and node churn, so slow starts or abrupt shutdowns lose work and hurt availability.",
+      "check": "Look for background services that ignore the CancellationToken or IHostApplicationLifetime stopping signal, long blocking startup work, and in-process work that is lost on shutdown.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write database schema changes as expand-then-contract migrations, so the previous release keeps working against the new schema.",
+      "why": "Rollouts are progressive, so the old and new releases run side by side against the same database.",
+      "check": "Look for migrations that drop, rename or retype columns or tables, or add NOT NULL columns without defaults, while the currently deployed code still uses them.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/Migrations/**/*.cs",
+        "**/*.sql"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never commit secrets or long-lived credentials to Git; use OIDC or workload identity, or a secret store or KMS.",
+      "why": "The platform is secure by default: least privilege, no secrets in Git, and no long-lived credentials.",
+      "check": "Look for keys, passwords, connection strings with credentials, or access tokens in source, config, workflow or infrastructure files.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit metrics, logs and traces through OpenTelemetry instead of vendor-specific telemetry SDKs.",
+      "why": "The platform must be observable and portable through open standards, so a vendor can be swapped by replacing one component.",
+      "check": "Look for direct dependencies on vendor-specific telemetry or APM client libraries in place of OpenTelemetry APIs such as ActivitySource, Meter and ILogger exporters.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

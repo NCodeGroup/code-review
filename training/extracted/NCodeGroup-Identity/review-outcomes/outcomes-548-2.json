@@ -1,0 +1,18 @@
+{
+  "hash": "ae966c84635ab790",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #548",
+  "rules": [
+    {
+      "statement": "In a test project, don't report a private sealed nested stub, fake or sample type as a violation of the no-nested-types rule when only that one test file uses it; only ask for a top-level file when several test files share the type.",
+      "why": "The no-nested-types rule is scoped to production code (src/**), and the test convention from the project template puts a stub, fake or sample type used by one file in that file as a private sealed nested type. Test doubles shared by several files are the ones that get their own top-level files.",
+      "check": "Before reporting a nested type in test code, check the rule's applies-to scope and whether any other test file uses the type. Report it only if the type is shared across files or isn't private sealed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

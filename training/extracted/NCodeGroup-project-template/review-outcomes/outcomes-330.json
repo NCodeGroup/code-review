@@ -1,0 +1,42 @@
+{
+  "hash": "8b5d6a812196ec3b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #330",
+  "rules": [
+    {
+      "statement": "Don't flag a changelog or documentation phrase as unclear when it names projects by their answer to a template or configuration option, and earlier changelog entries and the README already use those same words for that option.",
+      "why": "The phrase is the project's established way of naming projects that chose that option. Earlier entries and the README's options table already define it, so rewording it would make the entries inconsistent.",
+      "check": "Before reporting, look for the same wording in earlier CHANGELOG entries and the README (for example a questions or options table). Report only if the term is defined nowhere.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a changelog entry to move into `## [Unreleased]` when the repository's conventions write the release's dated version section in the pull request itself and the release workflow tags and publishes from that section on merge.",
+      "why": "In such repositories the plan's release line names the version and the pull request writes its section. Moving the entry to Unreleased would break the release workflow that publishes from that section.",
+      "check": "Before reporting, read the landing or release section of AGENTS.md (or the contributing guide) and see whether earlier versions were added in their own pull requests. Report only if the conventions say entries go under Unreleased until a separate release step.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask code to replace matching on an error-message string with a machine-readable error code when the remote API gives no such code for that case, and a failed match only falls back to the existing generic handling.",
+      "why": "When the status code is shared with other failures (for example a plain 403) and only the message tells them apart, matching the message is the only signal available. If the wording changes, the code just falls back to the previous behaviour.",
+      "check": "Before reporting, check whether the API response actually has a distinguishing field (error code, documentation_url) and whether the plan's decisions or a comment already record that it doesn't. Also check that a failed match degrades to the old behaviour rather than to a wrong result. Report only if a machine-readable signal exists or a failed match causes harm.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

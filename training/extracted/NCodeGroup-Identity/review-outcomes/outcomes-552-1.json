@@ -1,0 +1,196 @@
+{
+  "hash": "99a3b0b6fd471ec2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #552",
+  "rules": [
+    {
+      "statement": "A verifier must refuse an unusable verification requirement before it reads the input: throw ArgumentException for an empty expected nonce or audience, a null list of allowed signature algorithms, a non-positive maximum age or a negative clock skew.",
+      "why": "If an empty expected nonce comes from a missing session value, any captured proof carrying an empty nonce replays until the age limit runs out, and nothing reports the misconfiguration.",
+      "check": "Look at verifier entry points that take expected nonce, audience, algorithms, max age or skew. Report any that compare these values as given without first refusing empty, null or out-of-range ones.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write freshness and expiry checks so that no TimeSpan or DateTimeOffset sum can overflow: subtract (e.g. `now - issuedAt - skew > maxAge`) rather than adding the skew to a limit that may be TimeSpan.MaxValue.",
+      "why": "`TimeSpan.MaxValue` is a natural way to say \"no limit\". With an addition it throws OverflowException, which escapes the result-returning API as an unhandled exception.",
+      "check": "Look for `MaxAge + ClockSkew` or similar additions of configurable TimeSpan values in time comparisons.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In SD-JWT issuance, treat a profile's required claims as protected: refuse to make them selectively disclosable.",
+      "why": "Verifiers check required claims on the issuer-signed payload before they resolve disclosures. A disclosable required claim produces credentials that every verifier using the same profile rejects.",
+      "check": "Look at issuer path validation. Report it if it refuses only explicitly protected claims and lets a required claim be made disclosable.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A producer must enforce the same structural limits (nesting depth, element counts, reserved names) that its consumers enforce, and refuse input beyond them with ArgumentException.",
+      "why": "Otherwise the producer signs output that every later processing or verification step rejects.",
+      "check": "Compare the limit checks in an issuer or encoder with the checks in the matching holder or verifier. Report any limit that only one side enforces.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, build a negative test's input from the input of the matching positive test and change only the property under test, so that the test fails if the check it covers is removed.",
+      "why": "An input that is invalid for some other reason (for example coordinates that are not on the curve) is rejected anyway, so the suite stays green when the check under test regresses.",
+      "check": "For refusal tests, see whether the input could be rejected for a reason other than the one the test names, and whether it differs from the positive control in more than that one aspect.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep validation or lookup logic that two components must apply identically in one shared internal helper, not in parallel private copies.",
+      "why": "A change to one copy leaves the two components disagreeing, for example a holder accepting input the verifier refuses.",
+      "check": "Look for private methods that are line-for-line the same across sibling classes, such as header or algorithm resolution with identical throws.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Scope each exception catch to the input it guards, so that a failure is mapped to the error code and message of the part that actually failed.",
+      "why": "An outer catch that also catches errors from lazily materialized nested values gives callers the wrong error code and a misleading reason.",
+      "check": "Look for a single broad catch (e.g. ArgumentException) around processing that covers several input sources, including lazily evaluated JsonNode conversions, but maps every failure to one source's error.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't declare a placeholder value (such as `stackalloc byte[0]`) just to silence an analyzer. Choose the stack or rented buffer in one conditional expression, and dispose the optional lease with a `using` declaration instead of a nullable local and try/finally.",
+      "why": "The placeholder and the try/finally are harder to read and depart from the house disposal style.",
+      "check": "Look for `stackalloc byte[0]` that is later overwritten, analyzer suppressions next to it, and nullable lease locals disposed in finally.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import a namespace with a `using` directive instead of fully qualifying its types (such as attributes) inline.",
+      "why": "Fully qualified names inline are style noise.",
+      "check": "Look for repeated fully qualified type names, e.g. `System.Diagnostics.CodeAnalysis.MemberNotNullWhen`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't remove elements one at a time with `RemoveAt` inside a loop over a list or JsonArray whose size isn't bounded. Build the result in a single pass into a pre-sized list.",
+      "why": "Each RemoveAt shifts every later element, so a large input costs quadratic time.",
+      "check": "Look for `RemoveAt(index)` inside a loop over a collection whose size comes from input.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On per-request processing paths, build per-element strings (such as JSON Pointer paths) only for the elements that need them, not for every member.",
+      "why": "Building them for every member allocates one string per claim on every request, and the strings grow with depth.",
+      "check": "Look for path or label string building that runs for every member in a walk when only some member kinds, or only error paths, use the result.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options-validator failure messages name the type-qualified property, the constraint and the refused value (e.g. \"FooOptions.SaltSizeBytes must be at least 16; it is 15.\"). They name a configuration key path only when the options are bound to a configuration section.",
+      "why": "An operator whose host fails to start needs to know which setting to fix and what value was refused.",
+      "check": "Look at IValidateOptions implementations. Report messages that leave out the property, the constraint or the actual value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that a guard or refusal is untested, search the test class for a test that leaves out or empties that input and asserts the exception. Don't report it if such a test exists.",
+      "why": "In two cases the reported gap was already covered by an existing test, for example one that builds the parameters without the property, which leaves it null.",
+      "check": "Search the corresponding test file for tests named after the guard (e.g. `WhenXIsUnset_Throws`, `WhenInputIsEmpty_Throws`) and for theories over the empty values, including tests that leave out a property rather than setting it to null.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report reading `IOptions<T>.Value` in a constructor into a get-only property for options fixed at start-up, unless the options validator resolves services.",
+      "why": "Reading the value once at construction is the established shape for start-up-fixed options across the codebase. The written rule only forbids options validators that resolve services.",
+      "check": "See whether sibling services read IOptions<T>.Value at construction and whether the options validator has dependencies.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an options class configured only through an `Action<T>` registration callback, and bound to no configuration section, to add a `SectionName` constant or switch its setters to `init`.",
+      "why": "Such options have no section to name, and the configuration callback cannot assign `init` setters.",
+      "check": "See whether the options are bound with Bind/GetSection or only configured through the AddX callback, and compare them with sibling callback-configured options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest a primary constructor in place of a private constructor that exists so that only validating factory methods can create the type.",
+      "why": "A primary constructor takes the type's accessibility, so it would add a public constructor that bypasses the factories' validation.",
+      "check": "See whether the constructor is private or less accessible than the type, and whether static Create/Parse factories validate their inputs before calling it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a private sealed stub, fake or sample type nested in the one test file that needs it as a no-nested-types violation: the test conventions require that placement, and the no-nested-types rule governs production code.",
+      "why": "The test-style conventions say a stub, fake or sample type that one test file needs is a private sealed nested type in that file.",
+      "check": "See whether the nested type is in a test project, is private sealed, and is used only by that test file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

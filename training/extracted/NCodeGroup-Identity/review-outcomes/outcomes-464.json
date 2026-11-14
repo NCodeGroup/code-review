@@ -1,0 +1,119 @@
+{
+  "hash": "4f3b61ff039793d3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #464",
+  "rules": [
+    {
+      "statement": "Don't ask for upgrade or rebuild notes about runtime or binary breaks, such as a changed public const value or a newly reserved name that now throws, when the package has never been released and the CHANGELOG already marks the change **Breaking:**.",
+      "why": "A package that has never shipped has no compiled consumers, so nobody has the old value or behavior to break. The Breaking entry is enough.",
+      "check": "Before reporting, look at version.json, for example a 0.0.1-alpha pre-release that has never shipped, and at the CHANGELOG entry. Report only if a released version exists or the entry doesn't flag the break.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to move a CHANGELOG entry for a security hardening change, such as host-only cookies or form-POST logout, into `### Changed`. Hardening changes belong under `### Security`, with **Breaking:** on each one that breaks callers.",
+      "why": "Hardening changes are filed in the Security group, and the Breaking flag on each entry already makes the break visible.",
+      "check": "Check which heading the entry actually sits under in the [Unreleased] section and whether it is flagged **Breaking:** before reporting misfiled entries.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a plain-http localhost origin in a Development-only CORS allow-list when the dev tool that serves that origin can't serve HTTPS, such as `vite preview`.",
+      "why": "The preview server only serves plain http, so the origin is kept on purpose. It appears only in the Development configuration.",
+      "check": "Check that the entry is only in appsettings.Development.json and whether the dev server for that port supports HTTPS, for example the frontend preset's serveOverHttps setting, before reporting.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/appsettings.Development.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an ASP.NET Core endpoint that calls `HttpRequest.ReadFormAsync`, catch `InvalidDataException` and answer 400 with the endpoint's usual invalid-request error, not a 500.",
+      "why": "A malformed or oversized form body makes ReadFormAsync throw InvalidDataException. Left uncaught, a client input error becomes a 500 and an error log entry, unlike every other bad input to the endpoint.",
+      "check": "Look for ReadFormAsync calls that have no try/catch for InvalidDataException mapping to the endpoint's 400 response.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put results from a single run, such as a count of passing tests, in an architecture decision record. State what the decision makes the tests do instead.",
+      "why": "A count from one run goes out of date as soon as the suite changes.",
+      "check": "Look in the Consequences sections of ADRs for specific test counts or one-off run results.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a new test file declares the same namespace as the sibling test files in its folder.",
+      "why": "A file with a different namespace from its neighbours is inconsistent with the rest of the project.",
+      "check": "Compare the namespace declared in a new test file with the namespaces of the other files in the same folder.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap `///` doc comment paragraphs to the usual line width (120 columns), with no awkward line breaks in the middle of a sentence.",
+      "why": "A paragraph split awkwardly is hard to read.",
+      "check": "Look for rewritten doc comments that break lines well short of the line width, partway through a phrase.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Markdown docs, wrap prose to the file's line width and pad table cells to the column widths.",
+      "why": "Unwrapped prose and misaligned table rows make the source hard to read, and a formatter will rewrap them.",
+      "check": "Look for edited Markdown lines that break partway through a sentence short of the line width, and table rows whose cells are wider or narrower than their column.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test checks the set of keys or entries a configuration produces, assert the exact set, not just that one expected entry is present.",
+      "why": "A containment assertion lets unexpected entries pass, so the test stops catching stray additions.",
+      "check": "Look for exact-equality assertions on collections that were loosened to contains-style checks, such as toStrictEqual becoming toContain or Assert.Equal becoming Assert.Contains.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint must not build URLs from the request Host header, add an endpoint-level test that sends a forged Host and asserts the published URLs don't change. Configure an issuer that differs from the request host so the assertion means something.",
+      "why": "Unit tests of the document builder can't catch an endpoint that starts reading Host again, so the Host-spoofing fix could regress with no failing test.",
+      "check": "For changes that stop deriving origins from the request, check for an integration or endpoint test that sends a spoofed Host header against an explicit issuer and asserts the output URL.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

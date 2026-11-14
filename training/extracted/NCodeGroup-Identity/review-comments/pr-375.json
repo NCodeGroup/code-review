@@ -1,14 +1,25 @@
 {
   "hash": "b656258573d2ad44",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #375",
   "rules": [
     {
-      "statement": "When a public API writes encoded or decoded bytes into a caller-supplied Span<byte> destination, also give it an overload that writes to an IBufferWriter<byte>, along with the method that tells the caller how big the destination must be.",
-      "why": "The maintainer asked for a buffer-writer overload alongside the span-only Decode method, so callers can write output without first sizing and allocating a destination buffer.",
-      "check": "Look for new public encode, decode or serialize methods that take only a Span<byte> destination and have no IBufferWriter<byte> overload, for example a generic `ref TWriter destination` where `TWriter : IBufferWriter<byte>, allows ref struct`.",
+      "statement": "When a public method decodes or encodes into a caller-supplied `Span<byte>` destination, also provide an overload that writes to an `IBufferWriter<byte>` (generic `TWriter : IBufferWriter<byte>, allows ref struct` passed by `ref`), with a matching `GetByteCount` sizing method.",
+      "why": "The maintainer asked for a buffer-writer overload next to the span-only decode API so callers don't have to size and rent buffers themselves. The writer form follows the shared writer-overload shape, with `GetByteCount` as its sizing method.",
+      "check": "Look for new public methods that take a `Span<byte>` destination and return the number of bytes written, such as Decode, Encode or Write. Flag any that has no `IBufferWriter<byte>` overload alongside it.",
       "scope": "general",
-      "topic": "allocations-and-buffers",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an `IBufferWriter<byte>` overload that decodes or parses input, validate the whole input before calling `GetSpan`/`GetMemory` or `Advance` on the writer, so that malformed input throws without advancing the writer.",
+      "why": "If invalid input throws after the writer has been advanced, the caller's writer is left holding partial output. Validating first keeps the writer unchanged when an error occurs.",
+      "check": "In writer-based decode methods, check whether the code can request or advance the writer's buffer before the input is fully validated. Also check whether it can throw after `Advance` has been called.",
+      "scope": "general",
+      "topic": "errors-and-validation",
       "applies_to": [
         "**/*.cs"
       ],

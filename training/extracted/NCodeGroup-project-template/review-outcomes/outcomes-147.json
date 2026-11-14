@@ -1,0 +1,115 @@
+{
+  "hash": "8811f9bb88f17149",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #147",
+  "rules": [
+    {
+      "statement": "When a script fails to read an input it needs (a file at a Git ref, a command's output), don't silently substitute an empty value and carry on: fail with the underlying error, or, for an expected case such as a missing file, write a warning and produce output that names that case separately from the case where the input exists but is empty.",
+      "why": "Swallowing the failure lets a transient or real error overwrite good published output with a misleading message while the run still shows success and no log line explains why.",
+      "check": "Look for catch blocks, `2>$null`, or `if ($LASTEXITCODE)` branches that set a variable to '' or $null and continue to publish or overwrite something, without a warning or a throw.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script runs an external tool such as git or gh, capture its stderr and include it in the thrown error message instead of redirecting it to $null.",
+      "why": "If only the address or ref is named, a maintainer can't tell an auth failure from DNS, not-found or a missing ref without reproducing the run by hand.",
+      "check": "Look for external commands with `2>$null` or discarded stderr, followed by thrown messages that don't include the tool's own output.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test that replaces an external CLI with a stand-in script on PATH, check before any run that the command resolves to the stand-in, and fail the test if it doesn't.",
+      "why": "If the real CLI runs instead, the test calls live services with whatever credentials the runner has, so it stops being hermetic and deterministic.",
+      "check": "Look for tests that prepend a folder of stand-in scripts to PATH but never assert, for example with Get-Command, that the command resolves to the stand-in.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, route every network address the code under test resolves to local fixtures, and route all other addresses to a path that doesn't exist (for example with Git `insteadOf` set through `GIT_CONFIG_*`), so that address mapping gets tested and nothing reaches the network.",
+      "why": "Address shorthands and redirects that never run in tests can point real projects at the wrong address without any test catching it, and real network calls make tests non-hermetic.",
+      "check": "Look for tests that only use `file://` or local paths, so the code that expands or rewrites remote addresses never runs, or for tests that can reach real remotes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two standalone scripts have to carry copies of the same logic (address rewrites, version-tag parsing), put a comment beside each copy that points to the other, so the two get changed together.",
+      "why": "If only one copy changes, the two scripts can resolve a different address or newest version from each other.",
+      "check": "Look for duplicated normalization or parsing logic across scripts with no cross-reference comment saying to change both together.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In PowerShell, read a line that may be missing or empty as `\"$(Get-Content -LiteralPath $path -TotalCount 1)\".Trim()` (or test it for $null first) rather than calling `.Trim()` directly on the result of Get-Content.",
+      "why": "For an empty file, Get-Content returns $null, so calling `.Trim()` throws a raw null-method error before the script's own validation can report the file and the value.",
+      "check": "Look for `(Get-Content ...).Trim()` or other method calls made directly on Get-Content output that can be empty.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code truncates a list of sections to fit a size limit and reports what was left out, handle the case where even the first (newest) item doesn't fit with its own accurate message, rather than counting it among the 'older' items omitted.",
+      "why": "Otherwise the output misdescribes what was left out: it calls the newest item 'older', gives the wrong count, and never shows that item.",
+      "check": "Look for truncation loops that can break at index 0 and still emit an 'N older items omitted' message, and check whether a test covers a single item larger than the limit.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to redact credentials from a value in messages or logs when that value is already committed in the repository's own files.",
+      "why": "A credential committed in the repository is already exposed there, so hiding it from logs or issue text protects nothing.",
+      "check": "Before reporting a leak, check where the value comes from; if it's read from a committed file, such as a config or answers file, don't raise the finding.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a test of one external call's failure path when every call goes through a single wrapper that throws on any non-zero exit code and the call runs before anything is changed.",
+      "why": "The shared wrapper already guarantees that the failure stops the run before any side effect, so a stand-in failure mode for each call is a test-only nit.",
+      "check": "Before reporting, check whether the call goes through a shared invoke helper that throws on a non-zero exit, and whether it runs before any create, edit or close.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

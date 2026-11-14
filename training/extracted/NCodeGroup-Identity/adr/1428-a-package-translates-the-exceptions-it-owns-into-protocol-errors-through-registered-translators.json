@@ -1,0 +1,67 @@
+{
+  "hash": "4bfd2632421c0404",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1428",
+  "rules": [
+    {
+      "statement": "When a package owns an exception that can escape a protocol endpoint, map it to a protocol error with a translator the package registers through `TryAddEnumerable` in an open collection, not with a hard-coded `switch` or type check in the core library.",
+      "why": "A closed mapping in core can't cover exceptions that other packages own. An open collection, where the first translator that answers wins and anything unanswered becomes `server_error`, lets a package add its exceptions without changing core.",
+      "check": "Look for new package-owned exception types that can reach protocol endpoints with no translator registered for them, for core code that special-cases another package's exception type, and for translators registered with `Add` instead of `TryAddEnumerable`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a temporary condition that a retry resolves on a protocol endpoint with `temporarily_unavailable`, status 503, a `Retry-After` header in whole seconds rounded up to at least 1, and `Cache-Control: no-store`, not with `server_error`.",
+      "why": "With `server_error`, a client can't tell a temporary outage that a retry fixes from a fault. Every protocol endpoint answers temporary conditions the same way.",
+      "check": "Check that outage or throttling paths on protocol endpoints return `temporarily_unavailable` with 503, set `Retry-After` by rounding the configured interval up (ceiling, minimum 1, never truncated to 0), and set `Cache-Control: no-store`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In the authorization endpoint's catch-all, translate the exception into a protocol error and deliver it to the client's redirect URI with `state`, as RFC 6749 §4.1.2.1 requires, instead of letting it escape as a generic server error.",
+      "why": "A client of the authorization endpoint must receive the error at its redirect URI along with `state`.",
+      "check": "Check the authorization request processor's generic exception handling: does it run the exception translators and redirect with `error` and `state`?",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Translate an exception into a protocol error before choosing the exception handler, so that endpoint-specific handlers receive the translated protocol exception and not the raw package-owned exception.",
+      "why": "Endpoint-specific handlers should see the same protocol exception that every other endpoint would answer with.",
+      "check": "In endpoint exception filters or middleware, check that translation happens before the handler is chosen or the exception is audited.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log a `temporarily_unavailable` protocol error at Warning with its own event ID, not at Error.",
+      "why": "The condition is resolved by the tenant or the environment and isn't a defect of the server.",
+      "check": "Look at the log level used for temporarily-unavailable or outage errors in exception handlers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "hash": "c49d3e0f61c1fec3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1400",
+  "rules": [
+    {
+      "statement": "When a shared single-flight retrieval is wrapped by a cache, re-read the value cache and any remembered failure inside the shared operation and return what they hold without fetching, while keeping the check before joining the single-flight.",
+      "why": "A caller that passes the outer check just before another retrieval records its result would otherwise download the same response twice; the outer check still lets a cached answer skip joining a retrieval.",
+      "check": "Look for a SingleFlight/shared-fetch delegate that downloads unconditionally without first re-checking the cache and the failure cache, or for an outer cache check removed in favor of only the inner one.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a retrieval that many callers share without any one caller's cancellation token, bounded by its own configured timeout, and on its own copy of any disposable input a caller owns.",
+      "why": "A caller that cancels or disposes its input must not break the shared retrieval for the other callers waiting on it.",
+      "check": "Check single-flight or shared fetch delegates for a captured caller CancellationToken, a missing timeout, or use of a caller-owned disposable object (such as an X509Certificate2) instead of a copy.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remember a shared retrieval that yielded nothing for a configured, positive failure-cache duration and don't call the source again while it is remembered, logging the suppression at debug level.",
+      "why": "Without it, an unreachable endpoint costs the full timeout on every request; the remembered failure is the back-off between retrievals.",
+      "check": "Look for shared outbound fetches whose failures aren't cached, whose failure duration is hard-coded instead of an option, or whose suppression isn't logged.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a correctness guard, treat an empty configured list of checks or sources as \"use every registered one in default order\", never as \"check nothing\".",
+      "why": "A check that silently checks nothing fails open, and correctness guards must fail closed.",
+      "check": "Look at options listing validators, checkers or sources and see whether an empty or null list skips the check.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate options that name registered components at host start against the registered descriptors, and fail on an unknown or repeated name with a message that lists the registered names.",
+      "why": "If unknown names are ignored, a misspelled name drops a check without notice, so the host refuses to start instead.",
+      "check": "Look for options holding component names that are looked up at runtime with missing names skipped, or validators that don't reject duplicates or don't list the valid names.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an options validator, read registered names from a descriptor-only catalog that constructs no components, never by resolving components that themselves depend on the options being validated.",
+      "why": "Resolving components that read the options being validated, from inside that validation, recurses.",
+      "check": "Check IValidateOptions implementations for injected services, or IEnumerable of implementations, that depend on IOptions of the same options type.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the constructor of a component that pairs implementations with descriptors refuse a missing pairing or a duplicate name, and resolve that component in a hosted warm-up service at host start, after options validation.",
+      "why": "A mismatch is then found when the host starts, not on the first request, and the implementations' own dependencies have to resolve at start.",
+      "check": "Look for name-keyed implementation sets matched to descriptors lazily at request time, with no constructor check and no startup resolution.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Order an open vocabulary of contributed components by an explicit Order property and then by ordinal name, not by registration order, and don't model the vocabulary as an enum.",
+      "why": "An enum is closed and registration order is implicit; descriptors with an explicit Order keep the vocabulary open and the order visible.",
+      "check": "Look for extensible component sets iterated in DI registration order or identified by an enum.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Express a policy relaxation as a value of one mode setting (for example strict, soft-fail, none), not as a separate boolean beside the mode.",
+      "why": "One policy setting states one policy, and a boolean beside a 'none' value leaves combinations that mean nothing.",
+      "check": "Look for new boolean flags such as SoftFail or AllowUnknown added next to an existing mode or enum setting that already controls the same behavior.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the zero value of a security check's status enum the Unknown status, refuse Unknown by default, and accept it only under an explicit soft-fail opt-in that logs a warning.",
+      "why": "A correctness guard fails closed, and the one relaxation is an explicit, visible opt-in.",
+      "check": "Check status enums for a zero value that means success, and check callers for an Unknown status that is accepted without an opt-in mode or without a warning.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep caches of large, rebuildable data fetched over the network in process-local IMemoryCache, not in a store shared between replicas.",
+      "why": "The data is large and can be rebuilt, and a network failure on one replica must not stop the others.",
+      "check": "Look for downloaded revocation lists, key sets or similar fetched data, or their remembered failures, written to a distributed or shared-state cache.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put the limits and source selection of an outbound retrieval that serves every tenant in deployment options, not in per-tenant or per-client settings.",
+      "why": "One retrieval serves every tenant whose data names the same location, and whether that location can be reached is up to the deployment.",
+      "check": "Look for timeouts, response-size limits, cache durations or source lists for shared fetches added as tenant or client settings.",
+      "scope": "domain",
+      "domain": "multi-tenant",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When checking certificate revocation against ordered sources, let the first definite answer (Good or Revoked) decide, and report Unknown only when every source answers Unknown.",
+      "why": "The order of the sources is their order of authority.",
+      "check": "Look for revocation aggregation that keeps querying after a definite answer, or lets a later Revoked override an earlier Good.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

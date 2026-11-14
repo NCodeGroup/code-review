@@ -1,0 +1,31 @@
+{
+  "hash": "29b40687e39336c4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1498",
+  "rules": [
+    {
+      "statement": "Every OpenID protocol endpoint must return an `x-fapi-interaction-id` response header: echo the request's value only when it is a canonical hyphenated UUID (RFC 4122), keeping its exact text and letter case, and otherwise (absent, empty or not a UUID) return a newly generated UUID.",
+      "why": "FAPI 1.0 Part 1 §6.2.1-11 requires it and the OpenID conformance suite checks it. Echoing an arbitrary client string would carry untrusted input into logs and downstream systems.",
+      "check": "Look for code that sets `x-fapi-interaction-id` by copying the request value without checking that it is a UUID, code that changes the letter case of an echoed UUID, and protocol endpoints that leave the header out.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the `x-fapi-interaction-id` response header in one filter on the protocol endpoint group, before the next delegate runs, so that success results, error results and requests refused by environment or rate-limit filters all carry it.",
+      "why": "If the header is set after the endpoint runs, or only on some endpoints, some responses go out without it, and clients correlate every call they make.",
+      "check": "Look for the header being set per endpoint or after `next` is awaited, for new protocol endpoints added outside the group that has the filter, and for the filter registered outside the rate-limit and environment filters, so that refused requests skip it.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

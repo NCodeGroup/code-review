@@ -1,0 +1,30 @@
+{
+  "hash": "2925e0332434c47c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #806",
+  "rules": [
+    {
+      "statement": "In a test project, when an options validator is registered on bound options with `ValidateOnStart`, also test the wiring: build the host or service provider with configuration that breaks the rule and assert that resolving `IOptions<T>.Value` (or starting the host) throws `OptionsValidationException` naming the offending key. Calling the validator's `Validate` method directly is not enough.",
+      "why": "Unit tests that call `Validate` directly still pass if the validator's registration (for example `TryAddEnumerable`) or the `ValidateOnStart` call is dropped. The host would then start with a configuration it is documented to refuse.",
+      "check": "Look for a new or changed `IValidateOptions<T>` registration or `ValidateOnStart` call. Flag it when the only tests call the validator's `Validate` method and no test builds the configured provider or host with invalid configuration and expects `OptionsValidationException`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a new item to be added to a list in a decision record or other documentation when the list is introduced as examples (for example \"among them\") and the new item follows the general rule the record states.",
+      "why": "The maintainer declined this finding. Such a list names examples rather than everything, so the record and the code already agree when the new item follows the stated rule.",
+      "check": "Before reporting a missing entry, read how the list is introduced. Words like \"among them\", \"for example\" or \"such as\" mean it is not exhaustive. Then confirm that the new item follows the record's general decision (for example, the same binding and validation path).",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

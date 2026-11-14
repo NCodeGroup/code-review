@@ -1,542 +1,739 @@
 {
-  "hash": "da34a067269577be",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "ab8da03e42a888b6",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity csharp-production.instructions.md",
   "applyTo": [
-    "src/**/*.cs"
+    "src/**/*.cs",
+    "hosts/**/*.cs",
+    "analyzers/**/*.cs"
   ],
   "rules": [
     {
-      "statement": "Async methods return ValueTask/ValueTask<T>, carry an Async suffix, and take a CancellationToken as the last parameter; use Task only where a framework contract you don't own requires it, such as middleware InvokeAsync, minimal-API handlers or mediator handlers.",
-      "why": "This is the house async shape. Task is accepted only where an external contract requires it.",
-      "check": "Look for new async methods returning Task outside framework boundaries, methods missing the Async suffix, or a CancellationToken that isn't the last parameter.",
+      "statement": "In production code, an async method returns ValueTask/ValueTask<T>, ends in `Async`, and takes a CancellationToken as its last parameter, even when none of its awaited calls accepts one; a root call site with no token passes CancellationToken.None.",
+      "why": "The token is part of the method's contract, so a call added later honors it.",
+      "check": "Look for own async methods returning Task/Task<T> or lacking a trailing CancellationToken (framework-boundary contracts such as mediator handlers, overrides of foreign members, middleware Invoke and xUnit tests are exempt).",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In production code, a method whose work must not be dropped by a caller's abort (post-commit work on its own bounded token, or work an ADR makes uncancellable on CancellationToken.None) takes no CancellationToken parameter and carries a `[SuppressMessage(\"Design\", \"NCID0003\", Justification = ...)]` whose justification cites the ADR; don't report such a method for lacking a token.",
+      "why": "A token parameter it ignores would misstate its cancellation, and a caller-passed token could drop the effect.",
+      "check": "For an async method without a trailing token, check for a suppression citing an ADR; flag a suppression without an ADR citation, or an ignored token parameter on such a method.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Never block on a Task or ValueTask with .Result, .Wait(), .GetAwaiter().GetResult(), Task.WaitAll or Task.WaitAny; await it instead.",
-      "why": "Sync-over-async is banned. BannedApiAnalyzers (RS0030) fails the build on it.",
-      "check": "Look for blocking calls on tasks.",
+      "statement": "In production code, never block on async work (sync-over-async such as .Result, .Wait(), GetAwaiter().GetResult()).",
+      "why": "Banned in every project via BannedSymbols.",
+      "check": "Look for blocking waits on tasks.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": true
     },
     {
-      "statement": "Offload fire-and-forget work with Task.Run, never Task.Factory.StartNew with an async delegate, and offload only when the work has to leave the calling thread.",
-      "why": "StartNew over an async lambda returns an unobserved Task<Task> and drops the inner task's exceptions. Task.Run unwraps it.",
-      "check": "Look for Task.Factory.StartNew with an async lambda, or offloading that isn't needed.",
+      "statement": "In production code, offload fire-and-forget work with Task.Run, never Task.Factory.StartNew with an async delegate.",
+      "why": "StartNew with an async delegate returns a Task<Task> that does not represent the work.",
+      "check": "Look for Task.Factory.StartNew given an async lambda.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not call ConfigureAwait(false) in ASP.NET Core-oriented library code.",
-      "why": "ASP.NET Core installs no SynchronizationContext or custom TaskScheduler, so the call does nothing at runtime. CA2007 is disabled, and the source lists the rule as tool-enforced.",
-      "check": "Look for ConfigureAwait(false) calls.",
+      "statement": "In production code, do not use ConfigureAwait(false); the libraries are ASP.NET Core-oriented and CA2007 is disabled rather than required.",
+      "why": "Under ASP.NET Core there is no synchronization context, so the call is noise.",
+      "check": "Look for ConfigureAwait(false) calls, and don't ask for them to be added.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": true
     },
     {
-      "statement": "At an endpoint or middleware boundary, rethrow an OperationCanceledException caused by HttpContext.RequestAborted; never turn it into an error response, a retry or an audit write.",
-      "why": "A cancelled request token means the client disconnected; it isn't an error. The aborted token would make those writes fail anyway.",
-      "check": "Look for catch blocks that turn a request-aborted cancellation into a response, a retry or a logged audit record.",
-      "scope": "domain",
-      "domain": "aspnetcore",
-      "topic": "errors-and-validation",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "In a background loop, catch a failed unit of work with `when (!stoppingToken.IsCancellationRequested)` and end the loop quietly only when the loop's own stopping token is cancelled, not on every OperationCanceledException.",
-      "why": "An HttpClient timeout throws TaskCanceledException while the stopping token is untouched. Filtering on `exception is not OperationCanceledException` lets one slow call end the loop and, under the default StopHost behavior, stop the process.",
-      "check": "Look for BackgroundService loops whose catch filters exclude OperationCanceledException instead of checking the stopping token.",
-      "scope": "general",
-      "topic": "async-and-concurrency",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Use C# collection expressions instead of `new[] {…}`, `new List<T> {…}` or Array.Empty<T>().",
-      "why": "This is the house style, enforced by analyzers.",
-      "check": "Look for old-style collection initializers.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": true
-    },
-    {
-      "statement": "Declare compile-time literal values as const, not as var or readonly locals.",
-      "why": "This is the house style, enforced by analyzers.",
-      "check": "Look for locals initialized from literals that aren't const.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": true
-    },
-    {
-      "statement": "Build byte data from valid UTF-8 text with u8 literals, and expose a fixed protocol label such as an HKDF info or a hash prefix as a `static ReadOnlySpan<byte> Name => \"…\"u8` property, never as a const string encoded on each call.",
-      "why": "It avoids encoding the label on every call and keeps byte constants explicit.",
-      "check": "Look for Encoding.UTF8.GetBytes on literal strings, or const-string labels encoded at the call site.",
-      "scope": "general",
-      "topic": "text-and-encoding",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": true
-    },
-    {
-      "statement": "Never use the null-forgiving operator (!), not even with a justification comment; restructure the code so the compiler proves the value is non-null (`?? throw`, [MemberNotNullWhen], an `is { } x` pattern, narrowing by early return).",
-      "why": "Nullable warnings are errors and `!` is banned. The analyzer's `// !` escape hatch must not be used.",
-      "check": "Look for a postfix `!` on any expression, including ones annotated with a `// !` comment.",
+      "statement": "In production code, treat an OperationCanceledException caused by request abort as a client disconnect, not an error to log or answer as a failure.",
+      "why": "A request abort is a disconnect, not a server fault.",
+      "check": "Look for catch blocks or handlers that log request-aborted cancellation as an error or return a 500.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Under a `where T : notnull` constraint, never use a T? field or an `is null` test as the presence flag for an optional value; track presence with an explicit bool, or constrain T to struct.",
-      "why": "For a value type, T? under notnull is just T, so the null check is always the same and silently misdetects whether a value is present.",
-      "check": "Look for generic notnull types that test `field is null` or `is not null` on a T? member to decide whether a value is present.",
+      "statement": "In production code, a form body that cannot be read (ReadFormAsync throws InvalidDataException for a malformed body or one over the limits) is answered as a client error (400 invalid_request), read once up front, before client authentication, through the single shared try-read helper, never a local copy.",
+      "why": "Unhandled, the exception becomes a 500; one shared reader keeps every endpoint consistent, and later readers get the cached form.",
+      "check": "Look for direct ReadFormAsync calls, duplicated try-read-form helpers, or form reads after client authentication.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Use Debug.Assert only for internal invariants, never to validate untrusted, parsed or decoded input; for anything derived from input, use an explicit check that throws.",
-      "why": "Debug.Assert is compiled out of Release builds, so malformed input would be accepted in shipped code, which is a security bug.",
-      "check": "Look for Debug.Assert on TryParse/TryDecode results or on caller- or wire-supplied values.",
+      "statement": "In production code, a background loop treats an OperationCanceledException as a failure unless its own stopping token is cancelled.",
+      "why": "A cancellation from some other token is a failure of the work, not shutdown.",
+      "check": "Look for catch (OperationCanceledException) in worker loops that don't check the stopping token's IsCancellationRequested (e.g. via a `when` filter).",
       "scope": "general",
-      "topic": "security-and-crypto",
+      "topic": "async-and-concurrency",
       "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": true
-    },
-    {
-      "statement": "Anchor validating regular expressions with \\z, never $.",
-      "why": "In .NET, $ also matches before a trailing newline, so `^[a-z]+$` accepts \"acme\\n\".",
-      "check": "Look for validation regexes that end with $.",
-      "scope": "general",
-      "topic": "errors-and-validation",
-      "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Keep an identifier that is compared exactly, such as an issuer or a redirect URI, as a string wherever it is stored, serialized, compared or delivered, validate the raw string as well as the parsed Uri, and parse a Uri only to inspect a part of it.",
-      "why": "Uri trims whitespace, treats an empty query or fragment as absent, ignores the case of the host and other parts in equality, and AbsoluteUri, ToString(), UriBuilder and the JSON converter normalize the value.",
-      "check": "Look for Uri-typed storage or comparison of exact-match identifiers, or validation done only on the parsed Uri.",
-      "scope": "general",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Prefer auto-properties over fields for state, private members included; use a field only for ref, Interlocked, fixed or stackalloc targets, and declare a System.Threading.Lock as a get-only auto-property.",
-      "why": "This is the house style. A get-only property compiles to a readonly backing field, and `lock` on it still works.",
-      "check": "Look for new private fields, including Lock fields, that could be auto-properties.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Give each property the narrowest accessor shape: { get; } for read-only state, { get; init; } for immutable DTOs, { get; set; } only when mutation is needed; use expression-bodied members for simple computed properties.",
-      "why": "It minimizes how much state can be mutated.",
-      "check": "Look for public setters on state that is never mutated after construction.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Use primary constructors wherever a constructor only assigns parameters to members, and move the <param> docs onto the type; keep a traditional constructor only for logic a primary one can't express.",
-      "why": "This is the house style; it removes boilerplate constructors.",
-      "check": "Look for constructors whose bodies only assign parameters to fields or properties.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Put constants, statics and static readonly members at the top of the file or class, before instance members.",
-      "why": "It keeps the layout consistent.",
-      "check": "Look for static or const members declared after instance members.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Give every type and member the narrowest visibility that works, and widen it to public only for a stated consumer-facing reason; never make something public for tests (use InternalsVisibleTo), and keep a DI-resolved concrete implementation internal behind its public interface.",
-      "why": "An accidental public member is a SemVer contract that can only be removed through a major-version obsoletion cycle, while an accidental internal one is a one-line fix.",
-      "check": "Look for new public types or members without a consumer-facing reason, or public Default* implementations.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Expose no public API that disables or weakens a security validation (issuer, audience, signature, lifetime, algorithm) below its safe baseline; an option may only supply values or swap in an equal or stronger control.",
-      "why": "The library must be correct by default.",
-      "check": "Look for options or flags that turn off validation or relax a security control.",
-      "scope": "general",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When a replaceable public service has to enforce a security policy, put that policy behind its own public interface with an internal default, so a replacement implementation can resolve it.",
-      "why": "An internal-only policy can't be reached by the replacement code that needs it, so a replacement reimplements the policy or silently skips it.",
-      "check": "Look for security policy logic that is internal and embedded in the default implementation of a public, replaceable interface.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Validate tokens the server issued only through the single shared issued-token validation seam; never hand-build validation parameters for them, and let a caller add only the audiences and decryption keys it owns.",
-      "why": "Hand-built copies drifted: introspection reported ID tokens as active access tokens and ignored revoked sessions.",
-      "check": "Look for validation parameters constructed by hand for server-issued access tokens, ID tokens or id_token_hint.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Restrict a kind of caller to certain endpoints with opt-in endpoint metadata that fails closed: refuse it by default where it is resolved, and let each allowed endpoint opt in.",
-      "why": "A per-endpoint deny check would be missing from the next endpoint someone adds, and a request with no endpoint, such as background work, must resolve nothing.",
-      "check": "Look for per-endpoint deny checks, or resolution that allows the caller when the endpoint metadata is absent.",
-      "scope": "domain",
-      "domain": "aspnetcore",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Keep CORS off a front-channel endpoint with front-channel marker metadata and by branching the CORS middleware around it; never use DisableCors(), DisableCorsAttribute or any other ICorsMetadata.",
-      "why": "The endpoint middleware throws for an endpoint carrying CORS metadata when no CORS middleware ran, so every request fails on a production host that doesn't use CORS.",
-      "check": "Look for DisableCors or ICorsMetadata on interactive or front-channel endpoints.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Model a set of named values as open by default: public const string names in a static class compared ordinally, or registered descriptors/strategies resolved by name through a catalog that validates the whole set and rejects unregistered names.",
-      "why": "Consumers and sibling packages must be able to extend a vocabulary without editing the library.",
-      "check": "Look for new enums or closed sets for kinds, modes, types or statuses that other packages might need to extend, and for unknown names being ignored instead of rejected.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Use an enum only when its members are fixed by an external spec implemented in full, by one library operation's outcome set, or by a mirrored framework type, and no other package could ever need another member.",
-      "why": "Enums lock in vocabularies; setting scopes as an enum shut out every extension that stores settings for an entity of its own.",
-      "check": "For a new enum, ask whether a package other than this one could ever need to add a member.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Never use [Flags], switches, bit masks or hard-coded chains to encode a vocabulary's hierarchy, compatibility, order or behavior, and never infer a trait from a name's prefix or suffix; make the relationship registered data, dispatch to the registered strategy, and let it declare its traits.",
-      "why": "Relationships encoded in code are lock-in even when the names are strings.",
-      "check": "Look for exhaustive switches over vocabulary names, [Flags] vocabularies, or EndsWith/StartsWith tests on names.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Persist or send a vocabulary value as its string name, never as an ordinal.",
-      "why": "An older node that meets a newer member then fails closed by name instead of misreading a number.",
-      "check": "Look for enums serialized as numbers in persisted or wire formats.",
-      "scope": "general",
-      "topic": "persistence",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Never put secret material on the public API surface.",
-      "why": "Secrets must not leak through the public contract.",
-      "check": "Look for public members that expose raw keys, secrets or key bytes.",
-      "scope": "general",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Make data, options, context and event types sealed, with init or get-only members and concrete buffered collections (List<T>, not IList<T>); introduce interfaces only for replaceable DI seams or read-only slices.",
-      "why": "It is AOT-friendly, cheap to re-enumerate, and free of deferred-execution surprises.",
-      "check": "Look for unsealed DTOs, settable members, or interface-typed collection properties on data types.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Seal public leaf types and leave only deliberate extension points unsealed; never keep a public type unsealed just so tests can mock it (make it internal or mock its interface instead).",
-      "why": "Sealing documents derivation intent; the CA1852 exemption exists only so internal types can be mocked.",
-      "check": "Look for public concrete classes that aren't sealed and aren't designed for subclassing.",
-      "scope": "general",
-      "topic": "public-api",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Use a readonly record struct for a small immutable value-like type such as an id, key, command or disposition.",
-      "why": "Value equality and immutability come for free.",
-      "check": "Look for small value-like types declared as classes or as mutable structs.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Give a JSON-deserialized DTO a `[JsonExtensionData] public Dictionary<string, JsonElement>? ExtensionData { get; set; }` member.",
-      "why": "Unrecognized members on the wire then round-trip instead of being silently dropped.",
-      "check": "Look for new deserialized DTOs that have no extension data bag.",
-      "scope": "general",
-      "topic": "protocols",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Write payloads persisted at rest through a schema-versioned serializer, and evolve them additively: new members optional and never `required`, enums as strings, no member renamed, removed or retyped in place; a non-additive change bumps the version and ships an upcaster.",
-      "why": "System.Text.Json enforces `required` on read, which breaks older stored rows, and mixed-version nodes must be able to read each other's data.",
-      "check": "Look for `required` added to persisted DTOs, renamed or removed members, or bare JsonSerializer calls for stored payloads.",
-      "scope": "general",
-      "topic": "persistence",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Return buffered collections by default; return lazy IEnumerable/IAsyncEnumerable only for large, I/O-backed or usually short-circuited sequences, and never as a deferred sequence that captures request or ambient context or that callers will enumerate more than once.",
-      "why": "Deferred sequences go stale off-request and re-enumerate unexpectedly.",
-      "check": "Look for yield or LINQ returns that capture request state or that callers enumerate repeatedly.",
-      "scope": "general",
-      "topic": "performance",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Buffer any collection a constructor or method stores, injected IEnumerable<T> included, into an owned immutable copy: FrozenSet/FrozenDictionary for lookups, ImmutableArray for sequences that are iterated, List<T> only for genuinely mutable working sets.",
-      "why": "Callers can mutate a stored reference, and a lazy sequence re-enumerates on every read.",
-      "check": "Look for collection parameters assigned straight to members, or set-once lookups typed as IReadOnlyDictionary.",
+      "statement": "In production code, use collection expressions, `const` for compile-time literals, and `u8` UTF-8 literals, with a fixed protocol label (an HKDF info or hash prefix) exposed as a `static ReadOnlySpan<byte>` property.",
+      "why": "Template conventions enforced by analyzers.",
+      "check": "Look for older collection initializers, non-const literal fields, and byte arrays built for fixed labels.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
-      "enforced_by_tools": false
+      "enforced_by_tools": true
     },
     {
-      "statement": "Prefer `params IEnumerable<T>` over `params T[]`, and buffer inside the method.",
-      "why": "This is the C# 13 house pattern.",
-      "check": "Look for new `params T[]` parameters.",
+      "statement": "In production code, nullable reference types are on with warnings as errors, and the null-forgiving operator `!` is banned.",
+      "why": "Template nullability rule.",
+      "check": "Look for `!` null-forgiving usage.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
-      "enforced_by_tools": false
+      "enforced_by_tools": true
     },
     {
-      "statement": "Type method parameters and computed return values that don't transfer ownership as the narrowest read-only interfaces (IReadOnlyList, IReadOnlyCollection, IReadOnlySet), but keep collection properties on data types and backing storage concrete.",
-      "why": "Callers aren't coupled to a concrete type, while stored state stays concrete and immutable.",
-      "check": "Look for concrete collection parameters, or interface-typed set-once properties.",
+      "statement": "In production code, don't treat `T?` under a `where T : notnull` constraint as Nullable<T> for a value type; it is only an annotation, and a value-type T gets no HasValue/null state.",
+      "why": "This bit the settings lattice.",
+      "check": "Look for generic code with `where T : notnull` that uses `T?` expecting null to represent 'unset' for value types.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Don't add bool or enum parameters whose only job is to switch a method between behaviors; split the method into two intention-revealing methods.",
-      "why": "It avoids the boolean trap.",
-      "check": "Look for flag parameters that select between branches of a method.",
+      "statement": "In production code, use Debug.Assert only for internal invariants, never to validate input.",
+      "why": "Asserts vanish in release builds.",
+      "check": "Look for Debug.Assert on parameters or external data.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
-      "enforced_by_tools": false
+      "enforced_by_tools": true
     },
     {
-      "statement": "Make a configuration callback an Action<T> over a single sealed options or configurator type, never over bare parameters.",
-      "why": "A new configurable aspect is then a non-breaking property added to T.",
-      "check": "Look for Action<A, B, …> configuration callbacks in wire-up methods.",
+      "statement": "In production code, validate untrusted text as written, not only as parsed, and never normalize an identifier compared byte for byte (such as a redirect URI) through UriBuilder or a URI JSON converter.",
+      "why": "Parsing normalizes away differences that exact matching depends on.",
+      "check": "Look for validation done only on a parsed Uri, or for exact-match identifiers round-tripped through Uri/UriBuilder.",
       "scope": "general",
-      "topic": "configuration-and-options",
+      "topic": "security-and-crypto",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Use InternalsVisibleTo only for test projects and DynamicProxyGenAssembly2, never between production assemblies.",
-      "why": "Packages must collaborate through public contracts.",
-      "check": "Look for InternalsVisibleTo that targets a non-test assembly.",
+      "statement": "In production code, use auto-properties instead of fields, including private members and a Lock, except const, ref, volatile, fixed-buffer, StructLayout/InlineArray struct fields, or fields used by reference.",
+      "why": "Enforced by the repository analyzer NCID0001.",
+      "check": "Look for plain fields outside the exempt categories.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
-        "**/*.cs",
-        "**/*.csproj"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In production code, give each property the narrowest accessor shape it needs (get-only or init over set; private set over public).",
+      "why": "Template members rule.",
+      "check": "Look for setters wider than any caller uses.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Have an implementation package reference only *.Abstractions packages, never another implementation package; route cross-implementation collaboration through an abstraction resolved from DI.",
-      "why": "The concrete type is then referenced only in its own registration and at the composition root.",
-      "check": "Look for a ProjectReference/PackageReference from an implementation project to a package that isn't an Abstractions package.",
+      "statement": "In production code, use a primary constructor wherever it can express the type, converting single-purpose constructors too; buffering a collection with `[.. param]` or a guard folded into an initializer still fits.",
+      "why": "Template members rule.",
+      "check": "Look for explicit constructors that only assign parameters, copy collections or guard arguments.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, place constants and statics at the top of the type; in a static class with C# 14 `extension(...)` blocks, every const, static field, static property and static method (private helpers included) sits before the first extension block.",
+      "why": "The extension blocks are the class's instance members.",
+      "check": "Look for static members declared after or between extension blocks or instance members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make a type `public` only by deliberate decision; the DefaultFoo implementation behind a public interface stays `internal`.",
+      "why": "Public surface is a contract.",
+      "check": "Look for new public types, especially Default* implementations of public interfaces.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, no public API may disable issuer, audience, signature, lifetime or algorithm validation.",
+      "why": "APIs are correct by default.",
+      "check": "Look for options or parameters that turn off token validation checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a policy that a replaceable public service must apply is itself a public seam (interface) that a replacement can resolve, not internal logic.",
+      "why": "Otherwise a replacement cannot apply the same policy.",
+      "check": "Look for a public replaceable service whose required policy lives in internal helpers.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, validate a token the server itself issued (access token, ID token, id_token_hint) only through the single issued-token validator seam, never through hand-built JWT validation parameters; callers add only the audiences and decryption keys they own.",
+      "why": "Hand-built copies led introspection to report ID tokens as active access tokens and to ignore revoked sessions.",
+      "check": "Look for new construction of JWT validation parameters for self-issued tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, restrict a class of caller to some endpoints with opt-in endpoint metadata that fails closed, so a request with no endpoint (such as background work) gets no access.",
+      "why": "Fail-closed security defaults.",
+      "check": "Look for endpoint restrictions that default to allow when metadata or endpoint is absent.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep CORS off a front-channel (user-agent navigated) endpoint with a marker metadata that the CORS middleware is branched around, never with DisableCors()/DisableCorsAttribute or any other ICorsMetadata.",
+      "why": "The endpoint middleware throws for an endpoint carrying CORS metadata when no CORS middleware ran, failing every request on a production host without CORS.",
+      "check": "Look for DisableCors, DisableCorsAttribute or ICorsMetadata on endpoints.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, model a set of named values (kinds, types, modes, scopes, formats, methods, reasons, statuses) as open: `public const string` names in a static class, compared ordinally and documented as the known values, or as registered descriptors or strategies from DI resolved by name through a catalog.",
+      "why": "The family must be extensible by consumers and sibling packages without editing it.",
+      "check": "Look for new enums or closed lists representing vocabularies, non-ordinal comparisons, or docs claiming the names are exhaustive.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, allow an enum only when its members are fixed by something that can't grow without this library changing (a fully implemented finite external spec enumeration, the outcome set of one library-owned operation, or a mirror of a framework type), no other package could reasonably need another member, and a new member would require a library change anyway.",
+      "why": "A scope enum judged closed because the library owned all its entities shut out every extension.",
+      "check": "For each new enum, ask 'could a package that is not this one ever need to add a member?'.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't use [Flags] for a vocabulary that may grow.",
+      "why": "Its bit space and the meaning of every combination are closed.",
+      "check": "Look for [Flags] enums representing extensible vocabularies.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't encode a vocabulary's hierarchy, compatibility or order in code (a switch, bit mask or hard-coded chain); make it registered data the catalog derives.",
+      "why": "Hard-coded relationships are lock-in even when names are strings.",
+      "check": "Look for switches or chains describing relationships between vocabulary members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't choose behavior with an exhaustive switch over an open vocabulary; dispatch to the strategy registered for the name.",
+      "why": "Extensions cannot add cases to a switch.",
+      "check": "Look for switch statements over vocabulary names that select behavior.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't infer a trait from a vocabulary member's name (such as `EndsWith(\".jwt\")`); have the registered strategy declare the trait.",
+      "why": "A suffix or prefix test is a hard-coded relationship.",
+      "check": "Look for StartsWith/EndsWith/Contains tests on vocabulary names.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, persist or send a vocabulary value as its string name, never an ordinal.",
+      "why": "An older node that meets a newer member then fails closed by name instead of misreading a number.",
+      "check": "Look for enums serialized as numbers in storage or on the wire.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, reject input that names an unregistered vocabulary member, never ignore it, and have the catalog validate the whole registered set when it's composed (duplicate names, dangling references, cycles).",
+      "why": "The vocabulary of registered values is closed.",
+      "check": "Look for lookups that skip unknown names silently, or catalogs without composition-time validation.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never expose secret material on the public surface.",
+      "why": "Template types rule.",
+      "check": "Look for public properties or methods returning raw key bytes or secrets.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, data, options, context and event types are `sealed`, with init or get-only members and concrete collection types (List<T>, never IList<T>).",
+      "why": "Template types rule.",
+      "check": "Look for unsealed DTO/options/event types, settable members, or interface-typed collection properties on them.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, seal a type by derivation intent, not by visibility; abstractions meant as extension points stay unsealed.",
+      "why": "Template types rule.",
+      "check": "Look for intended base types being sealed, or types sealed merely because they are internal or public.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, use a `readonly record struct` for a small immutable value (keys, descriptors, command and disposition values).",
+      "why": "Template types rule.",
+      "check": "Look for small immutable values modeled as classes or mutable structs.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a JSON-deserialized DTO captures unknown fields with a `[JsonExtensionData] public Dictionary<string, JsonElement>? ExtensionData { get; set; }` member.",
+      "why": "An unrecognized wire member round-trips instead of being silently dropped.",
+      "check": "Look for deserialized DTOs lacking a JsonExtensionData member.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, write a payload persisted at rest as a schema-versioned envelope through the shared persisted-payload serializer, not a bare JsonSerializer call, with no member names beginning with `$`; a payload rewritten in place carries a [JsonExtensionData] bag.",
+      "why": "Stored documents must be versioned and additive, and a read-modify-write must not drop members it doesn't model.",
+      "check": "Look for direct JsonSerializer use on stored payloads, `$`-prefixed members, or in-place-updated payloads without extension data.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a reader of a stored document that lacks the envelope or a member the serving code always writes throws as malformed rather than supplying a default or fallback; such members are `required`, and a non-additive change bumps the payload version and ships one single-step upcaster.",
+      "why": "Stored data missing written members fails closed.",
+      "check": "Look for readers defaulting missing stored members, always-written members not marked required, or schema changes without a version bump and upcaster.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, buffer data by default and stream only deliberately.",
+      "why": "Template types rule.",
+      "check": "Look for streaming APIs or IAsyncEnumerable introduced without a stated need.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, own every stored collection by copying it rather than keeping a caller's instance, and pick its concrete type by usage.",
+      "why": "Template types rule.",
+      "check": "Look for constructors or setters storing a passed-in collection reference directly.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, method signatures use read-only collection interfaces while storage stays concrete, and a local stays concrete through `var` over an explicit initializer.",
+      "why": "Template types rule.",
+      "check": "Look for parameters/returns typed as mutable concrete collections, or fields/locals typed as interfaces.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't add boolean or flag arguments that select a method's behavior.",
+      "why": "Template public API rule.",
+      "check": "Look for bool parameters that switch between code paths.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a configuration callback takes one growable type (an options or builder object), not multiple positional arguments.",
+      "why": "Template public API rule; the callback can grow without breaking.",
+      "check": "Look for Action<...> configuration delegates with multiple parameters.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't use cross-assembly InternalsVisibleTo.",
+      "why": "Template public API rule and ADR.",
+      "check": "Look for InternalsVisibleTo attributes or csproj items naming production assemblies.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs",
+        "src/**/*.csproj",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an implementation package references only *.Abstractions packages (and foundation packages), never another implementation package; cross-implementation collaboration goes through an abstraction interface resolved from DI, with the concrete type referenced only in the composition root.",
+      "why": "A capability shared by more than one implementation ships as an abstraction/implementation pair.",
+      "check": "Look for ProjectReference entries in an implementation csproj naming a non-Abstractions, non-foundation package.",
       "scope": "general",
       "topic": "dependency-injection",
       "applies_to": [
-        "**/*.csproj"
+        "src/**/*.csproj",
+        "src/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Mark a type that is public only for cross-assembly infrastructure with [EditorBrowsable(EditorBrowsableState.Never)], and open its summary with the standard 'supports the infrastructure and is not intended to be used directly from your code' boilerplate.",
-      "why": "This follows the EF Core / ASP.NET Core pattern and keeps it out of what application code sees.",
-      "check": "Look for infrastructure-only public types missing the attribute or the boilerplate.",
+      "statement": "In production code, mark an infrastructure-only public type with the summary \"This API supports the ... infrastructure and is not intended to be used directly from your code.\"",
+      "why": "Template public API rule.",
+      "check": "Look for public types meant only for infrastructure that lack the summary.",
       "scope": "general",
       "topic": "documentation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Record every public API change in PublicAPI.Shipped/Unshipped.txt, remove stale entries by hand, add both the container and member lines for a C# extension member, and keep the files LF.",
-      "why": "The public surface is tracked by PublicApiAnalyzers, and breaking changes require a major version bump.",
-      "check": "Look for public changes without PublicAPI.Unshipped.txt edits, stale entries, or CRLF rewrites.",
+      "statement": "In production code, record every public API change in the sibling PublicAPI.Shipped/Unshipped.txt: remove stale entries by hand after `dotnet format analyzers`, add both the `extension(Receiver!)` container line and the member line for a C# 14 extension member, and keep the files LF.",
+      "why": "The public surface is tracked; the formatter doesn't reliably remove stale entries and may rewrite the files with CRLF; a breaking change is a major bump.",
+      "check": "Look for public changes without PublicAPI entries, stale entries, missing extension container lines, or CRLF rewrites of the whole file.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
-        "**/PublicAPI.*.txt",
-        "**/*.cs"
+        "src/**/PublicAPI.*.txt",
+        "src/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Allow at most one overload per method name to declare optional parameters; express an optional trailing argument as explicit with-argument and without-argument overload pairs.",
-      "why": "PublicApiAnalyzers RS0026 fails the build otherwise; the source marks this as still rolling out.",
-      "check": "Look for multiple overloads of the same name that each have defaulted parameters.",
+      "statement": "In production code, at most one overload per method name carries optional parameters.",
+      "why": "RS0026; still rolling out, so it is confirmed in review.",
+      "check": "Look for multiple overloads of a name each with optional parameters.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Make required inputs constructor parameters and optional inputs nullable init properties defaulted inside the library; never add an optional value as a new constructor parameter.",
-      "why": "Once shipped, adding a constructor parameter is a binary-breaking change.",
-      "check": "Look for new optional constructor parameters on shipped public types.",
+      "statement": "In production code, required inputs are constructor parameters, optional inputs are `init` properties, and an evolving set of optional selection criteria is an init-only DTO rather than positional parameters.",
+      "why": "Template public API rule; DTOs grow without breaking callers.",
+      "check": "Look for optional inputs as constructor parameters, or filter/query methods with many optional positional parameters.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Model a growing set of optional filter or pagination criteria as a readonly record struct with non-required init properties, keeping required identity keys positional.",
-      "why": "A new criterion is then a source-compatible addition rather than a breaking signature change.",
-      "check": "Look for methods that gain extra optional positional filter parameters.",
+      "statement": "In production code, annotate a public type consumed by reflection, DI, the options binder or a serializer with JetBrains `[PublicAPI]`, and never apply `[PublicAPI]` to an internal type.",
+      "why": "It states intent and silences unused-member noise for public types; on internal types it misstates them as public surface.",
+      "check": "Look for serializer/DI-consumed public types without [PublicAPI], or [PublicAPI] on internal types.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Annotate a public type consumed by reflection, DI, the serializer or the options binder with JetBrains [PublicAPI], and never apply [PublicAPI] to internal types.",
-      "why": "It states the intent and silences unused-member analyzers without pragmas, while on an internal type it would misstate it as public surface.",
-      "check": "Look for public serializer- or DI-consumed types without [PublicAPI], or internal types with it.",
+      "statement": "In production code, keep one type per file.",
+      "why": "Template organization rule.",
+      "check": "Look for files declaring multiple top-level types.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "code-organization",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In production code, name the single canonical implementation of an `IFoo` `DefaultFoo`.",
+      "why": "Template organization rule and ADR.",
+      "check": "Look for canonical implementations named otherwise (FooService, FooImpl).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't declare nested types, except the template's two allowed cases.",
+      "why": "Template organization rule.",
+      "check": "Look for types declared inside other types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, place a type in a folder named for its purpose; a contract, its DTOs and its Default implementation share one purpose namespace across the abstractions/implementation pair, that folder registers its own services, and a service used by a single feature lives with that feature.",
+      "why": "Template organization rule; types are organized by purpose.",
+      "check": "Look for types grouped by kind (Interfaces/, Models/) or scattered away from their contract.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't report a public namespace that doesn't mirror its folder; the namespace is a stable contract (IDE0130 is off), except that public options in an `Options/` folder carry a `.Options` sub-namespace.",
+      "why": "The public namespace is a stable contract pinned by RootNamespace.",
+      "check": "Before flagging a namespace/folder mismatch, check whether the type is public options (which should use .Options).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In production code, an interface name states the role and leaves the brand to the namespace (no product prefix in the type name).",
+      "why": "Template organization rule.",
+      "check": "Look for interface names prefixed with the product or brand name.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     }

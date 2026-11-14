@@ -1,0 +1,46 @@
+{
+  "hash": "642edb69d025e17b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #291",
+  "rules": [
+    {
+      "statement": "When a script probes for a remote resource (for example with `gh api`), treat only an HTTP 404 as \"not found\", and stop with the tool's own error message on any other failure (401, 403, 5xx, network) instead of hiding stderr and carrying on.",
+      "why": "If every failure counts as \"missing\", an auth error or outage leads into a create call that fails with a generic message, which hides the real cause and suggests the wrong retry.",
+      "check": "Look for existence checks that redirect output to null (`*> $null`, `2>/dev/null`) and branch only on a non-zero exit code, without telling a 404 apart from other errors.",
+      "scope": "domain",
+      "domain": "build-and-release-scripts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In scripts, check the exit code (`$LASTEXITCODE`) of cleanup or rollback commands such as `git tag -d` after a failure, and write a warning that names what was left behind and how to remove it, instead of piping the output to `Out-Null` and ignoring it.",
+      "why": "A rollback that fails silently leaves stale state behind, such as a local tag, and that can confuse a later run.",
+      "check": "Look for native commands in error or rollback paths whose output goes to `Out-Null` or null and whose exit code is never checked.",
+      "scope": "domain",
+      "domain": "build-and-release-scripts",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a GitHub Actions job to set `persist-credentials: false` on `actions/checkout` when it pushes with the job token and, after checkout, runs only the repository's own protected-branch scripts, with no third-party actions and no dependency installs.",
+      "why": "Passing the same token another way, for example through `http.extraheader`, gives it to the same script, so it doesn't reduce the exposure, and the token lasts only for that job.",
+      "check": "Before you report persisted checkout credentials, check what the job runs after checkout: report it only if third-party actions, dependency installs or untrusted code run with the persisted token.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

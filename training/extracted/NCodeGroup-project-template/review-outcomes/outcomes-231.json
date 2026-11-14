@@ -1,0 +1,18 @@
+{
+  "hash": "d17e7fd3726591ba",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #231",
+  "rules": [
+    {
+      "statement": "Don't ask a pull request to move its CHANGELOG entry from a new dated version section to `## [Unreleased]` when the repository releases each plan under its own version and the plan's last step writes that version's section.",
+      "why": "In such repositories the release is cut from the feature PR: the plan's `Release:` line names the version, and the ship step tags the merge commit and publishes the release from that dated section once the PR merges.",
+      "check": "Before reporting, read the repository's landing/release conventions (for example the `## Landing` section of `AGENTS.md`), the plan's `Release:` line and recent CHANGELOG history. If earlier PRs each added their own dated version section and compare links, the dated section and moved links are correct and need no finding.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

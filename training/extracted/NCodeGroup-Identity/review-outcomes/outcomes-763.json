@@ -1,0 +1,29 @@
+{
+  "hash": "592745190142231e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #763",
+  "rules": [
+    {
+      "statement": "When a package adds a dependency-injection registration extension (an `Add…Library()`-style method on `IServiceCollection`), give its own test project a registration test that calls it on a new `ServiceCollection` and checks that each registered service resolves with the expected lifetime and implementation (keyed or named services by key).",
+      "why": "If a registration drops a service or wires it wrong, only distant downstream or integration tests would catch it, not the tests of the package that owns it.",
+      "check": "Look for new or changed `Add…` registration extension methods in a diff whose package test project has no test calling them directly, while sibling packages do have DefaultRegistrationTests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap new or edited code comments to the line width the rest of the file uses (about 120 columns), not as one long line.",
+      "why": "An unwrapped comment of a couple of hundred characters doesn't match the file's style and is harder to read.",
+      "check": "Look for added comment lines far longer than the file's other lines, for example over 120 characters.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

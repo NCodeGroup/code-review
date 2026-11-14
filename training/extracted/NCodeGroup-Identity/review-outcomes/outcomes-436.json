@@ -1,0 +1,67 @@
+{
+  "hash": "2a2ffdac78097709",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #436",
+  "rules": [
+    {
+      "statement": "In a GitHub Actions workflow, don't let two jobs share a concurrency group when one sets `cancel-in-progress: true` and the other must not be cancelled; give the job that must finish its own group, or keep the cancelling trigger from firing in the state where the other job runs (for example, run a comment-triggered job only when `github.event.issue.state == 'open'`).",
+      "why": "GitHub applies the cancel-in-progress setting of the run queued most recently, so a late trigger can cancel a pending or running job that nothing retries, and its work is lost.",
+      "check": "Look for `concurrency.group` values that are the same across jobs or workflows but have different `cancel-in-progress` settings, and check whether the cancelling job can be triggered while the other one is queued or running.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a GitHub Actions workflow, keep a comment next to each action pinned to a full commit SHA that explains why it is pinned, especially when the action receives secrets.",
+      "why": "Without the reason, a later maintainer may replace the SHA with a tag that can be moved, even though a SHA is the only pin nobody can move and the action is given secret keys.",
+      "check": "Look for diffs that delete or omit the explanatory comment on a SHA-pinned `uses:` line, or that replace a SHA pin with a tag.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When adding a privileged workflow job, record why it has its permissions, concurrency settings and environment (or lack of one) in the workflow header or a versioned doc.",
+      "why": "A later maintainer may otherwise change the job's permissions or concurrency without knowing why they are set that way.",
+      "check": "For a new job with write permissions or secrets, check that the workflow header comment or a doc explains its trigger, permissions, concurrency and secret source.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change widens what a trigger or condition accepts, such as new command variants, update the comments that describe that trigger so they list what is now accepted and any states in which it doesn't run.",
+      "why": "A stale comment saying only the old form is accepted makes readers think the new forms are rejected.",
+      "check": "Compare a changed `if` condition or trigger with the comments next to it, and look for wording like 'exactly' that no longer matches the condition.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a repository's own workflow or doc for naming `main` instead of 'the default branch' when `main` is that repository's default branch; the generic wording is only needed in shared callers or templates that other repositories reuse.",
+      "why": "The maintainer declined this: when `main` is the default branch, the text is accurate and both wordings refer to the same branch.",
+      "check": "Before reporting, check whether the file is a shared or canonical template used by other repositories, or a repository-specific file whose default branch is `main`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

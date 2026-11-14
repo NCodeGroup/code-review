@@ -1,0 +1,107 @@
+{
+  "hash": "3eaadf710079b4e4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1483",
+  "rules": [
+    {
+      "statement": "An HTTP API route answers 404 and 409 from the rows it, or a service it calls, read before the write; it never catches a store exception or inspects a store write's return value to produce them, and a store's InvalidOperationException propagates as 500.",
+      "why": "A store reports a duplicate, a missing row and a backing-database failure alike as InvalidOperationException, so mapping it reads a store fault as a conflict and hides a failure that a 500 shows.",
+      "check": "Look for a try/catch around a store call in an endpoint handler that returns NotFound/Conflict, or a 404/409 chosen from the result of a save/insert/delete instead of from a prior read.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't catch a store's optimistic-concurrency exception (StoreConcurrencyException) in an API endpoint handler; let it reach the single endpoint filter on the API's root route group that answers it 412.",
+      "why": "Every handler, a package's included, would otherwise repeat the catch, and one that forgot would answer 500; the caller, not the server, decides whether a write computed from a stale read still applies.",
+      "check": "Look for catch blocks for the concurrency exception, or ad-hoc 412 answers built from it, inside endpoint handlers or per-route filters.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every error an HTTP API answers is an RFC 9457 problem document; don't return a bodyless error result such as a bare TypedResults.NotFound() or StatusCode(4xx).",
+      "why": "A bare status breaks the contract that every error is a problem document, and a declared 404 problem would describe a body the route does not send.",
+      "check": "Look for error results without a problem body (NotFound(), Conflict(), BadRequest(), StatusCode(...)) where a TypedResults.Problem or a shared problem factory should be used.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An API route declares every problem its handler answers with ProducesProblem: 412 when it saves a unit of work it does not retry (an insert included) or checks If-Match; ProducesValidationProblem() for a validation 400; 415 for a [FromBody] parameter; and 400, declared once, for a [FromBody] parameter, a non-string [FromQuery]/[FromHeader]/[FromRoute] parameter, or a required string query or header parameter.",
+      "why": "The OpenAPI document lists only declared answers, so a route that answers an undeclared status lies by omission and clients never handle it.",
+      "check": "For a new or changed route, compare the statuses the handler can return and its bound parameters against its ProducesProblem/ProducesValidationProblem declarations; flag a missing or duplicate 400, a missing 412 on a non-retried save or If-Match check, or a missing 415 for a body.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an individual route to declare the problems that a filter on its route group answers for shared state (such as the 409 for unreadable stored settings or the 503 for an unavailable root key); the group declares those once, and a route declares only its own 409s and no 503.",
+      "why": "Those filters answer for state read through shared services whose reach grows without any route changing, so a per-route list drifts silently while one group declaration stays true.",
+      "check": "Check whether the status in question comes from a route-group filter before flagging a route for not declaring it; flag a route that redeclares the group's 503.",
+      "scope": "repository",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A problem document that asks the caller to wait sets both the Retry-After header and a machine-readable retryAfterSeconds extension member to the wait in whole seconds, rounded up and at least 1, through one shared helper, and never puts the wait in the detail prose.",
+      "why": "Browser fetch layers such as RTK Query's fetchBaseQuery drop response headers, and prose is not machine-readable and breaks clients when its wording changes.",
+      "check": "Look for a retry-later problem that sets only Retry-After, only the member, computes the seconds by truncation or allows 0, or embeds a duration in the detail string.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a problem document's extension members through shared public constants, in writers and tests alike, not with string literals.",
+      "why": "One set of names keeps every writer, test and client mirror of the problem shape in agreement.",
+      "check": "Look for string literals used as problem Extensions keys in production code or test assertions.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A problem document's detail is a fixed, written sentence, never an exception's Message.",
+      "why": "The detail is a stable, client-facing contract, and an exception message is neither stable nor meant for clients.",
+      "check": "Look for ex.Message, or other exception text, passed as a problem's detail or title.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a route matches an OAuth scope value from the request against stored scopes, compare with StringComparison.OrdinalIgnoreCase and write the stored scope's own value (its casing) and flags, not the value taken from the route.",
+      "why": "The answer depends on the loaded scopes, and the stored entity, not the caller's spelling, is authoritative.",
+      "check": "Look for scope lookups using case-sensitive or culture comparison, or writes that persist the route value instead of the matched stored scope's Value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

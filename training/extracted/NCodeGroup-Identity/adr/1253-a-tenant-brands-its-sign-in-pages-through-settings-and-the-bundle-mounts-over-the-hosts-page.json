@@ -1,0 +1,92 @@
+{
+  "hash": "eb1d600a86ecedcd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1253",
+  "rules": [
+    {
+      "statement": "When the server embeds JSON in an HTML `<script type=\"application/json\">` block, serialize it with an encoder that escapes `<`, `>` and `&`, such as the default encoder of `JsonSerializerOptions.Web`, and never with `JavaScriptEncoder.UnsafeRelaxedJsonEscaping` or a hand-built string.",
+      "why": "A value such as a display name that contains `</script>` must not be able to close the block and inject markup.",
+      "check": "Look for JSON written into an HTML page, including inside script blocks. Report it if it uses a relaxed or custom encoder, or string concatenation, that does not escape `<`, `>` and `&`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a front-end form carries a value the end-user already typed, such as a password, write it to the input's DOM `value` property through a ref, and only while the input is empty; never write it through React's `defaultValue` or the `value` attribute.",
+      "why": "`defaultValue` writes the `value` attribute, so a password would reach the markup.",
+      "check": "Look for carried or prefilled credential values in React components. Report any set through `defaultValue`, a `value=` attribute or `setAttribute('value', …)`, and any write that overwrites an input that is not empty.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A client bundle that replaces a server-rendered page must mount at once from data the server embedded in that page; it must not fetch data the host already knows before it mounts, and must not theme the page again when a later fetch returns.",
+      "why": "While the bundle waits on the network, the end-user's typed or autofilled input, focus and cleared choices are lost when the page is replaced. A time-out never holds on every network, and a late reply themes the page a second time.",
+      "check": "Look in mount or bootstrap code for a network request (fetch, a query hook) that runs before `createRoot(...).render`, or that re-themes the page after the first render, for data the server could embed.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a stored setting that a renderer consumes against the exact shape the renderer reads when the setting is set, for example colors limited to `#rgb` or `#rrggbb`, image URIs that are absolute `https`, and bounded text with no control characters, rather than accepting any value and failing at render time.",
+      "why": "A value the renderer cannot read would break the page at run time instead of being rejected when it is set, so every stored value must render.",
+      "check": "Look at new settings or options that feed presentation or rendering. Report validation that accepts free-form CSS colors, relative or non-https URIs, or text with no length limit or with control characters allowed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For an optional URL option, treat `null` as unset and fail startup validation on an empty string, the same way sibling URL options do.",
+      "why": "An empty string is a misconfiguration, not a way to unset the option, and URL options should behave the same way.",
+      "check": "Look at new optional URI or URL properties on options classes. Report any validation that silently accepts an empty string or treats it differently from sibling URL options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat the element ids, field names and `autocomplete` values of server-rendered pages as a contract with the client bundle and with automation, and keep them when the bundle redraws a page.",
+      "why": "The bundle reads state through those ids, and the browser fills the bundle's form itself only when the form keeps them. A page that drops one has nothing to carry, and automation should read the same page with or without the bundle.",
+      "check": "Look for renamed or removed ids, `name` attributes or `autocomplete` values on server-rendered pages, or on the components that replace them, without a matching change on the other side.",
+      "scope": "domain",
+      "domain": "frontend-progressive-enhancement",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use `flushSync` for a root's first render.",
+      "why": "A root's first render already commits in the task after `render` is called, so `flushSync` is not needed, and the `@eslint-react/dom-no-flush-sync` lint rule forbids it.",
+      "check": "Look for `flushSync` calls in mount code.",
+      "scope": "domain",
+      "domain": "frontend-react",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tsx",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

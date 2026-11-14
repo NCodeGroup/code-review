@@ -1,0 +1,110 @@
+{
+  "hash": "090321fdffd3a46e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1278",
+  "rules": [
+    {
+      "statement": "Define a failure-code vocabulary as a `public static class` of `public const string` snake_case values, never as an enum, so that a custom handler can supply a code of its own.",
+      "why": "Failure vocabularies are open: an enum would shut out codes that extension points such as custom validation handlers name.",
+      "check": "Look for new failure-kind enums, or code properties typed as an enum, where callers or extensions might need to add their own values. Also check that constant values are snake_case strings.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set a failure's machine-readable code at the point where the failure is detected, and have the layers above pass it through unchanged instead of translating it with a hard-coded mapping table.",
+      "why": "A mapping table between two vocabularies loses any code it doesn't list, including codes that custom handlers name.",
+      "check": "Look for switch statements or dictionaries that translate one layer's failure codes into another's, and for wrapping code that drops the inner code or replaces it with a generic one.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a higher-level failure vocabulary shares codes with a lower-level one, alias each shared constant to the lower-level constant (`= LowerCodes.X`) instead of repeating the string literal.",
+      "why": "Each code string is then defined once, so the two vocabularies can't drift apart.",
+      "check": "Look for duplicated string literals across failure-code classes where the higher-level assembly references the lower-level one.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that acts on why an operation failed must branch on the failure's machine-readable code, never on the text of its message or reason.",
+      "why": "The reason text is meant for humans and logs. It isn't a stable contract, and callers need to tell one failure from another without matching text.",
+      "check": "Look for `Message.Contains`, string comparisons or regex matches on exception messages or failure-reason text that decide control flow or map to error names.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A JWT validation requirement or handler that fails must record a specific failure code together with its reason (for example `Fail(code, reason)`), and a custom assertion that needs its own code must record it before it returns `false`.",
+      "why": "The validator joins every handler failure into one exception, so a failed requirement needs a code that callers can read. Without one it falls back to a generic code.",
+      "check": "Look at new or changed validation handlers, requirements and assertions: each failure path should call `Fail` with a code from the failure-code vocabulary (or a custom one), not record only reason text.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A claim-value requirement must declare its failure code explicitly (for example `invalid_issuer` or `invalid_audience`) rather than have the code inferred from the claim name it checks.",
+      "why": "A declared code is explicit and stable. Inferring it from a claim name is implicit and breaks for custom requirements.",
+      "check": "Look for logic that derives a failure code from a claim name (for example `iss` → `invalid_issuer`) instead of reading the requirement's own `FailureCode` setting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't re-check `iss`, `aud`, `exp`, `nbf` or other validated claims outside the JWT validator to work out which check failed. Read the validation result's failure code instead.",
+      "why": "Re-checking duplicates the validator's requirements and bounds a token's lifetime outside the lifetime requirement, which the conventions forbid.",
+      "check": "Look for code after a failed JWT validation that parses the token's claims and compares the issuer, audience or timestamps again.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token validation failure reason must never include the token itself or any part of it.",
+      "why": "Failure reasons are logged and shown as human-readable text, and putting the token in them would leak a credential.",
+      "check": "Look for failure reasons, exception messages or log templates that interpolate the raw token, its encoded segments or the full payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a validation result type, derive success from the failure code (`IsValid => FailureCode is null`) and resolve the default code for unrecognized exceptions in one place, not with a separate success flag or scattered fallbacks.",
+      "why": "With one source of truth, validity and the failure code can't disagree, and the fallback code lives in one place.",
+      "check": "Look for result types that store a separate `IsValid` boolean next to a failure code, or for callers that each supply their own fallback code when an exception carries none.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

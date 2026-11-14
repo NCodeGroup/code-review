@@ -1,0 +1,18 @@
+{
+  "hash": "df174470d9ceab0a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #694",
+  "rules": [
+    {
+      "statement": "In a test project, name a test for what it actually exercises and asserts: a test that only shows a host starts with a configuration section present must not be named or framed as verifying that the section is bound or validated, unless it registers the consumer and asserts on the bound options.",
+      "why": "A host that registers nothing reading the section still passes if the binding breaks, so a name that claims binding coverage is misleading. Either rename it to say the section is only accepted, or register a consumer and assert that its options are bound.",
+      "check": "Look for tests that add configuration sections and only assert that the host starts or that no exception is thrown. Check whether any registered service reads those sections. If none does and the test name or comments claim binding or validation, report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

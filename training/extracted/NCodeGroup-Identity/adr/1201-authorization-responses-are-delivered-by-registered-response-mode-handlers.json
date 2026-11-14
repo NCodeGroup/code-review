@@ -1,0 +1,124 @@
+{
+  "hash": "e035ae690a13363c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1201",
+  "rules": [
+    {
+      "statement": "Deliver authorization responses through registered response-mode handlers resolved by name, and never hard-code a switch or a validation list over `query`, `fragment` and `form_post`.",
+      "why": "Response modes are an open vocabulary. A package must be able to add a mode such as `web_message` by registering a handler, without editing the library.",
+      "check": "Look for `switch`/`if` chains over response_mode string values, or a `response_mode` setting or validation rule that enumerates allowed modes instead of accepting any whitespace-free name.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register built-in implementations of an extensible, multi-implementation service with `TryAddEnumerable`, so that packages can add their own alongside them.",
+      "why": "Handlers form an open set. Packages add to it by registration, and the built-ins must not block or duplicate those additions.",
+      "check": "Look for built-in handler or plugin registrations that use `AddSingleton`/`TryAddSingleton` for a service resolved as `IEnumerable<T>` instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When composing a registry of named handlers, validate the set as a whole once and refuse duplicate names, conflicting claims to the same role, and dangling references to names that no handler serves.",
+      "why": "Composing once lets the registry check the whole vocabulary up front, so a misconfiguration fails at startup and not during a request.",
+      "check": "Look for handler registries built from `IEnumerable<T>` with `ToDictionary` overwrites, last-wins behavior, or lazy lookups that would silently accept duplicate or dangling handler names.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a handler declare its behavioral traits as explicit properties, and never infer them from its name, such as a `.jwt` suffix check.",
+      "why": "Inferring traits from a name is brittle and hides the rule.",
+      "check": "Look for `EndsWith`/`StartsWith`/`Contains` checks on a handler or mode name that decide its behavior, such as whether it is secured or delivers in the query.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When no registered handler serves the requested response mode, or the tenant's `response_modes_supported` refuses it, answer `400` without redirecting. When a request object names an unserved mode, answer `invalid_request`.",
+      "why": "An unserved mode cannot carry even an error back to the client, so the server must not redirect.",
+      "check": "Look for unsupported or unserved response-mode errors that are redirected to the client, or that fall back to a default mode.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply `response_modes_supported` both to the response_mode value as written (so `jwt` must be listed to be requested) and to the resolved mode, whether explicit or default, and check it once, when the delivery is derived.",
+      "why": "Narrowing must cover both the shorthand and what it resolves to, or a tenant could be served a mode it did not allow.",
+      "check": "Look for narrowing checks that test only the raw requested value or only the resolved value, skip defaulted modes, or repeat the check in several places.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never deliver a token-returning response type through a query-string response mode, including `query.jwt`, and resolve the `jwt` shorthand to `fragment.jwt` for token or ID-token response types and to `query.jwt` otherwise.",
+      "why": "A token never travels in a query string, even inside a JWT (JARM §2.3.4).",
+      "check": "Look for response-mode checks that refuse plain `query` but allow `query.jwt` for token-returning response types, or `jwt` resolution that ignores the response type.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a JARM response JWT with `iss` set to the issuer, `aud` set to the `client_id` and `exp` counted from `iat` by a short configured lifetime. Include as claims every response parameter except the RFC 9207 `iss`, and secure error responses the same way.",
+      "why": "The JWT lets the client verify where the response came from and that it is intact. The RFC 9207 `iss` is the JWT's own `iss`, and errors need the same protection.",
+      "check": "Look for response JWTs that are missing `aud`/`exp`, that duplicate `iss` as a claim, or for error paths that bypass JWT securing in a `.jwt` mode.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Always sign a JARM response with the client's registered algorithm, within asymmetric-only ceilings, and encrypt it only when the client registers an encryption algorithm.",
+      "why": "Protection follows the client's registered metadata, as for other JWTs addressed to a client.",
+      "check": "Look for unsigned JARM responses, symmetric algorithms allowed in the authorization signing or encryption ceilings, or encryption applied regardless of client registration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Select a response's signing and encryption credentials when the delivery is derived, before the user authenticates. Treat a credential that cannot be selected as a non-redirected `server_error` (`500`), and never fall back to weaker protection.",
+      "why": "Selecting credentials at write time would fail after the user authenticated and a code was issued. A response must never be sent with weaker protection than the client registered.",
+      "check": "Look for key or algorithm selection inside the response writer or handler, or for fallbacks that send a response unsigned, unencrypted or with a different algorithm when selection fails.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

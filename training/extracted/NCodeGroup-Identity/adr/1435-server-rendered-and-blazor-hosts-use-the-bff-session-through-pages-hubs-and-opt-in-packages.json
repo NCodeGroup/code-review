@@ -1,0 +1,136 @@
+{
+  "hash": "52f7881455f9b997",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1435",
+  "rules": [
+    {
+      "statement": "Don't read `HttpContext` or `IHttpContextAccessor` from code that runs in an interactive Blazor Server component or circuit. Get the user from the circuit's authentication state or from a connection-scoped session instead.",
+      "why": "Microsoft documents `IHttpContextAccessor` as unavailable in interactive components, and the hub's response has already started by the time a component runs.",
+      "check": "Look for `IHttpContextAccessor` injected into, or `HttpContext` used by, Razor components, circuit handlers or services that run per circuit.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.razor"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define each name that crosses between a server and its browser client once, in a package with no project or framework references that both sides reference. This covers JSON property names, persisted-state keys, claim types, endpoint paths and header defaults. Never keep a copy in the client.",
+      "why": "A wire contract that exists in two copies drifts, and a name that differs by one character fails only in a browser.",
+      "check": "Look for string constants in a WebAssembly client that duplicate server-side names, and for shared names added to a package the browser client cannot reference.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A package that runs in the browser (Blazor WebAssembly) must not reference the ASP.NET Core shared framework, or any package that needs it.",
+      "why": "The ASP.NET Core shared framework does not run in the browser.",
+      "check": "Look in browser client .csproj files for a `FrameworkReference` to Microsoft.AspNetCore.App, or a project or package reference to a server-side abstractions or implementation package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An implementation package references only abstractions packages, never a sibling implementation package. Put a contract that two implementations share into an abstractions package or a dependency-free package.",
+      "why": "An implementation package that references a sibling implementation package gives up the rule that keeps each package replaceable.",
+      "check": "Look in an implementation package's .csproj for a ProjectReference or PackageReference to another implementation (non-Abstractions) package of the same family.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you add or change a package whose references form a boundary, such as a browser-run client, add or update a dependency test that checks its assembly references. For a browser client, the test is an allow-list.",
+      "why": "A stray reference should fail its dependency test rather than fail in a browser.",
+      "check": "Look for a new browser-run or dependency-free package, or a changed reference, that has no matching dependency test, or whose test uses a deny-list where an allow-list is needed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never send an access or refresh token to a Blazor WebAssembly or other browser-run client. A user document or persisted state sent to the browser carries only the configured user claims, the logout URL and its guard.",
+      "why": "A component that runs in the browser exposes any token to injected script (RFC 10017).",
+      "check": "Look for tokens added to persisted component state, to the user endpoint's response, or to any DTO the WebAssembly client receives.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rely on a custom anti-forgery header to guard a SignalR hub or WebSocket endpoint. Refuse the upgrade when Fetch Metadata shows a cross-site request, or when the `Origin` is neither the frontend's public origin nor a trusted origin.",
+      "why": "A browser `WebSocket` cannot send a custom header, so the header check cannot protect a hub.",
+      "check": "Look at hub endpoint guards that require the anti-forgery header, or that skip the Fetch Metadata and Origin checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A request to a hub must not write a cookie to the upgraded response. It slides the session and obtains tokens through the connection's session, which holds the session handle in memory for the life of the connection.",
+      "why": "The response of an upgraded hub request has already started, and the connection has no `HttpContext` after it opens.",
+      "check": "Look for session refresh or `Set-Cookie` writes on code paths that handle hub or WebSocket requests.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a token only to the request of a guarded endpoint, or to a connection that a guarded hub request opened.",
+      "why": "Tokens must not leak to unguarded endpoints or to connections that no guarded request authenticated.",
+      "check": "Look for token accessors or handlers that can run for unguarded endpoints, or for connections that lack the guarded connection session.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Session revalidation for a long-lived connection or circuit fails closed. Sign the user out on any revalidation error except an unavailable store, and keep the revalidation interval at most half the session's idle timeout.",
+      "why": "A circuit must not stay signed in after its session has ended or cannot be verified, while a store outage alone should not sign every user out.",
+      "check": "Look at revalidation catch blocks that keep the user signed in on unexpected errors, and at options validation that lets the revalidation interval exceed half the idle timeout.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reserve the claim types the BFF itself puts on the session principal, such as the logout action and guard, and drop them from the claims the identity provider returns.",
+      "why": "A provider-supplied claim with a reserved type could spoof the logout form's action or guard.",
+      "check": "Look for new internal claim types added to the session principal without being filtered out of incoming provider claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-bff",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

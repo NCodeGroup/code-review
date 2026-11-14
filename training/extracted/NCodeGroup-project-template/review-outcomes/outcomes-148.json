@@ -1,0 +1,79 @@
+{
+  "hash": "c05b9f1c9a9152d5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #148",
+  "rules": [
+    {
+      "statement": "When a script reads a GitHub REST list endpoint (check runs, workflow runs, and the like) whose full result it relies on, page through all results (for example `gh api --paginate --slurp` and merge the item arrays) instead of making one `per_page=100` request.",
+      "why": "With an unpaged read, items past the first page disappear without warning. Decisions built on the list, such as which checks a ruleset requires, then silently come out incomplete.",
+      "check": "Look for `gh api` or REST calls to list endpoints with `per_page` and no `--paginate` or page loop, where the code treats the result as the complete set. Don't report it when the code deliberately reads only the newest page and says so.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script prints a PowerShell command for the user to copy and run, escape every interpolated value with `[System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent` inside single quotes, quote the script path and invoke it with `&`, and leave out of the command any value the parameter would split, such as a name with a comma in a comma-separated list.",
+      "why": "PowerShell treats U+2018 to U+201B as single quotes too, so doubling only U+0027 lets a crafted name from an editable workflow file end the string and inject code. An unquoted path with spaces breaks the command, and commas split one value into two.",
+      "check": "Look for printed or generated command lines that interpolate values or `$PSCommandPath`: escaping done by hand with `-replace \"'\", \"''\"`, a script path without quotes, or values containing list separators passed into a list parameter.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In PowerShell, don't give a local or loop variable the same name as a function parameter in any letter case (for example `$name` alongside `[string]$Name`).",
+      "why": "PowerShell variable names ignore case, so the assignment overwrites the parameter. A later use of the parameter then silently gets the wrong value.",
+      "check": "Compare the variable names assigned in a function body, especially `foreach` variables and loop assignments, against its `param()` names while ignoring case.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script has both a `-WhatIf` (preview) path and an applying path, test the applying path too, and assert on what it actually writes (for example the request bodies a stand-in captured), including per-target results when it runs over several targets.",
+      "why": "If only the preview is tested, a bug that writes the wrong data, such as reusing one repository's results for another or splitting a name the preview shows intact, passes the suite.",
+      "check": "For a new or changed feature with `-WhatIf` or `SupportsShouldProcess`, check whether any test runs it without `-WhatIf` and asserts on what was posted or written.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code sorts items into outcomes, each with its own reason (included, or excluded for reason A or B), give every outcome branch a fixture that reaches it and assert its reason text, and add a fixture for the empty-input case.",
+      "why": "A branch no fixture reaches, such as a lookup miss or an empty list, can regress, for example by turning into an error or an empty result, without failing any test.",
+      "check": "List the branches and messages in the sorting code, then check that a test asserts each message and that one fixture supplies an empty list.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test stand-in for a paged API serves a list, serve it in several small pages and put some fixture items on a later page, so that code reading only one page fails the tests.",
+      "why": "A stand-in that returns everything at once can't catch a single-page read that drops items.",
+      "check": "Look at test fakes for `gh api` or HTTP list endpoints: do they page, and do assertions depend on an item that only a later page holds?",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

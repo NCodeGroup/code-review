@@ -1,0 +1,40 @@
+{
+  "hash": "0f29c614fc3a3250",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #530",
+  "rules": [
+    {
+      "statement": "In a test project, don't report a missing `.Verifiable()` on a mock setup made in a shared helper when some tests that call the helper never use that setup and a comment explains why it stays unverified.",
+      "why": "Making the setup verifiable would fail every test that never makes the call. Tests on the other paths still fail if the call is missing because they assert the outcome itself.",
+      "check": "Before reporting, check whether the helper is shared by paths that do and don't make the call, whether the setup has a comment saying it is left unverified, and whether the tests that use it assert the outcome.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when overloads of a factory helper build the same object under test, put the mock creation and construction in one shared private factory that every overload calls, instead of repeating it in each overload.",
+      "why": "Repeated copies can drift apart, and a constructor change has to be made in every copy.",
+      "check": "Look for test helper overloads that each create the same mocks and call the same constructor of the object under test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a forwarding overload for passing a named argument equal to the parameter's default when that argument is what makes the call bind to the main overload instead of the forwarding overload itself.",
+      "why": "Without the named argument, a call such as a `params` overload forwarding its arguments binds back to itself and recurses forever, so the argument is load-bearing.",
+      "check": "Before reporting, work out which overload the call would bind to without the named argument. If it would bind to the forwarding overload itself, leave it alone; at most suggest a comment explaining why it's there.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

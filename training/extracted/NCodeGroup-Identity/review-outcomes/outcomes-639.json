@@ -1,0 +1,40 @@
+{
+  "hash": "d479f35ce8c94435",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #639",
+  "rules": [
+    {
+      "statement": "When an awaited call is kept only for its side effect and its result is unused, assign the result to an explicit `_ =` discard and comment that the discard is deliberate and which side effect is relied on.",
+      "why": "Otherwise a later cleanup can remove the call as unused and silently bring back the bug it fixed.",
+      "check": "Look for awaited or invoked calls whose return value is dropped without `_ =` and without a comment naming the side effect the code depends on.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let one overload repeat the checks or lookups of the overload it delegates to; put the shared logic in one private helper that both overloads call, and do expensive setup only when the cheap check doesn't settle the answer.",
+      "why": "Running the checks twice does the work twice on the slow path, and the rule ends up in two places that must stay in step.",
+      "check": "Look for an overload that runs a check or a cache/memo lookup and then calls another overload that runs the same check or lookup again.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to move a private sealed HostApplicationFactory (or similar test host fixture) subclass that is nested in the test class it configures into its own file when the sibling test suites nest theirs the same way.",
+      "why": "The integration test suites deliberately nest each suite's own host factory beside the tests it configures, so the nested type follows the established pattern.",
+      "check": "Before reporting a nested-type or one-type-per-file violation in a test class, check whether sibling test classes nest their own host factory subclasses as private sealed types; if they do, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

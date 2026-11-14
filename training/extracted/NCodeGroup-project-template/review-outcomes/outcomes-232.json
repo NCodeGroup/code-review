@@ -1,0 +1,40 @@
+{
+  "hash": "7ad62074c1ae9cd5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #232",
+  "rules": [
+    {
+      "statement": "When code declines a destructive operation (delete-and-recreate, overwrite) under a safety guard, add a test that reaches each guard and asserts that no write was made and that the declined outcome was reported.",
+      "why": "If an untested guard broke, the code would destroy settings it was meant to keep, still report success, and no test would fail.",
+      "check": "For each new or changed guard that skips a DELETE, POST or overwrite, look for a test fixture that triggers it and asserts that no writes were recorded and that the skip message was output.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a guard condition combines clauses with OR (for example `exit code failed OR output empty`), give each clause its own test case that triggers only that clause.",
+      "why": "If one test triggers only one clause, the other clause could be dropped and the suite would still pass. The untested clause may be the very case that caused the original bug.",
+      "check": "For compound conditions in a diff, check that the test stand-ins have a mode for each clause, such as one that fails with a nonzero exit and one that exits 0 with empty output, and that each mode is asserted.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code validates the shape of a successful response from an external call before acting on it, test it with a success response that has the wrong shape (such as `{}` or `[]`) and assert that it takes no action.",
+      "why": "If the shape check broke, a malformed answer would be treated as valid data and acted on, for example by being written over.",
+      "check": "Look for a test whose stub or stand-in returns success with an unexpected body, and that asserts that no write was made and that the 'unexpected answer' message was output.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

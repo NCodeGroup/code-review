@@ -1,0 +1,64 @@
+{
+  "hash": "3f1b4726dfbecbb5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #170",
+  "rules": [
+    {
+      "statement": "In a test project, a test that checks that work runs in parallel must set the degree of parallelism (for example `-ThrottleLimit 2`) explicitly instead of relying on a default derived from `[Environment]::ProcessorCount`.",
+      "why": "On a one-processor machine or container the default throttle runs the work one item after another, so the overlap check reports a false failure.",
+      "check": "Look for parallel or overlap assertions that call a runner without an explicit throttle or concurrency limit and so depend on the default, which is tied to the processor count.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a commit message on an already-pushed pull request branch to be reworded when doing so would rewrite history and need a force-push.",
+      "why": "The workflow never force-pushes a pull request's branch and the ruleset refuses force-pushes to `main`. Later commits can record the correction, so the history still shows both.",
+      "check": "Before reporting a wrong commit message, check whether the commit is already pushed and whether a later commit or merge commit already records the correction. If it does, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change moves a check to another test suite or removes a switch, update the README and other docs that name the old location or switch.",
+      "why": "Otherwise a reader can't tell which suite covers the check.",
+      "check": "Search the docs, such as README tables and help text, for references to the moved suite, the removed switch or the old wording, and confirm they name the new location.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a pull request addresses only some of the options listed in its linked issue, its description must list which options it does and which it defers, with the reason for each deferral.",
+      "why": "Without this, a reader can't tell whether the other options were rejected or postponed.",
+      "check": "Compare the options or tasks in the linked issue with the diff and the PR description, and flag options that are neither done nor explicitly deferred with a reason.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, move test setup that several suites repeat word for word and that is substantial (such as building a repository snapshot) into one shared script that each suite calls. Don't ask for the small per-suite helper functions to be shared when the test conventions keep each suite self-contained.",
+      "why": "A fix to the duplicated setup would otherwise have to be made in every suite. The small helpers stay because each suite is self-contained and many suites already define their own.",
+      "check": "For duplicated substantial setup blocks across test suites, suggest one shared script. Before flagging duplicated small helpers such as Check or Invoke-Git, check whether the sibling suites all define their own copies by convention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

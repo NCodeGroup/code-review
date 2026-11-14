@@ -1,0 +1,32 @@
+{
+  "hash": "eff6abd4f80c0363",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #268",
+  "rules": [
+    {
+      "statement": "When a regex validates or extracts a number that is passed on to another system (an API path, a CLI argument, an identifier), match digits with `[0-9]` rather than `\\d`, because .NET `\\d` also matches non-ASCII Unicode digits.",
+      "why": "With `\\d`, malformed input such as Arabic-Indic digits passes validation, then fails later in the host call and produces misleading state.",
+      "check": "Look for `\\d` in .NET or PowerShell regexes that parse numbers, IDs or counts for later use. Report it unless the pattern uses RegexOptions.ECMAScript or the input is meant to accept Unicode digits.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test to drop or shorten exact-phrase checks on instruction or documentation text as brittle when the suite checks those texts by phrase presence throughout and other tests cover the behavior: changing only those checks would make them the one exception to the suite's convention.",
+      "why": "The pinned phrases guard the wording each copy of the text must carry, and that wording is what its readers (agents) act on. Behavior is tested separately.",
+      "check": "Before reporting a wording-pinned assertion, look at how the sibling checks in the same test file verify text (for example, a shared phrase-presence helper), and check whether another test or fixture already covers the behavior.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

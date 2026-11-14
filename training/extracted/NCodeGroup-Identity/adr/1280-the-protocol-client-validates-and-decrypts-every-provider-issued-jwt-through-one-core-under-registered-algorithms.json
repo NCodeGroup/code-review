@@ -1,0 +1,175 @@
+{
+  "hash": "c913a4085cd782d2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1280",
+  "rules": [
+    {
+      "statement": "Validate every JWT a provider issues (ID token, logout token, signed UserInfo) through one shared validation core that owns algorithm policy, key resolution, decryption, replicated-issuer check and failure wording; each token kind checks only its own claims.",
+      "why": "The surrounding work is the same for every kind, so it must exist once and a fix to it reaches every kind.",
+      "check": "Look for a token-kind validator that builds its own algorithm allow-list, decrypts, resolves keys or words generic failures itself instead of calling the shared core with a profile.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a received JWT under an explicit signature-algorithm allow-list that permits only asymmetric algorithms (never `none`), is intersected with the registered list and the provider's advertised list when present, fails when the result is empty, and is passed as `ValidSignatureAlgorithms` so the header is checked before any cryptography runs.",
+      "why": "An allow-list keeps `none` and unregistered algorithms out, and checking the header first avoids running cryptography on a disallowed token.",
+      "check": "Check JWT validation setup for missing `ValidSignatureAlgorithms`, symmetric or `none` algorithms permitted, no intersection with registration/metadata, or an empty result that does not fail.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an empty or null algorithm allow-list as permitting nothing, never as permitting every algorithm.",
+      "why": "The conventions use explicit allow-lists; a null list that permits everything was rejected.",
+      "check": "Look for code that skips the algorithm filter or permits all algorithms when a configured list is null or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decrypting a provider-issued JWE, permit only the registered asymmetric key-management algorithms (RSA-OAEP*, ECDH-ES*) and registered content-encryption algorithms, never `RSA1_5`, `dir`, AES key wrap or PBES2, and permit no compression (`ValidCompressionAlgorithms = []`).",
+      "why": "RFC 8725 §3.2 and §3.6 forbid RSA1_5 and compression; the provider encrypts only to a public key the client published, so shared-key algorithms have no place.",
+      "check": "Inspect decryption policy for RSA1_5, dir, A*KW, PBES2 or non-empty compression algorithms being allowed, or unregistered enc values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a client's permitted token encryption algorithms only from its registration, never from the provider's `*_encryption_*_values_supported` metadata.",
+      "why": "The registration fixes the values, so the provider's list adds nothing the client can trust more.",
+      "check": "Look for decryption policy code reading provider discovery encryption metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make token encryption all or nothing: when the client registered encryption, reject a plain JWS with `invalid_token`; when it registered none, reject a JWE with `algorithm_not_permitted`.",
+      "why": "Accepting an unencrypted token when encryption is registered is a downgrade that lets an attacker who cannot encrypt to the client substitute a plain token.",
+      "check": "Check that the validator verifies the received token was a JWE when encryption is registered and refuses a JWE otherwise.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWE header replicates `iss` (RFC 7519 §5.3), require it to be a string equal to the expected issuer, or fail with `invalid_issuer`.",
+      "why": "OpenID Connect Back-Channel Logout §2.4 and RFC 7519 §5.3 let the header replicate claims, and a mismatch must not be ignored.",
+      "check": "Look for JWE handling that ignores a header `iss` or accepts a non-string or mismatched value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use only the client's own asymmetric keys, carrying `use` `enc`, as JWE decryption keys, and throw `InvalidOperationException` when encryption is registered but no decryption key ring is configured.",
+      "why": "The client decrypts with its own private keys held in its key ring; a missing key ring is a configuration error.",
+      "check": "Check decryption key selection for symmetric keys, keys without `use` `enc`, or silent fallback when no key ring exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw `InvalidOperationException` for inconsistent token-encryption configuration, such as content-encryption algorithms set without key-management algorithms.",
+      "why": "Such a combination is a configuration error, not a token validation failure.",
+      "check": "Look for configuration combinations that are silently accepted or reported as a token failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never include the token in validation failure text: use fixed messages for decryption and signature failures, and otherwise only the underlying error message.",
+      "why": "Failure text must not leak the token.",
+      "check": "Look for failure reasons, exceptions or logs that interpolate the raw token string.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tell a decryption failure (`decryption_failed`) from a signature failure (`invalid_signature`) by whether the JWT validator had already asked for signing keys when it threw, not by parsing the token a second time.",
+      "why": "Signing keys are resolved only for the enclosed JWS after decryption, so the validator already shows whether decryption succeeded; parsing first duplicates its work.",
+      "check": "Look for code that pre-parses a token to classify failures, or that maps every decode or key-not-found exception to one code.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run token validation in a fixed order (algorithm policy, then decrypt, signature, issuer, audience, lifetime, then the encryption requirement, replicated `iss` and `typ`, then claim checks), and record a logout token's `jti` for replay detection only after every other check passes.",
+      "why": "A token that fails any other check must never record its `jti`.",
+      "check": "Check that the replay store write happens last and that no check is moved before the algorithm policy.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a JWT's `kid` is not found among the provider's keys, trigger at most one rate-limited key set refresh; without a `kid`, try every key filtered by `use` and `alg`.",
+      "why": "Limiting refreshes handles key rotation without letting tokens force unbounded fetches.",
+      "check": "Look for key resolution that refreshes on every miss, without rate limiting, or that ignores `use`/`alg` when no `kid` is present.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "During token validation, let cancellation propagate, and rethrow provider failures as provider exceptions instead of turning them into token validation failures.",
+      "why": "A provider failure or cancellation is not a property of the token.",
+      "check": "Look for catch blocks that swallow `OperationCanceledException` or turn provider errors into invalid-token results.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "hash": "c9e0d74375ce2273",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform .claude/commands/review-plan-diff.md",
+  "rules": [
+    {
+      "statement": "Don't make a change pass by skipping, deleting or weakening an existing test or its assertions; fix the code under test instead.",
+      "why": "A skipped or weakened test is a shortcut that hides the defect it was meant to catch, even though the checks then pass.",
+      "check": "Look in the diff for tests that were removed, marked skipped, or had assertions loosened or deleted without the behavior they cover being removed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't swallow exceptions: a catch block must handle, translate, log or rethrow the error, not discard it silently.",
+      "why": "The review treats swallowed errors as a shortcut that hides failures instead of handling them.",
+      "check": "Look for empty catch blocks, or catch blocks that ignore the exception and continue, without a comment explaining why ignoring it is correct.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't leave TODO comments or hard-coded placeholder values in place of the behavior the change was supposed to implement.",
+      "why": "Leftover TODOs and hard-coded values are shortcuts that make the checks pass while the real behavior is still missing.",
+      "check": "Search added lines for TODO/FIXME/HACK markers and for literal values that stand in for configuration or computed results.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reviewing work done from a plan, flag any deviation from the step's text as at least should-fix, even when its checks pass. Deviations include touching files the step doesn't list, changing an interface, or creating something the step says already exists.",
+      "why": "A deviation means the executor improvised instead of escalating.",
+      "check": "Compare each changed file and interface in the diff against the Files and Change text of the plan step it belongs to.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

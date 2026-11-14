@@ -1,0 +1,55 @@
+{
+  "hash": "d65d82c36dd87240",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #169",
+  "rules": [
+    {
+      "statement": "Don't set `GenerateDocumentationFile` to false in a test project; turn off only CS1591 there so the documentation file is still generated and IDE0005 (unused usings) runs in the build.",
+      "why": "IDE0005 only reports in the build when the documentation file is generated. Turning it off in a test project silently stops unused-using checks there.",
+      "check": "Look for `<GenerateDocumentationFile>false</GenerateDocumentationFile>` in test project files or test-only MSBuild blocks, and for docs that say test projects generate no documentation file.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use `null!` only to pass a deliberate null to the code under test, as in an argument-validation test, and never to silence a nullable warning.",
+      "why": "Production code never uses the null-forgiving operator. Passing a deliberate null to test argument validation is the one exception the conventions allow.",
+      "check": "In test code, find each `!` null-forgiving use and confirm it is a `null!` argument that tests null handling, not a suppression on a dereference or assignment.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A NuGet publish workflow must fail when a packed package's version differs from the release tag's version or when nothing was packed, and must fail rather than report success when every package version is already on the feed.",
+      "why": "With `--skip-duplicate`, a run that pushed nothing, or pushed the wrong version because a project set its own `Version`, would otherwise look like a successful release.",
+      "check": "In publish workflows that run `dotnet nuget push`, look for a check that each `.nupkg` matches the tag version, a check that something was packed, and a check that fails when all packages already exist before writing a success summary.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the store-neutral exception for a lost optimistic-concurrency race `StoreConcurrencyException`, matching the name used across NCodeGroup repositories.",
+      "why": "Each NCode repository should give the same type the same name so the repositories stay consistent.",
+      "check": "Look for store-neutral concurrency-conflict exceptions with a different name, such as `ConcurrencyConflictException`, in code or decision records.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

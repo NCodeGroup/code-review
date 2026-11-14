@@ -1,12 +1,12 @@
 {
   "hash": "3a1c09ee3086f439",
-  "promptHash": "358791b74fd66fcf",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity review of #420",
   "rules": [
     {
-      "statement": "Use pooled buffers from NCode.Buffers (pooled writers, rented buffers) for temporary byte data instead of `ArrayBufferWriter<byte>`, `JsonSerializer.SerializeToUtf8Bytes` or `new byte[]`, and use the sensitive pool variants when the bytes hold secrets or tokens.",
-      "why": "The maintainer asked for pooled buffers to avoid per-call allocations. Sensitive buffers keep secret material out of ordinary pooled memory.",
-      "check": "Look for `new ArrayBufferWriter<byte>()`, `SerializeToUtf8Bytes`, or temporary `new byte[...]` on hot or crypto paths. Also look for a non-sensitive pool used for keys, tokens or decrypted payloads.",
+      "statement": "For temporary byte buffers, use pooled writers or rented buffers from NCode.Buffers (the sensitive variants for secrets or tokens) instead of `ArrayBufferWriter<byte>`, `new byte[]`, `JsonSerializer.SerializeToUtf8Bytes` or `Encoding.GetBytes(string)`.",
+      "why": "Pooled buffers avoid an allocation on every call, and the sensitive variants clear secret material when it is returned.",
+      "check": "Look for `new ArrayBufferWriter<byte>()`, `new byte[...]`, `SerializeToUtf8Bytes` or `GetBytes(string)` producing a buffer that only lives for the call, especially one that holds key material, tokens or decrypted payloads.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -15,9 +15,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Encode strings into a caller-provided span, either `stackalloc` when the size is small and bounded or a rented buffer, using the span overload `Encoding.GetBytes(string, Span<byte>)`. Do not use the array-returning `GetBytes(string)`.",
-      "why": "The maintainer asked for the span APIs repeatedly, to avoid allocating an array for each encoding.",
-      "check": "Flag `Encoding.*.GetBytes(someString)` or `SecureEncoding.UTF8.GetBytes(x)` calls whose result is a new `byte[]` used only briefly.",
+      "statement": "Don't flag a single exactly sized array allocation when that array is owned by an object and outlives the call; pooling only applies to buffers that live for the call.",
+      "why": "A rented buffer can't be stored in an object that outlives the call, so one exact allocation is intentional there.",
+      "check": "Before reporting an allocation, check whether the array is assigned to a property or field of a returned or stored object.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -26,9 +26,20 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Compare two secret strings in constant time with `CryptographicOperations.FixedTimeEquals(MemoryMarshal.AsBytes(a.AsSpan()), MemoryMarshal.AsBytes(b.AsSpan()))`, not by encoding them into new byte arrays first.",
+      "statement": "Encode short strings into a `stackalloc` or rented span with `Encoding.GetBytes(ReadOnlySpan<char>, Span<byte>)`, and hash into a `stackalloc` span with the `HashData(source, destination)` overloads, instead of using the overloads that return arrays.",
+      "why": "The maintainer expects the modern span APIs so that transient bytes aren't allocated.",
+      "check": "Look for `GetBytes(string)` or `SHA256.HashData(bytes)` results that are used once and then dropped.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To compare two strings in fixed time, call `CryptographicOperations.FixedTimeEquals(MemoryMarshal.AsBytes(a.AsSpan()), MemoryMarshal.AsBytes(b.AsSpan()))` instead of encoding them to byte arrays first.",
       "why": "Comparing the UTF-16 bytes directly needs no encoding and no allocation.",
-      "check": "Look for `FixedTimeEquals` whose arguments come from `GetBytes(string)` calls.",
+      "check": "Look for `FixedTimeEquals` called on arrays produced by `Encoding.GetBytes`.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -37,9 +48,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Parse and inspect strings with `ReadOnlySpan<char>`: slice instead of calling `Substring`, iterate with `MemoryExtensions.Split` ranges instead of `string.Split`, and compare with span `StartsWith`/`Equals`.",
-      "why": "Span slicing and range-based splitting allocate no substrings or arrays.",
-      "check": "Flag `string.Split`, `Substring`, or helpers that return `string` only to be compared or iterated.",
+      "statement": "Parse and validate strings with `ReadOnlySpan<char>` slices, `MemoryExtensions.Split` ranges and span `StartsWith`/`Equals` instead of `string.Split`, `Substring` or helpers that return new strings.",
+      "why": "Span slicing doesn't allocate substrings or arrays.",
+      "check": "Look for `.Split(`, `.Substring(` or private helpers that return `string` slices in validation or parsing code.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -48,9 +59,20 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Declare a fixed protocol or crypto label (for example an HKDF info or purpose) as a `ReadOnlySpan<byte>` UTF-8 literal property (`\"label\"u8`), not as a `const string` encoded on each call.",
-      "why": "A u8 literal needs no encoding and no allocation at runtime. The repository's instructions adopted this rule.",
-      "check": "Look for `const string` labels passed through `GetBytes` before being used in HKDF, HMAC, hashing or similar.",
+      "statement": "Declare a fixed protocol label (an HKDF info, purpose or prefix) as a `ReadOnlySpan<byte>` property that returns a `u8` literal, never as a `const string` encoded on each call.",
+      "why": "A UTF-8 literal costs nothing per call and passes straight to span APIs.",
+      "check": "Look for constant strings that are passed through `Encoding.UTF8.GetBytes` before use in crypto or wire formats.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a crypto or serialization primitive an API that writes into a `Span<byte>` or `IBufferWriter<byte>` supplied by the caller, with a companion method that returns the required length, instead of returning a new array.",
+      "why": "Then the caller can choose a pooled or stack buffer.",
+      "check": "Look for new protect, encrypt or encode methods that return `byte[]`.",
       "scope": "general",
       "topic": "allocations-and-buffers",
       "applies_to": [
@@ -59,42 +81,20 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Hash into a `stackalloc` destination span with the span overloads (for example `SHA256.HashData(source, destination)`), not the overloads that return a new array.",
-      "why": "The size of a hash output is fixed and small, so allocating it on the heap is unnecessary.",
-      "check": "Flag `SHA256.HashData(bytes)` or similar calls whose array result is only encoded or compared afterwards.",
+      "statement": "When you change how bytes are encoded, derived or laid out, and those bytes are persisted or used as keys, add a test that pins the output to its reference definition so the stored values don't change.",
+      "why": "Refactoring to spans or pooled buffers must not change existing keys, digests or ciphertext inputs.",
+      "check": "Look for a rewrite of a key derivation, digest, associated data or stored envelope with no test that asserts the exact output bytes.",
       "scope": "general",
-      "topic": "allocations-and-buffers",
+      "topic": "testing",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Have an encryption, encoding or serialization helper write into a caller-supplied `Span<byte>` or `IBufferWriter<byte>`, sized through a companion length method. Allocate an exact-size array only when the result must outlive the call.",
-      "why": "Callers can then use rented or stack buffers. A dedicated allocation is justified only for data a longer-lived object owns.",
-      "check": "Look for helpers that return a freshly allocated `byte[]` that callers use only briefly.",
-      "scope": "general",
-      "topic": "allocations-and-buffers",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When a serializer has to return transient bytes, return a disposable rented-buffer lease that the caller disposes with `using`, not a new `byte[]`. Document that consumers copy the value before their write task completes.",
-      "why": "This removes the allocation. The rental can be returned to the pool safely because the consumer copies the value before its write completes.",
-      "check": "Look for serialize methods that return `byte[]` which is written to a store and then dropped.",
-      "scope": "general",
-      "topic": "allocations-and-buffers",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Parse JSON with `JsonElement.Parse` into detached elements and assign the result directly. Do not use `JsonDocument.Parse` followed by `RootElement.Clone()`, and do not add pointless intermediate locals.",
-      "why": "A detached element needs no document disposal and no clone, and assigning it directly keeps the code simple.",
-      "check": "Flag `JsonDocument.Parse(...)` with `.RootElement.Clone()`, or a pattern like `var x = JsonElement.Parse(...); root = x;`.",
+      "statement": "Name a local or parameter that holds a parsed `JsonElement` for what it contains, or `jsonElement`, never `document`. Assign the result of `JsonElement.Parse` directly instead of going through a redundant intermediate local.",
+      "why": "A `JsonElement` isn't a `JsonDocument`, and the misleading name is left over from the `JsonDocument` migration.",
+      "check": "Look for `var document = JsonElement.Parse(...)` or `JsonElement` variables named `document`.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
@@ -103,20 +103,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Name a variable or parameter that holds a parsed `JsonElement` for what it contains, or `jsonElement`, never `document`.",
-      "why": "A JsonElement is not a JSON document, and the maintainer flagged the misleading name at every occurrence.",
-      "check": "Look for `var document = JsonElement.Parse(...)`, or for `JsonElement` parameters or locals named `document`.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Type a JSON payload on a persisted data contract or entity as `JsonElement`, mapped through a converter, not as `string`.",
-      "why": "This matches the other JSON columns and lets consumers pass the element through without parsing a string again.",
-      "check": "Look for `string` properties on persistence contracts or entities whose documentation says they hold JSON.",
+      "statement": "Type a property that holds a JSON value, in a data contract or a persisted entity, as `JsonElement` rather than `string`, and store it through the existing JSON value converter.",
+      "why": "This is consistent with the other JSON columns, and consumers don't have to parse the string again.",
+      "check": "Look for new `string` properties documented as holding JSON.",
       "scope": "general",
       "topic": "persistence",
       "applies_to": [
@@ -125,9 +114,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Once code has committed to a non-idempotent remote operation whose result must be saved (for example a refresh-token rotation after winning a lease), run that operation and its write-back with `CancellationToken.None`, bounded by the client timeout, not the caller's request token. Add a test that cancels partway through.",
-      "why": "If the client aborts after the provider has rotated the token, the new token is lost. Presenting the old token again counts as reuse, which revokes the token family.",
-      "check": "Look for remote token requests and state write-backs inside a lease or lock that receive `HttpContext.RequestAborted` or the caller's token.",
+      "statement": "Once code has started an operation that must not be left half-done, such as a provider call that rotates a refresh token followed by the write-back of the result, run the rest with `CancellationToken.None` and rely on a configured timeout to bound it, not the caller's request token.",
+      "why": "If the caller aborts after the remote side has changed state, the local write-back is lost. With refresh tokens, presenting the old token again counts as reuse and revokes the whole token family.",
+      "check": "Look for `HttpContext.RequestAborted` or a caller token passed to a state-changing remote call and the persistence that follows it, after a lease or lock is acquired.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
@@ -136,9 +125,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "On logout, end the local session and delete the cookie first, using `CancellationToken.None`. Only then revoke tokens at the provider, also with `CancellationToken.None`, and log and swallow every revocation failure, cancellation included.",
-      "why": "If revocation is cancelled or fails, a disconnect must not leave a valid session behind, which matters on shared machines.",
-      "check": "Look for logout code that revokes before removing the session or cookie, passes the request token, or lets `OperationCanceledException` escape.",
+      "statement": "In a logout flow, end the local session and delete the cookie first with `CancellationToken.None`, then revoke tokens at the provider on a best-effort basis, logging and swallowing every failure, cancellation included.",
+      "why": "If revocation is cancelled or fails before the session is removed, the session stays valid, which matters on a shared machine.",
+      "check": "Look for remote revocation that runs before session removal, or that runs under the request token and lets `OperationCanceledException` escape.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -148,9 +137,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "At startup, validate options that depend on each other across components, for example require a lease duration of at least twice the request timeout plus a margin. Do not validate each value against a fixed bound alone.",
-      "why": "If a lease expires while the winner's request (including a retry) is still in flight, a second caller can present the same refresh token.",
-      "check": "Look for lease or lock durations that are validated only against constants and never against the related timeout options.",
+      "statement": "Validate options that depend on each other together, such as requiring a lease or lock duration to be at least the worst-case request time (for example 2 × request timeout plus a margin when a retry is possible), and do it at startup in the composition root when the options come from separate packages.",
+      "why": "A lease that expires while its holder's request is still in flight lets a second caller repeat the same operation.",
+      "check": "Look for options validators that bound a duration on its own while a related timeout setting exists.",
       "scope": "general",
       "topic": "configuration-and-options",
       "applies_to": [
@@ -159,21 +148,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "A cookie authentication handler registered as the default scheme must return `NoResult` for any endpoint that does not carry an explicit guard marker (one that applies CSRF and Fetch Metadata checks). Guarded page endpoints must accept only GET and HEAD.",
-      "why": "Otherwise any `[Authorize]` or fallback-policy endpoint accepts the bare cookie without CSRF protection.",
-      "check": "Look for `HandleAuthenticateAsync` code that returns a ticket from the cookie without checking the endpoint's guard metadata.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Do not hold a shared striped lock across a long or unbounded wait. Use reference-counted per-key locks, or release the stripe while waiting.",
-      "why": "Unrelated keys that hash to the same stripe block and time out even though nothing blocks their own work.",
-      "check": "Look for striped `SemaphoreSlim` or lock arrays held across polling loops or remote waits.",
+      "statement": "Don't hold a lock shared by many keys (a striped lock) across a long wait; use per-key, reference-counted locks so that waiting on one key doesn't block unrelated keys.",
+      "why": "Otherwise unrelated sessions that hash to the same stripe time out even though nothing blocks their own work.",
+      "check": "Look for `SemaphoreSlim` stripes or a lock array held across polling, remote calls or waits bounded only by long durations.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
@@ -182,20 +159,21 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Add each CHANGELOG entry exactly once, in the correct section, and check that scripted insertions did not duplicate it under every matching heading.",
-      "why": "Inserting before a heading text that appears many times copied the same entries into all five `### Changed` sections.",
-      "check": "Look in CHANGELOG diffs for the same entry text repeated across several sections.",
-      "scope": "general",
-      "topic": "documentation",
+      "statement": "When a cookie-based authentication handler is the default scheme, authenticate only endpoints that carry the explicit marker for its CSRF protections, and return no result on every other endpoint.",
+      "why": "Otherwise any `[Authorize]` or fallback-policy endpoint accepts the bare cookie without the anti-forgery header or Fetch Metadata checks.",
+      "check": "Look for `HandleAuthenticateAsync` that returns a ticket from a cookie without checking endpoint metadata for the guard marker.",
+      "scope": "domain",
+      "domain": "bff-security",
+      "topic": "security-and-crypto",
       "applies_to": [
-        "**/CHANGELOG.md"
+        "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Base keyset pagination on a sort key that an index covers in order, such as (tenant, event time, id) with a composite cursor. Do not page by a column no index returns in that order.",
-      "why": "Without a matching index every page sorts or scans all matching rows, and ordering by id gives write order rather than event time.",
-      "check": "Compare the `OrderBy` and cursor predicate in a paged query with the entity's index definitions.",
+      "statement": "Implement keyset paging over an index whose leading columns match the filter and the sort, with a composite cursor on the sort columns (for example (`TenantId`, `EventTime`, `Id`), paged on `EventTime` DESC, `Id` DESC).",
+      "why": "Paging on a column no index orders by sorts or scans every matching row for each page.",
+      "check": "Compare the query's `OrderBy` and cursor predicate with the entity's index definitions.",
       "scope": "general",
       "topic": "persistence",
       "applies_to": [
@@ -204,9 +182,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When decoding untrusted bytes with a strict encoding, catch `DecoderFallbackException` and rethrow it as the exception type the API's contract documents.",
-      "why": "Otherwise an `ArgumentException` escapes the documented exception contract and surfaces to users as a 500 error.",
-      "check": "Look for strict `GetString` calls on response or request bodies with no handling for `DecoderFallbackException`.",
+      "statement": "Wrap strict decoding of remote content (for example `DecoderFallbackException` from a strict UTF-8 encoding) in the exception type the method's contract documents, instead of letting it escape.",
+      "why": "An unexpected `ArgumentException` breaks the documented contract and turns into a 500 instead of a handled failure.",
+      "check": "Look for strict `GetString` or decode calls on response bodies inside a try block that catches only HTTP, cancellation or JSON exceptions.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
@@ -215,9 +193,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Treat a return URL as local only when it starts with exactly one `/` and contains no `\\`, whitespace or control character anywhere. Use one shared local-URL check, and test it with tab and CR/LF cases.",
-      "why": "Browsers strip tabs and newlines, so `/\\t/evil.example` becomes `//evil.example`, which is an open redirect.",
-      "check": "Look for local-path checks that reject only `//` and `/\\`, and for duplicated local-URL logic.",
+      "statement": "Accept a return URL as local only when it has exactly one leading `/` and contains no `\\`, whitespace or control character anywhere, and use one shared rule for this check rather than ad hoc prefix checks.",
+      "why": "Browsers strip tabs and newlines, so `/\\t/evil.example` becomes `//evil.example` and gives an open redirect.",
+      "check": "Look for local-URL checks that reject only `//` and `/\\`, and for tests that lack tab and CR/LF cases.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -226,9 +204,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "In a concurrent cache, publish related data as one atomic entry, or publish the item only after its dependent data is stored.",
-      "why": "A concurrent reader can otherwise see the item without its dependents, for example a certificate without its issuer chain, and build a broken handler that is then cached.",
-      "check": "Look for writes to separate dictionaries where the primary entry is added before the data that depends on it.",
+      "statement": "Publish related cached data, such as a certificate and its issuer chain, as a single cache entry, or publish only after every part is complete, so a concurrent reader can never see a partial state.",
+      "why": "A reader that finds the item before its companion data is added builds something broken that may itself be cached.",
+      "check": "Look for two dictionaries or cache writes where the first is visible before the second is written.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
@@ -237,9 +215,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "A wrapper or overload that claims to behave like an existing API must honor every option it accepts, or throw `NotSupportedException` for options it does not support, never silently ignore them.",
-      "why": "The wrapper ignored `AllowDuplicateProperties`, so duplicate JSON members were accepted even though its documentation said otherwise.",
-      "check": "Look for code that copies option objects field by field and leaves fields out.",
+      "statement": "When a wrapper is documented to behave like an existing parse API, delegate to that API so it honors every option, instead of copying a subset of the options by hand.",
+      "why": "Copying a subset silently drops options such as `AllowDuplicateProperties`.",
+      "check": "Look for options objects translated field by field into another options type.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
@@ -248,9 +226,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Reject an unsigned UserInfo JSON response whose `iss` member is not a string or does not equal the provider's issuer.",
-      "why": "Otherwise a provider can label claims with another issuer's identifier, and downstream code trusts `Claim.Issuer`.",
-      "check": "Look for UserInfo handling that builds claims without comparing `iss` with the metadata issuer.",
+      "statement": "Reject an unsigned UserInfo response whose `iss` member is present but isn't a string equal to the provider's issuer.",
+      "why": "Otherwise a provider can label claims with another issuer's identifier, and claims factories prefer `iss`.",
+      "check": "Look for UserInfo validation that checks `sub` but not `iss`.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "protocols",
@@ -260,9 +238,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Start the lifetime horizon of a refresh token issued by token exchange at the subject token's `auth_time`, and refuse the exchange with `invalid_grant` when `auth_time` is missing or that horizon has passed.",
-      "why": "Otherwise a token exchange can renew the fixed family horizon indefinitely without a new sign-in.",
-      "check": "Look for exchange-issued refresh tokens whose family creation time falls back to the current time.",
+      "statement": "Start a refresh token issued through token exchange in a family anchored at the subject token's `auth_time`, and refuse the exchange with `invalid_grant` when `auth_time` is missing or that horizon has passed. Issue the token at the current time.",
+      "why": "Otherwise exchange renews a fixed session horizon indefinitely without a new sign-in.",
+      "check": "Look for refresh token families that begin at issuance time on the exchange path.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -272,9 +250,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Make a hosted service's `StopAsync` run its final work only once: start it under a `Lock` and return the same task to every caller, and keep shared counters with `Interlocked`.",
-      "why": "Overlapping stops can race over a shared batch, and the stop that returns first lets the host dispose services while the other is still writing.",
-      "check": "Look for `StopAsync` overrides that flush state with no once-only guard.",
+      "statement": "Make a hosted service's `StopAsync` final flush run only once for every caller, through a gate and a shared stop task, and track shared counts with `Interlocked`.",
+      "why": "Overlapping stops race on the batch, and the first stop to return lets the host dispose services while the other is still writing.",
+      "check": "Look for `StopAsync` overrides that flush state without a run-once guard.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
@@ -283,9 +261,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When the code under test swallows exceptions, make the test fail through mock verification (for example `.Verifiable(Times.Never())`) or by asserting the logger was not called, so a mock failure cannot be hidden.",
-      "why": "A swallowed `MockException` makes the test pass no matter what the code does.",
-      "check": "Look for tests of exception-swallowing code that rely on strict mocks throwing and never verify.",
+      "statement": "In a test project, when the code under test catches and logs every exception, assert the expected non-call explicitly (for example `.Verifiable(Times.Never())` and then verify, or assert the logger was never called) so the test can actually fail.",
+      "why": "A Moq `MockException` thrown inside a catch-all is swallowed, and the test passes whatever the behavior.",
+      "check": "Look for tests whose only failure signal is a mock throwing inside code that swallows exceptions.",
       "scope": "general",
       "topic": "testing",
       "applies_to": [
@@ -294,13 +272,23 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Never interpolate text an untrusted author controls (pull request titles, branch names) into a shell command that is run or offered for copy-paste. Leave it out, for example with `gh pr create --fill`, or quote it properly.",
-      "why": "A crafted title becomes a command injection when a maintainer copies and runs the command.",
-      "check": "Look for build scripts that build suggested commands from PR metadata.",
+      "statement": "Keep each CHANGELOG entry in exactly one section; check that a scripted insertion didn't match several headings.",
+      "why": "An insertion anchored on a repeated heading such as `### Changed` duplicated entries into every section.",
+      "check": "Look for the same entry text appearing more than once in the CHANGELOG diff.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In automation scripts, never put author-controlled text such as a pull request title into a shell command that people are told to copy and run.",
+      "why": "A crafted title becomes a copy-paste command injection.",
+      "check": "Look for interpolated PR titles, branch names from contributors or comment text inside suggested shell commands.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
-        "build/**",
         "**/*.ps1",
         "**/*.sh",
         "**/*.yml"
@@ -308,15 +296,48 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "In automation scripts, tell 'not found' apart from other failures (for example `git ls-remote --exit-code` returning 2) and fail the job on any unexpected error.",
-      "why": "A network error was reported to users as a missing release line.",
-      "check": "Look for scripts that treat any non-zero exit code of a command as a specific expected condition.",
+      "statement": "In automation scripts, tell 'not found' apart from other failures (for example `git ls-remote --exit-code` returns 2 when nothing matches) and let any other error fail the job instead of reporting it as missing.",
+      "why": "Otherwise a network error is reported as 'the release line does not exist'.",
+      "check": "Look for a failure of any kind from a fetch or lookup command being treated as 'does not exist'.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
-        "build/**",
         "**/*.ps1",
         "**/*.sh"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a write API copies the value before its task completes, document that guarantee on the interface, and return the caller's pooled rental immediately after the call.",
+      "why": "A pooled buffer can be passed to a store only if the store doesn't keep a reference after the write completes.",
+      "check": "Look for rented memory passed to async store writes where the interface doesn't document that the value is copied.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an analyzer such as CA1859 rejects an `IBufferWriter<byte>` interface parameter on a private helper, make the method generic over `TWriter : IBufferWriter<byte>` instead.",
+      "why": "This satisfies CA1859 and keeps the writer abstraction.",
+      "check": "Look for private helpers that take a concrete pooled writer type, or that suppress CA1859.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When the cookie authentication path is limited to marked page endpoints, accept only GET and HEAD on pages and answer other methods with 405 and an `Allow: GET, HEAD` header.",
+      "why": "Page endpoints lack the anti-forgery header check, so unsafe methods must not be authenticated there.",
+      "check": "Look for page endpoints authenticated by the cookie that accept POST, PUT or DELETE.",
+      "scope": "domain",
+      "domain": "bff-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
       ],
       "enforced_by_tools": false
     }

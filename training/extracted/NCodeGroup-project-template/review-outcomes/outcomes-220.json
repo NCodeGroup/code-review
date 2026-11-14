@@ -1,0 +1,34 @@
+{
+  "hash": "c03d1f26dcccadab",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #220",
+  "rules": [
+    {
+      "statement": "When a test asserts that one action happened after another (for example a review request after a push), check the order using recorded state such as the commit the request targeted. Counting how many times the action occurred is not enough.",
+      "why": "A check that only counts occurrences still passes when the actions happen in the wrong order, for example a review requested before the push that moved the branch.",
+      "check": "Look for test assertions that count matching events or comments to show a sequenced behavior, with nothing that compares timestamps, commit SHAs or recorded state to prove the order.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In prose workflow instructions or command templates, when a set of conditions deliberately excludes a case (for example a clean first pass getting no recommendation), say so explicitly right after the conditions.",
+      "why": "An unstated exclusion reads like an oversight: reviewers and readers can't tell whether the behavior is intended, and it may contradict summaries elsewhere.",
+      "check": "Look for conditional clauses in instruction templates that leave out an obvious case (such as a first or empty pass) without a sentence saying the omission is intentional.",
+      "scope": "domain",
+      "domain": "agent-workflow-prompts",
+      "topic": "documentation",
+      "applies_to": [
+        "**/templates/**/*.md",
+        "**/.claude/commands/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

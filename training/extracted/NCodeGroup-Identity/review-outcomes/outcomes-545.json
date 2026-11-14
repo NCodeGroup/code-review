@@ -1,0 +1,18 @@
+{
+  "hash": "dfbf736ed7742dd7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #545",
+  "rules": [
+    {
+      "statement": "In a background pass that processes many items (such as a periodic sweep over stored records), catch exceptions per item inside the loop, excluding cancellation, log the failing item's id and continue with the next item, and keep any broader catch only around setup such as creating the per-tenant context.",
+      "why": "A single malformed item that throws inside one catch around the whole loop aborts the pass every tick, so the valid items after it are never processed and the same failure is logged forever.",
+      "check": "Look for a hosted or background service loop where one try/catch wraps the whole iteration over items, or where an item's exception returns from or ends the loop. Also check that the per-item catch lets OperationCanceledException propagate and that the log entry names the item id.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

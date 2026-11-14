@@ -1,0 +1,18 @@
+{
+  "hash": "910adba34ed6d79d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #592",
+  "rules": [
+    {
+      "statement": "In a test project, don't declare a hand-written no-op IDisposable stub (nested or otherwise) for a disposable dependency; use a strict IDisposable mock with a verifiable Dispose setup so the test also proves the scope is disposed.",
+      "why": "The maintainer replaced a nested NoopDisposable test class with strict IDisposable mocks with verifiable Dispose setups, matching sibling tests. This removes a nested type that breaks the no-nested-types convention and checks that disposal happens.",
+      "check": "Look in test files for private nested or helper classes that implement IDisposable with an empty Dispose and are only used to satisfy a dependency. Flag them and suggest a strict mock (for example MockRepository.Create<IDisposable>() with a verifiable Dispose setup), as sibling tests already do.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

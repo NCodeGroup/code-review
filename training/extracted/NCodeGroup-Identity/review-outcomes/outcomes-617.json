@@ -1,0 +1,51 @@
+{
+  "hash": "34676f19bb2d08d5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #617",
+  "rules": [
+    {
+      "statement": "When a catch exists to log and fall back on failure, filter it on `when (!cancellationToken.IsCancellationRequested)` rather than `when (exception is not OperationCanceledException)`, so a cancellation the caller did not request (such as a timeout's `TaskCanceledException`) is treated as a failure.",
+      "why": "A store timeout surfaces as `TaskCanceledException` while the caller's token is not cancelled; filtering on the exception type lets it escape and skips the fallback, leaving stale state cached.",
+      "check": "Look for catch filters like `when (ex is not OperationCanceledException)` around calls whose failure should trigger a fallback; flag them unless the filter checks the caller's token instead.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, wait for an asynchronous callback by awaiting a `TaskCompletionSource` that the callback completes, bounded by `WaitAsync` with a timeout, instead of polling with a `DateTime.UtcNow` deadline and a `Task.Delay` loop.",
+      "why": "Wall-clock polling depends on timing, so the test can flake or run slowly on loaded CI.",
+      "check": "Look for test loops that check `DateTime.UtcNow` (or a stopwatch) against a deadline and call `Task.Delay` between checks.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a private member to take or return read-only collection interfaces instead of the concrete `List<T>`, `Dictionary<TKey, TValue>` or `HashSet<T>` it uses: CA1859 is enforced as a build error and requires the concrete types there; the read-only-interface rule applies only to public and protected signatures.",
+      "why": "Declaring private helpers with read-only interfaces fails the build under CA1859.",
+      "check": "Before reporting a concrete collection type in a signature, check the member's accessibility; report it only on public or protected members.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "When an architecture decision record's Status says it amends another record, cite the specific decision it actually changes, or cite the record as a whole, never an unrelated decision number.",
+      "why": "A reader who follows the amendment link otherwise lands on an unrelated decision.",
+      "check": "For ADR Status lines that say 'amends ADR-N decision M', check that decision M in ADR-N covers the subject this record changes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

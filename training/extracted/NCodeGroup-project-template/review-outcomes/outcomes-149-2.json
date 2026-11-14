@@ -1,0 +1,31 @@
+{
+  "hash": "a92ff5ab856c13b5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #149",
+  "rules": [
+    {
+      "statement": "Don't report that a test runs its own literal copy of a command or wrapper instead of the shipped one when another test already requires that exact string, verbatim, in every shipped copy.",
+      "why": "The verbatim text check ties the shipped copies to the tested string, so a shipped copy can't drift from the one the test runs without the test suite failing.",
+      "check": "Before raising the finding, search the test suite for a text assertion that requires the tested string verbatim in each shipped file; report only if no such assertion exists or it matches only a fragment.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a content check to loop over every generated or templated file when the content comes from one shared partial that all of them include, a sample of files confirms the include, and a generated-files check catches any file that drifts from its template.",
+      "why": "The shared partial is the single source of the wording, so checking a sample proves the include, and the generated-files check already catches a file that drifts from its template.",
+      "check": "Before reporting incomplete coverage of templated files, look at whether the content comes from a shared partial and whether a generated-files or drift check compares the outputs with their templates.",
+      "scope": "domain",
+      "domain": "template-generation",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

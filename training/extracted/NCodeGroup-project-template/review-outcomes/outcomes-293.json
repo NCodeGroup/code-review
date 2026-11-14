@@ -1,0 +1,51 @@
+{
+  "hash": "c0f121f1d5018125",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #293",
+  "rules": [
+    {
+      "statement": "When new code stops reading or parsing at more than one condition, add a test for each stop condition, with input where content follows the stop point, and assert that the output holds only what comes before it.",
+      "why": "A test whose input ends where the section ends never runs the stop conditions, so if one breaks, the extra content slips into the output without any test failing.",
+      "check": "For a new function that stops scanning at a heading, a delimiter or similar marker, check whether any test input has content after each stop marker and asserts that the content is left out.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code throws because a call to an external service failed, give the test stand-in for that service a switch that makes the call fail, and add a test that checks the run exits non-zero and that the error names what failed.",
+      "why": "Without that test, a regression that swallows the error passes the suite and leaves a half-done operation behind a green run.",
+      "check": "Look for new throw or exit-on-error paths after calls to external tools or APIs. Check whether the stand-in or fake can make that call fail, and whether a test asserts on the failure.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code prints a warning only under some conditions, test both that it appears when it should and that it stays quiet in the cases that shouldn't trigger it, such as a project that is already updated.",
+      "why": "Tests that only check the warning appears would still pass after a regression that prints it for every input.",
+      "check": "For a new conditional warning, check whether the tests include a case for each condition that should keep it quiet and assert that no warning is printed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A message shown to a user of generated or downstream code must say plainly when a file it points to belongs to another repository, such as the template's CHANGELOG.md, and not the reader's own project.",
+      "why": "A reader who looks for the file in their own project finds nothing.",
+      "check": "Look at warning and error text in tooling that runs in other projects. Find references like 'in its CHANGELOG.md' or bare file names that actually mean a file in the tool's own repository.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

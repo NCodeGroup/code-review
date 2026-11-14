@@ -1,0 +1,18 @@
+{
+  "hash": "2b907db2a2ef3189",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #300",
+  "rules": [
+    {
+      "statement": "Don't report a commit subject as misdescribing its change by comparing it with the pull request's overall diff against the default branch; check what that commit changed on its own, since a later commit (such as a merge that renumbers the release) may explain the difference.",
+      "why": "The commit that wrote the 0.73.0 changelog section was correct. The overall diff showed 0.74.0 only because a later merge commit renumbered the release, and rewording a pushed commit would need a force-push, which the repository ruleset refuses.",
+      "check": "Before flagging a commit subject, run `git show <commit>` on that commit alone and look at later commits in the branch, such as a renumber or merge commit, that changed the same lines.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

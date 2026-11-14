@@ -1,0 +1,20 @@
+{
+  "hash": "94ec799f2902e65e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity docs/first-production-instance.md",
+  "rules": [
+    {
+      "statement": "When a change alters behavior, settings, commands or defaults that a living guide in the docs describes, update that guide in the same change rather than in a follow-up.",
+      "why": "The guide is marked as a living guide to be updated in the same change as anything it describes, so operators never follow steps that no longer match the code.",
+      "check": "For a diff that changes configuration keys, defaults, CLI commands, exit codes, chart values or setup behavior, search the docs for guides marked living that describe them, and flag the change if those guides are not updated in the same diff.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md",
+        "**/charts/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

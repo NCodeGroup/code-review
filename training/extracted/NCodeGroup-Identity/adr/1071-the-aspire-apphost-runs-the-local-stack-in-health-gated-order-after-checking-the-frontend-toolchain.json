@@ -1,0 +1,82 @@
+{
+  "hash": "d4a8518e63e5d507",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1071",
+  "rules": [
+    {
+      "statement": "In an Aspire AppHost, have a resource that depends on an HTTP service wait on that service's health: declare `WithHttpHealthCheck` on the readiness endpoint (e.g. `/health/ready`) and use `WaitFor`, or `WaitForCompletion` for one-shot workers such as migrations. Don't rely on process start or concurrent launch order.",
+      "why": "If startup is ordered only by process start, browser surfaces boot before the API listens, and their first discovery and management calls fail.",
+      "check": "Look for AppHost resources that call another service but have no `WaitFor`/`WaitForCompletion`, and for HTTP services used as dependencies that declare no `WithHttpHealthCheck`.",
+      "scope": "domain",
+      "domain": "aspire-local-orchestration",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an Aspire AppHost, give services that take part in OAuth/OIDC flows fixed, un-proxied ports (launch-profile ports, `IsProxied = false`). Don't use Aspire's dynamic port allocation or a proxy that rewrites the request host for them.",
+      "why": "Seeded redirect URIs, CORS origins, pinned issuers and the bootstrap document assume fixed ports. A host-rewriting proxy makes the OAuth cookies and antiforgery binding drift away from the pinned origin.",
+      "check": "Look for endpoints of OP, BFF or redirect-callback surfaces that have no fixed port, are left proxied, or rely on dynamic allocation.",
+      "scope": "domain",
+      "domain": "aspire-local-orchestration",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an Aspire AppHost, declare pnpm workspace JavaScript resources with `WithPnpm(install: false)`, and never run `pnpm install` from the AppHost or per app. Installation goes through the single serial workspace installer script.",
+      "why": "Concurrent `pnpm install` runs against a pnpm workspace's shared, symlinked `node_modules` collide with `ERR_PNPM_EBUSY` and fail the losing resource.",
+      "check": "Look for `WithPnpm()` without `install: false`, or for any AppHost code or per-app script that invokes `pnpm install`.",
+      "scope": "domain",
+      "domain": "aspire-local-orchestration",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*AppHost*/**/*.cs",
+        "**/*LocalDev*/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve every local-development browser surface over HTTPS with the ASP.NET Core development certificate (e.g. `WithHttpsDeveloperCertificate` for Vite), and register only `https://` origins in seeded redirect URIs and developer CORS allowlists.",
+      "why": "One trusted certificate across the stack keeps origins consistent with the pinned HTTPS redirect URIs and CORS origins.",
+      "check": "Look for `http://` redirect URIs or CORS origins in developer seeds, or for local browser surfaces served without the dev certificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.json",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When checking a set of startup preconditions, collect every problem and throw one exception that lists them all and names the single command that repairs them, rather than stopping at the first failure. Run the check before any work starts, and give it no opt-out switch.",
+      "why": "One report lets a single repair run fix everything. Failing before any resource starts replaces scattered failures that appear only in individual logs.",
+      "check": "Look for precondition guards that throw on the first problem, that omit the repair command from the message, that run after resources have started, or that add a bypass flag.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a code path's ambient dependencies (environment variables such as `PATH`, filesystem roots, external process invocations) behind `internal virtual` passthrough members that are excluded from coverage, so that tests can override them through `InternalsVisibleTo`.",
+      "why": "Tests can then exercise the logic deterministically without touching the real environment or spawning processes.",
+      "check": "Look for logic that reads environment variables, probes install directories or spawns processes inline, with no overridable seam that tests can replace.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

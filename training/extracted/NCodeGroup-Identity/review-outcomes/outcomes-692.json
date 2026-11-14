@@ -1,0 +1,139 @@
+{
+  "hash": "7f50084bb77ac075",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #692",
+  "rules": [
+    {
+      "statement": "In a test project, don't ask for a stub or fake used by only one test file to move out of that file into its own top-level class; the test conventions make it a private sealed nested type in that file.",
+      "why": "The test conventions place a stub that one test file needs as a private sealed nested type beside that file's other stubs, so the no-nested-types rule doesn't apply to it.",
+      "check": "Before reporting a nested stub class in a test, search for other users of it; report only if more than one test file uses it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to an argument guard under test; the C# and test conventions allow it there.",
+      "why": "The conventions allow `null!` in a test to pass a deliberate null to an argument guard. Production code never carries it.",
+      "check": "Report `null!` in a test only when it is used for something other than passing null to a guard-clause argument.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a test project's strict-mock `BaseTests` class to be moved into a shared test-support project; each test project with mocks keeps its own copy.",
+      "why": "The strict-mock rule says each test project holds its own BaseTests. The shared support project is for fixtures that build test data, not for the mock base.",
+      "check": "When identical BaseTests classes appear in several test projects and differ only by namespace, don't report them as duplication.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project that uses mocks, derive every mock-using test class from the project's `BaseTests`, which owns a strict `MockRepository` and verifies it on dispose, rather than letting each class declare and verify its own repository.",
+      "why": "Duplicated verification code can drift, and a new test class can forget to verify its mocks.",
+      "check": "Look for test classes that declare their own `new MockRepository(MockBehavior.Strict)` and verify it in their own Dispose, while the project has or should have a BaseTests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an accepted decision record's text to be edited because a later decision amends it, when the record's Status line already points to the amending record.",
+      "why": "The decision-record convention keeps an accepted record's text unchanged and records later decisions through its status.",
+      "check": "Before reporting a stale ADR, read its Status line for an 'amended by' or 'superseded by' entry.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test that a path that must not retry, such as creating a resource that is not idempotent, really runs on a client with retries disabled, and that this client is cached apart from the retrying client and reused.",
+      "why": "If the no-retry path were wired to the retrying client or shared its cache entry, creation could retry silently after a lost response and create duplicate resources, and tests with mocked factories would still pass.",
+      "check": "When a factory adds a no-retry execution path, look for tests that check the retry count is 0, that the client is reused for the same key, and that it is distinct from the retrying client.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin a deterministic derived identifier that gets persisted or shared externally, such as a hash-based name, with a known-answer test that asserts the exact output for a fixed input.",
+      "why": "Tests that only compare the output with itself or with one-field variations wouldn't catch a change to the hashed text. Such a change would silently rename existing data and orphan it.",
+      "check": "For a new function that derives a stable name or ID from inputs, look for at least one test asserting a literal expected value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when a retry policy is configured for a single attempt, set its back-off arguments to inert values (zero delays, multiplier 1, no jitter) or document that they are required by the API and have no effect.",
+      "why": "Back-off values that can never apply mislead editors into thinking the call retries, or into tuning values that change nothing.",
+      "check": "Look for retry settings with max attempts of 1 or a filter that never retries, but with non-trivial back-off values.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when exceptions are translated into a domain exception such as `CryptographicException`, catch only the specific exception types the wrapped operation raises for bad input, and let every other exception propagate unchanged.",
+      "why": "A broad filter turns bugs or `OutOfMemoryException` into a domain failure, such as a refused key, that callers then act on wrongly.",
+      "check": "Look for catch blocks that exclude a few types (`when ex is not ...`) or catch `Exception` and rethrow it wrapped as a domain exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When hashing non-secret composed text, encode it into a stack or pooled buffer, or append the parts to an `IncrementalHash`, instead of allocating a string and a `byte[]`; and don't use the secure encoding helper for text that isn't sensitive.",
+      "why": "Interpolating and calling `GetBytes` allocates a string and an array just to hash them. The secure encoding is meant for sensitive text.",
+      "check": "Look for `Encoding.*.GetBytes(string)` or `SecureEncoding.*.GetBytes` on an interpolated string whose bytes are only passed to a hash function.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code, make a comment's claim about ordering or behavior match what the test actually checks; don't describe a guarantee that the verification, such as `Times.AtMostOnce()`, doesn't enforce.",
+      "why": "A comment that reads like a tested guarantee hides the fact that a regression wouldn't be caught.",
+      "check": "Compare comments in test helpers with the mock verification counts and assertions they describe.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test of a component's behavior, build input data such as algorithm descriptor rows from literal values in the test, instead of taking them from the library's shipped data tables.",
+      "why": "A change to the shipped data would break the behavior tests even when behavior is unchanged. Checking the shipped data belongs in the data's own tests.",
+      "check": "Look for behavior tests that pull fixtures from production default tables or catalogs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

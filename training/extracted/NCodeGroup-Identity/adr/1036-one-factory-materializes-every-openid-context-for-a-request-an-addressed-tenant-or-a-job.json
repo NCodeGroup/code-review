@@ -1,0 +1,108 @@
+{
+  "hash": "92d0ecfa3dae4e35",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1036",
+  "rules": [
+    {
+      "statement": "Endpoints and services get the per-request OpenID context from the feature published on the HttpContext (`HttpContext.GetOpenIdContext()`) and never build an `OpenIdContext` themselves.",
+      "why": "Endpoint filters build the context once per request and publish it, so a new endpoint needs no context plumbing and every surface stays on the same flow. The ADR calls an endpoint that builds its own context a smell.",
+      "check": "Look for endpoint or service code that calls the context factory or constructs an `OpenIdContext` directly instead of reading it from the HttpContext feature.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an operation acts on a tenant other than the one the request's context carries, such as a management route naming a tenant or a background job, materialize that tenant's own context explicitly instead of reusing the request's context.",
+      "why": "The request's context carries the host's tenant. Reusing it would key grants, sign logout tokens and audit in the wrong tenant's security domain.",
+      "check": "In a management handler or background job that takes a tenant id, check whether tenant-bound services (sessions, grants, logout, signing) run on the ambient request context instead of a context created for the addressed tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A context materialized explicitly for an addressed tenant is owned by the caller: dispose it, and never publish it as the request's context feature.",
+      "why": "Only the request and control-plane paths publish on the request. Explicit and background contexts are disposable and owned by whoever created them.",
+      "check": "Look for `CreateForTenantAsync`/`CreateForBackgroundAsync` results that aren't disposed (no `using`), or that get set as the HttpContext's context feature.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Materializing a tenant by explicit id loads it fresh from the tenant store under its own stored issuer, and must not seed the tenant or read or write the tenant cache.",
+      "why": "An administrative operation must act on the tenant as stored at that moment. The ADR calls a cache read or write on the explicit path a smell.",
+      "check": "In the by-id or explicit tenant materialization path, look for tenant-cache lookups or inserts, or a call into seeding or provisioning.",
+      "scope": "repository",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A missing or disabled tenant, or a tenant whose team is disabled, answers 404 before it is seeded or cached, so a disabled tenant is never put in the tenant cache.",
+      "why": "Resolution on the load path is the authoritative validation. Cache hits are deliberately not re-validated, so nothing invalid may enter the cache.",
+      "check": "In tenant resolution or caching code, check that the disabled and missing checks (tenant and team) run before seeding and before the cache insert.",
+      "scope": "domain",
+      "domain": "multi-tenant-identity",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A tenant strategy's `TryGetTenantId` probe must be store-free and non-throwing: it returns the identifier only when the request alone determines it, and otherwise returns false.",
+      "why": "The warm path probes the tenant cache with this identifier so that it doesn't pay a tenant-store round-trip. A probe that reads the store or throws defeats that.",
+      "check": "Look for `TryGetTenantId` implementations that call a store, are async, or throw, instead of returning false when they can't know the id.",
+      "scope": "repository",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a per-tenant behavioral knob a setting on the resolved tenant that can be overridden below the platform, not a process-wide start-up option.",
+      "why": "Per-tenant control is data-driven, and settings merge from the platform, the team and the tenant, so both protocol and management surfaces see the effective value.",
+      "check": "Look for new options-class properties or start-up configuration that control behavior that should vary per tenant.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each setting descriptor exactly once: surface-neutral descriptors in the core slice, and protocol descriptors contributed by the authentication slice as an additional source.",
+      "why": "The setting catalog is shared, and duplicated descriptors would let the surfaces drift apart.",
+      "check": "Look for a setting descriptor defined or registered in more than one slice, or a protocol-specific descriptor added to the core slice.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the session service bound to its OpenID context, and don't add tenant-parameterized overloads to it. Callers needing another tenant materialize that tenant's context instead.",
+      "why": "The termination seam needs a materialized tenant to sign logout tokens, so tenant overloads would collapse into a context anyway while forking the service surface.",
+      "check": "Look for new session-service members that take a tenant id parameter.",
+      "scope": "repository",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

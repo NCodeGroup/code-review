@@ -1,0 +1,117 @@
+{
+  "hash": "832a0a9fe33dcd92",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1245",
+  "rules": [
+    {
+      "statement": "When a request fails because of a known condition in stored state that the caller can fix through the API, answer `409 Conflict` with an RFC 9457 `application/problem+json` problem that names the stored item to repair. Don't let the exception escape as a `500`, and don't answer `422`.",
+      "why": "A `500` tells the caller the server failed, when the condition is known and a write repairs it. `422` is wrong because the request content is fine and the stored state is not (RFC 9110 §15.5.10).",
+      "check": "Look for exceptions about unreadable or invalid stored data that escape as `500`, or are mapped to `422`, when the caller can fix them. Also look for 409 problems that don't name the scope or owner of the item to repair.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a cross-cutting exception to its HTTP answer in one endpoint filter installed on the root route group. Don't write a try/catch for it in each handler.",
+      "why": "Answers from separate handlers drift apart, and a handler added later forgets the catch. A filter on the root group also covers nested groups.",
+      "check": "Look for handlers that catch an exception type which a root-group endpoint filter already maps, or new per-handler try/catch blocks that turn one exception type into a problem response.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you add a more specific exception for a case that code already throws as a base exception type, derive it from that base type, give it properties that identify the failing item, and keep the original exception as its inner exception.",
+      "why": "Existing `catch` blocks for the base type still catch it, and callers can name the failing item without parsing the message.",
+      "check": "Look for a new exception type that replaces a thrown base exception (such as `JsonException`) but doesn't derive from it, has no identifying properties, or drops the original exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize the caller before you resolve or read stored state whose failure is reported in the response.",
+      "why": "Otherwise a caller who may not make the request learns details about the stored state from the error.",
+      "check": "Check whether settings or document resolution, or any other read whose failure reaches the response, runs before the authorization check in an endpoint.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an error message or problem detail describes invalid configuration, name the setting and the rule it breaks, never the stored value.",
+      "why": "The answer should tell the caller what to replace without exposing anything the caller's normal view hides.",
+      "check": "Look for error messages, problem extensions or log text that include raw setting values from stored documents.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A write's validation refuses only the violations its own change introduces. A pre-existing unreadable or invalid stored item it meets gets logged as a warning and skipped, and the walk continues. The item the write replaces must not block that write.",
+      "why": "If an exception escapes the walk, one bad document fails every write, including the write that would repair it.",
+      "check": "Look for walks over stored items during a write that let a parse or validation exception escape, or that count a pre-existing bad item as a violation of the write.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Page an on-demand report over a collection that can grow without limit: return a normalized limit, a default and a maximum, plus a continuation token, and allow a page to be empty while the token is still set.",
+      "why": "The work of one request must not grow with the size of the collection.",
+      "check": "Look for report or list endpoints that compute over every item of a tenant or collection in one request, or that treat an empty page as the end of the results while the continuation token is still set.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't map a fixed route segment under a collection whose item route is `/{id}` (for example `/clients/incoherent` beside `/clients/{clientId}`). Put it at a sibling path instead.",
+      "why": "The fixed segment collides with the item route, which would answer it as an identifier.",
+      "check": "Look for new routes whose literal segment sits where an existing route has a `{id}` parameter.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a different kind of failure in its own field (for example a document error message). Don't encode it as a structured violation with empty names.",
+      "why": "A caller that reads the violation's names would find none.",
+      "check": "Look for violation or error records built with empty or placeholder fields to stand for a failure of another kind.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a log and an API both report the same computed condition, have both use one shared component to compute it.",
+      "why": "Then the log and the API cannot disagree about what is affected.",
+      "check": "Look for logic duplicated between a background handler that logs a condition and an endpoint that lists it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

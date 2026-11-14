@@ -1,0 +1,107 @@
+{
+  "hash": "e120286c07692d6d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1223",
+  "rules": [
+    {
+      "statement": "When a request path and a background pass can both act on the same ended entity, have both call one shared helper that atomically claims the transition, and run the follow-up side effects (notifications, audit, logs) only in the call that won the claim.",
+      "why": "Otherwise a request and a pass that find the same ended session would both terminate it, and relying parties would be notified twice.",
+      "check": "Look for duplicated termination/cleanup logic in a request path and a background job, or side effects dispatched without first checking that this call made the state change (for example a revoke that returns null or false when already revoked).",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make the security-relevant state change, such as revoking dependent grants and tokens, in the same unit of work as the claim, not in a later dispatched handler.",
+      "why": "A failure or cancellation between the claim and the dispatch would leave tokens active, and no later request or pass would find the already-claimed entity to retry.",
+      "check": "See whether revocation of dependent grants or tokens happens in a command handler or event dispatched after the claim, rather than in the claim's transaction.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a periodic hosted service, tick a `PeriodicTimer` using the injected `TimeProvider`, catch and log a failed pass and carry on at the next tick, and never throw when the host stops.",
+      "why": "One failed pass must not kill the background loop, shutdown must be clean, and time must stay testable through the registered `TimeProvider`.",
+      "check": "Look for `Task.Delay` or `new PeriodicTimer(interval)` without the `TimeProvider`, a loop body without a catch-and-log, or an `OperationCanceledException` that escapes `ExecuteAsync` when the host stops.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a periodic background pass must run on only one replica per interval, take a lease keyed by the interval window (UTC ticks divided by interval ticks) that expires at the end of the window, skip the pass if the lease is lost, and keep the pass's per-item work idempotent anyway.",
+      "why": "Without a lease every replica reads the same pages and claims the same items. The idempotent claim makes a pass that two replicas still run harmless.",
+      "check": "Look for a background pass on a multi-replica service that has no shared lease, a lease that never expires, or per-item work that assumes it is the only runner.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a background batch pass, process each item in its own try/catch so that one failing or malformed item is logged with its own event and skipped, without stopping the rest of the batch or group.",
+      "why": "A malformed session must not stop the termination of the tenant's other sessions.",
+      "check": "Look for a loop over items where one exception aborts the whole page or tenant group, or where failures are swallowed without a log event.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In background work, create an `AsyncServiceScope` for each unit of work, such as each tenant group, and resolve scoped services from it, not from the root provider.",
+      "why": "Background work has no request scope. Each tenant's context and scoped services need their own scope.",
+      "check": "Look for a hosted service that resolves scoped services from the root `IServiceProvider`, or that shares one scope across tenants or the whole service lifetime.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read background batches from the store in bounded pages with a keyset cursor ordered by a stable key, backed by an index that covers the filter, and continue until the next cursor is null.",
+      "why": "Bounded keyset pages keep each query cheap, and the covering index serves the query.",
+      "check": "Look for a background query that loads all matching rows at once, uses offset paging, or filters on columns that no index covers.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a retention prune remove a record whose required termination or cleanup step has not run yet. Base retention on the time of that step, not on the record's expiry.",
+      "why": "Otherwise a session could vanish after its retention without ever being terminated, which leaves its grants active and its relying parties not notified.",
+      "check": "Look at the prune's selection criteria: they must require the record to have been revoked or terminated, and measure the retention from that time.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give the options of each background service a `public sealed` class with a `SectionName`, defaults for its interval, a validator that runs when the host starts, and strict binding.",
+      "why": "A misspelled key or an invalid interval must stop the host at startup, not fail silently at runtime.",
+      "check": "Look for a new options class or interval option that has no validator, is not validated at startup, or is bound without strict (error-on-unknown) binding.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "hash": "9d74d1f4855d3f50",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #544",
+  "rules": [
+    {
+      "statement": "Don't ask for the body of an accepted architecture decision record to be rewritten because later code made its claims stale; a newer record that amends or supersedes it, plus an updated Status line naming that record, is enough.",
+      "why": "Decision records are not edited after the fact: a new record supersedes or amends the old one and updates the old one's status, and the Status, Amends and Supersedes lines are how records relate to each other.",
+      "check": "Before reporting stale text in an existing decision record, check whether its Status line names a newer record that amends or supersedes it and states the current decision; if it does, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a decision record's Status line and its index entry, cite each related record once, combining relationships into one phrase (for example \"amended by ADR-X, which supersedes ADR-Y\") rather than repeating the reference.",
+      "why": "Repeated references read redundantly and are harder to keep consistent when one copy changes.",
+      "check": "Look for a Status line or decision-index row that links the same record more than once.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before applying EF Core migrations at startup, compare each context's applied migration ids with the migrations in the assembly, and on an unknown id apply nothing and fail fast with a message that names the context and says how to fix it.",
+      "why": "When a migration is re-scaffolded, an existing database still holds the old id, so the new migration runs against tables that already exist and fails with a raw provider error instead of telling the developer what to do.",
+      "check": "In migration-runner or startup code, look for migrations applied without first checking the applied history for ids the assembly doesn't contain, and for missing tests that cover an unknown id.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

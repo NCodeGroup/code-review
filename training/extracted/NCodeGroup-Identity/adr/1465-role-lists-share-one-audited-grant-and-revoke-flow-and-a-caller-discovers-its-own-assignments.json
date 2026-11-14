@@ -1,0 +1,93 @@
+{
+  "hash": "197f9b1fa8e5dd09",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1465",
+  "rules": [
+    {
+      "statement": "Record an audit event for a change to authority (a grant or revoke of a role assignment) in the endpoint handler after the commit succeeds, not inside the store.",
+      "why": "The store doesn't know the actor, and recording before the commit could audit a change that never happened.",
+      "check": "Look for grant/revoke handlers that save without recording an audit event afterward, or that record the event before the commit or from the persistence layer.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Route every role list's grant and revoke through one shared flow with role-neutral contracts, not a handler that repeats the logic for each role or node.",
+      "why": "Handlers that each repeat the logic end up with different statuses, audit records and refusals. Contracts tied to one role need new types for every new role.",
+      "check": "Look for new owners/admins-style handlers that reimplement authorization, status codes or auditing, or for new request/response types named after one specific role.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a grant is refused, return 409 and neither save nor audit anything. When the principal already holds the role, return 200 with the existing assignment and record nothing. Return 201 and record the grant only when a new assignment is created.",
+      "why": "The audit trail must record exactly what changed, so the ownership service reports whether it added or refused the assignment.",
+      "check": "Look for grant paths that audit or save on refusal or on an existing assignment, or that return 201 when nothing was added.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a resource's own extra refusals (for example a host-managed resource or missing custody) before the shared grant/revoke flow.",
+      "why": "Then nothing is saved or audited for a change the resource refuses.",
+      "check": "Look for resource-specific refusal checks placed after the shared flow has run or committed.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have the server compute whether the caller may make a change and expose it as one flag on the list response (such as `canChange`), covering every refusal that doesn't depend on the principal named. The UI must not recompute authorization rules or probe endpoints to find out.",
+      "why": "Computing authority in the browser duplicates the server's rules and drifts from them, and probing costs a request per place and shows a 403 as a failure.",
+      "check": "Look for client-side code that rebuilds permission logic or sends probe requests to decide whether to show an action, instead of reading the server-provided flag.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put an ETag or continuation token on a list response that is specific to the caller and unpaged.",
+      "why": "The answer depends on the caller, so a shared cache validator or paging token would be misleading.",
+      "check": "Look for ETag or continuation-token headers added to caller-specific responses such as role lists that include a per-caller authorization flag.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put team, tenant or role scope into access tokens as claims or audiences. Resolve the caller's authority from its role assignments on each request.",
+      "why": "One token must span every place the caller holds a role, and a claim would go stale after every grant or revocation.",
+      "check": "Look for new token claims or audiences carrying team/tenant scope or roles, or for authorization that reads them instead of current assignments.",
+      "scope": "domain",
+      "domain": "management-api-authorization",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

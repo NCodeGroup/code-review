@@ -1,0 +1,18 @@
+{
+  "hash": "a8ea46ff7b1f08b0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #467",
+  "rules": [
+    {
+      "statement": "An architecture decision record's Decision section must state the rule it decides or applies in its own words, citing any upstream record it applies, and must not open with a pronoun or reference to text that is no longer in the record.",
+      "why": "A reader of the record alone should be able to tell what is being enforced without following links; a dangling reference left after trimming makes the record read as incomplete.",
+      "check": "In edited ADRs under docs/decisions, check that the Decision section begins by naming the rule, and that no sentence opens with a pronoun such as \"Its\" or \"This\" whose antecedent was deleted.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

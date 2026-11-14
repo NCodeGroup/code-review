@@ -1,0 +1,137 @@
+{
+  "hash": "e84f40fb24f6a871",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1476",
+  "rules": [
+    {
+      "statement": "Never return a KMS key identifier (ARN, vault URL, key ring path) in a management API response; expose only the name of the provider that holds the key.",
+      "why": "The key identifier names the deployment's infrastructure, and the provider name is enough to tell custody apart.",
+      "check": "Look for resource or response DTOs that serialize a remote key's identifier, or the full `<provider>:<keyId>` reference, instead of only the provider name.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When binding a key that a KMS already holds, read its public half from the KMS rather than accepting it from the caller, and check it against the chosen algorithm row's key type, size and curve.",
+      "why": "A caller-supplied public half can be mismatched, and publishing it would put a key in the JWKS that does not verify what the KMS signs.",
+      "check": "Look for bind/import requests that take a public key from the caller for a remote key, or for bind code that stores the KMS public half without checking type, size and curve against the row.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before storing a binding to an externally held key, prove the key works under the deployment's identity by signing random bytes and verifying the signature with the fetched public half, or by decrypting a freshly made JWE.",
+      "why": "Reading the public half only shows that the key exists. The proof shows that the KMS signs or decrypts with it before any token depends on it.",
+      "check": "Look for import/bind paths that add the remote secret to the store without a sign or decrypt proof step.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require platform-level authorization, in addition to tenant authorization, for any operation that lets the caller name an arbitrary KMS key identifier for the server to use, and authorize both before any read.",
+      "why": "The deployment's identity can reach every key the KMS allows, including other tenants' keys, so a tenant administrator alone must not be able to point the server at one.",
+      "check": "Look for routes that accept a caller-named KMS key identifier but authorize only at the tenant scope, or that authorize after reading data.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run request validation and local conflict checks, such as a duplicate identifier answering 409, before calling an external KMS.",
+      "why": "An invalid or conflicting request must not cause KMS calls or create remote keys that then have to be cleaned up.",
+      "check": "Look for KMS create, read or prove calls that happen before the validator or the duplicate-identifier check runs.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the server creates a key in an external KMS and the store then fails to add or commit its record, including a lost concurrency race, destroy the created key before the failure propagates.",
+      "why": "Otherwise a failed write leaves an orphaned key in the KMS.",
+      "check": "Look for remote key creation followed by a store add/commit with no compensating destroy on failure.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Destroy a KMS key when its record is removed only if the server created it; never destroy a key the caller bound (supplied origin).",
+      "why": "The server did not create a bound key, and the organization that binds it keeps the right to use it elsewhere.",
+      "check": "Look for removal paths that call the remote key destroyer without checking that the secret's origin is generated rather than supplied.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map a KMS refusal (an `ArgumentException` for a key identifier the provider does not read, a `CryptographicException` for a key it refuses, or a domain refusal exception) to 400 with the reason, and map any other KMS failure to 502 after logging it with the provider and secret identifiers.",
+      "why": "A refusal is the caller's error, while other KMS or credential failures are upstream failures.",
+      "check": "Look for KMS exception handling that returns 500, treats refusals as 502, treats upstream failures as 400, or does not log the provider and secret identifiers.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an update that changes the algorithm of a KMS-held key; a different algorithm needs a new key.",
+      "why": "A remote key is bound to its algorithm row and is verified against it on load, so a key whose algorithm changes cannot be read.",
+      "check": "Look for update validation of remote secrets that does not refuse, with 400, an algorithm different from the stored one.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a capabilities endpoint list exactly the options that the corresponding create/import validation accepts, derived from the same source.",
+      "why": "Clients then offer only what works, instead of learning from a 400 what is supported.",
+      "check": "Look for capability lists built separately from the validator's accepted set, or that list options the validator rejects.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add fields to a shared request contract that some of the routes using it must refuse; give the feature its own routes and request types.",
+      "why": "Shared fields would force every other handler to accept and then reject them, and they muddy the shared contract.",
+      "check": "Look for new optional properties on a shared request DTO that only one of the routes using it supports.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

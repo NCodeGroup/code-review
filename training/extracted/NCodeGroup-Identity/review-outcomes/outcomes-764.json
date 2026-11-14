@@ -1,0 +1,18 @@
+{
+  "hash": "6d3857f1ef2c8e8f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #764",
+  "rules": [
+    {
+      "statement": "In a repository generated from NCodeGroup's project-template, don't ask for hand edits to files the template update script (`Update-Project.ps1`) writes, such as `.claude/settings.json`; send the change to project-template instead.",
+      "why": "Template-merged files are rewritten on the next template update, so a local hand edit is lost or conflicts. The fix belongs in project-template, where every downstream repository picks it up.",
+      "check": "Before suggesting a change to a file like `.claude/settings.json`, check whether the template update script owns it. If it does, frame the finding as a project-template change, not an edit in this pull request.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".claude/settings.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

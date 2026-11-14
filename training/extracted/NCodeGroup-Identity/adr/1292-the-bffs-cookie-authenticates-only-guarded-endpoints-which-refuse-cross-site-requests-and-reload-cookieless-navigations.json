@@ -1,0 +1,197 @@
+{
+  "hash": "1c016bc99167876d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1292",
+  "rules": [
+    {
+      "statement": "Require every request to a cookie-authenticated API endpoint, whatever its method, to carry the configured static anti-forgery header exactly once, with its value compared ordinally, and refuse a missing, repeated or wrong header.",
+      "why": "A custom header forces a CORS preflight on a cross-origin fetch, which deny-by-default CORS refuses, and a form or navigation cannot set it, so it proves the request is not a cross-site forgery.",
+      "check": "Look for header checks that skip some methods, accept multiple header values, compare case-insensitively or with culture, or treat an absent header as allowed.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject at startup a configured anti-forgery header name that is a CORS-safelisted request header (Accept, Accept-Language, Content-Language, Content-Type, Range) or one that carries credentials (Cookie, Authorization, DPoP).",
+      "why": "A safelisted header does not trigger a preflight, so it gives no CSRF protection, and a credential header would conflict with authentication.",
+      "check": "Check that options validation for the anti-forgery header name refuses these names; flag configurable header names without such validation.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply Fetch Metadata to cookie-authenticated requests like this: accept `Sec-Fetch-Site` when it is absent, `same-origin` or `none`; accept `same-site` only when `Origin` ordinally equals an entry in an explicit trusted-origins allow-list; refuse every other value and any repeated header.",
+      "why": "A sibling subdomain is same-site, and the server cannot read the application's CORS decision, so same-site needs an explicit allow-list. Unknown or repeated values must fail closed.",
+      "check": "Look for Fetch Metadata checks that accept `same-site` unconditionally, accept `cross-site`, ignore duplicate headers, or try to reuse the CORS policy instead of a separate allow-list.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't decide whether a request is a cross-site or redirected top-level navigation from `Sec-Fetch-Site`. Key it on the method, on `Sec-Fetch-Mode` being absent or `navigate`, and on the Strict session cookie being absent.",
+      "why": "Browsers label the same navigation differently: Chromium sends `cross-site` and Firefox sends `none` on the return from the identity provider, so a rule keyed on `Sec-Fetch-Site` fails in one of them.",
+      "check": "Flag navigation or reload logic that branches on the `Sec-Fetch-Site` value.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate antiforgery tokens on unsafe-method requests to cookie-authenticated pages centrally in middleware, after the Fetch Metadata check, instead of relying on each MVC controller or minimal API endpoint to opt in.",
+      "why": "MVC controllers and minimal APIs validate antiforgery only when the endpoint opts in, so a single page that omits the opt-in would accept a cross-site post.",
+      "check": "Look for page or form-handling endpoints whose CSRF protection depends only on per-endpoint `[ValidateAntiForgeryToken]` or similar opt-in, with no central check of non-GET/HEAD/OPTIONS/TRACE requests.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Configure the antiforgery cookie with a `__Host-` prefix, `Secure` always, `Path=/`, no `Domain`, `HttpOnly` and `SameSite=Strict`, and refuse at startup any configuration that deviates from this.",
+      "why": "A host-only, Secure cookie cannot be set or overwritten by sibling subdomains or over plain HTTP.",
+      "check": "Check antiforgery or session cookie options for a missing `__Host-` prefix, a `Secure` that depends on the request, a non-root path or a set domain, and check that validation rejects such settings.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate at startup that each configured trusted origin is a bare origin (scheme, host and optional port, with no path, query or trailing slash) and uses `https` outside Development.",
+      "why": "Origins are compared ordinally against the `Origin` header, so anything other than a bare origin never matches, and plain http would weaken the protection.",
+      "check": "Look for origin allow-list options without validation of their shape and scheme.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return CSRF and authentication refusals from a cookie-authenticating backend as RFC 9457 `application/problem+json` with a stable URN `type`, a `title` and a `status`, plus `Cache-Control: no-store`, and audit each anti-forgery rejection.",
+      "why": "Clients can tell the failure kinds apart from the stable problem types, and refusals must never be cached.",
+      "check": "Flag refusal responses that are plain text, empty, missing `type` or `Cache-Control: no-store`, or that are not logged or audited.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer an authentication challenge on an API endpoint with `401` problem details and on a page with a login redirect, and replace the page's return URL with `/` unless it is allow-listed.",
+      "why": "An API caller cannot follow a login redirect, and an unchecked return URL is an open redirect.",
+      "check": "Look for challenge handlers that redirect API calls, or that pass a return URL to login without allow-list validation.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throw `InvalidOperationException` when a challenge reaches an endpoint the cookie scheme does not authenticate, instead of redirecting to login.",
+      "why": "That endpoint never sees the session, so the user would return from login to the same challenge and loop.",
+      "check": "Look for challenge code paths on unguarded endpoints that redirect instead of failing loudly with an exception that names the required markers.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Allow cookie-session sign-out only from an endpoint protected by the anti-forgery header and Fetch Metadata checks.",
+      "why": "Otherwise another site can end the user's session with a cross-site request.",
+      "check": "Look for `SignOutAsync` on the cookie session scheme reachable from an endpoint without the header and Fetch Metadata guards.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a library registers an authentication scheme, make it the default scheme only when the host has not already set one.",
+      "why": "Overriding the host's default scheme would silently change how its other endpoints authenticate.",
+      "check": "Look for library registration code that sets `DefaultScheme` (or the challenge or authenticate defaults) unconditionally.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Map an unavailable session store to `503`, never to `401`.",
+      "why": "Answering an outage with `401` would log users out or send frontends into a login loop.",
+      "check": "Look for store or backing-service exceptions that are caught and turned into an authentication failure or `401`.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When middleware ordering matters for security, check it on every request: throw when the middleware runs after `UseAuthentication()` or routing, or when it did not run at all, so the guarded endpoint is never served without the checks. Prove this with an end-to-end test.",
+      "why": "An ASP.NET Core host cannot inspect the built pipeline at startup, so a startup check would only be a guess. Per-request checks are exact and cannot be bypassed.",
+      "check": "Look for security middleware that silently does nothing when misordered or missing, or that relies on a startup pipeline-order check, and for the absence of an end-to-end test of the misordered case.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let a server-written redirect or reload page target only a local URL: it begins with exactly one `/` and contains no backslash, whitespace or control character. HTML-encode the URL in the body, and serve the page under `Content-Security-Policy: default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` along with `X-Frame-Options: DENY`, `nosniff` and `no-store` headers.",
+      "why": "Otherwise the page could be used to redirect to another origin or to inject markup. A policy with no resource directive makes the page do nothing but navigate.",
+      "check": "Look for meta-refresh or redirect pages built from request URLs without the local-URL check, without HTML encoding, or without the strict CSP and no-cache headers.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound any automatic reload or redirect retry with a short-lived marker, such as a `__Host-` `Secure` `HttpOnly` cookie with a `Max-Age` of about 60 seconds, so a request that already carries the marker falls through to the normal behavior.",
+      "why": "Without a bound, a navigation that keeps arriving without the session cookie would loop forever.",
+      "check": "Look for reload or retry responses that have no marker or limit to stop repetition.",
+      "scope": "domain",
+      "domain": "bff-browser-security",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

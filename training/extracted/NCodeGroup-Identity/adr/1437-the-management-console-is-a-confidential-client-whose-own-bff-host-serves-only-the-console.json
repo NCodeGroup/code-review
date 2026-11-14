@@ -1,0 +1,69 @@
+{
+  "hash": "e50267965a8fe9bb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1437",
+  "rules": [
+    {
+      "statement": "Never register the OpenID provider's server services (`AddIdentityServer`) and the BFF's services (`AddIdentityBff`) in the same service collection; a BFF runs in a host of its own as a client of the provider.",
+      "why": "A BFF is a client of the OP, so the two never share a process or a service collection. Each process holds none of the other's keys, database or signing credentials.",
+      "check": "Look for a host or composition method that calls both `AddIdentityServer` and `AddIdentityBff`, or that composes one into the other, on the same `IServiceCollection`.",
+      "scope": "repository",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't serve a BFF frontend, or route a path of a frontend's origin, under a path prefix of the authorization server's origin; give each frontend an origin of its own and route every path of that origin to the frontend.",
+      "why": "A path prefix is not a security boundary. A host-only session cookie with path `/` is sent with every request to its host, so a path routed to another process hands that process the session and shares the origin with its pages.",
+      "check": "Look for proxy or ingress routes, or endpoint mappings, that put a frontend under a sub-path of the OP's origin, or that forward a path of the frontend's host (for example `/api`) to another process.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a configured upstream service URL at startup with an options validator: it must be an absolute `https` URL with no user info, query or fragment, and `http` is accepted only in the Development environment.",
+      "why": "The host reads the URL only as configuration and derives nothing itself, so a bad value has to be refused at start instead of failing every call later.",
+      "check": "Look for a new URL-valued options property that has no startup `IValidateOptions` check, or whose check accepts relative, `http` (outside Development), user-info, query or fragment values.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a configuration override for a URL that the authorization server accepts in only one form (such as the DPoP `htu` target URL derived from the issuer's origin); derive it instead.",
+      "why": "The OP compares a DPoP proof's `htu` only with the tenant's published URLs, so an override can only make every DPoP-bound call fail.",
+      "check": "Look for a new setting or chart value that lets a deployment set the target URL of DPoP-bound calls to something other than the URL derived from the authority's origin.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.yaml",
+        "**/values*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A host's `Program.cs` holds composition only: it calls the packable library's `Add…`/`Map…` extension methods, and the server's logic lives in that library.",
+      "why": "The packable library is the composition root, and the host only composes it.",
+      "check": "Look for options binding, validators, endpoint handlers or other logic written directly in a host's `Program.cs` instead of in the library's composition extensions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

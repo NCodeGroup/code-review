@@ -1,0 +1,29 @@
+{
+  "hash": "cba2a91227d5d62d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #226",
+  "rules": [
+    {
+      "statement": "Don't ask to move a pull request's CHANGELOG.md entries from a new dated version section to `[Unreleased]` when the repository's landing conventions have each plan release under its own version and write that version's changelog section in its last step.",
+      "why": "In such repositories the plan's `Release:` line names the version, the merge commit is tagged and the GitHub release is published from that section after merge, and a renumber step moves the section if another pull request takes the version first.",
+      "check": "Before reporting, read the `## Landing` section of AGENTS.md (or the equivalent release convention) and the plan's `Release:` line; only report if the repository's convention is that entries accumulate under `[Unreleased]`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a repeated read of a file or store as redundant when a call between the reads may have rewritten it; the later read is needed to see the updated content.",
+      "why": "Reusing the earlier read would use stale data that misses what the intervening call wrote.",
+      "check": "Before reporting a duplicate read, check whether any call between the reads writes to the same file or store; if so, the re-read is correct.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

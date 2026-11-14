@@ -1,0 +1,49 @@
+{
+  "hash": "ac23d324e1cf03d9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #793",
+  "rules": [
+    {
+      "statement": "Cite each decision record at most once per comment, sentence, bullet or reference list, and when you repoint a retired record's citations to the record that absorbed it, collapse any duplicates that result, including identical consecutive `// See ADR-NNNN.` lines.",
+      "why": "Repeated citations of the same record make it look like separate decisions, add noise, and read like an unfinished find-and-replace edit.",
+      "check": "In changed comments, docs, instruction files and key-decisions or Further reading lists, look for the same ADR number appearing twice in one comment, sentence, bullet or list, or two identical citation lines in a row on one declaration.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a comment cites the same decision record twice under different labels, merge them into one citation with one label rather than keeping a second label left over from a retired record.",
+      "why": "The second label points at the same record and adds nothing, so readers can't tell what each label contributes.",
+      "check": "Look for comments like `See ADR-X (a) and ADR-X (b)`, where one record number appears with two different parenthetical labels.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a citation is repointed from a retired or split decision record to another record, check that the new target actually holds the rule the citing sentence describes, and if it doesn't, point the citation at the record that does or reword the sentence.",
+      "why": "A reader who follows a misdirected citation won't find the rule the sentence names, and a consolidation can quietly drop a rule from every record.",
+      "check": "For each citation a diff changes from one ADR number to another, compare what the comment or doc says the rule is with the subject the new target record decides.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

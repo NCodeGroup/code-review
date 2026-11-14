@@ -1,0 +1,65 @@
+{
+  "hash": "4c31dff128203771",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #143",
+  "rules": [
+    {
+      "statement": "When a change adds an error-handling branch (a catch or fallback that warns and continues), add a test that actually drives execution into that branch, not only into a neighbouring failure branch.",
+      "why": "If an untested catch branch regresses, by losing its warning, leaving its fallback value unset or letting the exception abort the operation, the tests stay green.",
+      "check": "For each new catch/fallback block in the diff, find a test scenario that injects a failure reaching that specific block. A scenario that only reaches an adjacent elseif/error branch doesn't count.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test of a non-fatal failure path asserts that the operation still runs to completion (expected exit code and final state), along with the warning text and the absence of the skipped output.",
+      "why": "If the test only checks for the warning, a regression where the failure aborts the whole operation still passes, as long as the warning is printed first.",
+      "check": "Look at tests for 'warn and continue' paths that assert only the warning message. They should also check the exit code or the final recorded state, such as the version reached or the files committed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*",
+        "**/tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A negative test that guards against a regression matches the whole class of bad patterns with a regex, not one literal string.",
+      "why": "A literal-only check misses close variants of the regression it is meant to catch. For example, a check for one exact quoted title misses a quoted variable or other quoted text.",
+      "check": "Look at 'must not contain' assertions that compare against a single exact literal when the forbidden thing is a pattern, such as any quoted argument value. Suggest a regex instead.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*",
+        "**/tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When extending a comment, wrap it to the same line width (about 120 columns) as the comments around it, instead of appending to one long line.",
+      "why": "Overlong comment lines are harder to read in diffs and editors.",
+      "check": "Look for changed comment lines that run well past the wrapping width of the comments next to them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that agent-run tooling opens ready (non-draft) pull requests by default when the draft behaviour is a documented per-project setting with an opt-in, and the diff didn't change that default.",
+      "why": "The maintainer declined these findings. Ready-by-default is the template's deliberate per-project setting, the draft-only rule comes from another repository's conventions, and changing the default would affect every project, so it belongs in its own issue.",
+      "check": "Before reporting a draft-PR violation, check whether the draft-only rule comes from this repository's own conventions, whether the tooling offers a per-project draft opt-in, and whether the diff actually changed the default or only touched other arguments on the same lines.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.md",
+        "**/*.prompt.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

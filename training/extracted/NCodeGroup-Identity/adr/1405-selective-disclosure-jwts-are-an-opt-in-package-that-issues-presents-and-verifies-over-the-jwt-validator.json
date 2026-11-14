@@ -1,0 +1,217 @@
+{
+  "hash": "0a35969017e76be0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1405",
+  "rules": [
+    {
+      "statement": "An opt-in capability package registers through an extension method on the marker builder of the library whose services it consumes (e.g. the JWT library's `IServiceBuilder<T>` when it calls the JWT validator), not on the marker of a lower library.",
+      "why": "Extending the consumed library's marker proves at compile time that the host registered that library and everything beneath it.",
+      "check": "Look at a new `Add*()` extension: does it extend the marker of the library whose services the package actually resolves and calls?",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An implementation package references only `*.Abstractions` packages of other capabilities plus shared utility packages, never another implementation package.",
+      "why": "Implementation packages depend only on abstractions so that capabilities stay independently replaceable.",
+      "check": "Inspect the .csproj PackageReference/ProjectReference items of an implementation package for references to non-Abstractions implementation packages.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token format layered on JWS/JWT must verify its signed tokens through the existing JWT validator with caller-supplied validation parameters, not by re-implementing signature, algorithm allow-list, key filtering, `typ` or lifetime checks.",
+      "why": "A second copy of the validation policy would drift from the JWT library's policy.",
+      "check": "Look for code in a layered token package that calls the JOSE serializer directly to verify, or that checks `alg`, `exp`, `nbf` or `typ` itself instead of going through `IJwtValidator`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an unset signature-algorithm allow-list at a trust boundary as permitting nothing, and require callers to set it explicitly.",
+      "why": "If an unset list allowed every algorithm, a token signed with any algorithm, including a weak one, would be accepted.",
+      "check": "Look for code that treats a null or empty `ValidSignatureAlgorithms` (or similar allow-list) as 'any algorithm allowed'.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When verifying an SD-JWT issuer-signed JWT, refuse a signing key that is not asymmetric and refuse a Nested (encrypted) JWT, whatever algorithms or decryption keys the parameters name.",
+      "why": "RFC 9901 §4.1 defines the issuer-signed JWT as a compact JWS signed with an asymmetric key.",
+      "check": "Check that SD-JWT issuance and verification reject symmetric keys and JWE-wrapped tokens rather than relying only on the algorithm list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Judge issuer, lifetime, required and protected claims on the signed SD-JWT payload before resolving any disclosure, and read the holder key (`cnf`) only from that signed payload, never from a disclosure.",
+      "why": "A disclosure comes from the holder. If a disclosure could supply or change a checked claim or the holder key, the holder could defeat the issuer's policy.",
+      "check": "Look for claim checks or `cnf` lookups that run on the resolved claims (after disclosures are applied) rather than on the issuer-signed payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never make `iss`, `nbf`, `exp`, `cnf` or a profile's protected top-level claims selectively disclosable, and refuse a presentation that has any `_sd` array or `...` placeholder beneath a protected claim, whether or not a disclosure matches it.",
+      "why": "The verifier judges these claims before it resolves disclosures. A withheld protected claim such as `status_list` would be dropped as a decoy, and the credential would read as unrevoked.",
+      "check": "Check SD-JWT issuance for disclosable-path validation against protected claims, and check verification for refusal of digests under protected claims.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve SD-JWT disclosures per RFC 9901 §7.1 and refuse anything ambiguous, each case with its own failure code: repeated digests, a disclosure shared by two digests, an object digest naming an array-element disclosure or the reverse, a disclosed claim that collides with an existing member, an unreferenced disclosure, reserved names (`_sd`, `...`, `_sd_alg`) in invalid positions, and malformed `_sd` or `...` members.",
+      "why": "Ambiguous resolution lets a holder change what a verifier reads. Distinct codes give callers a machine-readable reason.",
+      "check": "Check disclosure resolution code for each refusal case and for a distinct failure code per case. Unmatched digests may only be dropped as decoys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compute SD-JWT disclosure digests over the base64url encoding as issued or received, and compute `sd_hash` over the presentation exactly as received, up to and including the last `~`, never over a re-serialized form.",
+      "why": "Re-encoding changes the bytes, so the digests would no longer match.",
+      "check": "Look for digest or `sd_hash` computation over decoded and re-encoded JSON instead of over the original string segments.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate SD-JWT salts from the platform's cryptographically secure random number generator with at least 128 bits, and sort each `_sd` array ordinally.",
+      "why": "Predictable or short salts let a verifier brute-force undisclosed claims, and the order of the digests must not reveal anything about the claims.",
+      "check": "Look for salt generation using `Random`, sizes below 16 bytes, or `_sd` arrays emitted in claim order.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write a holder key into `cnf` only as a public JSON Web Key read under its registered key type, refusing both the standard private members and that key type's own private members.",
+      "why": "A confirmation key is published in the token, so private key material must never leak into it.",
+      "check": "Check that `cnf.jwk` serialization goes through the key type's public-key export, not a generic member copy that filters only standard private members.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Bound the work that untrusted input can demand with configurable limits (such as a maximum item count and a maximum nesting depth): check them before decoding, validate the options when the host starts, and make the producing side refuse output that exceeds them.",
+      "why": "The input's sender controls how much work parsing it takes. Validating at startup catches bad limits before any input is read.",
+      "check": "Look for count or depth checks that run only after decoding, limit options without startup validation, or an issuer that can produce output its own verifier would reject.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an open IANA-registered vocabulary, such as hash algorithm names or confirmation methods, as registered data instances or handlers resolved by name, not as a switch over known names, and fail composition when two handlers claim the same name.",
+      "why": "These registries grow without the library. A duplicate that failed silently would let a built-in handler override an application's handler, or the reverse.",
+      "check": "Look for switch or if chains over algorithm or method names, and for catalogs that pick the first or last of duplicate registrations instead of throwing when they are composed.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define format profiles (`typ`, required claims, protected claims) as data objects that callers construct and pass where they are used, not as a name resolved through a registry or a switch.",
+      "why": "Other profiles exist and more will, so an application must be able to define its own profile.",
+      "check": "Look for profile behavior keyed on a profile name string or enum instead of carried by a profile instance.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a key-binding or replay-protection requirement before reading the presentation, refusing it if the audience or nonce is empty, the algorithms are unset, the maximum age is not positive or the clock skew is negative.",
+      "why": "A requirement built from a missing value would let any captured KB-JWT be replayed.",
+      "check": "Check that requirement objects are validated up front, before any token parsing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a KB-JWT as `kb+jwt` with the holder key, the requirement's algorithms and the verifier's audience, and refuse it as not fresh if `iat` is missing, later than now plus the clock skew, or older than the maximum age plus the skew.",
+      "why": "Freshness and audience binding stop a captured presentation from being replayed.",
+      "check": "Check KB-JWT validation for `typ`, audience, `iat` presence and both bounds of the freshness window.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare secret or binding values such as nonces and hashes with a fixed-time comparison (e.g. `CryptographicOperations.FixedTimeEquals`), not with ordinary string or sequence equality.",
+      "why": "An ordinary comparison returns faster the sooner it finds a difference, and that timing leaks the expected value.",
+      "check": "Look for `==`, `string.Equals` or `SequenceEqual` on nonces, hashes or MACs in verification code.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report verification failures with machine-readable failure codes and fixed text that never includes the token or its contents.",
+      "why": "Callers must never have to match on message text, and failure reasons must not leak token material.",
+      "check": "Look for failure results without a code, or for messages built from the raw token or decoded token segments.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

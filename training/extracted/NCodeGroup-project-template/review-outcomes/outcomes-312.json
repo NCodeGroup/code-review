@@ -1,0 +1,18 @@
+{
+  "hash": "0123d627291afad6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #312",
+  "rules": [
+    {
+      "statement": "In a changelog or release-note entry that mentions more than one function, type or file, name the one meant outright instead of using a reference like \"that function\" or \"it\".",
+      "why": "A vague reference can point to more than one code element, so a reader may think a change was already there before the release when it was actually added in it.",
+      "check": "Look at new or edited CHANGELOG entries for phrases like \"that function\", \"this method\" or \"it\" where the entry, or the change it describes, involves more than one named element, and check whether the reader can tell which one is meant.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

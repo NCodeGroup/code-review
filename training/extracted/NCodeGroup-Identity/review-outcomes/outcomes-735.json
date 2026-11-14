@@ -1,0 +1,29 @@
+{
+  "hash": "e39d6ff339b84460",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #735",
+  "rules": [
+    {
+      "statement": "In a test project, every async helper, including private test-local wrappers, takes a trailing CancellationToken and forwards it to the helper it calls instead of passing CancellationToken.None internally; call sites pass CancellationToken.None.",
+      "why": "A wrapper that hard-codes CancellationToken.None breaks the recorded async helper shape and stops callers from passing a token; the maintainer confirmed private wrappers are not exempt.",
+      "check": "Look for test helper methods returning Task or ValueTask that have no trailing CancellationToken parameter, or that pass CancellationToken.None to the helper they call.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, await an async call into a named local and assert on that local instead of awaiting inside an assertion's arguments (such as Assert.NotNull(await ...)); awaits inside lambda arguments, such as those passed to Assert.ThrowsAsync, may stay inline.",
+      "why": "Nesting a call inside another call's arguments breaks the no-nested-calls rule and makes multi-line assertions harder to read.",
+      "check": "Look for Assert.* calls whose direct arguments contain an `await` expression that is not inside a lambda.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

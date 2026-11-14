@@ -1,0 +1,102 @@
+{
+  "hash": "1b2eaa1dbd3b970f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1020",
+  "rules": [
+    {
+      "statement": "Never accept or return a grant's hashed token key on an administrative or management surface; address grants by a server-generated opaque identifier instead.",
+      "why": "The hashed key is derived from the token secret, and putting it in URLs, logs or responses leaks a token identifier. An opaque id keeps the administrative identity separate from the runtime secret.",
+      "check": "Look at management routes, request/response contracts and log calls for grants. Flag any that take, return or log the grant's hashed key or a token-derived lookup key instead of the opaque grant id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a management projection of a persisted grant to metadata only, and never include the grant's protected payload (claims, tokens, subject material) or its key.",
+      "why": "The payload is sensitive, and an administrator needs only metadata to triage or revoke. A metadata projection is the least-privilege surface.",
+      "check": "Look at management resource/DTO types for grants and the code that maps entities to them. Flag any property or mapping that carries the protected payload, a decrypted payload or the hashed key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement grant revocation as an idempotent soft revoke that stamps a revoked timestamp and keeps the row, so that revoking an already-revoked grant changes nothing and still returns 204, and have the runtime treat a revoked grant as inactive.",
+      "why": "Revocation has to leave an audit trail, and a soft revoke is what makes DELETE idempotent and safe to retry.",
+      "check": "Look at grant DELETE handlers and revoke methods. Flag hard deletes of grant rows, an error or non-204 status for a grant that is already revoked, and any runtime lookup that ignores the revoked timestamp when it decides whether a grant is active.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a bulk grant revocation require at least one filter and answer 400 when none is given, and have the revoked count it reports exclude grants that were already revoked.",
+      "why": "Revoking a whole tenant is too dangerous for one request, and the required filter prevents an accidental revoke-all.",
+      "check": "Look at bulk-revoke endpoints that delete or revoke by filter. Flag any that run with no filters, that lack a 400 guard, or that count already-revoked rows in the result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use EF Core set-based ExecuteUpdate/ExecuteDelete on rows whose concurrency tokens a SaveChanges interceptor manages; load the matching rows, change them and save them through the change tracker.",
+      "why": "Set-based updates bypass the concurrency-token interceptor and the change tracker, so the token isn't bumped and running instances don't observe the change.",
+      "check": "Look for ExecuteUpdate/ExecuteUpdateAsync or ExecuteDelete calls on entities that have interceptor-managed concurrency tokens, such as bulk revoke paths.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a grant revocation retry when it loses a concurrency race, instead of answering 412 Precondition Failed.",
+      "why": "A lost race on a grant row is retried for revocations, so a revoke always takes effect.",
+      "check": "Look at single and bulk grant revoke paths. Flag any that let a concurrency exception surface as 412 or as an error without retrying.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Filter a management list over a security store only through specific, index-backed filter parameters combined with AND, and never through a generic query protocol such as OData or JSON:API, or a client-supplied IQueryable.",
+      "why": "A query protocol leaks IQueryable, opens a denial-of-service and complexity surface over a security store, and becomes a heavyweight versioned contract.",
+      "check": "Look at management list endpoints. Flag OData, JSON:API or dynamic query/expression parameters, and filters that no index on the store backs.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't expose create or update endpoints on the management API for runtime-minted grants (authorization codes, refresh tokens and similar); offer only list, read and revoke.",
+      "why": "The token pipeline mints grants, so the administrator only needs to observe and revoke them.",
+      "check": "Look at grant management handlers. Flag POST, PUT or PATCH routes that create or change runtime grants. Dedicated flows such as RFC 7591 initial access tokens are the exception.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

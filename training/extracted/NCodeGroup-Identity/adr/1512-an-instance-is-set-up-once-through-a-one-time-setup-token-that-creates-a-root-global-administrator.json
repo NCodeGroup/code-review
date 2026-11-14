@@ -1,0 +1,122 @@
+{
+  "hash": "1232affd0db09d43",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1512",
+  "rules": [
+    {
+      "statement": "Store only a hash (such as SHA-256) of a bearer secret like a setup or bootstrap token, compare a presented value against it with `CryptographicOperations.FixedTimeEquals`, and never log the configured secret.",
+      "why": "A configured token must stay unrecoverable from server state or logs, and a constant-time comparison stops timing attacks on the token check.",
+      "check": "Look for plaintext token fields kept in memory or persisted, comparisons that use `==`, `string.Equals` or `SequenceEqual`, and log statements that include the token value.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep any state that decides whether a one-time or cross-replica operation is allowed in the shared database, not in process memory or the local file system.",
+      "why": "Replicas share only the database, so state held in memory or on local disk lets replicas disagree and an operation run more than once.",
+      "check": "Look for static fields, singletons, in-memory caches or local files that gate an operation such as setup or initialization in a multi-replica host.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a single-use operation mark itself used in the same save as its effect, and guard that save with an optimistic concurrency token so a concurrent second attempt fails.",
+      "why": "If the 'used' mark goes in a separate save, a crash or a race can let the operation run twice, for example creating two root administrators.",
+      "check": "Look for a one-time action whose completion flag is written in a separate SaveChanges call or transaction, or whose row has no concurrency token checked on update.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Stage every entity in a multi-part provisioning operation on one unit of work and save it once, so that a failed validation of any part saves nothing.",
+      "why": "A refused part, such as a client registration, must not leave the other parts, such as a root administrator, saved without it.",
+      "check": "Look for provisioning code that calls save between creating related entities, or that keeps earlier saves after a later validation fails.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build absolute links and addresses returned to clients from configured or stored values, such as the tenant's issuer, never from the request's Host header or the browser's location.",
+      "why": "Request-derived host values can be spoofed, and addresses must reflect the configured identity of the instance.",
+      "check": "Look for `HttpRequest.Host`, `Request.Scheme` or a client-supplied URL used to build links in responses where a configured issuer or base URL exists.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint answers 429 Too Many Requests, include a `Retry-After` header with the seconds until the next allowed attempt and `Cache-Control: no-store`.",
+      "why": "Clients need to know when to retry, and rate-limit responses on sensitive endpoints must not be cached.",
+      "check": "Look for rate-limiter rejection handlers or 429 results that omit `Retry-After` or `Cache-Control: no-store`.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In browser code, pass a secret in a link through the URL fragment, never the query string, and remove it from the address bar with `history.replaceState` once it has been read.",
+      "why": "A fragment never reaches the server or a Referer header, and stripping it keeps the secret out of history and screenshots.",
+      "check": "Look for tokens read from `location.search` or sent as query parameters, and for fragment secrets that are read and then left in the URL.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import a client's JWK Set by value only after a public-key parser refuses any key with private members.",
+      "why": "A client's key set must hold only public keys, and private key material must never be accepted or stored.",
+      "check": "Look for JWK Set import or parsing paths that accept keys without checking for private parameters (such as `d`, `p`, `q`, `dp`, `dq`, `qi` or `k`).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Return deployment-layout details, such as other services' URLs and client IDs, only from an endpoint that checks the caller's credential, never from an anonymous status endpoint.",
+      "why": "An anonymous endpoint would show the deployment's layout to anyone, so only a holder of the token may learn it.",
+      "check": "Look for anonymous or unauthenticated endpoints whose response includes internal URLs, client IDs or other deployment topology.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add only the specific origins a page needs to a page's Content-Security-Policy `connect-src`, never a wildcard or an origin taken from user input or the URL.",
+      "why": "A link that someone else wrote could otherwise make the page read data, such as keys, from an origin that the deployment does not name.",
+      "check": "Look for `connect-src` values built with `*`, `https:` or origins taken from request parameters, fragments or form input.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

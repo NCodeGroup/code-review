@@ -1,0 +1,90 @@
+{
+  "hash": "d0f5db467a7cfd05",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1104",
+  "rules": [
+    {
+      "statement": "Put each key type's generate, import, deserialize and export behavior in its registered key-type descriptor, and don't add a switch on the key type in generators, validators, serializers or converters, or a parallel per-operation registry.",
+      "why": "Spreading a key type across separate seams means a new type has to touch several places, and a type the deserializer doesn't know gets persisted but doesn't round-trip.",
+      "check": "Look for `switch`/`if` chains on a secret or key type string, or new per-operation strategy or converter registries, outside the key-type descriptor.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store how persisted key bytes decode (raw symmetric, PKCS#8, SPKI, X.509 and so on) as an explicit encoding that is separate from the crypto-family key type, and don't encode public-ness or certificate-ness in the key type.",
+      "why": "The crypto family and the storage container are independent facts. One discriminator can't express both, and a certificate holds an rsa or ecc key rather than being a key type of its own.",
+      "check": "Look for new key type values like `rsa-public` or `x509` used as a family, or deserializers that infer the container without reading a stored encoding field.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't find out a key's format or family by trying parsers one after another and catching their exceptions. Dispatch on the explicitly named format, key type and encoding.",
+      "why": "Trial parsing relies on exception control flow and leaves the stored form ambiguous. Explicit names are unambiguous.",
+      "check": "Look for try/catch blocks that call one import method (such as ImportSubjectPublicKeyInfo or RSA import), then fall back to another (PKCS#8, ECC) when it throws.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A public-key import path must refuse private material: a JWK with `d`, a private-key PEM, a certificate that has a private key, and symmetric key material.",
+      "why": "Importing a private key is a separate threat model that public onboarding doesn't need, and a symmetric secret leaves the server only through its one-time reveal.",
+      "check": "In import code, check that it rejects JWKs containing `d` (or other private members), PEM labels for private keys, certificates where HasPrivateKey is true, and symmetric key types.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose a key's public half through a SubjectPublicKeyInfo writer generic over `IBufferWriter<byte>` (with `allows ref struct`), not through `AsymmetricAlgorithm`.",
+      "why": "`AsymmetricAlgorithm` ties the contract to the RSA and ECDSA families and can't hold Edwards-curve or post-quantum keys.",
+      "check": "Look for new base-class or interface members that return or accept `AsymmetricAlgorithm` as the generic way to get at a public key.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat key import format names as an open vocabulary compared ordinally, check them against the formats the key type declares, and when one is refused, list that type's accepted formats in the error message.",
+      "why": "Each key type declares its own accepted formats, and vocabularies stay open unless they are provably closed.",
+      "check": "Look for a closed enum of import formats, case-insensitive or culture-sensitive comparison of format names, or a refusal message that doesn't list the supported formats.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a verify-only key as a subclass of the private-capable key class that holds only the public half and cannot sign, rather than as a separate public-key class hierarchy.",
+      "why": "Verify-only subclasses share the verification code and the metadata with the private-capable classes.",
+      "check": "Look for a new public-key class hierarchy that duplicates verification logic from the existing RSA or ECC key classes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

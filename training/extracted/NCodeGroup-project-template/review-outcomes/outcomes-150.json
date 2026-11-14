@@ -1,0 +1,99 @@
+{
+  "hash": "0573ea26af83c8f9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #150",
+  "rules": [
+    {
+      "statement": "In a test project, when a fake or stand-in refuses a set of operations, the self-checks must exercise every refused operation, each asserting the refusal on its own, not just a sample of them.",
+      "why": "If CI checks only some refusals, removing an unchecked one lets a run do the destructive thing it was meant to block, and no check fails.",
+      "check": "Compare the list of operations the stand-in refuses with the refusal checks. Flag any refused operation that has no check asserting both the failure and its own refusal record.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, an assertion on generated or free-form output must check that the content is right, for example that it names the subject and says the right thing about it, not only that it has a prefix or a minimum length.",
+      "why": "Filler text, an off-topic answer or a reply that agrees with the wrong claim still passes a check that looks only at the prefix or the length.",
+      "check": "Look for assertions that accept any text after a prefix, any text over N characters, or any match on a single keyword. Ask whether a wrong or contradictory answer would still pass, and whether a negative case shows the check fails.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a check depends on exact wording that another artifact mandates, take the wording from that artifact or add a check that pins the two together, so they cannot drift apart.",
+      "why": "A hard-coded copy of mandated wording breaks when the source rewords it harmlessly, or passes against stale wording.",
+      "check": "Find exact-phrase matches in tests. Check that the phrase is read from, or checked against, the artifact that defines it, and that a comment says where it comes from.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a fake or stand-in must not fill in a default for a field that a test checks. A missing value must stay missing, so the check can fail.",
+      "why": "When the stand-in fills in a value such as OWNER for a missing field, a check that every item has that field can never fail, and the behavior the test exists to verify goes untested.",
+      "check": "Look for fallbacks in fakes or stand-ins (`?? default`, `if (-not $x) { 'X' }`) on fields that tests assert. Check that a self-check feeds in an item without the field and expects it to be reported.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write the reason for a non-obvious implementation choice, one that a natural-looking edit would break, in a code comment where the choice is made, not only in the PR description.",
+      "why": "A later edit that looks equivalent can bring the failure back when the reason is written only in the PR.",
+      "check": "For workarounds or unusual invocations whose reason is given only in the PR description, look for a comment at the first place the code relies on the choice.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code moves to another file or function, update the help text and comments that point to its old location.",
+      "why": "A stale pointer sends readers to the wrong file.",
+      "check": "In diffs that move code, search the docs, help blocks and comments for the old file or function name.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply a C# parameter-count or parameter-object rule to PowerShell test helpers whose shared parameters are already passed as one splatted table.",
+      "why": "The rule is meant for C#. With splatting, a new parameter already means only one edit per test, so a context object would churn the tests without changing any behavior.",
+      "check": "Before reporting a long parameter list, check the language and whether the file is a test helper. Also check whether the callers already splat a shared hashtable.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a finding that would undo something a maintainer decided or asked for in an earlier review round of the same pull request.",
+      "why": "An earlier round settled the matter (for example, it kept a CHANGELOG entry and refiled it), so raising it again asks the author to reverse the maintainer's own decision.",
+      "check": "Before reporting, read the earlier review threads on the PR for a maintainer decision on the same item.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

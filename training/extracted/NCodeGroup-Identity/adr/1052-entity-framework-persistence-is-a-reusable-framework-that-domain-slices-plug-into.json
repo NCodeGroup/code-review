@@ -1,0 +1,86 @@
+{
+  "hash": "f9ecc642e95a3fa5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1052",
+  "rules": [
+    {
+      "statement": "Never lowercase or otherwise case-normalize an opaque, case-significant key such as a Base64Url hash, resource id used as a secret, or session id; store, index and match it verbatim.",
+      "why": "Base64Url is case-significant, so lowercasing lets two distinct values collide and a lowercased lookup never matches the stored mixed-case key; for bearer-grade secrets verbatim matching is also safer.",
+      "check": "Look for ToLowerInvariant/ToUpperInvariant/Normalize calls or Normalized* companion columns applied to hashed keys, session ids or other Base64Url opaque values, either at write time or in lookup predicates.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a normalized (lowercased) companion column with its own index only for a string whose match should be case-insensitive, such as an externally supplied or caller-addressable identifier; decide by the wanted matching semantics, not by whether the column is an identifier.",
+      "why": "The companion column exists only to make a case-insensitive lookup index-usable on database engines without case-insensitive collations; adding it elsewhere is wasted or, for case-significant keys, wrong.",
+      "check": "For each new Normalized<Name> column, confirm the lookup is meant to be case-insensitive and that the column is indexed and queried instead of the raw column; flag case-insensitive lookups on raw columns that lack a normalized indexed companion.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a shared Entity Framework DbContext that several modules plug into free of typed DbSet properties and schema-specific configuration: entities enter the model through a model-contributor seam, stores use context.Set<TEntity>(), and a module may add typed DbSet accessors only as extension members inside its own package.",
+      "why": "A typed DbSet or schema-specific configuration on the shared context would force the entity into the framework package and re-couple it to one schema.",
+      "check": "Look for DbSet<T> properties added to the shared context, or entity-specific index/filter configuration added to its OnModelCreating, instead of to the owning module's contributor.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When modules must write atomically together, have them share one DbContext and unit of work instead of each declaring its own DbContext.",
+      "why": "Separate DbContexts cannot share a unit of work, so a cross-module write could not be atomic.",
+      "check": "Look for a new DbContext introduced by a persistence module whose entities are written together with entities of another module's context.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A persistence slice package depends only on the shared persistence framework package, never on another slice, and its stores inherit the framework's store base and register through its registration helper instead of re-implementing store delegation, normalization, id generation and concurrency-token generation.",
+      "why": "Depending on another slice drags in stores it never uses, and re-implementing store boilerplate duplicates code that the framework exposes publicly for reuse.",
+      "check": "Check slice project references for references to other slices, and new stores that hand-roll IStore delegation, normalization, id or concurrency-token generation or registration factories.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement tenant scoping as a navigation-free query filter over a denormalized, indexed normalized tenant id column exposed through a tenant-entity interface, so the framework never references the concrete tenant entity.",
+      "why": "The framework cannot reference the tenant entity, which lives in a slice, and comparing one indexed column needs no join.",
+      "check": "Look for tenant filters that navigate to a tenant entity or join, or tenant-scoped entities that don't implement the tenant interface with the denormalized column.",
+      "scope": "repository",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name Entity Framework slice packages tech-first as <Product>.Persistence.EntityFramework.<Slice>, with a root namespace equal to the package id and .Entities and .Stores sub-namespaces; non-Entity-Framework adapters keep domain-first naming.",
+      "why": "Grouping under the persistence namespace keeps the framework and slices discoverable together, and namespaces that name the owning slice prevent accidental cross-slice references.",
+      "check": "Check new persistence package ids and namespaces against the tech-first pattern and that entity and store types sit in the slice's .Entities and .Stores namespaces.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

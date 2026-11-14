@@ -1,0 +1,148 @@
+{
+  "hash": "9475a840f42a1a7f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1193",
+  "rules": [
+    {
+      "statement": "Give every browser-facing cookie the `__Host-` prefix with `Path=/` and no `Domain`; never scope a cookie by path or use a `__Secure-` prefix with a path or domain.",
+      "why": "The `__Host-` prefix (RFC 6265 cookie prefixes) keeps the cookie host-only and unreadable by sibling subdomains, and it requires `Path=/`, so cookies can't be scoped by path.",
+      "check": "Look for cookie options that set `Path` other than `/`, set `Domain`, use a `__Secure-` name, or use a cookie name without the `__Host-` prefix on a browser-facing cookie.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When tenants share an origin, tell their cookies apart by appending `.` and `Base64Url(SHA-256(tenant path))` to the cookie name, leaving a root tenant with the base name, and map the name the same way on every read, write, delete and chunk.",
+      "why": "Host-only cookies can't be scoped by path, and a path can hold characters a cookie name can't, so the name carries a hash of the path. If any read, write or delete maps the name differently, tenants end up sharing or losing sessions.",
+      "check": "Look for a per-tenant cookie name built from the raw path, or a cookie read, write, delete or chunk operation that skips the tenant name mapping.",
+      "scope": "domain",
+      "domain": "multi-tenant-web",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't treat a cookie name or URL path as a security boundary between tenants on one origin; tenants that must be isolated are selected by host.",
+      "why": "The browser sends every tenant's cookies to every tenant, and script on one path can read another path's pages.",
+      "check": "Look for code or docs that claim tenant isolation from a cookie name or a path prefix alone.",
+      "scope": "domain",
+      "domain": "multi-tenant-web",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build tenant-relative redirect and challenge paths from the request's `PathBase` plus the tenant route bound from the request's route values, not from the ambient tenant context.",
+      "why": "The cookie handler writes the refreshed session cookie when the response starts, and by then the tenant scope may have ended.",
+      "check": "Look for redirect, login-challenge or cookie-path code that reads an ambient or scoped tenant accessor instead of `HttpContext.Request.PathBase` and route values.",
+      "scope": "domain",
+      "domain": "multi-tenant-web",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the ASP.NET Core antiforgery cookie's `SecurePolicy` to `SameAsRequest`, not `Always`, when it has a `__Host-` name.",
+      "why": "`Always` makes the antiforgery services refuse every request that isn't HTTPS, and the `__Host-` prefix already makes the browser refuse the cookie without `Secure`.",
+      "check": "Look for `AntiforgeryOptions.Cookie.SecurePolicy = CookieSecurePolicy.Always` on a cookie with a `__Host-` name.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Serve content-hashed static assets with `Cache-Control: public, max-age=31536000, immutable` plus `ETag`, `Last-Modified` and range support, and send no cache lifetime on a `404`.",
+      "why": "A hashed file never changes under its name, but validators alone give the browser no freshness lifetime, so it revalidates on every use.",
+      "check": "Look for hashed-asset handlers that don't send the immutable one-year `Cache-Control` or the validators, or that put a cache lifetime on a not-found response.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Root a single-page bundle's file provider at its `assets` directory so that path traversal, hidden files, files of unknown content type and `index.html` all answer `404`.",
+      "why": "Only the hashed assets are meant to be public. The index is parsed and served by the host, never directly.",
+      "check": "Look for a bundle file provider rooted above the assets directory, or a handler that serves hidden files, unknown content types or the index file.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't resolve the tenant (or run tenant environment filters) on endpoints that serve public static files that are the same for every tenant.",
+      "why": "Resolving the tenant makes an unknown tenant's files answer `404` and adds work to a path that only serves bytes.",
+      "check": "Look for public static-asset endpoint groups that attach a tenant-resolution filter or look up the tenant.",
+      "scope": "domain",
+      "domain": "multi-tenant-web",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cache a parsed build artifact such as a bundle's index by its file version (last-write time and length), revalidate that metadata on each request, and don't parse it on every request or use a file watcher.",
+      "why": "The file changes once per build, so parsing on every request repeats work. A file watcher holds an operating-system handle for the life of the host and behaves differently across container file systems.",
+      "check": "Look for per-request reads or parses of a static index file, or a `FileSystemWatcher` or `IFileProvider.Watch` used to invalidate the cache.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't copy single-page-bundle reading and asset-serving code into each surface; use one shared, generic helper that is parameterized by the index type and its parser.",
+      "why": "Copies drift. One general helper, tested once, serves every bundle.",
+      "check": "Look for a new surface that reimplements index reading, index caching or immutable asset serving instead of using the shared bundle helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A server-written page that hosts a mountable bundle writes `<base href=\"{mount path}/\">` as the first element in `<head>` and uses page-relative form actions, so that one build mounts under any path.",
+      "why": "The bundle is built with base `./` and resolves its paths against `document.baseURI`, so it never assumes where it is mounted.",
+      "check": "Look for server-rendered pages without a leading `<base href>`, or with absolute or root-level form actions or asset URLs.",
+      "scope": "domain",
+      "domain": "multi-tenant-web",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.html",
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test host code that parses a frontend build output against the real built file, named by an environment variable and skipped when the file is absent, not against a checked-in copy.",
+      "why": "A checked-in copy drifts from the build, so the test would assert against a file the product never serves.",
+      "check": "Look for test fixtures that commit a copy of a built `index.html` or other build output for the host's parser to read.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

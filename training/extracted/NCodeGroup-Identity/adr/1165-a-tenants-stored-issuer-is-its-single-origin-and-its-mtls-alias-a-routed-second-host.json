@@ -1,0 +1,114 @@
+{
+  "hash": "09b0be23202b9da2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1165",
+  "rules": [
+    {
+      "statement": "Build every absolute URL an OpenID Provider publishes (discovery, jwks_uri, registration_client_uri, verification_uri, check_session_iframe, continue URLs) from the base address parsed from the tenant's stored issuer, and never from the request's Host header, scheme or path base, not even behind a development opt-in.",
+      "why": "A request-derived origin lets a caller steer published URLs and the iss of every token, and an opt-in leaves that path open wherever it is switched on.",
+      "check": "Look for HttpRequest.Host, Scheme, PathBase, X-Forwarded-* or similar request data used to compose issuer, discovery or other published absolute URLs, including when it sits behind a config flag.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a stored tenant has no issuer, fail closed instead of falling back to an origin taken from the request or another guess.",
+      "why": "Serving URLs from a guess would make the issuer depend on the request.",
+      "check": "Look for null or empty issuer handling that substitutes a request-derived or hard-coded origin instead of throwing or rejecting.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat the issuer as the exact base address for its tenant's endpoints, and never append a route or path segment to the issuer to form it.",
+      "why": "Appending a route would mean the issuer is no longer the base address, and a static issuer could not be checked against the tenant path.",
+      "check": "Look for code that concatenates a route, tenant path or endpoint prefix onto the issuer to produce the issuer or base address, or that publishes an iss different from the stored issuer.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply a strategy-derived default issuer (or other derived origin) once, on write, and store it. Don't derive it again at request time from a template or setting.",
+      "why": "Deriving at request time would let a template or setting change move existing tenants and change the iss their tokens carry.",
+      "check": "Look for issuer or alias values computed from templates or options on every request instead of read from the stored entity, and for write paths that don't persist the defaulted value before validating.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce that issuers are unique across tenants, with a unique index on the normalized issuer, so that no two tenants can share an issuer.",
+      "why": "Two tenants that share an issuer issue tokens that cannot be told apart.",
+      "check": "Look for a new tenant or issuer storage schema that has no unique constraint on the normalized issuer, or issuer comparisons that skip normalization.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When routing a request to a tenant by host and several tenants match, resolve to no tenant (unknown tenant) instead of throwing or picking one, and report the conflict on the next write.",
+      "why": "Throwing would turn every request to that host into a server error because of one bad row, and picking one would serve the wrong tenant.",
+      "check": "Look for host-based tenant lookups that use First/Single (which throws) or return an arbitrary match when more than one tenant holds the host.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish an RFC 8705 mTLS endpoint alias as a separate stored https origin with no path, distinct from the issuer host and held by one tenant only, and never change the published issuer because the request arrived on the alias host.",
+      "why": "The alias host is routed like the issuer host and needs the same care. A shared alias host can't tell tenants apart, and the issuer must not vary with the request host.",
+      "check": "Look for mtls_endpoint_aliases built from the request, alias values that allow a path, a non-https scheme, or the same host as the issuer, no uniqueness validation across tenants, and an issuer that changes on the mTLS host.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate configured issuer and alias URI templates at startup: require exactly one {tenantId} expression and no others, check host label (63) and host (253) length limits, and probe-expand the template to confirm the result is servable, so that a bad template fails before the first request.",
+      "why": "Startup checks fail a template that a strategy can't serve before the first request.",
+      "check": "Look for new template-based options with no startup validation (for example IValidateOptions or ValidateOnStart) covering the variable count, extra expressions and the validity of the expansion.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When generating links to endpoints whose route has parameters, supply the current request's route values as ambient values so they fill route segments instead of becoming query string parameters.",
+      "why": "The route must follow the tenant without leaking route values into query strings.",
+      "check": "Look for LinkGenerator or URL helper calls that pass route parameters such as a tenant id in the explicit values bag, where they can end up appended as query parameters.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

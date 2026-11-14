@@ -1,117 +1,729 @@
 {
-  "hash": "dd0ee657c251e90f",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "56c9d83c87f16929",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity csharp-production.instructions.md",
   "applyTo": [
-    "src/**/*.cs"
+    "src/**/*.cs",
+    "hosts/**/*.cs",
+    "analyzers/**/*.cs"
   ],
   "rules": [
     {
-      "statement": "Declare one type per file, so an interface and its implementation go in separate files; the only exception is a generic interface and its non-generic sibling of the same name (IFoo and IFoo<T>), which may share a file.",
-      "why": "A same-named generic and non-generic pair is one contract in two arities. Any other types are easier to find in their own files.",
-      "check": "Look for a .cs file that declares more than one top-level type, other than an IFoo/IFoo<T> pair.",
+      "statement": "In production code, keep a host's `Program.cs` composition-only: put helpers (development-only CORS, key pruning and the like) in the owning package beside their siblings, and make one `ConfigureKestrel(k => k.ConfigureHttpsDefaults(...))` call that holds every HTTPS default.",
+      "why": "Reviews most often miss this. Logic placed in a host can't be reused or tested, and spreading HTTPS defaults across calls hides them.",
+      "check": "Look for helper methods, private logic or repeated ConfigureKestrel/ConfigureHttpsDefaults calls added to a host Program.cs.",
       "scope": "general",
       "topic": "code-organization",
       "applies_to": [
-        "**/*.cs"
+        "hosts/**/*.cs",
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never enable request/response body, query or trailer logging globally on `HttpLoggingOptions` and never allow-list a credential header; an endpoint that needs its body logged opts in by itself, and route groups whose bodies carry credentials or personal data are marked confidential.",
+      "why": "Logging bodies, queries or credential headers globally leaks secrets and personal data into logs.",
+      "check": "Look for HttpLoggingOptions changes that set LoggingFields to include RequestBody/ResponseBody/Query/trailers, or that add Authorization, Cookie or similar headers to RequestHeaders/ResponseHeaders.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, call `UseHttpLogging()` right after `UseRouting()` so endpoint metadata is available to the logging middleware.",
+      "why": "Endpoints opt in to body logging through metadata, and the middleware can only read that metadata after routing has run.",
+      "check": "Check where UseHttpLogging sits in the middleware pipeline compared with UseRouting.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "hosts/**/*.cs",
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, write extension members with C# 14 `extension(Receiver r) { … }` block syntax.",
+      "why": "The repository template sets this syntax for DI registration and other extension methods.",
+      "check": "Look for new classic `this`-parameter extension methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": true
     },
     {
-      "statement": "Name the single canonical implementation of an interface IFoo that consumers resolve through DI and never name directly `DefaultFoo` (drop the I, add Default), and make it internal so it is reached only through the interface.",
-      "why": "This follows the ASP.NET Core idiom (DefaultHttpContextFactory). It leaves the bare concept name free, separates the interface from its implementation, and signals a replaceable default.",
-      "check": "Look for a sole DI-registered implementation of IFoo named something other than DefaultFoo (FooService, FooImpl, plain Foo), or a public DefaultFoo class.",
+      "statement": "In production code, give each static extension class only one receiver type.",
+      "why": "CA1708 enforces this, and it keeps each extension class focused.",
+      "check": "Look for a static extension class that extends several receiver types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In production code, when an extension applies to two unrelated receiver interfaces that one concrete type implements, target their common base interface instead of declaring an overload for each.",
+      "why": "Overloads on both interfaces are ambiguous at call sites on a type that implements both.",
+      "check": "Look for duplicate extension overloads on sibling interfaces that share a base.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not use the Default prefix for a class that is not the one canonical DI implementation: name one of several variants of an interface for what makes it specific, name an implementation of a framework interface by that framework's own pattern, and give a public data/message/model/result type that consumers construct directly the bare concept name, even when it implements an interface.",
-      "why": "Default* signals the one replaceable default behind an interface. Using it on variants, framework implementations or consumer-facing models gives the wrong signal.",
-      "check": "Look for a public model/DTO/result type named Default*, or several implementations of one interface where one is just called DefaultFoo instead of being named for what makes it specific.",
+      "statement": "In production code, null-guard an extension member's receiver, and name the receiver as the exception's parameter name even though CA2208 objects.",
+      "why": "An extension receiver is a caller argument like any other, and the exception should name it.",
+      "check": "Look for public extension members that don't throw ArgumentNullException for a null receiver, or that throw with a different parameter name.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs",
+        "hosts/**/*.cs",
+        "analyzers/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Do not declare nested types, except a private nested type that must close over the enclosing type's generic type parameter, or a nested static class that holds only const fields grouping a related constant vocabulary.",
-      "why": "All other types should be their own top-level files so they are easy to find and the one-type-per-file layout stays intact.",
-      "check": "Look for class/struct/record/interface/enum declarations inside another type that are neither a private type using the outer type's generic parameter nor a static class with only const fields.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Do not create vague catch-all folders or namespaces such as Logic, Helpers, Misc or Common; name each folder for the purpose its types serve, and split a folder that has collected several unrelated purposes.",
-      "why": "A catch-all bucket keeps growing without cohesion, and readers cannot find types by purpose.",
-      "check": "Look for new folders or namespaces named Logic, Helpers, Utils, Misc, Common or similar, or new unrelated types added to such a folder.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs",
-        "**/*.csproj"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Put a type in a folder based on what it is and the purpose it serves: keep a contract, its DTOs and its Default* implementation in one purpose namespace across the abstractions/implementation package pair, keep headline public entry points at the package root, keep a single-purpose abstractions package flat, and place a service used by only one feature next to that feature, not in a generic sub-bucket.",
-      "why": "Organizing by purpose lets a reader find related types, such as the serializers or the endpoints, by folder.",
-      "check": "Look for a contract and its implementation split into unrelated namespaces, headline public types buried in subfolders, subfolders in a single-purpose package, or a feature-specific service placed in a shared sub-bucket.",
-      "scope": "general",
-      "topic": "code-organization",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Have each purpose folder register its own services through a dedicated extension method (for example AddXxxServices()), not through a catch-all registration method.",
-      "why": "Self-registering purpose groups stay cohesive and avoid a catch-all registration grab-bag.",
-      "check": "Look for services from several unrelated purpose folders registered in one general-purpose registration method, or a new purpose folder without its own Add*Services extension.",
+      "statement": "In production code, choose a behavior's DI shape deliberately: a plain service, a strategy collection with one class per built-in strategy of an open vocabulary, or a mediator command handler.",
+      "why": "One decision ladder keeps extension points consistent and replaceable.",
+      "check": "Look for switch statements over open vocabularies where each case should be its own registered strategy class, or for ad-hoc extension points.",
       "scope": "general",
       "topic": "dependency-injection",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Treat a public type's namespace as a stable contract: do not change it when moving the type between folders, and keep the public surface flat under the package root (except public options, which use a .Options sub-namespace).",
-      "why": "The public namespace is part of the contract, so reorganizing folders must not cause breaking namespace churn for consumers.",
-      "check": "Look for public types whose namespace changed only because the file moved, or public types given folder-based sub-namespaces other than .Options.",
+      "statement": "In production code, express a cross-setting consistency requirement as a registered rule (added with `TryAddEnumerable`) that a shared validator runs at every entry point that writes or bounds the data, never as a check inside one caller.",
+      "why": "A check in one caller lets other write paths, such as seeders or settings changes, store incoherent data.",
+      "check": "Look for consistency checks between configuration values written inline in one endpoint or seeder instead of in a registered rule.",
       "scope": "general",
-      "topic": "public-api",
+      "topic": "errors-and-validation",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Give internal implementation types in a dedicated folder a namespace that matches the folder (for example …Logging for Logging/); do not flatten internal types into the package root namespace.",
-      "why": "Internal types carry no contract, so their namespace should reflect the structure. The flat-namespace rule is only for the public surface.",
-      "check": "Look for internal types in a subfolder whose namespace is the package root namespace instead of the folder's sub-namespace.",
+      "statement": "In production code, never resolve a strategy that has dependencies from an `IValidateOptions<T>` or from anything it reads; options validation reads only catalogs built from dependency-free registrations, and a composition-time check confirms the descriptors match their strategies.",
+      "why": "Resolving a dependency graph inside options validation deadlocks composition when a constructor on that path reads `IOptions<T>.Value`.",
+      "check": "Look for options validators, or data sources they read, that inject services with constructor dependencies.",
       "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when one mediator handler depends on another's effect, state the order with handler priorities, never with registration order.",
+      "why": "Registration order is fragile, and handlers run in descending priority order.",
+      "check": "Look for handlers whose correctness assumes they are registered before or after another one.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, invalidate an in-process cache on every replica by broadcasting the change: apply it locally first, publish after the write commits, log a failed publish instead of throwing, and handle missed messages by dropping or revalidating everything a lost message could have made stale.",
+      "why": "Other replicas otherwise serve stale state, and throwing after a commit reports a failure for a write that succeeded.",
+      "check": "Look for cache updates that are only local, publishes before the commit, publish exceptions that reach the caller, or broadcast handlers that ignore reconnects.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never run work proportional to the deployment (a pass over every tenant, client or team) inside a request or on a bounded in-process job dispatcher; run it as a paged background pass on one replica, reading lightweight projections and never loading a whole hierarchy into memory.",
+      "why": "Such work makes request latency grow with the deployment and holds the dispatcher's bounded workers.",
+      "check": "Look for loops over all tenants/clients in request handlers, unpaged reads of whole sets, or such passes queued on the in-process job dispatcher.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make state derived from configuration converge by reconciliation: a background pass reads current state and repairs what differs, durably records the input it reconciled against, marks the record stale in the unit of work that changes the input, and takes a lease keyed by the input's version so only one replica runs it.",
+      "why": "A queued job or replayed event is lost on restart. Reconciliation can be rerun safely.",
+      "check": "Look for derived state that is updated only by a queued event or job, or a reconciliation pass with no durable record and no single-replica lease.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep a protocol endpoint thin: guard the method and content type, authenticate the client, load a strongly typed request message, dispatch mediator commands for validation and each replaceable step, and render; never read form fields by hand with `form.TryGetValue(...)`.",
+      "why": "This canonical shape keeps protocol steps replaceable and parameter parsing consistent.",
+      "check": "Look for endpoint handlers that parse form/query parameters by hand or put validation and business logic inline.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep side-effecting transports (notifications, back-channel delivery) as injectable services called from a handler, not as mediator commands.",
+      "why": "A transport is a dependency of a protocol step, not a replaceable protocol step itself.",
+      "check": "Look for new mediator commands whose only job is sending an outbound notification.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
       "topic": "code-organization",
       "applies_to": [
-        "**/*.cs"
+        "src/**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Name an interface for its role and let the namespace supply the brand; add a qualifier or brand prefix only when the bare role noun would collide with a well-known BCL/framework type or is too generic to stand alone.",
-      "why": "Role names are clear and short, and the namespace already provides the product context.",
-      "check": "Look for new interfaces with a needless product or brand prefix, or a bare name that collides with a common BCL/framework type.",
+      "statement": "In production code, never hard-code an absolute route path into a published URL; generate it from the named route with the tenant's authority, and never pass a request's live `RouteValues` to a template binder, only a copy.",
+      "why": "Endpoints sit under a configurable prefix, and the template binder consumes the route values it is given.",
+      "check": "Look for string-built absolute URLs, or for HttpContext.Request.RouteValues passed straight to a TemplateBinder/LinkGenerator.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, fix a minimal-API handler shape that the Request Delegate Generator can't produce instead of suppressing its diagnostic; a project with endpoints that bind `[FromForm]`, `IFormFile` or `IFormCollection` sets `EnableRequestDelegateGenerator` to false, and each such endpoint has a test that a POST without the antiforgery token answers 4xx and changes nothing.",
+      "why": "Generated form binding ignores a failed antiforgery validation and answers 500.",
+      "check": "Look for suppressed RDG diagnostics, or for form-bound endpoints in a project that has the generator enabled or lacks the antiforgery test.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs",
+        "src/**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, authenticate an OAuth client only with its registered `token_endpoint_auth_method` (defaulting to `client_secret_basic`), treat the supported-methods list as a ceiling rather than alternatives, and never treat a client registered as confidential as having authenticated.",
+      "why": "Accepting any supported method, or trusting the registered type in place of authentication, weakens client authentication.",
+      "check": "Look for authentication handlers that accept clients registered for another method, or for code that treats confidentiality as authentication at endpoints that only identify the client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, bind configuration strictly and validate options when the host starts (`ValidateOnStart`), with each extension binding its own section rather than adding keys to a section another package owns.",
+      "why": "Misspelled or unknown keys are otherwise silently ignored, and invalid values otherwise fail late.",
+      "check": "Look for Bind/Configure calls without strict binding or start validation, or new keys added to another package's section.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, parse an absolute URI with a parser that requires an explicit `scheme:` and rejects whitespace, never `Uri.TryCreate` alone, and keep a value that is compared verbatim (such as a CORS origin) in the form it is compared in.",
+      "why": "`Uri.TryCreate` accepts inputs such as implicit file paths and normalizes values, which breaks exact comparisons.",
+      "check": "Look for Uri.TryCreate(…, UriKind.Absolute) used to validate configured or wire URIs, or for origins stored normalized.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, have an options validator reject an enum value that `Enum.IsDefined` rejects.",
+      "why": "Binding accepts any numeric value cast to the enum type.",
+      "check": "Look for options validators that check enum-typed properties without an Enum.IsDefined check.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, give every validated setting a domain rule as well as its type (a closed string set is one-of, lifetimes are at least one second, timeouts are positive, lists check each element), and enforce it at every entry point, failing closed on stored data.",
+      "why": "A value of the right type that the server can't honor otherwise slips through.",
+      "check": "Look for new setting descriptors without a rule, or entry points that store settings without validating them.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, store, advertise and compare a protocol value whose parts are unordered (such as `response_type` `code id_token`) as one whole value in canonical form (parts in ordinal order, single-space separated); canonicalize wire input at the protocol boundary and never split it to enforce its parts one by one.",
+      "why": "Comparing a canonical whole value is exact, while piecewise enforcement or lenient readers admit combinations that were never registered.",
+      "check": "Look for response_type-style values split and checked part by part, or compared without canonicalization.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, model a server-advertised capability and a client-registered requirement as two separate settings, with a rule that rejects the requirement where support is off, and name the requirement `require_` plus its RFC client metadata member.",
+      "why": "Advertising support must never force every client to use it.",
+      "check": "Look for a single setting that both advertises support and forces it on clients, or requirement names that don't follow the require_ convention.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when combined policy bounds can't be met, refuse the request (`invalid_request` when the client can avoid it, `server_error` when the configuration can't be satisfied) and never fall back to a weaker or different credential.",
+      "why": "A silent fallback undermines the security bounds that were configured.",
+      "check": "Look for fallback branches that pick another algorithm, binding or credential when the required one isn't available.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a package registers its services from a class named `DefaultRegistration` with `TryAdd*` so consumers can override defaults; a registration that replaces, hooks or consumes another library's services extends that library's marker builder, never a bare `IServiceCollection`.",
+      "why": "Marker builders make it impossible at compile time to add a capability without its prerequisite, and TryAdd keeps defaults overridable.",
+      "check": "Look for registrations using Add* instead of TryAdd*, registration classes with other names, or bolt-on extensions on IServiceCollection.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, only a chain root with no prerequisite, a generic utility helper or foundational infrastructure takes a bare `IServiceCollection` receiver; a helper called from several libraries' builders takes the non-generic `IServiceBuilder`, never a single library's marker or a bare collection.",
+      "why": "The receiver type is the compile-time proof that prerequisites are registered.",
+      "check": "Look at the receiver type of new registration extension methods.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, register a stateless capability as a singleton and a long-running loop with `AddHostedService<T>` over a `BackgroundService`, and keep DI wiring out of the type that does the work.",
+      "why": "The work then stays constructor-injectable and testable.",
+      "check": "Look for worker types that register themselves or resolve services from a provider, or loops started outside a hosted service.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, the package that owns a consumer registers that consumer's ambient dependencies (routing, `IHttpClientFactory`, authentication and so on) with `TryAdd*`, so composing it is turnkey and host wiring never works only because an unrelated framework service pulled them in.",
+      "why": "A host shouldn't have to know a package's internal prerequisites, and wiring that works only by accident breaks when the unrelated service is removed.",
+      "check": "Look for packages that need the host to call AddRouting/AddHttpClient/AddAuthentication, or hosts that depend on AddControllers or similar for side effects.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs",
+        "hosts/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep singleton services stateless and keep per-request state on the request (such as `HttpContext.Items` or a request context object), never memoized on a singleton.",
+      "why": "A client-authentication result memoized on a singleton let a later request reuse it whatever credentials it presented.",
+      "check": "Look for mutable fields or caches of per-request results on singleton-registered types.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never let correctness depend on process-local state; state another replica must see goes to the database or a shared-state store.",
+      "why": "The host runs as interchangeable replicas.",
+      "check": "Look for static or in-memory collections that hold state that must be consistent across instances.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a hosted service whose `StopAsync` does work runs it only once and never throws.",
+      "why": "Shutdown can call StopAsync more than once, and an exception there disrupts the shutdown of other services.",
+      "check": "Look for StopAsync implementations without a once-guard or without exception handling.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, put a startup step that must run before other hosted services start in `IHostedLifecycleService.StartingAsync`, and put a start check that needs services a hosted warmup loads into a hosted service registered after that warmup, not in `ValidateOnStart`.",
+      "why": "Every StartingAsync runs before any StartAsync, and startup validators run before any hosted service starts.",
+      "check": "Check where order-dependent startup work and checks are placed against the hosted-service order.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an options validator never injects services whose own options validators read the same options; check against those services where they are composed, and cover the registration with a `ValidateOnBuild` test.",
+      "why": "Such an injection closes a dependency cycle that stops the host from starting.",
+      "check": "Look for IValidateOptions<T> implementations that inject collections of implementations that themselves depend on IOptions<T>.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, implement a single-use or freshness check (replay guard, nonce) as an atomic add-if-absent on a shared expiring key set, never as a get followed by a set.",
+      "why": "Get-then-set races across concurrent requests and replicas.",
+      "check": "Look for a cache or store lookup followed by a write to mark something as used.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, for a record shared across replicas, take a single-use record atomically (try-take, not get then remove), update it with a compare-and-replace that names the version read and reload on conflict, encrypt values that hold secrets, and fail closed when the store fails.",
+      "why": "Non-atomic sequences lose races, and failing open on a store error bypasses the guard.",
+      "check": "Look for Get+Remove sequences, unconditional overwrites of shared records, plaintext secrets in shared values, or swallowed store failures.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, spend a single-use credential that has a stored grant atomically, after every check passes and before its effect, so a refused request leaves it usable.",
+      "why": "Spending before the checks lets a failed request burn the credential, and spending after the effect allows replay.",
+      "check": "Look at where the consume/spend call sits compared with the validation and token issuance.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, every grant that issues tokens for a subject validates the subject's authentication and standing (blocked, disabled or deleted) before spending its credential, and a stored credential issued to a client is redeemed only by that client.",
+      "why": "Otherwise tokens are issued for users who have lost access, or a credential is redeemed by another client.",
+      "check": "Look for new grant types that skip subject validation or don't check the redeeming client against the issued client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, rotate a refresh token by spending the presented token and storing its successor in one unit of work, after every check and before any token is minted, and answer a spend that loses to another spend or a revocation as reuse.",
+      "why": "A successor stored in a later unit of work can escape the loser's lineage revocation.",
+      "check": "Look for refresh rotation that saves the successor separately from consuming the old token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a store reports a lost optimistic-concurrency race as a store-neutral exception, never an Entity Framework type, so no caller references Entity Framework to handle it; a management endpoint lets it propagate to a filter that answers 412.",
+      "why": "Callers stay independent of the persistence provider, and lost races are answered consistently.",
+      "check": "Look for DbUpdateConcurrencyException caught or exposed outside the EF store, or endpoints catching the concurrency exception themselves.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a management API route answers 404 and 409 from the rows it loaded before the write and lets the store's own failures propagate, returns every error as a problem document (never a bare `TypedResults.NotFound()`), and declares each problem it answers with `ProducesProblem`/`ProducesValidationProblem`.",
+      "why": "Translating store failures into conflicts misreports them, and undeclared problems leave the API description incomplete.",
+      "check": "Look for catch blocks that turn store exceptions into 404/409, bare status results without a problem body, or mappings missing ProducesProblem for codes they return.",
       "scope": "general",
       "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a problem response that asks the caller to wait sets the `Retry-After` header together with a matching retry-after extension member.",
+      "why": "Clients need a consistent, machine-readable signal for when to retry.",
+      "check": "Look for 429/503 problem responses without Retry-After.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make a revocation retry a lost concurrency race by reading again in a new unit of work, never by answering 412, and change a stored record's payload with a read-modify-write delegate that is reapplied after a lost race, never by writing a payload computed from an earlier read.",
+      "why": "A revocation doesn't depend on what its caller read, and a payload computed from a stale read overwrites concurrent changes.",
+      "check": "Look for revocations that save once without retrying, or payload updates that write a value computed outside the retry loop.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when a request and a background pass can both act on one record, only the caller whose write claims the record performs its effects, and the claim revokes dependent records in the same unit of work.",
+      "why": "Effects otherwise run twice, or a failure after the claim leaves tokens active.",
+      "check": "Look for termination or cleanup effects that run without checking that this caller's write won the claim.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, run a security effect that follows a committed change (ending sessions, clearing counters) on its own cancellation token bounded by a timeout instead of the request token, and log its failure instead of throwing; after winning a single-use lease, run the guarded operation and its write-back with `CancellationToken.None` bounded by a timeout.",
+      "why": "A client disconnect could otherwise leave the change committed without its effect, and a hung store could hold the response.",
+      "check": "Look for post-commit work that passes the request's CancellationToken or lets exceptions escape after the commit.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a cookie authentication handler authenticates the cookie only on endpoints its guard checked and returns no result everywhere else.",
+      "why": "A cookie the browser attaches to an unguarded endpoint must never act as a credential there.",
+      "check": "Look for cookie handlers that authenticate on every request regardless of endpoint metadata.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, embed the state a client bundle starts from in the page as a JSON script block serialized with an encoder that escapes `<`, `>` and `&` (such as `JsonSerializerOptions.Web`), and never add an endpoint the bundle must call before it can render.",
+      "why": "Escaping prevents script injection, and embedding the state avoids an extra round trip before the first render.",
+      "check": "Look for JSON written into HTML with an unsafe encoder, or new bootstrap endpoints a page fetches on load.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, serve content-hashed static assets from a file provider rooted at the assets folder, so nothing outside it (`index.html` included) can be served, with `Cache-Control: public, max-age=31536000, immutable`, and from a route group that resolves no tenant.",
+      "why": "Assets can be cached forever and need no tenant lookup, and rooting the provider limits what can be exposed.",
+      "check": "Look for static file providers rooted above the assets folder, or for asset routes that run tenant resolution.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, give every server-written HTML page a strict Content-Security-Policy (default-src, base-uri, form-action and frame-ancestors 'none' plus `X-Frame-Options: DENY`) and list only the sources the page needs: inline scripts by sha256 hash, bundles by nonce, never `'unsafe-inline'`, and no `style` attributes.",
+      "why": "A strict default limits XSS and clickjacking, and antiforgery adds X-Frame-Options only when it stores a cookie, so it can't be relied on.",
+      "check": "Look for HTML responses without CSP headers, 'unsafe-inline', inline style attributes, or loosened form-action/framing on pages that don't need it.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, background work that needs request-like context creates it in its own DI scope and disposes the context before the scope.",
+      "why": "Background work has no request scope, endpoint or user to borrow from.",
+      "check": "Look for background services that resolve scoped services from the root provider, or that don't dispose the context they created.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, fetch a URL that a tenant, client or certificate supplies only through a named HTTP client whose primary handler has a server-side request forgery guard in its connect callback, and configure `X509Chain` with `RevocationMode.NoCheck` and `DisableCertificateDownloads` so the platform retrieves nothing itself.",
+      "why": "Caller-supplied URLs, including certificate AIA/CRL URLs, are otherwise a request forgery vector.",
+      "check": "Look for HttpClient use on externally supplied URLs without the guarded client, or X509Chain policies that allow online revocation or downloads.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a retrieval that concurrent requests share runs once on its own cancellation terms and takes its own copy of any disposable input a caller owns, such as a chain's certificates.",
+      "why": "The caller that started the retrieval may cancel it or dispose its inputs while others still wait on the result.",
+      "check": "Look for single-flight helpers that use the first caller's token or hold references to caller-owned disposables.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, increment a count that replicas must agree on with an atomic increment on a shared counter store, never a get-then-set, and count what is requested rather than what later succeeds; express rate limits as registered descriptors judged by the shared limiter, never as counter calls from an endpoint.",
+      "why": "A read followed by a write loses concurrent requests.",
+      "check": "Look for counters read and then written, or endpoints that call the counter set directly for a limit.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, judge every password with the one shared password policy wherever it is set (create, reset, change, seed) before it is hashed, and add any further password the policy must refuse as a registered blocklist, never as a check in one caller.",
+      "why": "Otherwise each path that sets a password enforces a different policy.",
+      "check": "Look for password-setting paths that skip the policy or add their own inline checks.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, judge, hash and verify a password in Unicode NFC form; when no usable hash exists (unknown user, no password, locked out, unreadable hash, attempt limit reached), verify against a dummy hash through the same code path and refuse whatever the result; never set a password through an API that runs the host's own validators.",
+      "why": "Normalization makes equivalent input verify the same way, and equal timing stops attackers from finding which accounts exist.",
+      "check": "Look for password hashing without NFC normalization, early returns for missing accounts, or `UserManager.CreateAsync(user, password)`/`ResetPasswordAsync` in stores.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, route every password verification through the attempt limiter inside the store's one account lookup, record every failure (refusals included) with `CancellationToken.None`, reset the count after a success, and never look the account up a second time.",
+      "why": "A refusal must cost and answer what a wrong password does, and a cancelled request must not skip recording the failure.",
+      "check": "Look for password verification without the limiter, failure records using the request token, or second lookups made only to name the counter.",
+      "scope": "domain",
+      "domain": "identity-accounts",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make a write that a background loop retries idempotent, for example with a per-batch checkpoint.",
+      "why": "A retry after a partial failure must not apply the write twice.",
+      "check": "Look for retried background writes that add or increment without an idempotency key or checkpoint.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, delete an owner together with everything it owns in the same unit of work through the change tracker, and keep foreign keys `Restrict` instead of relying on cascade delete.",
+      "why": "Owned rows, including those other packages contribute, must not be orphaned, and an explicit deletion makes ownership visible.",
+      "check": "Look for owner deletions that leave dependent rows, use separate saves, or switch foreign keys to Cascade.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an Entity Framework store issues no `ExecuteUpdate`/`ExecuteDelete`; a bulk removal stages a bounded batch through the change tracker, and its caller saves each batch as one unit of work.",
+      "why": "EF InMemory doesn't support these calls, and they bypass the concurrency-token interceptor.",
+      "check": "Look for ExecuteUpdate/ExecuteDelete/ExecuteUpdateAsync/ExecuteDeleteAsync calls, or unbounded bulk removals.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, exclude public metadata endpoints that anonymous callers or caches fetch (discovery, JWKS) from tenant quotas and billable usage, and record usage through rate-limit descriptor meters, never through a separate usage-recorder call beside a limit.",
+      "why": "Anonymous fetches shouldn't spend a tenant's quota, and recording usage separately double-counts requests or counts refused ones.",
+      "check": "Look for metadata endpoints left metered, or direct usage-record calls in endpoints.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, mark every route whose response can reveal secret material (generated secrets or keys, client secrets, access tokens, one-time codes such as `device_code`, `user_code`, `request_uri`, `auth_req_id`) as no-store at mapping time, sending `Cache-Control: no-store, no-cache, max-age=0` and `Pragma: no-cache` before the handler runs.",
+      "why": "Marking the mapping shows which routes reveal secrets, and no handler path can forget the headers.",
+      "check": "Look for new endpoints returning secrets or one-time credentials without the no-store marker.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an `IServiceCollection` parameter, local or extension receiver `serviceCollection` and a builder property `ServiceCollection`, never `services` or `service`, including in tests.",
+      "why": "The canonical registration builder sets this naming, and keeping it uniform everywhere avoids mixed names.",
+      "check": "Look for IServiceCollection variables named services or service.",
+      "scope": "general",
+      "topic": "code-organization",
       "applies_to": [
         "**/*.cs"
       ],

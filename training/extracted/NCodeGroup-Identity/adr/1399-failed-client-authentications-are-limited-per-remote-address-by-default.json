@@ -1,0 +1,145 @@
+{
+  "hash": "05797717cc758576",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1399",
+  "rules": [
+    {
+      "statement": "Every client-authentication handler that verifies a credential (client secret, signed assertion, certificate) must check the failed-attempt limiter before it verifies the credential or looks up the client, and must record a failure for every credential it refuses, including when the presented client identifier cannot be found.",
+      "why": "Online guessing of a client credential is otherwise unbounded: request rate limits count successes and are judged only after authentication, and the PBKDF2 gate bounds processors, not guesses.",
+      "check": "Look for new or changed credential-verifying authentication handlers that skip the limiter check before lookup or verification, or that have a refusal path that doesn't go through the shared failure path that records the attempt.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't check or count failed-attempt limits for a client authentication that verifies no credential: the `none` method, a Basic header that is empty, not Base64 or has no colon, a verification the hashing-concurrency gate refused (503), a refusal at the limit itself, or a failure after the credential verified, such as a method the client isn't registered for.",
+      "why": "A public client_id is not a secret (RFC 6749 §2.2), so refusing or counting these protects nothing and would let an attacker deny service to public clients behind a shared address.",
+      "check": "Look for failure recording on non-credential paths, and for limiter checks added to the none handler. Don't report that these paths are missing a count.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never key a brute-force failure limit by the account or client identifier alone; partition it by remote address and by remote address plus identifier.",
+      "why": "A limit keyed only by a known identifier is a lockout lever: anyone could keep that client locked out from anywhere (RFC 9700 §4.10, OWASP credential stuffing guidance).",
+      "check": "Look for failure counters or lockouts whose key is only a client_id, username or account id, without the caller's remote address.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Partition a remote address for limiting the same way the request rate limiter does: an IPv6 address by its /64 prefix, and an IPv4-mapped IPv6 address as the IPv4 address it maps.",
+      "why": "Otherwise one IPv6 host could rotate addresses within its /64, or the same IPv4 caller could land in two partitions, and slip past the limit.",
+      "check": "Look for limiter keys built from the raw remote IP string instead of the shared remote-address partition helper.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a refused credential's failure count before auditing it, and pass `CancellationToken.None` rather than the request's token.",
+      "why": "A caller that disconnects right after sending a guess must still be counted, even when an audit recorder honours the request's cancellation.",
+      "check": "Look for failure-recording calls that pass the request's cancellation token or that run after the audit call.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a client authentication refused at its failed-attempt limit with `429 Too Many Requests`, `temporarily_unavailable`, a `Retry-After` in whole seconds until the window ends and `Cache-Control: no-store`, never with `invalid_client`.",
+      "why": "`invalid_client` would tell a legitimate client behind the same address that its credential is wrong, so it would stop instead of retrying.",
+      "check": "Look for attempt-limit refusals that return invalid_client or 401, or that omit Retry-After or no-store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a brute-force or failed-attempt limiter fail closed: let an exception from its counter store propagate, and don't wrap it in a circuit breaker or fail-open fallback the way capacity rate limits are.",
+      "why": "Brute-force protection is a correctness guard. Failing open would lift the limit exactly when an attacker can cause an outage of the shared state.",
+      "check": "Look for try/catch, breaker or fallback logic around the failure limiter's counter calls that admits the request on error.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When logging that a failed-attempt limit was reached, include the tenant, partition name, limit and window, but never the remote address or the client identifier.",
+      "why": "The ADR limits the log to the tenant, the partition's name, the limit and the window, never the address or the client_id.",
+      "check": "Look for limit-reached log messages whose parameters include the IP address or client_id.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Count failed attempts in fixed windows aligned to multiples of the window length, not windows that start at the first failure, so `Retry-After` is the exact time until the window ends.",
+      "why": "A window that starts at the first failure can only give an upper bound for Retry-After. Aligned windows give the exact time.",
+      "check": "Look for failure-limit windows keyed from the first-failure timestamp, or a Retry-After computed as an approximation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a client failed-attempt limiter to clear its counters on a successful authentication.",
+      "why": "Clearing would cost a write on every authentication, and a client that holds its credential doesn't fail.",
+      "check": "Before reporting a missing reset-on-success, confirm the limiter is a client-credential failure limiter and not one whose ADR requires a reset.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request has no remote address, skip the address-based failure limit instead of failing the request, and log a warning once per process that names the tenant.",
+      "why": "A host listening on a socket or an in-process test host has no remote address by design. The warning tells the operator the limit is off without refusing a legitimate deployment.",
+      "check": "Look for limiters that throw or refuse when the remote address is null, or that skip silently or log on every request.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a mutual-TLS client-authentication handler, check the failed-attempt limiter only after the resolved client's registration shows the request uses that method, not before the client lookup.",
+      "why": "Before that point, a request carrying only a client_id could just as well belong to a public client. Checking earlier would refuse public clients and audit them with a mutual-TLS method they never used.",
+      "check": "Look for limiter checks in mTLS handlers placed before the client is resolved and its registered authentication method is confirmed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

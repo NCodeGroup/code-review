@@ -1,0 +1,62 @@
+{
+  "hash": "27a857df4376426c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1511",
+  "rules": [
+    {
+      "statement": "An ASP.NET Core host served by Kestrel must set `KestrelServerOptions.AddServerHeader` to `false` so that no response carries a `Server` header.",
+      "why": "Naming the server software helps an anonymous caller fingerprint the stack, and the OWASP HTTP Headers Cheat Sheet recommends that a response not name it.",
+      "check": "Look for a host's Kestrel setup or service registration that leaves `AddServerHeader` at its default of true, or a new host that doesn't register the shared server-header suppression.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the Server header suppression in every environment, without making it conditional on `IHostEnvironment.IsDevelopment()` or any other environment check.",
+      "why": "When the setting holds in every environment, Development responses match Production responses.",
+      "check": "Look for `AddServerHeader = false`, or the registration that sets it, wrapped in an environment condition.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't depend on an ingress or reverse proxy to strip the `Server` header. Suppress it in the host itself.",
+      "why": "A host reached directly, in development or behind another proxy, would still name itself.",
+      "check": "Look for changes that remove host-side suppression of the Server header, or that justify leaving it out because a proxy strips the header.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set non-TLS Kestrel options such as `AddServerHeader` through a composable options action, such as `services.Configure<KestrelServerOptions>` in a shared registration method. Don't add them to the host's TLS-focused `ConfigureKestrel` call.",
+      "why": "Options actions compose, so every host can call one registration instead of repeating the setting. Keeping the setting out of `ConfigureKestrel` leaves that block about TLS only, because `ConfigureHttpsDefaults` keeps only its last action.",
+      "check": "Look for `AddServerHeader` or other unrelated Kestrel settings added inside a host's `ConfigureKestrel` or `ConfigureHttpsDefaults` block, or copied separately into each host.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a host's integration tests assert that `KestrelServerOptions.AddServerHeader` is `false` on the built host.",
+      "why": "The ADR requires the integration test to check the option on the built host, so a regression that brings the header back is caught.",
+      "check": "Look for a host integration test project with no assertion that the resolved `KestrelServerOptions.AddServerHeader` is false, or a change that removes that assertion.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "hash": "f5a8bf5e5469250c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform outcomes of #31",
+  "rules": [
+    {
+      "statement": "Don't treat a rule from another repository's ADR that governs that repository's own agents (such as \"an agent never enables auto-merge\") as binding on this repository, and don't report a template override as missing because of it.",
+      "why": "The maintainer declined this: another repository's agent ADR governs only that repository's agents. This repository decides its own merge policy, and its own records and settings say what it accepts.",
+      "check": "Before reporting a conflict, check whether the cited ADR belongs to this repository or only to another one. Also check this repository's AGENTS.md overrides and its settings (for example allow_auto_merge) to see what it actually accepts.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "AGENTS.md",
+        "**/*.md",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a template-owned workflow that implements a documented template exception (such as auto-merging a Dependabot minor or patch bump of the NCode Review pin) as an agent enabling auto-merge, and don't ask for it to be disabled when the repository accepts that exception.",
+      "why": "The maintainer declined this: the workflow is the template's documented exception, not an agent. The ruleset still blocks merges while any review thread is unresolved, and the repository accepts the exception instead of overriding it.",
+      "check": "Check whether the template ADR documents the workflow as an exception, and whether AGENTS.md lists that ADR as an override, before reporting the workflow.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hand-edit a file owned by the project template. Report a defect in it to the template repository so that a template release fixes it.",
+      "why": "The next template update discards a local edit to a template-owned file. The defect exists in the template's own source, so every project gets it.",
+      "check": "Look for diffs that edit template-owned files (template instructions, template workflows) directly instead of linking an upstream template issue.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/**",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

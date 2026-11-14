@@ -1,0 +1,21 @@
+{
+  "hash": "c39489f811545cde",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #840",
+  "rules": [
+    {
+      "statement": "A Flux Kustomization that applies key material such as root-key Secrets or recovery ConfigMaps must not prune them: set `prune: false` on that Kustomization or mark the objects with `kustomize.toolkit.fluxcd.io/prune: disabled`, and state in the accompanying documentation which objects Flux will or will never delete.",
+      "why": "With pruning on, a key manifest that is removed, renamed or lost in a bad merge gets deleted from the cluster on the next reconcile. The host then can't unwrap the secrets that key protects and stays down until someone restores the key from the offline backup.",
+      "check": "In Flux Kustomization manifests, find any with `prune: true` whose path holds Secrets or ConfigMaps carrying keys or recovery material, and check whether those objects have the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation. Also check that the README says which prerequisites Flux deletes.",
+      "scope": "domain",
+      "domain": "kubernetes-flux-deployment",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml",
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

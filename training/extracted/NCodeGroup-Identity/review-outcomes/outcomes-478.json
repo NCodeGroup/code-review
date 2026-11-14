@@ -1,0 +1,51 @@
+{
+  "hash": "b9bdafbcf9c47a48",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #478",
+  "rules": [
+    {
+      "statement": "Don't report a hosted service that reads `IOptions<T>.Value` in its constructor when the options are fixed at start-up and their validator has no injected dependencies.",
+      "why": "With options fixed at start-up and a validator that has no dependencies, reading `.Value` early can't start a construction-order cycle, and an early snapshot is correct. The maintainer settled this the same way for other hosted services.",
+      "check": "Before reporting an early `.Value` read, check that the options are documented as fixed at start-up (so `IOptions<T>`, not `IOptionsMonitor<T>`, is injected) and that the `IValidateOptions<T>` implementation has no constructor dependencies. Report only if one of those doesn't hold.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a Moq setup must return different results on successive calls and be verified, use a `Setup(...)` whose callback counts the calls and ends with `.Verifiable(Times.Exactly(n))`, not a `SetupSequence`, and don't suggest appending `.Verifiable()` to a `SetupSequence`.",
+      "why": "Moq 4.21 has no `.Verifiable()` on `SetupSequence`, so a sequence setup is skipped by mock verification and an unmet call would not fail the test.",
+      "check": "Look for `SetupSequence` calls on mocks whose calls the test relies on happening. Ask for a counted `Setup(...)` with `.Verifiable(Times.Exactly(n))` instead, and never suggest `.Verifiable()` on the sequence itself.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a background service that runs work on a periodic timer needs a test that drives at least two ticks through a fake `TimeProvider`, with the first tick's work failing, and asserts that the work runs again and the loop stops cleanly.",
+      "why": "Tests that call the work method directly, or that cover only the disabled early return, would not catch a regression that stops the timer after one tick or lets a failure end the service.",
+      "check": "For a new or changed `ExecuteAsync` with a `PeriodicTimer` or `TimeProvider.CreateTimer` loop, check that some test advances a fake timer more than once with a failing first run and asserts the next run and a clean stop.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, an options validator that bounds a value at both ends needs a test for each bound, including a value just past the upper limit (such as `TimerPeriod.MaxValue` plus 1 ms), that asserts the failure names the configuration key.",
+      "why": "A mis-wired upper bound would let an out-of-range value through validation, and the service would then fail at runtime, for example when it creates a `PeriodicTimer`.",
+      "check": "For each range check added to an `IValidateOptions<T>` implementation, check that tests cover the value just below the lower bound and just above the upper bound, and that they assert the failure message names the key.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

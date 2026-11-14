@@ -1,0 +1,43 @@
+{
+  "hash": "c381f615301748a2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #356",
+  "rules": [
+    {
+      "statement": "In a test that checks the order of two text fragments in a generated file, assert the order (or adjacency with any whitespace allowed between them) rather than an exact character offset that depends on precise spacing.",
+      "why": "An exact offset such as `+ 1` makes a harmless reflow, line break or double space fail the suite with a misleading ordering message when the order is actually fine.",
+      "check": "Look for position checks in test code that compare an index to another index plus a text length plus a fixed constant; they should use `-lt`-style ordering comparisons or a regex allowing `\\s+` between the fragments, and a comment should say whether adjacency is intended.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "**/*Tests/**/*.cs",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change rewords instruction or documentation text to fix a mismatch, add a test that requires the corrected wording so that the old wording can't come back unnoticed.",
+      "why": "Without an assertion on the rewritten sentence the suite stays green if the text reverts and the earlier mismatch returns.",
+      "check": "For diffs that change prose in generated instruction or template files to fix a reported mismatch, check that the template test suite asserts the key phrase of the new wording in that file.",
+      "scope": "repository",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**/*.ps1",
+        "template/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a CHANGELOG section date only because it matches the date of the section below it or is a day off from today's UTC date.",
+      "why": "Sections are dated the day they were written in the author's local time zone, and several releases on the same day sharing a date is normal in the changelog.",
+      "check": "Before reporting, see whether other changelog sections already share dates and whether the gap from today is only a UTC versus local time-zone difference; report only a date that is clearly wrong.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

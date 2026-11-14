@@ -1,0 +1,126 @@
+{
+  "hash": "fc1f4cef5d4fd3f0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1220",
+  "rules": [
+    {
+      "statement": "Don't let a setting that bounds a security control accept a value, such as zero, that turns the control off; validate it against a positive range instead of treating zero as \"no bound\".",
+      "why": "No setting may weaken a security control below its safe baseline; a zero session bound let sessions never end (issue #271).",
+      "check": "Look for setting descriptors or request fields for lifetimes, timeouts or limits that allow 0, or code that treats 0 or null as \"unlimited\" for a security bound.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give an end-user session both an idle timeout and an absolute lifetime, both always enforced and both checked against a range with a positive minimum.",
+      "why": "A session that has only one bound, or a bound that can be turned off, can stay signed in indefinitely.",
+      "check": "Check that session creation and session settings require both bounds, and that the setting domains refuse zero.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store a session's expiry on its persisted grant as min(absolute end, last activity + idle timeout), and slide that expiry when the activity time advances; don't keep the idle window only in the payload.",
+      "why": "The grant store does not read payloads, so an idle window kept only in the payload leaves the row in the table until the absolute end, and every reader has to compute the idle end again.",
+      "check": "Look at where session grants are created or touched: is the grant's expiry set to the earlier end and updated on touch? Flag readers that compute their own idle end from the payload.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a session-creation API require its absolute lifetime and idle timeout, and throw ArgumentOutOfRangeException when either is not positive.",
+      "why": "A non-positive bound would create a session that is already expired or never ends.",
+      "check": "Look for session-creation requests with optional or defaulted lifetime fields, and for creation methods that don't throw for zero or negative values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request finds an ended session (past its absolute end, its grant expired or its idle window lapsed), terminate it through the single session-termination path with a specific reason, checking absolute expiry first; don't just reject it or delete it directly.",
+      "why": "Every end of a session must revoke the grants issued under it, send back-channel logout to its relying parties and be audited.",
+      "check": "Look for session validation that returns false or removes the grant for an expired session without calling the termination path, or that doesn't record the absolute or idle reason.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Throttle updates to a session's last-activity time (for example at most once a minute), and apply them as a retrying read-modify-write of the grant; drop a touch that loses every retry instead of failing the request.",
+      "why": "Touching on every request would write to the grant on every call, and a concurrent update must not be overwritten.",
+      "check": "Look for session touch code that writes on every request, overwrites the grant without a concurrency-checked read-modify-write, or turns a lost race into an error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Emit the session's opaque `sid` claim in the ID token, in every subject-bound access token (RFC 9068 section 2.2.1) and in the logout_token when back-channel logout sessions are supported; omit it from a token issued without a session.",
+      "why": "Relying parties and logout depend on the sid to identify the session a token belongs to.",
+      "check": "Check token-issuance code for subject-bound tokens missing `sid`, or for tokens without a session that carry an empty or placeholder `sid`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Generate a session identifier as an opaque, cryptographically random 256-bit value.",
+      "why": "The sid identifies a server-side session, so it must not be guessable.",
+      "check": "Look for sids derived from subject ids, timestamps, counters or short random values.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read stored session payloads through the versioned payload serializer, and fail closed (throw) on a stored session that is missing a required member such as its idle timeout or absolute end; don't fill in a default.",
+      "why": "A malformed stored session must fail closed rather than be guessed, since a guessed bound could keep a session alive.",
+      "check": "Look for session readers that deserialize the payload directly, or that default or skip missing bound fields instead of throwing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When listing a subject's sessions, skip revoked and ended sessions and report each session's end as the earlier of its idle end and its absolute end, so the end is never null.",
+      "why": "The active-sessions page, management API, sign-out everywhere and concurrent-session limits all depend on an accurate list with a known end time.",
+      "check": "Look for session listing models with a nullable expiry, listings that include revoked or expired sessions, or listings that report only the absolute end.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

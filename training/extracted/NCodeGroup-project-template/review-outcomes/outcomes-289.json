@@ -1,0 +1,41 @@
+{
+  "hash": "b4ebc7cfe3077887",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #289",
+  "rules": [
+    {
+      "statement": "When code chooses a value from several sources (an explicit override, a parsed file, a default fallback), add a test for each branch, including a test that the explicit override wins over the parsed value, not just a test of the fallback.",
+      "why": "If only the fallback is tested, a regression that always returns the default, or an override that gets ignored, would still pass the suite.",
+      "check": "For new or changed value-resolution logic with an override parameter, a parsed source and a default, check that the tests cover the parsed non-default value, the fallback, and the override taking precedence.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code enforces a limit such as a search depth, maximum size or count, add a test case just past the limit that checks the input is ignored or rejected, not only cases inside the limit.",
+      "why": "Tests that stay inside the limit don't notice if the limit is widened or removed.",
+      "check": "For a diff that adds or changes a limit (for example `-Depth`, a max length), look for a test with input beyond the limit that asserts it is excluded.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a script that is shipped and run on its own to import a helper shared with other scripts; a small duplicated parse is acceptable when a comment names the script it mirrors and a test pins the behavior.",
+      "why": "A standalone script that is copied alone into consumers, or that hands off to a newer copy of itself, can't depend on a sibling module. And the other copy may be a generated file that can't be edited directly.",
+      "check": "Before reporting duplicated logic between scripts, check whether one script is distributed or run standalone, or whether the other copy is generated, and whether a comment names the mirrored script. If so, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

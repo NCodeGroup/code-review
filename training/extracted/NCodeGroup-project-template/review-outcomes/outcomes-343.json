@@ -1,0 +1,31 @@
+{
+  "hash": "32e5b9ad51f2a0c4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #343",
+  "rules": [
+    {
+      "statement": "When editing a wrapped comment-based help block (such as a PowerShell .DESCRIPTION), rewrap the edited paragraph so no line runs past the wrap width the rest of the block uses.",
+      "why": "A line that runs past the block's wrap width makes the help text read inconsistently with the rest of the block.",
+      "check": "Look at added or changed lines in help or doc comment blocks and compare their length with the column width the unchanged lines in the same block wrap at.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change widens what a script or tool does, update every place that describes it, including CONTRIBUTING.md, README tables and the script's own parameter help, not just one of them.",
+      "why": "Contributors who read a description that wasn't updated won't know the run now covers more, and may be surprised by its output or failures.",
+      "check": "For a change to a tool's behavior, search CONTRIBUTING.md, README and the tool's help (.SYNOPSIS/.DESCRIPTION/.PARAMETER) for descriptions of that tool and check that each one reflects the new behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "hash": "ac6eb72b9bceb8fb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #547",
+  "rules": [
+    {
+      "statement": "Don't report a brute-force or failed-attempt limiter for failing closed (letting its counter store's exceptions propagate without a breaker or limiter-specific timeout): it is a correctness guard, which fails closed, unlike a capacity guard such as a rate limit, which fails open with a short timeout and breaker.",
+      "why": "Failing open would lift the brute-force limit during a shared-store outage, exactly when an attacker can cause one; the template rule gives timeouts and breakers to capacity guards only.",
+      "check": "Before reporting a fail-closed limiter, check whether it guards correctness (brute force, replay, password attempts) or capacity (request rate); only a capacity guard must fail open.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply the NIST SP 800-63B-4 §3.2.2 ceiling of 100 consecutive failures to a per-remote-address aggregate limit across clients or accounts; the ceiling bounds failures against one account's or client's secret.",
+      "why": "The per-account limit already caps each credential's exposure, so an aggregate limit can be higher to admit many clients behind one NAT or proxy without raising guesses against any one credential.",
+      "check": "Check whether the limit is keyed by a single account/client credential (cap at 100) or aggregated across them by address before reporting its range.",
+      "scope": "domain",
+      "domain": "authentication",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a log entry written beside a published audit event as duplication when the log carries different information for a different operator (such as the partition, limit and window) and the audit event carries the client, method and error code.",
+      "why": "The audit event serves investigation of a refused client and the log serves tuning of limits; there is no rule against logging beside a published event.",
+      "check": "Compare the log's fields with the audit event's; report only if they carry the same information.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an IValidateOptions<T> implementation for taking a descriptor catalog as a constructor dependency; the rule is that options validation never constructs a strategy that has dependencies, so check instead that the catalog documents it depends on nothing that reads those options and resolves no strategy.",
+      "why": "A catalog that read the validated options or resolved strategies would build its graph inside options validation and deadlock host composition.",
+      "check": "Look at the validator's dependencies: report one that constructs or resolves a strategy with dependencies, or a catalog whose remarks don't state it stays free of those options.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test each branch that chooses an audit event's envelope values (such as an anonymous actor when no client is present) by capturing the published event and asserting its outcome, actor, client id, error code and other fields, at the unit that builds the envelope.",
+      "why": "A regression to a wrong actor, outcome or error code would put a wrong record in the audit trail and no test would catch it.",
+      "check": "For each new or changed audit-recording branch, look for a test that captures the published event for that branch and asserts its envelope rather than only mocking the recorder.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, when a check method and a record method must read the same settings, window and partition key, derive them in one shared private helper rather than duplicating the setup in each method.",
+      "why": "If one copy changes and the other doesn't, the check reads a different key or window than the failure writes and the limit silently stops working.",
+      "check": "Look for two methods that repeat the same guard, settings reads, time/window computation and key derivation for paired read/write operations.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test of validation or selection logic builds its catalog from a test-local data source with its own descriptors, not from the shipped default data source, unless the test is deliberately pinning the shipped defaults.",
+      "why": "Changing the shipped descriptors would otherwise break unrelated tests.",
+      "check": "Look for tests that instantiate the default production data source and pin its contents while testing other logic.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use strict mocks from the test's mock repository with `.Verifiable()` on every setup, including setups in shared scaffolding helpers, and arrange setups so each one is consumed on every path that uses the scaffold; don't use loose `Mock.Of<T>()`.",
+      "why": "A loose or unverified setup that is never used passes silently, so code that stopped reading a value wouldn't fail the test.",
+      "check": "Look for `Mock.Of<`, `new Mock<T>()` without strict behavior, or `Setup`/`SetupGet` calls not ending in `.Verifiable()`, including in helper methods.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an options validator reports a null collection and a null entry in a collection with their own failure messages, rather than letting a null entry surface as an unrecognized empty name.",
+      "why": "A null entry reported as an unregistered '' source misleads the operator; distinct messages pin these configuration edge cases.",
+      "check": "In validators iterating configured lists, look for missing null-collection and null-entry handling, and for tests covering those branches.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover every reachable throw and validation-failure branch with a test that asserts the exception type and its message.",
+      "why": "Untested error branches leave their messages unpinned and regressions undetected.",
+      "check": "For new throw statements or failure branches in the diff, look for a test that reaches them and asserts the message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code on a per-request path, don't use LINQ `Distinct`/`Order` to normalize a small collection; copy it into one array, sort in place with `Array.Sort` and an ordinal comparer, and compact adjacent duplicates.",
+      "why": "LINQ allocates enumerators and delegates on every request, while in-place sorting allocates nothing beyond the result.",
+      "check": "Look for LINQ ordering or distinct calls on hot or per-request paths.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pad Markdown tables in Prettier style, with every column as wide as its widest cell and a spaced separator row, and reflow a table when a new row widens it.",
+      "why": "Otherwise the Markdown formatter rewrites the file on its next run.",
+      "check": "In edited Markdown tables, look for cells that overrun or under-pad their column.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

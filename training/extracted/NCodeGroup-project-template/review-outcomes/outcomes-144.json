@@ -1,0 +1,121 @@
+{
+  "hash": "1e8ff5586e3170ed",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #144",
+  "rules": [
+    {
+      "statement": "In a test, make concurrent runs overlap with an explicit gate, where each side writes a ready marker and waits with a deadline for the other's, and assert that they did overlap, instead of relying on a fixed sleep.",
+      "why": "A fixed sleep doesn't guarantee overlap on a loaded machine, so the test can pass without proving what it claims, and it adds time to every run.",
+      "check": "Look for Start-Sleep, Thread.Sleep or Task.Delay used to make concurrent work overlap in tests, with no handshake and no assertion that the overlap happened.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a best-effort or failure-handling branch, such as a cleanup that may fail without failing the run, add a test that forces that branch to run and asserts what it outputs.",
+      "why": "If a branch is never run by any test, a broken message or a failure that turns a pass into an error goes unnoticed.",
+      "check": "Check that new error, fallback or cleanup-failure paths in the diff have a test that triggers them, for example by holding a file open or removing write permission.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A best-effort delete that ignores errors must check afterwards whether the target still exists and report its path if it does, not fail silently.",
+      "why": "If a locked file stops the delete, the folder stays behind and nobody is told.",
+      "check": "Look for Remove-Item -ErrorAction SilentlyContinue, or a delete in a swallowed try/catch, with no later existence check and message.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several scripts or classes need the same cleanup logic and its message, move it into one shared helper that they all call, instead of copying it into each one.",
+      "why": "Copies have to be changed one by one and drift apart over time.",
+      "check": "Look for the same multi-line cleanup or lifecycle block pasted into many files in a diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A line kept only for a non-obvious side effect, such as reading a process handle so that ExitCode stays available after the process exits, gets a comment that says why.",
+      "why": "Without the comment, a later author may delete the line or copy it without knowing what it guards against.",
+      "check": "Look for discarded reads or assignments, such as `$null = $x.Handle`, that have no comment explaining them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a run's behavior has an exception to its stated rule, such as deleting its empty work folder when there's nothing to run, the help text or docs must state that exception.",
+      "why": "Help text that doesn't match the behavior misleads users.",
+      "check": "Compare the help or doc comments with the branches in the diff that differ from the documented rule.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't raise a finding again on a pull request after the maintainer declined it in an earlier round, unless the code it concerns has changed since that reply.",
+      "why": "The maintainer declined repeats as already answered, with links to the earlier replies.",
+      "check": "Before reporting, look through earlier review rounds on the PR for the same concern and the maintainer's decline.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a behavioral test that runs a fixture copied from the real code when the shared pieces that code calls are already tested by behavior and a structural check pins each copy's use of them.",
+      "why": "A fixture built like the real code tests only the fixture's copy, not the real code, so it adds cost without adding coverage.",
+      "check": "Before asking for a fixture test, check whether the helper and the end-to-end path are already tested directly, and whether a text or structure check already covers each real caller.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for new tests of behavior that a pull request leaves unchanged from the main branch; limit test requests to what the diff changes.",
+      "why": "The maintainer added a test only for the changed default and left the unchanged delete in an existing finally block untested in that PR.",
+      "check": "Before asking for a test, check in the diff whether the behavior is new or changed, or whether it predates the PR.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test that's skipped only in an unusual local environment, such as running as root, when CI runs and passes that check.",
+      "why": "The check is still covered where it matters, and the skip affects only local runs.",
+      "check": "Before reporting a skip, check whether the CI runner meets the skip condition and whether the CI logs show the check passing.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

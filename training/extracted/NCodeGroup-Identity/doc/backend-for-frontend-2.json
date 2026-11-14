@@ -1,25 +1,23 @@
 {
-  "hash": "f30e00848ea192a1",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "5469ed45282ae43d",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity docs/backend-for-frontend.md",
   "rules": [
     {
-      "statement": "Load client secrets, signing keys and certificates from the secrets subsystem (e.g. NCode secret key providers), never from appsettings or other plain configuration values.",
-      "why": "Keys from the secrets subsystem can rotate and can sit in a key-management service. A secret in appsettings can do neither and gets leaked.",
-      "check": "Look for client secrets, private keys or certificates read from IConfiguration or options string properties instead of from a secret key provider or key ring.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
+      "statement": "Never read a client secret or private key from appsettings or other plain configuration values; load it through the secrets subsystem (key rings / secret providers).",
+      "why": "Secrets from the secrets subsystem can rotate and be backed by a key-management service; secrets in appsettings cannot.",
+      "check": "Look for client secrets, private keys or signing material bound from IConfiguration/options string values instead of a secrets/key-ring provider.",
+      "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
-        "**/*.cs",
-        "**/appsettings*.json"
+        "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Every authorization-code request uses PKCE with S256 and a fresh random state and nonce, and an error authorization response never results in a session or token.",
-      "why": "PKCE, state and nonce bind the callback to the request that started it. An error response is a failed login.",
-      "check": "Look for authorization requests that skip code_challenge_method=S256, reuse or omit state/nonce, or callback code that goes on to create a session after an `error` parameter.",
+      "statement": "Every OAuth authorization-code request must use PKCE with S256 and a freshly generated state and nonce.",
+      "why": "PKCE binds the code to the initiator, and fresh state and nonce defend against CSRF and token replay.",
+      "check": "Check authorization-request builders for a missing code_challenge, a plain challenge method, or state/nonce values that are reused or not freshly random.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "protocols",
@@ -29,9 +27,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When the provider advertises authorization_response_iss_parameter_supported, reject an authorization response whose `iss` does not equal the expected issuer (RFC 9207).",
-      "why": "This defends against mix-up attacks.",
-      "check": "Look for callback handling that ignores or does not compare the `iss` response parameter when the provider supports it.",
+      "statement": "When the provider advertises authorization_response_iss_parameter_supported, require the authorization response's iss parameter to equal the expected issuer before exchanging the code.",
+      "why": "RFC 9207 iss checking defends against mix-up attacks.",
+      "check": "Look for callback handling that exchanges the code without comparing the iss response parameter to the transaction's issuer.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "protocols",
@@ -41,9 +39,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Validate ID tokens, logout tokens and signed UserInfo responses under an explicit asymmetric algorithm allow-list. Never accept `none` or symmetric algorithms, and check iss, aud (plus azp when present), exp, iat and nonce, plus auth_time when max_age was requested.",
-      "why": "An explicit algorithm and key policy stops algorithm-confusion and forged-token attacks.",
-      "check": "Look for token validation that accepts any alg, allows `none`/HS*, or skips any of the issuer, audience, azp, expiry, iat, nonce or auth_time checks.",
+      "statement": "When validating an ID token, logout token or other provider-issued JWT, never accept alg none or symmetric algorithms, and validate under an explicit algorithm allow-list.",
+      "why": "Accepting none or symmetric algorithms lets an attacker forge tokens.",
+      "check": "Look for JWT validation that doesn't restrict algorithms, accepts none, or allows HS* algorithms for provider-signed tokens.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -53,9 +51,21 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Compare secrets, token hashes (at_hash, c_hash, s_hash) and guard values in constant time, for example with CryptographicOperations.FixedTimeEquals.",
-      "why": "Ordinary equality leaks timing information about secret values.",
-      "check": "Look for `==`, string.Equals or SequenceEqual used to compare hashes, guards, secrets or MACs.",
+      "statement": "An ID token must be checked for iss equal to the discovered issuer, aud containing the client_id, azp when present, exp, iat, nonce, and auth_time when max_age was requested.",
+      "why": "These checks are what OpenID Connect Core requires for an ID token to be trusted.",
+      "check": "Look for ID-token validation code that skips any of these claim checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare token hashes, guards, synchronizer tokens and other secret values in constant time (e.g. CryptographicOperations.FixedTimeEquals), never with ordinary string or sequence equality.",
+      "why": "Ordinary comparisons leak timing information about the secret.",
+      "check": "Look for ==, string.Equals or SequenceEqual comparing at_hash/c_hash/s_hash, logout guards, CSRF tokens or similar secret values.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -64,9 +74,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Consume single-use state (login transactions, authorization codes, state values) with one atomic take, a read and delete in one operation, never a separate get followed by remove.",
-      "why": "Only an atomic take makes sure a second use on any replica finds nothing.",
-      "check": "Look for single-use records that are read and then deleted in separate calls, or that are never deleted.",
+      "statement": "Consume a single-use record (login transaction, state, one-time code) with one atomic take operation (read-and-delete), never a get followed by a separate delete.",
+      "why": "A separate get and delete lets a second request on another replica use the same record.",
+      "check": "Look for a get then remove on shared state for single-use values instead of an atomic take/GETDEL.",
       "scope": "general",
       "topic": "async-and-concurrency",
       "applies_to": [
@@ -75,44 +85,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Update shared session state with a version-checked compare-and-swap, not a blind overwrite.",
-      "why": "Concurrent requests on different replicas would otherwise overwrite rotated tokens or lose updates.",
-      "check": "Look for writes to shared or distributed state that replace a value without checking the version that was read.",
-      "scope": "general",
-      "topic": "async-and-concurrency",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Make refresh-token use single-flight across concurrent requests and replicas, and never retry a refresh with a refresh token that another caller may already have rotated.",
-      "why": "Presenting a rotated refresh token twice looks like theft, and the provider then revokes the whole token family, which logs the user out.",
-      "check": "Look for refresh logic with no per-session lock or distributed lease, or with a fallback that resends the old refresh token after a wait or failure.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "async-and-concurrency",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Once a token-rotating request has started, do not cancel it or its write-back through the incoming request's cancellation token. Bound it with its own timeout instead.",
-      "why": "If a browser abort drops the rotated refresh token, the next refresh becomes a reuse.",
-      "check": "Look for HttpContext.RequestAborted or the caller's token passed into the token request or the persistence write that follows a refresh.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "async-and-concurrency",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "After a successful login, always mint a new session identifier and delete any session the old cookie pointed to. Never adopt a session identifier the browser presented.",
-      "why": "This prevents session fixation.",
-      "check": "Look for login completion code that reuses an existing cookie value or session id, or that leaves the previous session alive.",
+      "statement": "Take a post-login return URL from the server-side login record where it was allow-listed, never from the callback query.",
+      "why": "Reading it from the callback lets an attacker redirect the user to an open-redirect target.",
+      "check": "Look for callback handlers that read a returnUrl/redirect parameter from the request instead of the stored transaction.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -122,21 +97,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Session and login cookies use the `__Host-` prefix with Secure, HttpOnly and Path=/, no Domain, and SameSite Strict or Lax, never None.",
-      "why": "`__Host-` and the missing Domain stop sibling subdomains from fixing or reading the session, and SameSite blocks cross-site requests.",
-      "check": "Look for auth cookies created without these attributes, with a Domain set, or with SameSite=None allowed.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "security-and-crypto",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Validate redirect return URLs as relative paths that start with exactly one `/`. Reject `//`, backslashes, schemes and `..` segments, and after normalization require a match with an allow-listed entry or an extension of one at a segment boundary.",
-      "why": "Unvalidated return URLs create open redirects.",
-      "check": "Look for a returnUrl or redirect target taken from the query and used without these checks, or a return URL read from the callback query instead of from server-side state.",
+      "statement": "Validate a return URL so it is relative and starts with exactly one '/', and reject it if it contains '//', a backslash, a scheme or a '..' segment; after normalization it must equal an allow-listed entry or extend one at a segment boundary.",
+      "why": "These rules stop open redirects through return URLs.",
+      "check": "Look for return-URL validation that only checks a prefix without segment boundaries, allows '//' or backslashes, or accepts absolute URLs.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -145,9 +108,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Pass optional authorization parameters (prompt, max_age, acr_values, login_hint, ui_locales) through only when they are explicitly allow-listed, and return claims to the browser only when the configuration allow-lists them.",
-      "why": "Allow-lists keep callers from injecting protocol parameters and stop internal claims from leaking.",
-      "check": "Look for code that copies arbitrary query parameters into the authorization request, or that serializes all principal claims to a client response.",
+      "statement": "On successful login always mint a new session handle and delete any session the old cookie pointed to; never adopt a handle the browser presented.",
+      "why": "Adopting a presented handle allows session fixation.",
+      "check": "Look for login completion that reuses an existing cookie value or session id.",
       "scope": "domain",
       "domain": "oauth-oidc-jose",
       "topic": "security-and-crypto",
@@ -157,9 +120,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When the shared state or session store fails, fail closed with 503. Never treat a store failure as signed out (401).",
-      "why": "A 401 sends the SPA into a login loop against a broken store.",
-      "check": "Look for catch blocks around store access that return 401, an anonymous result or a null session.",
+      "statement": "Classify a failure by a machine-readable failure code set where the failure is detected, never by matching on exception or error message text.",
+      "why": "Message text is not a stable contract, so a reason picked from it breaks silently.",
+      "check": "Look for code that inspects Message strings or error descriptions (Contains, StartsWith) to decide a failure reason.",
       "scope": "general",
       "topic": "errors-and-validation",
       "applies_to": [
@@ -168,20 +131,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Endpoints called by fetch/XHR answer challenge with 401 and forbid with 403 as application/problem+json, and never redirect to a login page.",
-      "why": "An API redirected to login breaks the SPA, which navigates to login itself when it gets a 401.",
-      "check": "Look for API endpoints whose challenge produces a 302, or error responses that are not problem+json.",
-      "scope": "general",
-      "topic": "protocols",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "A reverse-proxy or forwarder sends requests only to configured, allow-listed destinations and never derives the host from the request. It rejects dot segments, encoded slashes (%2F, %5C), backslashes and paths that leave the base path.",
-      "why": "This prevents SSRF and path traversal against the downstream service.",
-      "check": "Look for forwarding code that builds the target URI from request host or path without allow-list checks and path normalization.",
+      "statement": "Session cookies must use a __Host- prefixed name, Secure, HttpOnly, Path=/, no Domain, and a SameSite of Strict or Lax, never None.",
+      "why": "The __Host- prefix and these attributes stop sibling subdomains from fixing or reading the session, and SameSite blocks cross-site requests.",
+      "check": "Look at CookieOptions/CookieBuilder for session or antiforgery cookies that set Domain, a Path other than /, SameSite=None, or omit Secure/HttpOnly or the __Host- prefix.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -190,9 +142,9 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "When forwarding, strip the inbound Cookie, Authorization, anti-forgery and DPoP headers and the upstream Set-Cookie, and do not follow upstream redirects.",
-      "why": "Browser credentials must not leak downstream, and upstream APIs must not plant cookies on the proxy's origin.",
-      "check": "Look for proxy code that copies all request or response headers through, or an HttpClient with AllowAutoRedirect left on.",
+      "statement": "Never log, store or emit as telemetry a session handle, cookie value or token; store session records only under a derived hash of the handle.",
+      "why": "With only hashes and ciphertext in the store, a dump of the store is useless without the browser's cookie.",
+      "check": "Look for log calls, telemetry tags, or store keys that include raw handles, cookie values, access/refresh/ID tokens.",
       "scope": "general",
       "topic": "security-and-crypto",
       "applies_to": [
@@ -201,53 +153,67 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Never log, return from an endpoint, or keep beyond the request any access token, refresh token, ID token, session handle or cookie value.",
-      "why": "Tokens should exist only in encrypted storage and in request memory.",
-      "check": "Look for log calls, response bodies, exception messages or HttpContext.Items entries that carry token, handle or cookie values.",
-      "scope": "general",
-      "topic": "logging-and-telemetry",
+      "statement": "Never return tokens from an endpoint, and never keep them in HttpContext.Items or other state that outlives the request.",
+      "why": "Tokens must live only in the encrypted session payload and in memory during a request.",
+      "check": "Look for responses that serialize token values, or token values stashed in HttpContext.Items, static caches or long-lived fields.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Write logs with source-generated LoggerMessage methods.",
-      "why": "This is the family's logging convention.",
-      "check": "Look for direct ILogger.LogInformation/LogWarning-style extension calls with message templates in new code.",
+      "statement": "When the session or shared-state store fails, fail closed with 503; never treat the request as unauthenticated (401).",
+      "why": "A 401 on a broken store sends the client into a login loop and hides the outage.",
+      "check": "Look for catch blocks around store access that return 401, an anonymous principal or a sign-out.",
       "scope": "general",
-      "topic": "logging-and-telemetry",
+      "topic": "errors-and-validation",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Give metric and trace tags only low-cardinality constant values (operation, result, reason, error type), never subjects, handles, tokens, client ids or paths.",
-      "why": "Unbounded dimensions blow up metric cardinality and leak identifiers.",
-      "check": "Look for tags or dimensions set from user ids, client ids, URLs/paths or other request-derived values.",
-      "scope": "general",
-      "topic": "logging-and-telemetry",
+      "statement": "Refresh a rotating refresh token single-flight across replicas, and never retry a refresh with the old refresh token after another caller may have used it.",
+      "why": "Presenting a rotated refresh token twice looks like theft, and the provider revokes the whole token family.",
+      "check": "Look for refresh code without a per-session lock and cross-replica lease, or retry loops that resend the same refresh token.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "A package emits its metrics and traces through one Meter and one ActivitySource that share the same name, exposed as public constants, and each signal has one owner.",
-      "why": "One name per package keeps telemetry discoverable, and a single owner keeps signals from being counted twice.",
-      "check": "Look for several meters or activity sources in one package, names that differ, or an instrument that duplicates one another component already owns.",
-      "scope": "general",
-      "topic": "logging-and-telemetry",
+      "statement": "Once a refresh lease is won, don't let the incoming request's cancellation token cancel the token request or the write-back of the rotated refresh token; bound them by the client's request timeout instead.",
+      "why": "Dropping a rotated refresh token makes the next refresh a reuse, which revokes the family.",
+      "check": "Look for HttpContext.RequestAborted or the request's CancellationToken passed into the refresh grant call or into persisting its result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "async-and-concurrency",
       "applies_to": [
         "**/*.cs"
       ],
       "enforced_by_tools": false
     },
     {
-      "statement": "Report failure and event reasons as machine-readable codes from an open vocabulary of string constants, and branch on those codes, never on error message text.",
-      "why": "Open string constants let new reasons be added without breaking consumers, and callers do not need to match on text.",
-      "check": "Look for closed enums used as reason vocabularies in public results, or code that inspects exception or error message strings to decide behavior.",
+      "statement": "Release a distributed lease or lock only by compare-and-remove against the caller's own random owner token, never with an unconditional delete.",
+      "why": "An unconditional delete can release a lease another replica holds after the first one's lease expired.",
+      "check": "Look for lease/lock release code that calls a plain remove without checking the stored owner value.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An API endpoint answers an authentication challenge with 401 and a forbid with 403 as application/problem+json, never a 302 redirect to a login page.",
+      "why": "An API caller (fetch/XHR) can't follow a login redirect, and the SPA relies on 401 to mean no session.",
+      "check": "Look for API endpoints or authentication handlers that redirect on challenge or forbid.",
       "scope": "general",
       "topic": "public-api",
       "applies_to": [
@@ -256,9 +222,134 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Validate options at startup with ValidateOnStart, and have each named strategy validate its own options, rejecting at startup any configured strategy name that is not registered.",
-      "why": "Misconfiguration should fail fast at startup, not at the first request.",
-      "check": "Look for options without startup validation, or name lookups that fail lazily or fall back silently when the name is unknown.",
+      "statement": "A forwarding proxy must forward only to configured destinations, never derive the host from the request, and reject paths with dot segments, encoded slashes (%2F, %5C), backslashes, or anything that escapes the destination base path.",
+      "why": "Deriving the host or allowing path traversal turns the proxy into an SSRF or open-forwarding vector.",
+      "check": "Look for forwarders that build the destination URL from request host/path without allow-listing and normalization checks.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When forwarding to an upstream API, strip the inbound Cookie, Authorization, DPoP, anti-forgery and forwarding headers, drop upstream Set-Cookie headers, and never follow upstream redirects.",
+      "why": "Otherwise the browser's credentials leak upstream and an upstream API can plant cookies on the host's origin.",
+      "check": "Look for forwarding code or handler configuration that copies all request headers, passes Set-Cookie through, or leaves AllowAutoRedirect/UseCookies enabled.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build any absolute URL the server publishes or compares (redirect_uri, post_logout_redirect_uri, issuer-like URLs) from a configured public origin, never from the request's Host or a forwarded header.",
+      "why": "The request's Host and forwarded headers are attacker-controlled.",
+      "check": "Look for Request.Host, Request.Scheme or X-Forwarded-* used to compose published or compared absolute URLs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Responses from authentication and session endpoints (login, callback, user probe, logout, back-channel logout) must send Cache-Control: no-store.",
+      "why": "Session and token-related responses must never be cached.",
+      "check": "Look for new or changed auth/session endpoints whose responses don't set Cache-Control: no-store.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A library must not register a CORS policy on its own, and a CORS policy that allows credentials must list explicit origins, never '*'.",
+      "why": "CORS denies by default and is part of the CSRF defense, so a wildcard with credentials would defeat it.",
+      "check": "Look for AddCors/UseCors in library code, or policies with AllowAnyOrigin/SetIsOriginAllowed(_ => true) together with AllowCredentials.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Logout must be a POST with a synchronizer guard compared in constant time against the session; never accept a GET logout.",
+      "why": "A GET or unguarded logout lets a cross-site or same-site page log the user out.",
+      "check": "Look for logout endpoints mapped to GET or that end the session without checking a guard value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record a back-channel logout token's jti as handled only after the sessions have been ended, and answer 400 when ending them fails so the provider retries.",
+      "why": "Recording the jti first would make the provider's retry look like a replay, so the sessions would stay open.",
+      "check": "Look for jti replay recording that happens before the session-termination work completes, or a 200 returned on failure.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A back-channel logout token must carry the backchannel-logout event in events, contain sid or sub, contain no nonce, have typ logout+jwt when typed, and pass the same signature, iss, aud and iat checks as other provider JWTs.",
+      "why": "OpenID Connect Back-Channel Logout 1.0 requires these checks so that a logout token can't be confused with an ID token.",
+      "check": "Look for logout-token validation missing the events, nonce-absence, sid/sub or typ checks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Telemetry tags must be low-cardinality constants (operation, result, reason, error type) and never carry subjects, handles, tokens, client ids or paths.",
+      "why": "High-cardinality or sensitive tag values blow up metric storage and leak identifiers.",
+      "check": "Look at metric/activity tag additions for user ids, client ids, URLs/paths, tokens or other unbounded values.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log through source-generated LoggerMessage methods rather than ad hoc ILogger extension calls.",
+      "why": "The family's logs are source-generated by convention.",
+      "check": "Look for logger.LogInformation/LogWarning(...) calls with message templates instead of [LoggerMessage] partial methods.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model extensible reason names and similar vocabularies as open string constants, not closed enums, unless the set is provably closed.",
+      "why": "With open vocabularies a new reason never breaks a consumer.",
+      "check": "Look for new enums representing failure reasons, event reasons or strategy names that consumers or extensions could extend.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate options at startup with ValidateOnStart, and reject any strategy or provider name that isn't registered, failing startup instead of at first use.",
+      "why": "Misconfiguration must fail loudly at startup, and every strategy validates its own options.",
+      "check": "Look for new options without validators/ValidateOnStart, or named-strategy lookups that only fail at request time.",
       "scope": "general",
       "topic": "configuration-and-options",
       "applies_to": [
@@ -267,35 +358,44 @@
       "enforced_by_tools": false
     },
     {
-      "statement": "Send `Cache-Control: no-store` on authentication and session endpoint responses.",
-      "why": "Responses that carry session or protocol data must not be cached.",
-      "check": "Look for login, callback, user, logout or back-channel logout responses that do not set no-store.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "protocols",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "When handling a back-channel logout token, require the backchannel-logout event and sid or sub, refuse a token that carries nonce, refuse a replayed jti, and record the jti only after the sessions have been ended. Answer 400 on failure so the provider retries.",
-      "why": "Recording the jti too early would turn a failed delivery's retry into a rejected replay, and the event and nonce checks tell a logout token apart from an ID token.",
-      "check": "Look for logout handlers that record the jti before ending sessions, skip the events/nonce/jti checks, or answer 200 when ending the sessions failed.",
-      "scope": "domain",
-      "domain": "oauth-oidc-jose",
-      "topic": "protocols",
-      "applies_to": [
-        "**/*.cs"
-      ],
-      "enforced_by_tools": false
-    },
-    {
-      "statement": "Make extensibility hooks that run inside security checks reject-only, so they can deny an operation but never skip or weaken a built-in check.",
-      "why": "No extension point may break invariants such as callback binding, cookie attributes, CSRF checks or allow-lists.",
-      "check": "Look for gate or validator interfaces that can return success to bypass a check, or that run instead of the built-in validation rather than after it.",
+      "statement": "Require https for configured authorities, public origins and upstream destinations outside the Development environment.",
+      "why": "Plain http endpoints would expose tokens and cookies in transit.",
+      "check": "Look for URL options whose validation doesn't refuse non-https schemes outside Development.",
       "scope": "general",
-      "topic": "security-and-crypto",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When more than one candidate (such as two selection rules) matches a request, fail closed with an exception instead of silently picking one.",
+      "why": "Picking one arbitrarily could bind the request to the wrong client or session namespace.",
+      "check": "Look for selection or resolution code that takes FirstOrDefault over multiple matches without detecting ambiguity.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An extension seam that gates a security decision, such as a login gate or session validator, may only reject or end the session, never skip or weaken a built-in check.",
+      "why": "No seam may break invariants such as callback binding, cookie attributes, CSRF checks, allow-lists or the logout guard.",
+      "check": "Look for gate/validator contracts or call sites that let a result bypass or override built-in validation.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read private key material such as PEM files through sensitive buffers that are cleared after use, not through ordinary strings or byte arrays left for the GC.",
+      "why": "Key material must not linger in managed memory.",
+      "check": "Look for File.ReadAllText/ReadAllBytes of private keys, or key bytes kept in plain arrays that are never zeroed.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
       "applies_to": [
         "**/*.cs"
       ],

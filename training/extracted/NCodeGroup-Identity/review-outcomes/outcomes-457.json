@@ -1,0 +1,29 @@
+{
+  "hash": "9af40ef73be230d4",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #457",
+  "rules": [
+    {
+      "statement": "Don't report an edit to a file as touching a template-owned file until you have checked whether the repository's `.copier-answers.yml` lists it under `project_owned_files` or AGENTS.md records it as a project override; if either does, the edit is allowed.",
+      "why": "Files named in `project_owned_files` are left alone by template updates, so editing them is safe and expected. A finding that ignores this is a false positive.",
+      "check": "Before flagging an edit to a file the conventions call template-owned (e.g. `build/dod.ps1`), open `.copier-answers.yml` and look for it under `project_owned_files`, and search AGENTS.md for a recorded override. Report only if neither lists it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a decision-record citation removed from a `///` doc comment as a lost link until you have checked the whole member and file for an existing `// See ADR-NNNN.` comment that already cites the same record.",
+      "why": "The convention moves citations out of doc comments into `//` comments, and lets a `///` citation be dropped when a `//` comment on that member already cites it, so the link to the decision record is kept.",
+      "check": "When a diff removes an ADR reference from a `///` summary without adding a `//` citation, search the unchanged parts of the file, especially the lines just above the declaration, for a `// See ADR-NNNN.` naming the same ADR. Report only if there isn't one.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

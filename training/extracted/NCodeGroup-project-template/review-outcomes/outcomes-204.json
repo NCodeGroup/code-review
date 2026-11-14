@@ -1,0 +1,60 @@
+{
+  "hash": "9963e145fd8fabb0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #204",
+  "rules": [
+    {
+      "statement": "In a test suite, show that every validation check can fail by running it against a fixture that violates it and expecting it to name the offending item, not only against real data that always passes.",
+      "why": "A check that only ever runs on valid data always passes, so if its logic broke the suite would stay green until a real violation slipped through.",
+      "check": "Look for new or changed validation checks (range, uniqueness, pattern filters) that run only against the shipped files, with no fixture case expecting failure. Report the missing negative case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/*.Tests.ps1",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a parser or validator accepts an optional or alternative input form, such as an optional prefix, test that form with a passing case and with a failing case.",
+      "why": "If only the bare form is tested, a regression in the alternative form either flags correct input or lets a real mismatch through, and nothing fails.",
+      "check": "Compare the accepted input grammar (optional prefixes, alternate spellings) with the test cases. Report any accepted form that has no pass-and-fail pair.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**/*.cs",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test that checks the files a tool recognizes must match at least every file the tool counts, such as names with capital letters, so no file the tool treats as in scope goes unchecked.",
+      "why": "A narrower pattern skips some files, so a misnumbered or unindexed file can pass both checks without anyone noticing.",
+      "check": "Compare the file-matching regex or glob in the test with the one in the tool it checks. Report cases the tool accepts that the test skips, such as uppercase letters. Allow differences the file layout needs, such as Jinja-wrapped names.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/Test-*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every decision record in a project template its own number across the whole template, including stack-conditional records that never render in the same project, and have the checks reject any number used twice.",
+      "why": "A citation such as \"ADR-0108\" must name one record wherever it appears, and each stack or option has its own number range.",
+      "check": "Look for template decision records, including ones inside `{% if ... %}` conditions, that share a four-digit number. Also look for uniqueness checks that compare only records that render together.",
+      "scope": "domain",
+      "domain": "architecture-decision-records",
+      "topic": "documentation",
+      "applies_to": [
+        "**/docs/decisions/**",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

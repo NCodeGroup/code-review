@@ -1,0 +1,52 @@
+{
+  "hash": "28e24bf5ec12605c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #480",
+  "rules": [
+    {
+      "statement": "In an architecture decision record, keep each header bullet (Status, Date and the rest) on its own line, including after a Status amendment.",
+      "why": "If a newline is lost, the Date becomes part of the Status text, the header renders broken, and the ADR index check or any other header parser can't find it.",
+      "check": "Look at edited ADR header lines for a bullet such as `- **Date:**` joined onto the end of the previous bullet's text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a breaking change renames or splits an option, the CHANGELOG migration note must also cover any other option whose default would now fail validation against the migrated value.",
+      "why": "A host migrated by following the CHANGELOG would otherwise fail at start with an error naming an option the operator never set, for example a default AttemptTimeout larger than a small TotalTimeout.",
+      "check": "For a renamed or new option with cross-option validation, such as one value having to be no greater than another, check whether some old values plus the other options' defaults now fail validation, and whether the breaking note says what else to set.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In single-flight caching, check the success and failure caches again inside the shared fetch factory, not only before `GetOrAdd`, so a caller that arrives just after a fetch completes reuses its result.",
+      "why": "A caller preempted between the outer check and `GetOrAdd` can start a fresh fetch after the previous one has recorded its result and removed itself. A source that just failed then gets fetched again at once, which breaks the guarantee that no caller slips between the two.",
+      "check": "Look for a `ConcurrentDictionary.GetOrAdd` with a `Lazy`/`Task` factory that is guarded by cache checks only outside the factory, where the in-flight entry is removed after its result is cached.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Under the pre-release posture, don't report a renamed configuration or binding key as a compatibility violation when the rename is intended and the CHANGELOG marks it Breaking and tells hosts what key to set.",
+      "why": "Under the pre-release posture, renames are expected and no compatibility shims are kept.",
+      "check": "Before reporting a renamed option or configuration key, check whether the package is pre-release and whether the CHANGELOG has a Breaking entry for the rename that names the new key. If both hold, don't report it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

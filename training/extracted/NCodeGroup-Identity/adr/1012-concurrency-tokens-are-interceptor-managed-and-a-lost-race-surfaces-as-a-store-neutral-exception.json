@@ -1,0 +1,171 @@
+{
+  "hash": "25a5cbc86d9c33dd",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1012",
+  "rules": [
+    {
+      "statement": "Regenerate row-level optimistic-concurrency tokens in one SaveChanges interceptor rather than reading, comparing, assigning and copying them by hand in each store's add and update methods.",
+      "why": "Manual token handling duplicates the same steps in every store, and each new store has to remember them.",
+      "check": "Look for store Add/Update methods that generate a new concurrency token value (e.g. a new Guid string) for a modified entity, or that copy a freshly generated token onto the returned DTO, instead of leaving it to the interceptor.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A concurrency-token SaveChanges interceptor overrides both SavingChanges and SavingChangesAsync through one shared implementation, always assigns a new token to Modified and Deleted entries, and assigns one to Added entries only when the token is empty.",
+      "why": "Every save, sync or async, must change the row version. A new row can't conflict, and a caller may pre-seed its token.",
+      "check": "In a SaveChangesInterceptor that manages tokens, check that both overrides exist and call the same logic, that Modified/Deleted always get a fresh value, and that Added entries keep a caller-supplied non-empty token.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a store update changes only a child collection of an entity, assign the parent row's concurrency token so that EF marks the row Modified and the interceptor regenerates it.",
+      "why": "If the parent row isn't marked modified, its version doesn't change and a concurrent writer goes undetected.",
+      "check": "Look for store updates that only add, remove or change child-collection items and never touch the parent entity's concurrency token.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't mark a slice version column (a column that versions only one part of a row) with [ConcurrencyCheck] or let the row-token interceptor bump it. Set it only in the operation that changes that slice.",
+      "why": "A slice column has to change only when its slice changes, so that consumers reload just that slice. Bumping it on every mutation, or putting it in every WHERE clause, would be wrong.",
+      "check": "Look for slice or section version properties that carry [ConcurrencyCheck] or IsConcurrencyToken, that an interceptor touches, or that an operation sets without changing the matching slice.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A store method doesn't call SaveChanges or SaveChangesAsync itself (not even to back-fill a DTO's token). Committing belongs to the unit-of-work/store manager.",
+      "why": "Several store operations have to be able to commit together as one unit of work.",
+      "check": "Look for SaveChanges/SaveChangesAsync calls inside individual store methods, outside the store manager or unit of work.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A store's update method doesn't return the new concurrency token on its DTO, because the token is assigned at save. A create assigns its token up front and returns it, and a caller that updates re-reads the entity or answers 204.",
+      "why": "An update's token only exists after the unit of work saves, which is after the store method returns. A create's token is known up front, so a POST can build its 201 and ETag without a re-read.",
+      "check": "Look for update code that reads the token off the DTO returned by an update to build an ETag, and for create methods that don't assign and return a token.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a load-then-update flow, look up an entity that the DbContext already tracks (DbSet.Local) before querying the database.",
+      "why": "This avoids a second round trip, and DTOs don't need surrogate ids for a re-read.",
+      "check": "Look for store methods that query the database for an entity the same unit of work has already loaded, without checking the tracked Local entries first.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Surface a lost optimistic-concurrency race as a store-neutral concurrency exception. The unit of work's save translates EF's DbUpdateConcurrencyException into it, with the original as the inner exception, and lets every other failure propagate unchanged.",
+      "why": "Callers outside the persistence layer mustn't depend on one store technology's exception type, and a store built on another technology throws the same type.",
+      "check": "In a store manager's SaveChangesAsync, check that DbUpdateConcurrencyException is caught and rethrown as the store-neutral exception with the inner exception set, and that no other exception types are caught or wrapped.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code outside the Entity Framework persistence layer catches the store-neutral concurrency exception around store calls and unit-of-work saves, never Entity Framework's DbUpdateConcurrencyException.",
+      "why": "Callers handle a lost race without a dependency on Entity Framework.",
+      "check": "Look for catch blocks for DbUpdateConcurrencyException, or references to Microsoft.EntityFrameworkCore, in services or projects that call stores through their abstractions.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a store compares a caller-presented concurrency token with the stored one and they differ, throw the store-neutral concurrency exception, not some other exception type.",
+      "why": "A store's own token check is the second line of defense behind If-Match at the API edge, and it has to report a lost race the same way as a failed save.",
+      "check": "Look for store methods that compare tokens and throw InvalidOperationException, a generic exception, or return false on a mismatch.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't retry the same write after catching a concurrency exception unless the operation is specifically designed to re-read and retry.",
+      "why": "The exception means the caller lost the race, and repeating the same write would overwrite the other writer's change or fail again.",
+      "check": "Look for retry loops around a store write or save that catch the concurrency exception and resubmit the same entity without re-reading it.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a single-use item (authorization code, device code, auth_req_id, request_uri, initial access token, paused-flow state) atomic by spending it through its row's concurrency token. Treat the loser of a race as a second spend and return the protocol error for a used item (e.g. invalid_grant 400), never 500.",
+      "why": "A concurrent second spend has to get the same answer as a sequential one, which carries its protocol error.",
+      "check": "In code that consumes a single-use item, check that the store-neutral concurrency exception around the update and save is caught and mapped to the same 'not found/already used' result, and that no caller lets it escape as a 500.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use a conditional ExecuteUpdate/ExecuteUpdateAsync, or a separate spend record, to change or spend a row whose concurrency token the interceptor manages.",
+      "why": "ExecuteUpdate bypasses the change tracker and the interceptor-managed token, and the EF InMemory provider doesn't support it. A separate record would have to agree with the existing row.",
+      "check": "Look for ExecuteUpdate/ExecuteUpdateAsync calls against entities that have interceptor-managed concurrency tokens.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test optimistic-concurrency conflicts against a relational provider such as SQLite, not the EF InMemory provider.",
+      "why": "The InMemory provider applies the interceptor's writes but doesn't enforce [ConcurrencyCheck] in the WHERE clause, so a conflict test on it would pass without testing anything.",
+      "check": "Look for tests that expect a concurrency exception, or that simulate a race, using UseInMemoryDatabase.",
+      "scope": "domain",
+      "domain": "entity-framework-persistence",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

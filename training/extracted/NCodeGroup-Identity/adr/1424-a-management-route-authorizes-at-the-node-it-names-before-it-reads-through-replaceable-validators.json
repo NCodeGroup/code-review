@@ -1,0 +1,110 @@
+{
+  "hash": "46268ffe3251ac0c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1424",
+  "rules": [
+    {
+      "statement": "A management or resource route must authorize the caller against an authorization node built only from its route values, and from any node its request body names, before it opens a store or reads a row.",
+      "why": "A route that reads before it authorizes loads rows for callers with no authority over them, and its answer then reveals which identifiers exist.",
+      "check": "Look for a store lookup, repository call or row load that runs before the authorization call in an endpoint handler, or an authorization resource built from a loaded entity instead of from route or body values.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a caller who lacks authority with 401 if anonymous and 403 otherwise, whether or not the identifier exists, and return 404 only to an authorized caller; never use 404 to hide a refusal.",
+      "why": "Authority is decided without regard to whether the resource exists, so 403 reveals nothing, and operators and provisioning tools can tell 'no authority' apart from 'gone' instead of recreating resources.",
+      "check": "Look for refusal paths that return NotFound to hide a resource, or a 403/404 choice that depends on whether a row was found before authorization.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a request body references another resource (for example a parent or a scoping target), authorize the caller at that referenced resource's node, built from the body value, before reading the referenced resource.",
+      "why": "Otherwise the store gets read for a caller who may have no authority over the referenced resource, and the answer reveals whether it exists.",
+      "check": "Look for handlers that load a body-referenced entity to check it exists or to get its owner before authorizing the caller against it.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Authorize writes to a resource's leaves (its settings, secrets, scopes) at that resource's own node, not at the enclosing tenant node.",
+      "why": "Authorizing at the tenant node refuses the owners of the instance that holds the leaf, and it needs a read to find the row's tenant.",
+      "check": "Look for leaf write endpoints that authorize against the tenant scope or derive the node from the loaded row instead of from the resource's identifiers in the route.",
+      "scope": "domain",
+      "domain": "multi-tenant-management-api",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register library validators and similar replaceable policy services with TryAdd* (such as TryAddSingleton) over a default implementation, so an integrator can register its own first and replace them.",
+      "why": "Integrators need to replace an entity's rules as a unit without editing the library; inline per-endpoint checks can't be replaced and drift apart.",
+      "check": "Look for validator or policy services registered with Add* rather than TryAdd*, or validation logic inlined in endpoints instead of going through a replaceable service.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep authority checks, which take the caller and route values and run before any read, separate from row checks, which take the stored row and the request's existing store or unit of work but never the caller, and which run after the read.",
+      "why": "Authority must be decided before any read, and row rules need the row. Sharing the request's unit of work avoids opening extra units of work for a single request.",
+      "check": "Look for row-validation methods that take the caller or principal, authority checks that need a loaded row, or validators that open their own store manager or unit of work.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Row validation runs its checks in order and returns the first error, as an error object with a status code and a fixed detail string that never contains an exception message.",
+      "why": "A fixed detail means no exception message reaches a caller.",
+      "check": "Look for error details built from exception.Message or other runtime exception text, or for validators that throw instead of returning the first error.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a precondition (existence, uniqueness, no dependents) fail only on a fact the code queried, never by catching an exception such as InvalidOperationException, and have stores expose those facts as query methods.",
+      "why": "A failure inferred from a caught exception depends on the exception's message and on whatever else might have thrown it.",
+      "check": "Look for try/catch blocks that turn a caught store exception into a conflict, not-found or validation error, rather than calling an existence or dependents query first.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an update against the proposed state, by applying the patch to a throwaway copy of the model and validating that copy, not the current stored row.",
+      "why": "The row rules have to hold for the state that will be stored after the update.",
+      "check": "Look for update or patch handlers that validate the stored entity or the raw patch instead of the patched copy.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

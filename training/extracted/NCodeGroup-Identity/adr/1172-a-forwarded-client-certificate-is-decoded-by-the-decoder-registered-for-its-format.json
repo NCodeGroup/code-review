@@ -1,0 +1,102 @@
+{
+  "hash": "9d70b980f8c912e8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1172",
+  "rules": [
+    {
+      "statement": "When a client-certificate forwarding header is configured, take the client certificate only from that header: a request without the header presented no certificate, and never fall back to the certificate on the connection.",
+      "why": "Behind a proxy the connection's certificate is at most the proxy's own, so falling back would authenticate or bind tokens to the proxy instead of the end client.",
+      "check": "Look for certificate resolution code that reads HttpContext.Connection.ClientCertificate (or GetClientCertificateAsync) when the forwarded header is configured but missing or empty.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never treat a connection certificate that the host verified as the proxy's own as an end client's certificate.",
+      "why": "The proxy's certificate identifies the ingress, not the client, and reading it as the client's would authenticate the wrong party.",
+      "check": "Check that code which reads the connection certificate skips it when the connection is flagged as the proxy's (for example through a proxy client-certificate feature).",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a forwarded client-certificate header value cannot be decoded, log a warning naming the header and the format and fail the request with `invalid_request` (400); never treat it as no certificate presented.",
+      "why": "Reading it as absent hides a misconfigured proxy, and a token could be issued unbound to a client that did present a certificate.",
+      "check": "Look for decode failures (catch blocks, TryParse returning false) on the forwarded certificate that return null or 'missing' instead of throwing invalid_request, or that throw without logging a warning.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't return a tri-state decode result (decoded, absent, malformed) from a certificate resolver; return the certificate or nothing, and throw on malformed input.",
+      "why": "Every consumer would have to handle the malformed case, and one that forgot would read it as absent.",
+      "check": "Look for resolver APIs that return status enums or result objects with a malformed or invalid case that callers must check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode a forwarded certificate value all or nothing: if any part isn't a certificate in the configured format (surrounding text, an empty list entry, a PEM block of another type, a repeated key), decode nothing.",
+      "why": "Partial or lenient decoding would accept malformed or tampered input as a valid certificate.",
+      "check": "Check that decoders reject the whole value on stray text around PEM blocks, empty comma entries, non-CERTIFICATE PEM types and duplicate XFCC keys, rather than skipping the bad part.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat the intermediate certificates a client presents only as untrusted hints for building a chain, never as trust anchors.",
+      "why": "The client controls what it sends, so trusting its intermediates would let it supply its own root of trust.",
+      "check": "Look for client-presented intermediates being added to the chain's custom trust store or root collection instead of ExtraStore.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model an open-ended set of wire formats as string-named strategies that packages register, not as an enum. At startup, refuse to start when the configured name has no registered strategy, and reject two strategies registered under the same name.",
+      "why": "Proxies and other format sources are an open set, so supporting a new one should only take a registration, and a misconfiguration should fail at startup.",
+      "check": "Look for new enum members or switch statements per format, options that don't validate the configured format against registered strategies, or registries that silently accept a duplicate name.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve the client certificate once per request and cache it in the request's items, so client authentication and token binding see the same certificate. Dispose the certificates you decoded when the request ends, and never dispose the connection's own certificate.",
+      "why": "Both consumers must agree on one certificate, and the connection's certificate belongs to the connection, not to the request.",
+      "check": "Look for repeated decoding of the header for each consumer, for decoded X509Certificate2 instances that are never disposed or registered for disposal with the response, or for disposal of HttpContext.Connection.ClientCertificate.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

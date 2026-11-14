@@ -1,0 +1,54 @@
+{
+  "hash": "7266a7cc1d0ba6e2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #239",
+  "rules": [
+    {
+      "statement": "When a test checks generated or documented text by substring, require a phrase for every decision point the text must keep (each condition, step and fallback), not only one or two marker phrases, and name the check after what it actually checks.",
+      "why": "A check that matches only a few phrases still passes when a later edit drops a key rule or fallback, and a name that claims more than it checks hides that gap.",
+      "check": "Look for text-content assertions where removing an essential step or rule from the checked text would still let the test pass, or where the check's name or comment claims coverage the asserted substrings don't give.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test checks that a rule appears in every file that includes a shared fragment, build the file list from the files that actually include it, directly or through other fragments, rather than a hand-kept list, and keep a minimum list of files that must include it to catch a dropped include.",
+      "why": "A hand-kept list misses files that pick up the fragment through another include, so the rule can drift in unlisted files and the test's comment overstates its coverage.",
+      "check": "Look for hard-coded lists of files in coverage-style tests that leave out files reaching the fragment indirectly, or that have no floor list that catches an include being removed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When shared content is checked in generated copies, also check the source fragment itself for the same required phrases, and check every generated copy.",
+      "why": "Checking only that copies match the fragment catches edits to a copy, but an edit to the fragment itself spreads to every copy without failing anything.",
+      "check": "Look for template or partial checks that verify only that copies match the partial, with no assertion that the partial still contains the required wording.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds a branch to a code path or a test double (a success path, an unknown-input answer, a refused or alternate method form), add a test that reaches each branch, including its error and refusal paths, and give the double a way to produce the conditions that drive the production branch under test.",
+      "why": "Branches no test reaches can break silently while the suite stays green, and end-to-end checks that depend on a test double are only as reliable as the double's own tested behavior.",
+      "check": "Look for new branches in production code or in fakes and stand-ins where no test drives the branch, its unknown-input case or its refusal case, or where the fake can't produce the input that triggers a new production branch.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

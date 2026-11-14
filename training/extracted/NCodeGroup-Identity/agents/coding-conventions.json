@@ -1,6 +1,99 @@
 {
-  "hash": "8017f1f65331f3eb",
-  "promptHash": "358791b74fd66fcf",
+  "hash": "b09ed0d788088573",
+  "promptHash": "cdf34998a2e974f1",
   "label": "Identity AGENTS.md",
-  "rules": []
+  "rules": [
+    {
+      "statement": "A project's decision record never restates a project-template record: one that builds on a template record names it on a `**Refines:**` line, and one that contradicts it names it on a `**Conflicts with:**` line together with the issue that tracks the alignment.",
+      "why": "The template's records are the source of truth for every rule they cover, so a restatement would create a second, drifting copy and an unrecorded contradiction.",
+      "check": "In a new or changed project decision record (numbered 1000 or above), look for text duplicating a template record without a Refines line, or a contradiction of a template record without a Conflicts with line linking a tracking issue.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cite a project-template decision record as `project-template ADR-NNNN`, and a project's own record by its bare ADR number, so that each number names exactly one record.",
+      "why": "The template numbers its records below 1000 and a project numbers its own from 1000, so the prefix keeps every citation unambiguous.",
+      "check": "Look for references to template records (numbered below 1000) that lack the `project-template` prefix, or for new project records numbered below 1000.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a family decision changes, rewrite its record in place rather than adding a new record that supersedes it, and don't have a family record relate to another family record.",
+      "why": "A family record relates only to template records, so a reversal is recorded by rewriting the record itself.",
+      "check": "Look for a new family decision record that supersedes or references another family record instead of editing that record.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a repository file, link a GitHub issue by its full address rather than a bare `#NN` reference.",
+      "why": "GitHub doesn't autolink a bare issue number inside a file, only in issues and pull requests.",
+      "check": "Look in Markdown and code comments for bare `#NN` issue references that aren't links to the issue's URL.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A server-written page whose Content-Security-Policy lists no form-action sources sets `form-action 'none'`, not `'self'`.",
+      "why": "Every page gets a strict CSP, and a page that posts no form should allow no form targets.",
+      "check": "Look at CSP construction for pages: when no form-action sources are listed, the default must be 'none'.",
+      "scope": "domain",
+      "domain": "web-security",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the HTTP methods that the OAuth 2.0 and OpenID Connect specifications require on protocol endpoints such as authorization, continue and end-session (including GET), even where a general rule would restrict methods.",
+      "why": "The specifications require GET on these endpoints, so removing it breaks conforming clients.",
+      "check": "Look for protocol endpoint mappings that drop GET or other spec-required methods.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Fetch certificate revocation data over `http` where RFC 5280 publishes it, and let a tenant or client only lower, never raise, the fetch limits for a client-supplied document.",
+      "why": "RFC 5280 distribution points publish revocation data over http, and caller-supplied fetches must stay bounded by server settings.",
+      "check": "Look for revocation fetches that require https, or settings that let a tenant or client raise outbound fetch limits above the server's.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A shipping package must not replace its consumers' logging source generator or depend on `Microsoft.Extensions.Http.Resilience`; bound outbound calls through `Polly.Core` alone.",
+      "why": "A shipping package shouldn't impose those choices on the applications that consume it.",
+      "check": "Look in shipping project files for a Microsoft.Extensions.Http.Resilience reference or a logging-generator replacement.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
 }

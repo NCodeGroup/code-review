@@ -1,0 +1,31 @@
+{
+  "hash": "4c35415acbe8d1df",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #234",
+  "rules": [
+    {
+      "statement": "A code comment states the rule the code applies, not the history of the bug or earlier behavior that led to it; leave that history to the changelog.",
+      "why": "History in a comment gives future readers the past instead of the rule, and it goes stale once users have moved past the affected version.",
+      "check": "Look for new or changed comments that open with phrases like 'Earlier versions…', 'Previously…' or 'This used to…', or that tell how a bug arose instead of saying what the block does and why.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an update or refresh step overwrites a tool-owned file that may hold local edits, its output says that local edits to that file were discarded and where to make the change instead, and a test pins that behavior.",
+      "why": "Overwriting a customized file without saying so loses the user's lines silently, which is inconsistent with other resets that do warn.",
+      "check": "Find code that copies a rendered or upstream version over an existing file whose contents differ, and check that the message or heading listing it says edits are discarded. Also check for a test that edits the file before the update and asserts that the edit is gone and the output says so.",
+      "scope": "domain",
+      "domain": "project-template-update-tooling",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

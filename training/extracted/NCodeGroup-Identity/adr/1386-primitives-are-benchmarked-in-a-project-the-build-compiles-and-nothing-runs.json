@@ -1,0 +1,80 @@
+{
+  "hash": "47ba61a508d05269",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1386",
+  "rules": [
+    {
+      "statement": "Put a package's benchmarks in a separate BenchmarkDotNet console project named `<Package>.Benchmarks` under `benchmarks/`, listed in the solution and marked `IsPackable` false, never in the `.Tests` project and never by linking the measured sources into it.",
+      "why": "In a test project, benchmarks would run under the test host in a Debug build, which BenchmarkDotNet refuses. Linked sources measure a second compilation that can drift from the shipped one. A non-packable project in the solution is compiled by the build, so it stays current.",
+      "check": "Look for BenchmarkDotNet benchmarks added to a test project, `<Compile Include>` links to production sources in a benchmark project, a benchmark project missing from the solution, or one that could pack.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/benchmarks/**",
+        "**/*.csproj",
+        "**/*.slnx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a production assembly's `InternalsVisibleTo` grant to its own `.Benchmarks` project as a cross-assembly internals violation: a benchmark project is a non-shipping verification project like a test project.",
+      "why": "Only production assemblies are barred from seeing each other's internals. A benchmark project needs the internals to isolate one primitive operation.",
+      "check": "Before reporting an `InternalsVisibleTo`, check whether its target is a non-shipping `.Tests` or `.Benchmarks` project. Report it only when the target is another production assembly.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/AssemblyInfo.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A benchmark class is `public`, unsealed and marked `[MemoryDiagnoser]`, and it takes its inputs from a `Random` with a fixed seed.",
+      "why": "BenchmarkDotNet derives from the class, the memory diagnoser reports allocations, and a fixed seed makes the inputs the same on every run.",
+      "check": "Look for a benchmark class that is sealed, not public, or missing `[MemoryDiagnoser]`, and for inputs taken from an unseeded `Random` or another nondeterministic source.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/benchmarks/**/*.cs",
+        "**/*.Benchmarks/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a benchmark class, keep an input that the measured method takes by `in` or fills by `out` in a private field, and store the result in a private auto-property instead of returning an internal type from the public benchmark method.",
+      "why": "A ref target cannot be a property, which also exempts such a field from the field-to-property analyzer rule. A public method cannot return an `internal` type.",
+      "check": "Look for a benchmark method that returns an internal type, or for `in`/`out` inputs placed in properties. Don't report private ref-target fields in a benchmark class as rule violations.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/benchmarks/**/*.cs",
+        "**/*.Benchmarks/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A benchmark project's `Main` returns a nonzero exit code (1) when any benchmark fails, so a `--job Dry` run works as a smoke check.",
+      "why": "A run that ignores failures cannot be used as a smoke check.",
+      "check": "Look at the benchmark `Main`: check that it inspects the BenchmarkDotNet summaries for failures and returns 1 when one fails.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/benchmarks/**/Program.cs",
+        "**/*.Benchmarks/**/Program.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pull request that optimizes a hot-path primitive quotes before and after BenchmarkDotNet tables run in Release on the same developer machine, never numbers from CI.",
+      "why": "A benchmark has to justify the optimization. Shared CI runners give noisy numbers that prove nothing.",
+      "check": "In a PR that optimizes a primitive, check that the description has before and after tables from one machine, and flag any attempt to run benchmarks in CI or gate on them.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs",
+        "**/.github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

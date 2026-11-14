@@ -1,0 +1,85 @@
+{
+  "hash": "fe58517189bba4f8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #762",
+  "rules": [
+    {
+      "statement": "Don't ask for an `OperatingSystem.IsWindows()` guard around `CipherSuitesPolicy` to be narrowed to `OperatingSystem.IsLinux()`. The API works on Linux and macOS and fails only on Windows (SChannel), so `!IsWindows()` is the guard that the `UnsupportedOSPlatform` attribute and the platform analyzer call for.",
+      "why": "CipherSuitesPolicy is supported on Linux and macOS. A macOS host should get the policy, so narrowing the guard to Linux would wrongly skip it there.",
+      "check": "Before you report a platform guard as too broad, check the API's `SupportedOSPlatform`/`UnsupportedOSPlatform` attributes. A guard that matches what the platform analyzer asks for is correct.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for a wire-protocol name such as an HTTP header name to be replaced with an internal constant from another assembly that the test project can't see. Also don't suggest adding `InternalsVisibleTo` just to share that constant.",
+      "why": "Granting InternalsVisibleTo for one constant exposes every internal of the assembly. The name is wire vocabulary, and a test that spells it out also proves the name used on the wire.",
+      "check": "Before you report a repeated header or parameter literal in a test, check whether the constant is internal to an assembly the test project has no `InternalsVisibleTo` access to.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an id-generator or Guid-provider seam around a single `Guid.NewGuid()` call when the tests already check the generated value's observable properties, such as its canonical format and that it differs from the input.",
+      "why": "A seam for one call adds an abstraction and a DI registration without making any untested behavior testable.",
+      "check": "Before you report a direct `Guid.NewGuid()` call, check whether the existing tests already assert the format and uniqueness of the generated value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change alters the security posture that clients or operators can observe (for example a minimum TLS version or restricted cipher suites), add a present-tense entry under `### Security` in the Unreleased section of CHANGELOG.md, and record the decision and its platform limitations in an ADR.",
+      "why": "Without them, operators see handshake failures they can't explain. The reasoning would otherwise live only in a code comment, where it can drift.",
+      "check": "Look for changes to TLS protocols, cipher suites or other security settings that come with no `### Security` changelog entry and no ADR.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put TLS protocol and cipher-suite policy in its own internal type that has unit tests asserting the allowed protocol set, that the suite list holds only AEAD forward-secret suites, and the behavior on each platform. Don't leave it as untested inline configuration.",
+      "why": "Otherwise a later edit could quietly re-enable TLS 1.0/1.1 or weak suites and no test would catch it.",
+      "check": "Look for `SslProtocols`, `CipherSuitesPolicy` or `OnAuthenticate` configuration written inline in host setup with no test covering it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an endpoint filter promises a behavior on every response (such as echoing a header), test it on a response refused by an earlier filter, such as a 429 from the rate limiter, and not only on a response from the endpoint itself.",
+      "why": "If the filters were reordered, refused responses could lose the behavior and every test would still pass.",
+      "check": "Look for tests of a cross-cutting filter that exercise only requests reaching the endpoint handler.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same format specifier is used for both parsing and formatting a value (for example a Guid format string), define it once as a private constant and use that constant in both places.",
+      "why": "If one side changes and the other doesn't, parsing and generation can drift apart.",
+      "check": "Look for the same bare format-string literal repeated in matching Parse/TryParse and ToString calls.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

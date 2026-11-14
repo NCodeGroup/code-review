@@ -1,0 +1,34 @@
+{
+  "hash": "4840e4540421528e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #316",
+  "rules": [
+    {
+      "statement": "Don't ask a render-comparison check to add answer combinations for template exclude conditions that the pull request leaves unchanged; ask only for coverage of the conditions the change moves or edits.",
+      "why": "The maintainer declined this: conditions identical to the base branch can't be broken by the change, so the comparison needs no new cases for them.",
+      "check": "Before reporting missing answer sets, diff the template's exclude/conditional entries against the base branch. Report only if an entry the PR edited or moved has no answer set that exercises it.",
+      "scope": "domain",
+      "domain": "project-templates",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1",
+        "copier.yml",
+        "copier.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask CI to run a check that asserts renders are byte-identical to a base ref; it's a manual tool for refactors that must change nothing.",
+      "why": "Run in CI against the latest release, it would fail on every pull request that changes what generated projects get on purpose, which is most of them.",
+      "check": "If a render-identity script is documented as a manual tool (in its help or the README) and named so the test runner skips it, don't report that CI doesn't run it.",
+      "scope": "domain",
+      "domain": "project-templates",
+      "topic": "testing",
+      "applies_to": [
+        "tests/**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

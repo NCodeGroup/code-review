@@ -1,0 +1,79 @@
+{
+  "hash": "3c4abce5538e4a7a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #833",
+  "rules": [
+    {
+      "statement": "Don't report reading `IOptions<T>.Value` in a constructor as a defect when sibling services in the same package read options the same way: `IOptions<T>` is bound once at start-up, so the value doesn't go stale, and `IOptionsMonitor<T>` is the type for values that change while running.",
+      "why": "The maintainer declined this finding: `IOptions<T>` gives the same value on every request, and the configuration conventions use `IOptionsMonitor<T>` only for values that change at runtime.",
+      "check": "Before flagging a constructor that reads `.Value`, check whether the type is `IOptions<T>` rather than `IOptionsMonitor<T>`, and whether sibling handlers or services in the package already read `.Value` in their constructors. If both hold, don't report it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build a protocol well-known path, such as `/.well-known/openid-configuration`, from the shared constant that already defines it, not from a string literal.",
+      "why": "A second copy of the path can drift from the path discovery actually serves, and links built from it would then point to the wrong address.",
+      "check": "Look for string literals of well-known or endpoint paths in new code when a shared constant for the same path already exists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code builds a link to a route, take both the route mapping and the link from one constant, and add a test that the page answers at that path.",
+      "why": "If the link's constant isn't the source of the mapped route, a route change or library upgrade makes the link return 404 and nothing fails.",
+      "check": "Look for a new path constant used to build links while the endpoint mapping relies on a library default or a separate literal, with no test that requests the constant's path.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a URL path join, and the path it uses, in one exported helper, and call that helper everywhere instead of repeating the join.",
+      "why": "Two copies can drift, so the URL shown to the user can differ from the URL actually fetched.",
+      "check": "Look for the same path literal or `new URL(path, base)` join repeated across modules when a helper or constant already exists for it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reuse an exported type for a shape, not an inline copy of it in props or test helpers.",
+      "why": "Copies of one shape have to change together, and they drift apart when they don't.",
+      "check": "Look for inline object types whose members match a type that is already exported, in components or in tests.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When new wiring passes data between pieces that are each unit-tested, add at least one test at the composing level that shows the data arrives.",
+      "why": "Without it, the composing code can drop the data or pass the wrong object, and no test fails.",
+      "check": "Look for new data flow through a parent or composing component, such as parsed input passed into a child step, where every parent-level test mocks the input without that data.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

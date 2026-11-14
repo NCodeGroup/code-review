@@ -1,0 +1,91 @@
+{
+  "hash": "4bfdd9dcc801e9f0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1513",
+  "rules": [
+    {
+      "statement": "Send a concurrency token in an `ETag` response header as a quoted strong entity tag (e.g. `\"abc\"`, no `W/` prefix), never as the bare token, and validate the token so that an invalid one throws instead of producing a malformed tag.",
+      "why": "RFC 9110 §8.8.3 defines an entity tag as an opaque string between double quotes. A header value without the quotes is not an entity tag, and standard clients and caches send the tag back verbatim.",
+      "check": "Look for code that sets the `ETag` header from a token without quoting it, sets a weak `W/` tag, or builds the quoted value by hand instead of going through the shared entity-tag formatter.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Evaluate `If-None-Match` with weak comparison per RFC 9110 §13.1.2: `*` or a listed tag that weakly matches the current tag answers `304`, a missing or malformed header counts as no match, and only the RFC forms are accepted (no bare token).",
+      "why": "A cache revalidates with the quoted `ETag` it received. A read that misses a `304` only sends the body again, so the header needs no non-RFC form.",
+      "check": "Check `If-None-Match` handling for strong-only comparison, a missing `*` case, acceptance of unquoted bare tokens, or an error response to a malformed header where the read should just go ahead.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Evaluate `If-Match` with strong comparison per RFC 9110 §13.1.1, so that a weak `W/` tag never matches: don't strip the `W/` prefix before comparing.",
+      "why": "RFC 9110 requires strong comparison for `If-Match`, and the API sends only strong tags, so a weak tag in `If-Match` did not come from the API.",
+      "check": "Look for `If-Match` comparison code that trims `W/`, compares weakly, or treats a weak tag as equal to the current strong tag.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer an `If-Match` that fails to match, or that is malformed, with `412 Precondition Failed` rather than `400`. Use a problem detail that names the resource on a mismatch, and on a malformed value names the accepted forms without echoing the caller's header value.",
+      "why": "The precondition is what fails, and every route that reads `If-Match` declares `412`. Naming the forms or the resource shows the caller which precondition failed, and never reflecting the input keeps caller data out of the response.",
+      "check": "Check whether a malformed `If-Match` returns `400`, whether an error detail interpolates the raw header value, or whether a mismatch detail omits the resource.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a management API that accepts a lone bare concurrency token in `If-Match` (no quotes, commas, white space or `W/`, compared ordinally) as an RFC violation. It is the one documented non-RFC form, alongside `*`, an absent or empty header, and strong tag lists.",
+      "why": "Callers hold the unquoted `concurrencyToken` from the JSON body and the console sends it bare, so the API deliberately accepts it in `If-Match`, and only in `If-Match`.",
+      "check": "Before flagging bare-token acceptance, confirm it applies only to `If-Match` and only to a lone token with no quotes, commas, white space or `W/`. Bare tokens in `If-None-Match` are still a violation.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A route handler or validator that reads `If-Match` or `If-None-Match` calls the single shared, stateless entity-tag helper instead of parsing or comparing the header itself.",
+      "why": "If each handler repeats the rules, the accepted forms drift apart between routes.",
+      "check": "Look for new handlers or validators that read `If-Match`/`If-None-Match` and compare them with string equality, `Trim('\"')`, or their own parsing instead of calling the shared helper.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Document the `If-Match` parameter in the OpenAPI document of every route that reads it, listing the accepted forms: a quoted strong entity tag, a list of them, `*`, or the bare concurrency token.",
+      "why": "Callers need to know which precondition forms the API accepts, including its one non-RFC form.",
+      "check": "For a new or changed route that reads `If-Match`, check that its OpenAPI parameter description lists all the accepted forms.",
+      "scope": "domain",
+      "domain": "http-apis",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

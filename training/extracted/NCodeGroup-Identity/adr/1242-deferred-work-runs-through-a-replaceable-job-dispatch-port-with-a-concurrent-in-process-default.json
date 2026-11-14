@@ -1,0 +1,150 @@
+{
+  "hash": "8ae6025dbcad7ffb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1242",
+  "rules": [
+    {
+      "statement": "In a background worker loop, treat an OperationCanceledException as shutdown only when the host's stopping token is cancelled; an OperationCanceledException or TaskCanceledException from any other token, such as an HTTP client timeout, is a failed attempt that is logged and retried.",
+      "why": "A loop that treats every cancellation as its own shutdown ends on a handler's timeout, and with BackgroundServiceExceptionBehavior.StopHost, the default, an ended worker stops the host.",
+      "check": "Look for `catch (OperationCanceledException)` in BackgroundService or consumer loops with no `when (stoppingToken.IsCancellationRequested)` filter, or that break or return out of the loop on any cancellation.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use Parallel.ForEachAsync to consume a queue of independent jobs; run a fixed number of consumer loops over a multi-reader channel so that one job's failure doesn't affect the others.",
+      "why": "In Parallel.ForEachAsync an exception from one body cancels every running job, and a single consumer lets one slow job hold up everything queued behind it.",
+      "check": "Look for Parallel.ForEachAsync over channel.Reader.ReadAllAsync, or a single sequential consumer, in a background job worker.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A deferred or background job type holds plain serializable data only, with no delegates, services or behavior, and a handler chosen by the job's type runs it.",
+      "why": "A captured delegate can't be serialized, persisted or sent to a broker, which rules out any durable or distributed dispatch adapter.",
+      "check": "Look for job or message types with Func/Action fields, injected services or execution methods, or that capture request context objects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every deferred-job handler idempotent on the dispatch identifier, because dispatch is at-least-once and a retry runs every handler of the job again.",
+      "why": "A job is retried after any handler fails, so a handler that already succeeded runs again.",
+      "check": "Look at new job handlers for side effects (sends, writes) that aren't deduplicated or otherwise safe to repeat for the same dispatch id.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a job has several handlers, run them in sequence, don't let one handler's failure skip the others, and reschedule the job at most once per attempt, however many handlers failed.",
+      "why": "If each failing handler scheduled its own retry, one failed attempt would run again once for every handler that failed.",
+      "check": "Look for retry or reschedule calls inside a per-handler loop or catch block, or for a loop that exits on the first handler exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a background worker, create one AsyncServiceScope (CreateAsyncScope) per job attempt and resolve the job's handlers from it, not from the root provider.",
+      "why": "Scoped handlers then get their dependencies per attempt, and async-disposable services are disposed correctly.",
+      "check": "Look for handlers resolved from the root IServiceProvider, from a scope reused across attempts, or from a synchronous CreateScope in a worker.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enqueueing deferred work must never block or fail the producing request: write to the queue without waiting (for example ChannelWriter.TryWrite), and when the queue is full, log the dropped job.",
+      "why": "Out-of-band work must not fail or stall the request that triggered it, and a full queue must not block the dispatching path.",
+      "check": "Look for `await writer.WriteAsync` or other blocking writes on a request path, failures to enqueue that propagate to the caller, or drops that aren't logged.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run outbound side effects that follow a request and must eventually succeed (webhooks, notifications, background maintenance) through a replaceable job-dispatch abstraction with retry and back-off, not as inline best-effort calls in the flow.",
+      "why": "Inline delivery loses work by design and fixes the execution strategy inside the producer, so a deployment can't make it durable without editing the producer.",
+      "check": "Look for fire-and-forget HttpClient calls, Task.Run, or direct POSTs after a state change in request handlers, where a dispatcher abstraction should be used.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validator for an enum-typed option rejects a value that no enum member defines (for example with Enum.IsDefined), because the configuration binder accepts any number.",
+      "why": "The binder binds a number such as \"7\" to an enum without checking it, and the invalid value only fails later, far from configuration.",
+      "check": "Look for enum-typed options properties whose IValidateOptions implementation doesn't check that the value is defined.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An options validation failure message names the failing option property, its configuration key, the constraint and the actual value.",
+      "why": "The operator can then fix a misconfiguration from the startup error alone.",
+      "check": "Look for validator failure strings that don't include the option name and the configuration key path (for example 'Section:Key').",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate that capacity and concurrency options are at least 1 at startup, rather than letting a zero queue capacity or zero worker count silently drop work or never run it.",
+      "why": "A queue that holds no job, or a worker that runs none, should stop the host instead of losing the work it was given.",
+      "check": "Look for new capacity, limit or concurrency options with no lower-bound check in the options validator.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A deferred-job handler registered as a singleton must be thread-safe, because several consumers can run it at once.",
+      "why": "The worker runs jobs concurrently up to a limit, so one singleton handler can run on several jobs at the same time.",
+      "check": "Look for singleton job handlers that keep mutable instance state without synchronization.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep job types internal to the package that produces them; don't expose them as public API.",
+      "why": "The job is an implementation detail of the producer, and only the dispatch port is part of the public surface.",
+      "check": "Look for public classes or records that implement the job marker interface.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

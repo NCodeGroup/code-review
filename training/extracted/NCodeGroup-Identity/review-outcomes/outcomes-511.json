@@ -1,0 +1,74 @@
+{
+  "hash": "7f26d15491aacaa7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #511",
+  "rules": [
+    {
+      "statement": "Don't report reading `IOptions<T>.Value` in a constructor or primary-constructor initializer when the type deliberately builds its state once from startup-fixed options and those options are registered with `ValidateOnStart()`.",
+      "why": "`IOptions<T>` is reserved for values fixed at startup, so building once from it is intended, and `ValidateOnStart` makes a bad configuration stop the host before the first request.",
+      "check": "Before reporting, look at the options registration for `AddOptions<T>().ValidateOnStart()` with a validator, and at sibling types that build the same way. Report only if the type uses `IOptionsMonitor`/`IOptionsSnapshot` semantics or nothing validates on start.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change removes a package reference from a shipping package, name every package consumers no longer receive transitively in the CHANGELOG entry and tell them to reference it directly.",
+      "why": "A consumer that used those APIs through the transitive reference stops compiling on upgrade without warning.",
+      "check": "For a diff that removes a `PackageReference` from a packable project, check that the CHANGELOG entry lists the dropped transitive packages.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.csproj",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run timeouts, retries and other time-dependent logic on an injected `TimeProvider`, and test them with `FakeTimeProvider` and explicit gates such as `TaskCompletionSource`, not real timers or delays.",
+      "why": "Tests that rely on real short timers are slow and flaky. A fake clock makes retry and timeout tests deterministic.",
+      "check": "Look for time-based policies or `Task.Delay` that don't use the registered `TimeProvider`, and for tests that depend on real millisecond timers.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare HTTP status codes against named `HttpStatusCode` members, such as `HttpStatusCode.TooManyRequests` and `>= HttpStatusCode.InternalServerError`, not bare numeric literals.",
+      "why": "Bare literals like 408, 429 and 500 don't say which statuses they mean.",
+      "check": "Look for status-code comparisons against integer literals.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare static methods, along with constants and static fields, at the top of a type, before its instance members.",
+      "why": "The house member order puts constants and statics at the top of the type, and that includes static methods, not just fields.",
+      "check": "Look for static methods declared after instance properties or methods in the same type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every public method in a benchmark project, including `[GlobalSetup]` and `[Benchmark]` methods, a `/// <summary>` saying what it sets up or measures, plus `<returns>` when it returns a value.",
+      "why": "The rule that every added type or member gets a doc comment applies to non-packable benchmark projects too.",
+      "check": "Look for new public benchmark or setup methods without XML doc comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*Benchmarks/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

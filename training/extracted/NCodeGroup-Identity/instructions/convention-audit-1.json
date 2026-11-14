@@ -1,0 +1,241 @@
+{
+  "hash": "261ddca9530325b1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity convention-audit.instructions.md",
+  "rules": [
+    {
+      "statement": "In production code, every async method you own returns `ValueTask`/`ValueTask<T>`, has an `Async` suffix, and takes its `CancellationToken` as the last parameter; return `Task` only at framework boundaries such as middleware `InvokeAsync`, minimal-API handlers and mediator handlers.",
+      "why": "This is the repository's async convention (§1). `Task` is allowed only where a framework signature requires it.",
+      "check": "Look for new async methods that return `Task`/`Task<T>` outside framework entry points, that lack the `Async` suffix, or whose `CancellationToken` is not the final parameter.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never block on async work with `.Result`, `.Wait()` or `.GetAwaiter().GetResult()`, and never write `async void` methods.",
+      "why": "These APIs are banned by the conventions. Blocking on async code and `async void` break cancellation and error propagation.",
+      "check": "Grep the diff for `.Result`, `.Wait()`, `.GetAwaiter().GetResult()` and `async void`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, do not reference Newtonsoft.Json; use System.Text.Json (or NCode.Json) instead.",
+      "why": "The conventions list Newtonsoft as banned.",
+      "check": "Look for `Newtonsoft` usings or package references.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, use collection expressions for collections, `const` for literal values, and `u8` literals for UTF-8 byte data.",
+      "why": "These are the §1 language conventions.",
+      "check": "Look for `new[] {...}`/`new List<T> {...}` where a collection expression fits, `static readonly` fields that hold literals and could be `const`, and `Encoding.UTF8.GetBytes(\"literal\")` where a `u8` literal fits.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, declare constants and static members at the top of a type, and in a static class with C# 14 `extension(...)` blocks, put every const, static field, static property and static method before the first `extension(` block.",
+      "why": "The §1 convention keeps statics at the top so a reader finds them before the extension members.",
+      "check": "In static classes with `extension(` blocks, look for `static` or `const` members declared after the first extension block, and for statics placed below instance members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, treat vocabularies as open by default: declare a public `enum` only when its members are fixed outside the package's control or by its own operation contract, no other package could need a new member, and adding a member would need a library change anyway; otherwise use `public const string` names plus registered descriptors or strategies.",
+      "why": "ADR-1150 makes vocabularies open so that other packages can extend them without a library change.",
+      "check": "For every new public `enum`, apply the three-part closed test. Flag any that fail it and should be string constants with registered descriptors.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, never use `[Flags]` enums or a `switch`/bitmask that encodes relationships among a vocabulary's members.",
+      "why": "Under ADR-1150, relationships among members belong in registered descriptors or strategies, so the vocabulary stays open.",
+      "check": "Grep for `[Flags]`, and for `switch` statements or masks over vocabulary members that decide how members relate to each other.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, do not expose secret material (keys, passwords, raw secrets) on a public API surface.",
+      "why": "§2 public API forbids secret material on the surface.",
+      "check": "Look for public properties, return values or `ToString` output that expose raw secret or key bytes or strings.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, do not add `bool` or `enum` flag parameters that select between behaviors; split them into separate methods or strategies.",
+      "why": "§2 bans behavior-selecting flag arguments on the public API.",
+      "check": "Look for `bool` or `enum` parameters whose only job is to branch the method into different behaviors.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, make data, options and event types `sealed`, and expose concrete collection types rather than `IList<T>`.",
+      "why": "The §2 public API convention requires sealed data, options and event types with concrete collections.",
+      "check": "Look for unsealed new data, options or event classes, and for `IList<` in returns or properties.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before asking for a type to be sealed, or deciding it can't be, confirm whether it is really a base class by searching for `: TypeName`; a property of that type is composition and does not prevent sealing.",
+      "why": "Only real inheritance blocks sealing, and confusing has-a with is-a leads to wrong findings.",
+      "check": "Grep for `:\\s*TypeName\\b` derivations. Ignore `TypeName? Bar { get; }` properties.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not add `InternalsVisibleTo` to another production assembly; grant it only to `*Tests` and `*.Benchmarks` assemblies and `DynamicProxyGenAssembly2`.",
+      "why": "§2 forbids cross-assembly `InternalsVisibleTo` between production assemblies.",
+      "check": "Look for `InternalsVisibleTo` attributes or csproj items that name assemblies other than tests, benchmarks or `DynamicProxyGenAssembly2`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, put one type per file and do not nest types, except a private type that closes over the enclosing generic parameter or a nested `static` constant-vocabulary class.",
+      "why": "This is the §3 organization convention.",
+      "check": "Look for files that declare several top-level types, and for class, struct, interface, enum or record declarations inside another type that don't meet the two exceptions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, name the single canonical implementation of an interface `IFoo` `DefaultFoo`, and keep namespaces flat within each package.",
+      "why": "These are the §3 organization conventions.",
+      "check": "Look for a sole implementation of `IFoo` named something other than `DefaultFoo` (for example `FooImpl` or `FooService`), and for sub-namespaces added inside a package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep methods small and single-purpose with at most three parameters, follow Command-Query Separation, and do not leave empty `catch` blocks, commented-out code or repeated magic strings.",
+      "why": "These are the §6 clean-code rules.",
+      "check": "Look for methods with more than three parameters, methods that both change state and return a query result, empty `catch {}` blocks, commented-out code, and string literals repeated instead of shared as a constant.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a type with a single constructor whose body only assigns parameters to members (including an `abstract` class with a `protected` pure-assignment constructor) should use a primary constructor.",
+      "why": "The §1 convention prefers primary constructors when a constructor only assigns.",
+      "check": "Flag constructors whose body is only `X = x;` assignments or parameter-derived initializers. Skip types with several constructors or `this()` chaining, bodies with guards, loops, branches or side-effecting calls, a shared intermediate local used by two or more members, exception types, and records.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, copy a collection parameter (including an injected `IEnumerable<T>`) with `.ToArray()`, `.ToFrozenSet()`, `.ToFrozenDictionary()` or `[.. x]` before storing it in a field or property.",
+      "why": "§2 requires stored collections to be buffered, so that a lazy or caller-owned sequence is not held or enumerated again.",
+      "check": "Look for constructors or methods that assign a collection or `IEnumerable<T>` parameter directly to a field or property without copying it.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, do not store captured request or ambient context in a field; a type that reads ambient request state must be a live view over `IHttpContextAccessor`.",
+      "why": "§7 testability forbids stored captured context, which goes stale and makes types hard to test.",
+      "check": "Look for fields or properties that hold an `HttpContext`, a request or user, or other ambient values captured at construction instead of read through `IHttpContextAccessor` on each access.",
+      "scope": "domain",
+      "domain": "aspnetcore",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, use service location (`RequestServices`, `GetService`, `GetServices`) only in the sanctioned case of a singleton resolving a scoped service, or in framework glue marked `[ExcludeFromCodeCoverage]`.",
+      "why": "§7 limits service location so that dependencies stay explicit and testable.",
+      "check": "Check each `RequestServices`, `GetService` or `GetServices` call: it must be a singleton resolving a scoped service or sit in `[ExcludeFromCodeCoverage]` glue.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Every production type must either be covered by tests or be annotated `[ExcludeFromCodeCoverage]`, and every production package must have a test project.",
+      "why": "The tested-or-excluded rule (§7) requires it; a package without a `.Tests` project does not appear in coverage at all, which is itself a finding.",
+      "check": "Look for new production types that have neither tests nor `[ExcludeFromCodeCoverage]`, and for new packages that have no matching test project.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An XML doc summary must match the member's accessors: say \"Gets or sets\" only for a property with a `set` accessor, and \"Gets\" for `{ get; }`, `{ get; init; }` and expression-bodied (`=>`) properties.",
+      "why": "A summary that disagrees with its accessor is a review-only documentation defect that the compiler does not catch.",
+      "check": "Read past the `///` and attribute lines to the declaration, and compare a \"Gets or sets\" summary with the property's accessors. Also flag terse or copy-pasted summaries and grammar errors such as \"a id\".",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

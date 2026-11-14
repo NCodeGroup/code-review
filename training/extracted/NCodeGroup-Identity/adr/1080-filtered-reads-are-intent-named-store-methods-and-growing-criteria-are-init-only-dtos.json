@@ -1,0 +1,129 @@
+{
+  "hash": "a12eb0c8ff84b962",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1080",
+  "rules": [
+    {
+      "statement": "Implement a filtered read as a discrete, intent-named store method that pushes the filter to the database, never by paging or listing the whole set and filtering the materialized items in memory.",
+      "why": "Fetch-all-then-filter uses no index, transfers every row and child collection only to discard most, and the waste compounds when several readers in one request re-scan the same set.",
+      "check": "Look for a service calling GetPageAsync or another list read on a store and then applying Where/filtering on the results in memory; it should call a dedicated store method instead.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't expose IQueryable or Expression parameters on a store interface; name the method for what it fetches and let each backend translate it.",
+      "why": "Expression parameters tie the contract to an ORM, let the caller shape the SQL, and force a non-EF backend to interpret expression trees.",
+      "check": "Look for store interface methods taking or returning IQueryable<T> or Expression<Func<...>>.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a store reader that needs only a few columns a lightweight projection type so the query never joins or materializes unneeded child collections; load the full entity only when the reader needs it.",
+      "why": "Materializing child collections such as settings or secrets for a reader that uses a few columns wastes transfer and work.",
+      "check": "Look for new store reads that return full entities with Include of child collections when the caller only uses a few scalar fields.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a store's GetPageAsync only for genuine unfiltered pagination such as management lists, not as a filtering mechanism.",
+      "why": "Pagination over the whole set is not a substitute for a pushed-down filter.",
+      "check": "Look for GetPageAsync calls whose results are filtered, searched, or looped to completion to find a subset.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a case-sensitive value is filtered through a case-folded normalized column, treat the database filter as a widening pre-filter and re-apply the exact case-sensitive match in memory over the returned set; keep exact predicates such as booleans and id-set membership wholly in the database.",
+      "why": "The normalized column provides uniqueness and sargability and never drops a true match, but values like scopes and resource identifiers compare case-sensitively under RFC 6749 and RFC 8707.",
+      "check": "Look for queries on Normalized* columns whose results are used without an exact ordinal comparison, or for exact predicates evaluated in memory instead of in the query.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't place a cache or invalidation seam under store read methods or make correctness depend on cache freshness; layer any cache on top without changing the store contract.",
+      "why": "Correctness must not depend on cache freshness, and a cache can be added later on top if profiling demands it.",
+      "check": "Look for store interfaces or implementations gaining cache/invalidation parameters or methods, or per-request caches of full reads used to avoid adding a filtered method.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass an optional, growing set of selection criteria as a readonly record struct with init-only, non-required properties built with object initializers or `with`, never as positional or optional method parameters or a positional constructor.",
+      "why": "A store interface is implemented by consumers, so a new positional parameter changes the signature and breaks source and binary compatibility for every implementer and caller.",
+      "check": "Look for store or service methods gaining another optional filter parameter, or criteria types with positional constructors or required members.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a required identity key that is the operation's subject as a positional parameter rather than wrapping it in a criteria DTO.",
+      "why": "A required key is not a growing filter and gains nothing from an optional bag of properties; the rule is optional-and-growing is a DTO, required key is positional.",
+      "check": "Look for required ids moved into optional criteria DTO properties, or DTOs wrapping a single required key.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a criteria DTO an IsEmpty guard when an empty filter would act on everything, such as a bulk revoke or delete, and check it before acting.",
+      "why": "An empty filter on a bulk operation would affect every record.",
+      "check": "Look for bulk update/delete/revoke methods taking a criteria DTO without an IsEmpty check guarding the unscoped case.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take pagination as a single page-request object (cursor plus required limit) rather than separate positional cursor and limit parameters.",
+      "why": "A positional (cursor, limit) pair cannot gain a sort direction without a signature change.",
+      "check": "Look for paged methods with separate cursor and limit parameters.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model request and command inputs as init-only records rather than types with positional constructors.",
+      "why": "They grow like criteria, and init-only properties let them gain members without breaking callers.",
+      "check": "Look for new *Request or *Command types declared as positional records or with constructor-only initialization.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

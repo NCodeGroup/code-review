@@ -1,0 +1,55 @@
+{
+  "hash": "b4f9cef3e04bc26c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #253",
+  "rules": [
+    {
+      "statement": "Don't set a value in generated output by regex-patching the rendered text after the fact; pass it to the template as a variable and render it from there, or at minimum fail loudly when the replace matches nothing.",
+      "why": "If the template line is reworded, the regex silently stops matching and the output keeps the wrong default without any error, and the default ends up living in both the template and the regex.",
+      "check": "Look for `-replace`, `Regex.Replace` or similar applied to rendered template output to change a value, with no check that the pattern matched.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.py"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a template produces generated files, test the rendered output for the expected content, not only the template source.",
+      "why": "A change can drop the value from the rendered output while checks that only grep the template source stay green.",
+      "check": "Look for new template behavior whose tests only assert phrases in the template (e.g. `.jinja`) files and never render a project and inspect the result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Markdown, keep a blank line between a list or paragraph and the heading that follows it.",
+      "why": "A heading directly after a list is inconsistent with the other documents, and markdownlint (MD022) and some renderers flag it.",
+      "check": "Look for a `#` heading line directly after a list item or text line with no blank line before it, especially where an edit appended a bullet.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read the same external data (such as a git or process query) once and pass the result to every consumer, instead of running the query again in each one.",
+      "why": "Repeating the query adds an extra call each run and spreads the same logic over more places that have to stay in sync.",
+      "check": "Look for a new code path that re-runs a command or query, and re-parses its result, when that data was already read earlier in the same run.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

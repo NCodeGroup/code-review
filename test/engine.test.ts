@@ -163,7 +163,7 @@ test('holdoutLabels names the reviews and decision records the eval cases draw o
     { id: 'span-split', repository: 'NCodeGroup/Identity', source: 'Review comment https://github.com/NCodeGroup/Identity/pull/420#discussion_r1' },
     { id: 'lenient', repository: 'NCodeGroup/Identity', source: 'Fixed by #309 (163ad04c); ADR-0266.' },
   ]);
-  assert.deepEqual([...labels].sort(), ['Identity ADR-0266', 'Identity review of #309', 'Identity review of #341', 'Identity review of #420']);
+  assert.deepEqual([...labels].sort(), ['Identity ADR-0266', 'Identity outcomes of #309', 'Identity outcomes of #341', 'Identity outcomes of #420', 'Identity review of #309', 'Identity review of #341', 'Identity review of #420']);
 });
 
 test('a guidance bullet learned from C# instruction files reaches a review of .cs files and not one of .ts files', async () => {

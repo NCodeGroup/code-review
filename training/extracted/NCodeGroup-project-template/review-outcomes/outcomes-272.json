@@ -1,0 +1,79 @@
+{
+  "hash": "b2487c22ac841a09",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #272",
+  "rules": [
+    {
+      "statement": "When a measured value such as cost or usage can't be read (missing file, bad JSON, renamed field, or a run that failed before reporting), don't substitute 0: warn with the source's path and report the value as unknown or as a lower bound.",
+      "why": "A silent 0 makes a run that spent money look free, and nobody can tell the figure is unknown.",
+      "check": "Look for catch blocks or fallbacks that set a metric to 0 or a default without a warning. Also look for code that drops a value it did read because a key (such as a session id) is missing, when it could store it under another key.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give magic numeric constants, such as conversion rates and minimum floors, named variables or constants, and use those names in the expressions instead of bare literals.",
+      "why": "If the rate or floor changes, someone has to hunt for the numbers inside an expression, and only help text explains what they mean.",
+      "check": "Look for bare numeric literals with domain meaning inside computed arguments or formulas.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run a long-lived external CLI or child process with a configurable timeout, kill its process tree when the timeout hits, report the failure, and read its output asynchronously.",
+      "why": "A session that hangs on a prompt or on the network would otherwise block the run forever, and reading output synchronously can deadlock when the output is large.",
+      "check": "Look for synchronous invocations of external processes that have no time limit, no kill on timeout, or blocking reads of redirected stdout/stderr.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code falls back from a dedicated, narrowly scoped credential to a general one (such as GH_TOKEN, GITHUB_TOKEN or `gh auth token`), warn that the broader credential is in use, recommend a least-privilege token, and document the risk.",
+      "why": "A general token with broad scopes given to an automated or untrusted-input session can be misused or leaked, when the task needs only narrow access.",
+      "check": "Look for credential fallback chains that silently pick up general-purpose tokens without a warning or documentation.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests, cover the boundary cases of computed limits, such as the minimum floor and the zero/disabled value that passes no limit at all, not only one typical value.",
+      "why": "A regression in the floor or the zero check would change a spend or resource cap without any test failing.",
+      "check": "When a diff adds or changes a computed cap, threshold or floor, check whether the tests exercise the floor and the zero/disabled case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mention in the CHANGELOG entry or PR description any change that makes an existing check stricter, so that runs that now fail can be explained.",
+      "why": "Without it, a run that newly fails under the stricter conditions has nothing that explains why.",
+      "check": "When a diff adds conditions to an existing assertion or validation, check whether the CHANGELOG or PR description mentions them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

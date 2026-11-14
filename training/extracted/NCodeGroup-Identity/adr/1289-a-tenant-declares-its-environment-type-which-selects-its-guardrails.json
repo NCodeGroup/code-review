@@ -1,0 +1,74 @@
+{
+  "hash": "5abcf3aa7baebc5b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1289",
+  "rules": [
+    {
+      "statement": "Never key behavior, metric attributes or audit fields off free-form, operator-supplied text such as a display name; use it for display only and select behavior or label telemetry with a registered, bounded vocabulary value.",
+      "why": "Arbitrary text can't safely select guardrails, and as a telemetry dimension its cardinality is unbounded. Registration is what keeps the set of values bounded.",
+      "check": "Look for branches, switch cases, metric tags or audit fields that read a free-form name or label setting rather than a registered type name or constant.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a missing declaration selects security guardrails, the default must be the strictest choice (fail closed), so a forgotten setting never drops protections.",
+      "why": "A permissive default such as `development` fails open: one forgotten declaration silently removes the guardrails from a tenant that serves real users.",
+      "check": "Look at the default values of new settings or enums that turn on security restrictions or deletion protection. Flag any default that picks the permissive option when nothing is declared.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let a package add a vocabulary value by registering a DI strategy class resolved through a catalog, not by editing a hard-coded list, and have the catalog reject empty names, duplicate names and references to unregistered entries when it is composed.",
+      "why": "Vocabularies are open unless provably closed. Validating when the catalog is composed makes a bad registration fail at startup instead of when data is first read.",
+      "check": "Look for new vocabulary types added as closed enums or switch statements instead of registered strategies. Check that a new catalog validates its names and cross-references when it is constructed, not lazily on lookup.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a startup validator refuses non-production settings in the Production host environment, judge each registered value by its own declared flag (such as `IsProduction`) instead of comparing it against hard-coded names.",
+      "why": "The registered types decide, so a type contributed by another package is judged correctly without the validator having to know about it.",
+      "check": "In production-safety validators, look for string comparisons against built-in type names where the registered type's own flag should be read.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Stamp context that every audit or telemetry event needs (such as a tenant's effective type) once in the shared recorder, resolved once per entity per request, rather than passing it from each handler.",
+      "why": "If dozens of call sites each have to remember to pass the value, some will forget. Resolving it in the recorder stamps every event that names the entity.",
+      "check": "Look for new audit or telemetry fields that are threaded through individual handlers or endpoint call sites instead of being resolved centrally in the recorder.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a management list or read response, add best-effort derived fields from stored settings only after authorization, and omit the field rather than failing the request when the stored settings are unreadable or name an unregistered value.",
+      "why": "The operator needs the list to find the broken resource and repair it, so one bad derived field must not hide the whole response.",
+      "check": "Look for new enrichment fields in management resources that throw or answer 409 when stored data is invalid, or that are computed before the authorization check.",
+      "scope": "domain",
+      "domain": "management-api",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

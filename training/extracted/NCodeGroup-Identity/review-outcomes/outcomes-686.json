@@ -1,0 +1,141 @@
+{
+  "hash": "333adf42205e918a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #686",
+  "rules": [
+    {
+      "statement": "Don't map every caught InvalidOperationException (or other broad exception) from a store to 409 Conflict; detect the conflict from already-loaded state before calling external services or the store, and let other store failures propagate.",
+      "why": "A broad catch turns unrelated store failures into a misleading duplicate-identifier 409, hides the real cause, and can trigger compensating actions such as destroying a newly created external key.",
+      "check": "Look for catch blocks around store add/save calls that return 409 for a general exception type, and for conflict checks done only after side-effecting external calls.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare every error status a minimal API route can answer with .ProducesProblem (including 401/403 unless a group-level declaration covers them), not just the success response.",
+      "why": "Undeclared responses are missing from the OpenAPI document, so generated clients and consumers of the contract can't see them.",
+      "check": "For new or changed endpoint mappings, compare the statuses the handler returns or documents against the .Produces/.ProducesProblem declarations on the route and its group.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a code comment state only what the adjacent code enforces or does, not effects that happen elsewhere.",
+      "why": "A comment claiming an effect the code doesn't have leads maintainers to rely on the check for the wrong thing or to remove it.",
+      "check": "Compare each new comment's claims with the behavior of the method it sits in.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When validation rejects a value that isn't one of a known registered set, include the accepted values (ordinally sorted, or a note that none are registered) in the error detail.",
+      "why": "A caller who mistypes a name otherwise gets a 400 with no hint and has to look elsewhere for the valid names.",
+      "check": "Look for validation errors for unknown names/algorithms/providers that don't list the valid options.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two handlers end with the same sequence of steps (build resource, audit, notify, set ETag, return result), extract that sequence into one private method both call.",
+      "why": "Duplicated copies drift, for example when only one gets a changed audit or notification step.",
+      "check": "Look for identical multi-step tails in sibling handler methods added in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover each failure branch (not found, validation failure, conflict) for every route that has them, matching the coverage given to sibling routes.",
+      "why": "A regression in an untested branch passes the unit tests.",
+      "check": "Compare the failure-branch tests of sibling routes and flag a route missing tests for branches it shares with another.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a method returns the same status for several causes, assert the specific error detail in each test, not only the status code.",
+      "why": "Otherwise a test can pass because a different check refused the input than the one it names.",
+      "check": "Look for failure tests that assert only a status code where the code under test has multiple refusals with that status.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, build fixture inputs that are valid for the real contract even when the collaborator that would reject them is mocked.",
+      "why": "An invalid value that passes only because of a mock suggests to readers that it is a valid input.",
+      "check": "Look for request fixtures using values (formats, encodings, enum members) the real API doesn't accept.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, derive timestamps from a fixed instant or the registered/fake TimeProvider, not DateTimeOffset.UtcNow or DateTime.UtcNow.",
+      "why": "Tests that read the wall clock depend on the real time and can become flaky.",
+      "check": "Search new test code for DateTimeOffset.UtcNow, DateTime.UtcNow or DateTime.Now.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a decision record or document defers work as separate work, link the tracking issue.",
+      "why": "Deferred work without a tracked home can be forgotten.",
+      "check": "Look for 'separate work', 'later', 'future' or similar deferrals in docs/ADRs with no issue link.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an API adds an input limit or refusal (maximum length, rejected characters), state it in the decision record and the capability documentation that describe that input.",
+      "why": "Readers can't otherwise tell that such inputs are refused.",
+      "check": "Compare new validation limits in the diff with the docs and ADR text describing that field.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a Helm chart to fail rendering when a key management service provider has no workload credentials configured; a provider without them uses the pod's ambient identity, so only half-set or malformed credential settings are refused.",
+      "why": "The chart never requires KMS workload credentials, on any path; ambient identity (node role, managed identity, attached service account) is a supported configuration.",
+      "check": "Before reporting, check the chart README's credentials section and the existing render-time checks for whether missing credentials are documented as optional.",
+      "scope": "domain",
+      "domain": "helm-charts",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

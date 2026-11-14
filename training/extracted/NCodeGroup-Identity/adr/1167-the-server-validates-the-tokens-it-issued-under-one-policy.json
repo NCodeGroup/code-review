@@ -1,0 +1,126 @@
+{
+  "hash": "1aafda55f23e8f17",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1167",
+  "rules": [
+    {
+      "statement": "In production code, validate every token the server itself issued (access token, ID token, id_token_hint, token-exchange subject token, introspected token) through the shared issued-token validator seam; never build `JwtValidationParameters` inline for it.",
+      "why": "When each reader builds its own validation parameters, each states a different subset of the policy, and a check one reader omits (type, session, algorithm allow-list) becomes a hole only that reader has.",
+      "check": "Look for new code constructing `JwtValidationParameters` (or equivalent JWT validation setup) for tokens issued by the server, e.g. in resource authentication, introspection, token exchange or end-session handlers, instead of calling the issued-token validator.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A replacement or extension of token-validation behavior resolves the policy through the existing seam (wrapping or delegating to it) rather than reimplementing the policy checks.",
+      "why": "A copied policy drifts from the original; one place stating each policy means every reader and replacement inherits it.",
+      "check": "Check custom validator implementations or overrides for duplicated algorithm/type/issuer/lifetime/session checks instead of delegating to the seam or policy service.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token validator returns a failure result for an invalid token instead of throwing, while still letting `OperationCanceledException` from cancellation propagate.",
+      "why": "Callers handle a bad token as an expected outcome via the result; cancellation must still stop the operation.",
+      "check": "Look for validators that throw on malformed/expired/unsigned tokens, or that catch and swallow `OperationCanceledException` into a failure result.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a token against the tenant/context passed explicitly to the validator, never against a tenant resolved from ambient routing or the current request.",
+      "why": "Some callers (e.g. a management API authenticating against a control-plane tenant) validate under a different tenant than the route's.",
+      "check": "Look for validation code that reads the tenant, issuer or keys from HttpContext/route data instead of the context parameter it was given.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate an issued access token against the tenant's effective signing and encryption algorithm allow-lists, not the requesting client's or resource server's lists, and never accept JWE compression.",
+      "why": "The party reading a token is not always the party it was protected for; the tenant's lists bound every token it issued.",
+      "check": "Check access-token validation for algorithm lists taken from client or resource-server settings, missing algorithm restrictions, or allowing the `zip` header.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require explicit token typing when validating an issued JWT: `typ` must be `at+jwt` for an access token and `JWT` for an ID token, along with issuer and lifetime checks (and audience when the caller names audiences), so that introspection responses (`token-introspection+jwt`) or logout tokens (`logout+jwt`) never pass as either.",
+      "why": "Kinds of JWT are not interchangeable; RFC 8725 §3.11 and RFC 9701 §8.1 warn about cross-JWT confusion.",
+      "check": "Look for JWT validation that omits the `typ` check, accepts any type, or skips issuer/lifetime validation for access or ID tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Do not supply decryption keys when validating an ID token, so an encrypted ID token is rejected; only an `id_token_hint` may be decrypted with the server's keys under its ID-token encryption allow-lists, and only a hint skips the lifetime check.",
+      "why": "An ID token is encrypted only to its client, so a server decryption key would only widen what is accepted; RP-Initiated Logout §2 lets a hint be expired and re-encrypted to the server.",
+      "check": "Check ID-token validation for decryption keys or skipped lifetime validation outside the id_token_hint path, and the hint path for missing algorithm allow-lists or allowed compression.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In token exchange, select the validation policy by subject_token_type: `access_token` uses the access-token policy, `id_token` the ID-token policy, `jwt` only when it validates as one of those two, and any other type returns `invalid_request`.",
+      "why": "A generic `jwt` subject token must not let an introspection response or logout token be exchanged (RFC 8693, RFC 9701 §8.1).",
+      "check": "Look for token-exchange code that accepts `jwt` subject tokens with generic validation, or accepts unknown token types instead of returning invalid_request.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reject an issued token whose `sid` names an explicitly revoked session, but don't treat an absent or aged-out session record as a revocation.",
+      "why": "Revoked sessions must invalidate their tokens, while an expired session record is bounded by the token's own short lifetime.",
+      "check": "Check token validation for a missing session-revocation check, or for logic that rejects tokens merely because the session record isn't found.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A resource server that the authorization server reads itself (a system resource server) must never hold keys: the management API refuses to create or import a secret for one with `409 Conflict`, and issuance ignores any key stored on one rather than encrypting to it.",
+      "why": "A key on a system resource server would make issuance encrypt tokens the server's own endpoints (UserInfo, management API) could then not read.",
+      "check": "Check secret create/import endpoints for a missing system-resource-server guard, and issuance code that uses a system resource server's keys for encryption.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

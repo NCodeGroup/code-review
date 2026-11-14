@@ -1,0 +1,135 @@
+{
+  "hash": "bb48105015fb9d72",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1086",
+  "rules": [
+    {
+      "statement": "In production code, keep a protocol endpoint's route handler to orchestration only: guard the HTTP verb and content type, authenticate the client, load the strongly typed request, dispatch through the mediator and render the result, with no ad-hoc form parsing, inline validation or inline protocol work.",
+      "why": "A thin endpoint gives every protocol endpoint one structure and keeps each protocol step testable without the HTTP pipeline and replaceable.",
+      "check": "Look for endpoint handlers that read form fields by hand, validate parameters inline, or do persistence or issuance work directly instead of sending mediator commands. Also flag handlers that inject many services beyond client authentication.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, model every protocol endpoint's request as a strongly typed message (an interface plus a message class whose parameters are declared known parameters), load it through the message's static Load and register its message factory, even when the endpoint looks simple.",
+      "why": "Simple endpoints grow parameters, and a known-parameter-backed message gives typed access, consistent parsing and serialization, extensibility and OpenAPI metadata.",
+      "check": "Flag new endpoints that read request parameters from the form or query by string key, or that define a request message without registering its message factory.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, perform protocol request validation in a mediator command handler (a default validator at high priority) that throws the protocol error as an exception on any violation, and add further validators through TryAddEnumerable.",
+      "why": "Validation then composes and can be replaced, and the family's exception filter renders the thrown error as a standard protocol error response.",
+      "check": "Flag validation done in the endpoint, validators that return error flags instead of throwing the protocol error exception, or extra validators registered with Add/TryAdd instead of TryAddEnumerable.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, express each replaceable protocol step as a mediator command that returns a disposition, handled by a command-response handler, not as logic inline in the endpoint.",
+      "why": "A processing tail behind command-response handlers makes each step independently testable and replaceable.",
+      "check": "Look for grant issuance, persistence or other protocol work called directly from the endpoint instead of through a command with a disposition result.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, ship each deployment-supplied capability seam with a default handler that reports unsupported through its disposition (an error the endpoint renders), and let a capability package replace it with TryAddSingleton.",
+      "why": "The core then ships protocol-correct behavior and deployment-specific behavior plugs in uniformly.",
+      "check": "Flag capability seams whose default throws NotImplementedException, silently succeeds or is missing, and capability packages that replace a default with Add/Replace in a way that ignores TryAdd semantics.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, put side-effecting transports (notification delivery, back-channel calls) behind an injectable service that a mediator handler calls, and keep the decision in the handler.",
+      "why": "The decision stays in the pipeline and the delivery stays in a replaceable service.",
+      "check": "Flag handlers or endpoints that perform HTTP or notification delivery inline instead of calling an injected transport service.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, install an endpoint family's cross-cutting filters (exception rendering, metrics, rate limiting and similar) once on the family's route group, not on each endpoint and not as process-wide middleware.",
+      "why": "Per-endpoint filters repeat the wiring and are easy to forget on a new endpoint, and process-wide middleware would also wrap endpoints outside the family.",
+      "check": "Flag new endpoints that add the family's exception or metrics filter themselves, or new global middleware that handles one family's errors.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, register an endpoint and its services, message factories included, once through its group's builder, and don't keep a separate registration chain that lists the same endpoints again.",
+      "why": "One registration vocabulary removes duplicate listing, and adding an endpoint is a single registration call in its group whose filters then apply automatically.",
+      "check": "Look for endpoints registered both in a group and in a separate family-level chain, or endpoint services registered on a bare IServiceCollection apart from the group.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, keep shared composition-root and routing code free of references to any one protocol's types, and keep a pure DI registration package free of ASP.NET Core dependencies.",
+      "why": "Layering forbids shared code from knowing about OpenID types, and generic routing plumbing belongs in a package that says it depends on ASP.NET Core.",
+      "check": "Flag shared routing or registration code that references protocol-specific types, and ASP.NET Core references added to a pure DI package.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, a protocol endpoint's Map call sets its name, tags and Produces metadata, disables antiforgery and marks it discoverable.",
+      "why": "The recorded endpoint shape carries per-endpoint OpenAPI and discovery metadata in a uniform way.",
+      "check": "Check that a new endpoint's mapping includes WithName, WithTags, Produces, DisableAntiforgery and the discovery metadata call.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, add a filter to a RouteGroupBuilder with AddEndpointFilter<TBuilder, TFilter>(), giving the builder type first.",
+      "why": "The decision fixes this as the way to add group filters.",
+      "check": "Flag group filter registrations that use another overload or put the type arguments in a different order.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

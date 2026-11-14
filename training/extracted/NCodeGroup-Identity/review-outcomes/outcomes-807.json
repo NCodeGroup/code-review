@@ -1,0 +1,52 @@
+{
+  "hash": "ddb2b2ef5aea22b8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #807",
+  "rules": [
+    {
+      "statement": "Don't report a missing explicit slice after `BufferFactory.Rent` from `NCode.Buffers`: the rented `Memory<T>`/`Span<T>` already has exactly the requested length, whether `isSensitive` is true or false.",
+      "why": "The maintainer verified that `BufferFactory.Rent` returns a buffer of exactly the requested length, unlike a raw `ArrayPool` rental, so code that dropped `[..length]` is correct.",
+      "check": "Before asking for a `[..length]` slice, check whether the buffer came from `NCode.Buffers` `BufferFactory.Rent` rather than `ArrayPool<T>.Rent` or `MemoryPool<T>.Rent`. Only the raw pools return oversized buffers.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a DI registration method to register a dependency, or to require or validate it at startup or compile time, when some of its callers (such as migration workers or design-time DbContext factories) register it only to build a model and never resolve the service that needs it.",
+      "why": "Making the dependency mandatory would force an unused service onto those hosts. A host that resolves the service without it still fails with a DI error that names the missing type, and the registration's documentation says the host must supply it.",
+      "check": "Before reporting a dependency that only fails when it's resolved, find every caller of the registration method and check whether any of them never resolve the dependent service. Also check whether the XML doc says the host supplies the dependency.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a backward-compatibility break, such as a registration that is no longer done or a transitive package reference that was removed, for consumers who upgrade in place, when the repository is pre-release and hasn't published the package.",
+      "why": "Nothing is shipped yet, so no consumer relies on the old behaviour, and the standing direction is that nothing has to stay compatible.",
+      "check": "Before reporting an api-compat finding, check the repository instructions and release status for a pre-release, nothing-is-published direction.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a CHANGELOG entry for a corrected log message or other fix when the repository's changelog lists only capabilities under `### Added` and `### Security` and says fixes are not tracked.",
+      "why": "In a pre-release family, the `## [Unreleased]` section is a catalog of what the family does, and runtime message text is not a capability.",
+      "check": "Before reporting a missing CHANGELOG entry, read the repository instructions and the structure of the changelog's Unreleased section to see whether fixes are tracked at all.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

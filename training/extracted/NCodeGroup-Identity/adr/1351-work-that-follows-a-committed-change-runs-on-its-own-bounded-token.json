@@ -1,0 +1,108 @@
+{
+  "hash": "323403a6b5286814",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1351",
+  "rules": [
+    {
+      "statement": "Run work that wholly follows a committed change (cache eviction, change announcement, security effects, audit records) on `CancellationToken.None` bounded by its own timeout through the injected `TimeProvider`, never on the request's cancellation token.",
+      "why": "A client that disconnects after the commit would cancel the follow-up work and leave stale caches, live sessions or missing audit records. Unbounded `CancellationToken.None` would let a hung store hold the request open indefinitely.",
+      "check": "Look for post-commit steps that receive the request's `CancellationToken` (or `HttpContext.RequestAborted`), or that use `CancellationToken.None` with no timeout.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send each post-commit step through the repository's single shared bounded-run helper instead of writing a timeout and catch at each call site.",
+      "why": "When every site repeats the bound-and-catch pattern, one of them eventually forgets it.",
+      "check": "Look for new post-commit code that builds its own `CancellationTokenSource` with a timeout plus a try/catch instead of calling the shared helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put a `CancellationToken` parameter on audit-recorder or post-commit effect methods, and don't add one that the implementation ignores.",
+      "why": "A token parameter invites the caller to pass the request's token, which defeats the post-commit rule, and an ignored parameter misleads readers. This is a deliberate exception to the usual rule that async methods accept a token.",
+      "check": "Look for recorder or post-commit effect interfaces and methods that declare a `CancellationToken`. When reviewing these methods, don't report a missing token parameter.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log a failure in post-commit follow-up work (announcement, refresh, audit publish, session termination, counter reset) and swallow it so the already-committed change still reports success.",
+      "why": "The change is durable. An error response, or a timeout surfacing as `TaskCanceledException`, would make the caller retry a change that already happened. A swallowed audit failure also lets a caller that records several events record the rest.",
+      "check": "Look for post-commit steps whose exceptions reach the caller or turn a successful write into an error response, or that are swallowed without being logged.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a change, announce it to other replicas from a `finally` block that follows the local cache eviction, so the announcement runs even when the eviction fails.",
+      "why": "Other replicas must learn of the change even when the local eviction or seed fails, or they keep serving stale state.",
+      "check": "Look for change handlers where a throwing eviction or seed would skip the broadcast or invalidation message.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the request's cancellation token on work that runs before the commit or is itself the requested operation (for example, terminating sessions before a delete, or an idempotent revoke endpoint).",
+      "why": "That work is not post-commit. If it fails, the caller can repeat the idempotent request.",
+      "check": "Don't report pre-commit steps or revoke routes for using the request's token. Report them if they wrongly use the post-commit bounded helper.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "After a commit, run security effects (session termination, failed-attempt counter reset) before recording the audit event.",
+      "why": "The decided order is commit, then security effects, then the audit record.",
+      "check": "Look at call sites that block a user, disable an account, reset or change a password, or create an account, and check that the commit, the security effects and the audit call come in that order.",
+      "scope": "domain",
+      "domain": "identity",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Log failed post-commit session terminations at `Error` and failed failed-attempt counter resets at `Warning`. Include the tenant id (and the subject id for terminations), but never the user name or the reason.",
+      "why": "A failed termination leaves sessions active. A failed counter reset fails closed. The user name and the reason are sensitive and must not reach the logs.",
+      "check": "Look at post-commit failure log calls: check their level and look for a user name or reason among the logged values.",
+      "scope": "domain",
+      "domain": "identity",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't expose the post-commit timeout backstop as a configuration option. Keep it a fixed constant that matches the dependencies' own timeouts.",
+      "why": "The bound is only a backstop behind the store's and client's own timeouts, so an option adds a setting nobody has a reason to tune.",
+      "check": "Look for new options properties that configure the post-commit work timeout.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

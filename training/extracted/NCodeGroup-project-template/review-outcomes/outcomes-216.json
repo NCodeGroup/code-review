@@ -1,0 +1,18 @@
+{
+  "hash": "1cce7c88ac30f1e9",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #216",
+  "rules": [
+    {
+      "statement": "Don't ask for a single-line inline comment to be cut to a short \"what the code does\" line when it gives the reason the code needs, and don't flag its length when the file's existing comments routinely run that long.",
+      "why": "A short \"what\" comment would drop the reason the code exists, such as why certain files have to be handled specially. Long single-line rationale comments are already the norm in files that use them, so the finding only asks for a style the file doesn't follow.",
+      "check": "Before reporting a long or explanatory comment, check whether it states a reason a reader needs to understand the code, and compare its length with the other comments in the same file. Report it only when it just retells history with no rationale, or when it is clearly out of line with the file's own comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

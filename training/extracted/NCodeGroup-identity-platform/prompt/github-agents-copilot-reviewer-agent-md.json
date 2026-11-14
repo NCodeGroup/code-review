@@ -1,0 +1,62 @@
+{
+  "hash": "3b1557658d066a72",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "identity-platform .github/agents/copilot-reviewer.agent.md",
+  "rules": [
+    {
+      "statement": "Don't skip, disable or weaken existing tests (removing assertions, loosening expected values, adding skip attributes) to make a change pass.",
+      "why": "Skipped or weakened tests are a shortcut that hides whether the change actually works.",
+      "check": "Look in the diff for new [Skip]/Ignore attributes, deleted or commented-out tests or assertions, and expected values changed to match new output without the change justifying it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't swallow exceptions: a catch block must handle, rethrow, wrap or report the error, not silently discard it.",
+      "why": "Swallowed errors are a shortcut that hides failures instead of handling them.",
+      "check": "Look for empty catch blocks, catch-all handlers that only return a default, or catches that drop the exception without logging, rethrowing or translating it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't hard-code values that should come from configuration, inputs or constants defined for them, as a shortcut to make a change work.",
+      "why": "Hard-coded values are a shortcut that makes code pass checks without implementing the intended behavior.",
+      "check": "Look for literal URLs, credentials, IDs, magic numbers or expected results embedded in production logic where the surrounding code reads them from options, parameters or named constants.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't leave TODO, FIXME or placeholder comments in completed work.",
+      "why": "Leftover TODOs mark unfinished work presented as done; work outside scope should be filed as a follow-up instead.",
+      "check": "Search the added lines of the diff for TODO, FIXME, HACK or NotImplementedException placeholders.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When reviewing work done against a written plan, flag every deviation from the plan step as at least should-fix even when its checks pass, including creating something the step said already exists, touching files the step doesn't list, or changing an interface the step didn't call for.",
+      "why": "A deviation means the executor improvised instead of escalating.",
+      "check": "Compare each changed file and changed public signature in the diff against the Files and Change text of the plan step that produced it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

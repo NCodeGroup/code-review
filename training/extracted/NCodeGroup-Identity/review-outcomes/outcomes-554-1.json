@@ -1,0 +1,273 @@
+{
+  "hash": "a3fa081a846092dc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #554",
+  "rules": [
+    {
+      "statement": "Give every refusal branch of a token or message validator its own test, including missing required claims, inconsistent claims and bounds just beyond the clock skew, each with a passing control just inside the bound.",
+      "why": "If a regression drops an untested check, the validator could accept a token that is not yet valid or is malformed, and the suite would still pass.",
+      "check": "For new or changed validator branches that return a failure, look for a test that reaches each branch on a fake clock, plus a control case that passes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that a validation branch is untested, check whether an existing test already reaches it through default parameters, such as a parameters helper that leaves an optional property null.",
+      "why": "The guard the bot called untested was already covered by a test that validated with parameters that had no decryption keys.",
+      "check": "Search the test project for tests that call the method with parameter builders whose defaults trigger the branch, and read what they assert.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a key whose key_ops is empty or combines signature and encryption operations as an invalid key, rather than treating it as usable for any operation.",
+      "why": "Reading a mixed set as unrestricted drops the issuer's restriction instead of enforcing it. RFC 7517 §4.3 and the family's JSON Web Key importer refuse the same mix.",
+      "check": "Look at key import code that maps key_ops to a use: a null or unrestricted use produced from mixed or empty operations is a violation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When decrypted plaintext must be returned as a caller-owned byte array, return the decryption buffer itself when the plaintext fills it, and zero the buffer whenever the plaintext is copied out of it or decryption fails.",
+      "why": "Decrypted secrets left in an uncleared intermediate array stay on the managed heap. Returning the buffer itself leaves no copy behind.",
+      "check": "In decryption code, look for a buffer whose contents are copied out with ToArray or slicing, or that is abandoned on failure, without being cleared. Don't report returning the buffer itself when the contract makes the caller its owner.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report value types or shared naming helpers in an Abstractions package as misplaced behavior when consumers that reference only the abstractions need them, or when an ADR records the exception.",
+      "why": "A value type that reads only its own encoded item, like JsonElement for JOSE, and a naming rule that key resolvers must apply exactly as the implementation does belong in the contracts. Moving them would force abstraction-only consumers onto the implementation.",
+      "check": "Before flagging logic in an Abstractions package, check whether abstraction-only packages use it, and whether an ADR lists the exception, as with TokenHash in the JOSE abstractions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Start the XML doc summary of a get/init property with \"Gets\" (for a bool, \"Gets a value indicating whether\"), never \"Gets or sets\".",
+      "why": "\"Gets or sets\" tells consumers in IntelliSense that they can set the property after construction.",
+      "check": "Compare each property's summary wording with its accessors: \"Gets or sets\" on an init-only or get-only property is a violation.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare security-relevant flags on extensible, application-registered descriptors as `required`, so that every descriptor states its choice instead of inheriting a false default.",
+      "why": "A contributed descriptor that forgets a flag such as IsPrivate gets the unsafe default silently, for example private key material treated as public.",
+      "check": "Look for public bool or security-relevant init properties on descriptor types that applications register without the `required` modifier.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Documentation of a message-inspection type must say that headers, the unprotected ones in particular, are returned as received and unauthenticated. It must not claim that nothing unauthenticated is readable.",
+      "why": "A reader may otherwise trust unprotected header values as authenticated, when they should only be used to choose keys.",
+      "check": "Read the doc comments on types that expose headers before verification, and look for claims that the returned data is authenticated.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use null-conditional or null-coalescing operators on members that are non-nullable and initialized to a non-null default.",
+      "why": "The dead null handling suggests to a reader that null is a supported input.",
+      "check": "Look for `?.`, `??` or `is null` checks on non-nullable reference properties, such as collections that default to `[]`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Delete private helpers that only forward their arguments to another method, and call the target directly.",
+      "why": "A pass-through helper adds indirection without behavior.",
+      "check": "Look for private methods whose body is a single call with the same arguments passed through.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for logic to be shared between two packages when the package dependency rules forbid one from referencing the other, or when the two read different inputs; accept parallel implementations pinned by tests.",
+      "why": "An abstractions-only package cannot call an implementation package, and its tests pin every branch, so a drift between the two shows up in a test.",
+      "check": "Before suggesting a shared extraction, check the package references and the ADR on dependency layering, and check whether tests pin the duplicated behavior.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Saturate date and time arithmetic that adds or subtracts a configurable clock skew, clamping at DateTimeOffset.MaxValue or MinValue, and cover the extreme skew with a test.",
+      "why": "An extreme skew such as TimeSpan.MaxValue otherwise overflows or throws ArgumentOutOfRangeException, which wrongly refuses every token or breaks key selection.",
+      "check": "Look for `now + skew`, `now - skew` or tick arithmetic with a user-supplied TimeSpan and no clamp, where only negative values are rejected.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for ArgumentOutOfRangeException when a property of a parameters object is out of bounds; the convention is an ArgumentException that names the parameters object.",
+      "why": "The family throws ArgumentException for invalid properties of a parameters object, and ArgumentOutOfRangeException.ParamName would name the parameters object, which is not itself out of range.",
+      "check": "Before reporting, check whether the bad value is a property of an options or parameters argument rather than a direct argument, and compare with sibling validators.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `ref TWriter` overloads on encoders whose output is non-secret wire data returned whole, when an ADR documents that they return a new array.",
+      "why": "The caller keeps or sends the whole message, just as a compact token is returned as a string, so a pooled destination adds nothing.",
+      "check": "Check whether the output is secret, and whether an ADR records the array-returning design, before asking for buffer-writer overloads.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name security-relevant numeric bounds, such as minimum tag or key sizes, as constants, and use the constant in both the check and the error message.",
+      "why": "A bare literal is hard to find and can drift from the ADR or from the message text.",
+      "check": "Look for numeric literals in security checks and their error messages, such as a minimum size compared against inline.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a library package's options to have a SectionName or an IConfiguration binding overload; library registrations take an `Action<TOptions>` callback, and hosts bind options from their own configuration section.",
+      "why": "Library packages in the family take a configuration callback and no IConfiguration. A host binds with AddOptions<T>().Bind(...), and the options validator still runs at start.",
+      "check": "Check whether the package is a library rather than a host before reporting a missing SectionName or configuration overload.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for opt-in extension methods on a library's builder marker to move into DefaultRegistration; they belong in `<Library>LibraryRegistration`, while DefaultRegistration registers the package's own services.",
+      "why": "That is the family layout, as EventLibraryRegistration and BffLibraryRegistration show.",
+      "check": "Check whether the extension is an opt-in method on the builder marker before reporting a registration split.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When failure-code strings are duplicated across packages that must not reference each other, pin them as equal with a test instead of aliasing across layers.",
+      "why": "There is no shared lower layer, and adding the dependency is wrong; a pinning test makes any drift fail the build.",
+      "check": "For duplicated vocabulary constants across sibling packages, look for a test asserting they are equal; don't suggest a cross-package alias that adds a forbidden reference.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a closed enum used in an open registration model to be made extensible when an ADR records why it is closed and a new value would need new library code anyway.",
+      "why": "The enum names the only forms the library can import and export, so extensibility would not avoid a library change (the ADR-1150 test).",
+      "check": "Look for an ADR that justifies the closed vocabulary before reporting it.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Expose collections that a type stores and validates as ImmutableArray<T> (or a frozen collection), and copy init-assigned collections, rather than storing a caller's IReadOnlyList.",
+      "why": "A caller can otherwise mutate a list after it has been validated.",
+      "check": "Look for stored IReadOnlyList or IReadOnlyDictionary properties set by init or a constructor without a copy, on types whose contents are validated.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to freeze or copy collections on input parameter objects that are read once, or on result types built only internally from freshly created collections.",
+      "why": "No caller holds a mutable reference to them, so freezing would cost a copy per token and protect nothing.",
+      "check": "Before reporting unowned collections, check whether the type is a one-shot input, or is constructed only by internal readers from new collections.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make failure-result factories refuse an empty reason with ArgumentException.ThrowIfNullOrEmpty.",
+      "why": "Otherwise a failure can carry an empty reason.",
+      "check": "Look at Fail-style factories that take a reason string without a null-or-empty guard.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a result's IsValid flag to be derived from another member when it carries [MemberNotNullWhen] attributes that the derived getter cannot prove.",
+      "why": "A getter such as `FailureCode is null` cannot prove MemberNotNullWhen for other members and fails the build with CS8775. The private constructor and the factories keep the flag consistent.",
+      "check": "Check for MemberNotNullWhen on the flag, and for a private constructor with factories, before suggesting a derived property.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report public types in a purpose sub-namespace, such as .Validation or .Issuance, shared by a contract, its DTOs and its Default* implementation across an .Abstractions/implementation pair.",
+      "why": "The production conventions allow purpose namespaces across the pair, and namespaces don't follow folders (IDE0130 is off), so moving a file doesn't break consumers.",
+      "check": "Check whether the sub-namespace groups one contract with its DTOs and implementation across both packages before reporting it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

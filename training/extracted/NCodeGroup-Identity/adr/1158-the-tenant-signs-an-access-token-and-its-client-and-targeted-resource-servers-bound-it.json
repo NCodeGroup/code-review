@@ -1,0 +1,137 @@
+{
+  "hash": "c8c48e36adfca388",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1158",
+  "rules": [
+    {
+      "statement": "Sign access tokens only with the authorization server's (tenant's) own asymmetric keys; never sign one with a resource server's stored key, which may be used only to encrypt tokens for it.",
+      "why": "A resource server holding a token-signing key could forge its own tokens, a symmetric signing key across a trust boundary is forbidden by FAPI, and RFC 9068 expects validation through the authorization server's JWKS.",
+      "check": "Look at access-token issuance code that picks signing credentials: flag any path that signs with a resource server's or audience's secret (for example an HS256 shared secret) instead of the tenant's keys.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an access token targets several audiences, apply the settings of the client and of every targeted resource server, and read every access-token setting from that one combined collection instead of from one party's settings alone.",
+      "why": "Using one scope's settings instead of the other's leaves the other scope's bounds, and the security profiles selected above it, without effect.",
+      "check": "Look for issuance code that reads access-token settings (lifetime, signing or encryption algorithms, sender constraint) from the client's settings only, or from a single resource server's settings, when it should use the combined collection.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Combine the settings of sibling scopes that govern one operation using only order-independent, idempotent lattice merges (Or, Intersect, Min and the like), and throw for a setting that has no lattice merge instead of falling back to a projection such as Replace or Keep.",
+      "why": "A projection would let the order of the collections decide the value and could overwrite one party's bound, while a lattice merge binds both parties and does not count values they both inherit twice. Failing closed stops an extension from weakening a bound by registering a non-lattice setting.",
+      "check": "Look at code that joins two sibling settings collections: flag use of the parent-to-child Merge, Replace/Keep semantics, or silently skipping a setting with no lattice merge.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the combined bounds rule out every acceptable credential, refuse the request; never quietly fall back to weaker or different credentials, such as encrypting to the tenant's key when the targeted resource server's keys are excluded.",
+      "why": "Nothing may be silently weakened or redirected. A token encrypted to a key the resource server does not hold is one it cannot decrypt, which RFC 9068 §4 rules out.",
+      "check": "Look for fallback branches in credential selection (signing or encryption key, algorithm) that pick an alternative key or algorithm outside the combined bounds instead of failing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Encrypt an access token to the party that reads it, and refuse an encrypted token for several audiences when any of them decrypts its own tokens, because a compact JWE has only one recipient.",
+      "why": "Otherwise the outcome would depend on which scope stated the requirement, and some resource server would get a token it cannot read.",
+      "check": "Look at the choice of JWE recipient: flag code that encrypts a multi-audience token to one resource server's key, or to the tenant's key when an audience decrypts its own tokens.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a sender-constraint requirement as met only by a binding (DPoP `jkt` or mTLS `x5t#S256`) whose confirmation method every targeted resource server verifies.",
+      "why": "A token bound by a method a resource server does not verify passes as compliant but is a bearer token to that resource server.",
+      "check": "Look at sender-constraint enforcement: flag code that accepts any binding without intersecting the confirmation methods supported by all targeted resource servers.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At the token endpoint, refuse a request that needs a sender-constrained token but presents no binding before redeeming the authorization code or rotating the refresh token.",
+      "why": "Refusals that come after issuance arrive after the grant has been spent. Checking the client-level requirement early avoids spending anything.",
+      "check": "Look at the order of token endpoint handling: flag a client-level sender-constraint check placed after code redemption or refresh token rotation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Report a refusal the client can avoid by changing its request as `invalid_request`, and a server configuration that cannot be satisfied (no key within the permitted algorithms) as `server_error` with HTTP 500.",
+      "why": "Refusals must name their cause, so the client can tell its own error from a configuration error.",
+      "check": "Look at the error codes returned when token issuance fails: flag a configuration-caused failure reported as invalid_request, or a request-caused one reported as server_error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When intersecting preference-ordered algorithm lists, keep the left operand's (platform's) order and put the client on the left; a narrower scope expresses a preference by narrowing the list, not by reordering it.",
+      "why": "Every effective list then keeps the platform root list's order down the whole cascade, including profile ceilings.",
+      "check": "Look for intersections that reorder results, take the resource server as the left operand, or let a child scope reorder algorithm preference lists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a public, replaceable service must enforce a security policy, put that policy in its own public service that replacements resolve, not inside the internal default implementation, and keep data-supplying resolvers free of the policy.",
+      "why": "Otherwise every replacement must reimplement the policy or silently skip it, and an extension cannot add a bound without replacing the whole service.",
+      "check": "Look for security policy logic (combining bounds, enforcing requirements, choosing credentials) placed in an internal default implementation of a public replacement point, or inside a replaceable resolver.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Dispose per-request resolutions that hold deserialized key material once the operation that needed them finishes.",
+      "why": "This releases the per-request key material.",
+      "check": "Look for an IAsyncDisposable or IDisposable that holds keys or secrets and is resolved in a request but never disposed, for example one with no `await using`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

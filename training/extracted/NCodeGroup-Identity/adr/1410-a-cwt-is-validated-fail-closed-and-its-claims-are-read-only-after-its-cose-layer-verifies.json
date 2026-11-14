@@ -1,0 +1,138 @@
+{
+  "hash": "87c009366fb44dd3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1410",
+  "rules": [
+    {
+      "statement": "A token verifier must not read or act on any claim until the token's signature or MAC layer has verified. Validation runs in this order: parameters, envelope or tag, decryption, key resolution, verification, token type, then claims.",
+      "why": "A verifier sits at a trust boundary. Claims from an unverified message come from an unauthenticated party.",
+      "check": "Look for code that parses or branches on payload claims such as iss, aud or exp before the verify call. A key resolver may receive only the headers of the authenticated message.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse a token that is protected only by encryption: a CWT, or a JWE that does not enclose a JWS. The decrypted content must be an authenticated message, signed or MACed.",
+      "why": "Anyone who holds the recipient's public key can produce a key-transport-encrypted token, so encryption alone does not authenticate the issuer.",
+      "check": "Look for validation paths that accept decrypted content as claims without requiring an inner COSE_Sign1, COSE_Sign, COSE_Mac0 or COSE_Mac message, or an inner JWS.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token validation policy at a trust boundary must require non-empty allow-lists of algorithms and issuers with no empty entries, and so must the content-encryption and key-distribution algorithm lists for encrypted tokens. A null list must never mean unrestricted, and a parameter error must throw before the token is read.",
+      "why": "The policy fails closed. The caller states the whole policy instead of inheriting permissive defaults.",
+      "check": "Look for validation parameters where a null or empty ValidAlgorithms, ValidIssuers or similar list skips the check, and for parameter validation that runs after token parsing begins.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A verifier of other parties' tokens must take its keys only from the caller, as explicit keys or a caller-supplied resolver, and must never fall back to the server's own keys.",
+      "why": "The verifier checks tokens issued by other parties. Using the server's own keys could accept tokens the caller never trusted.",
+      "check": "Look for key resolution that defaults to the application's own signing or secret keys when no validation keys or resolver are given.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the audience rule this way: when the verifier names no valid audiences, refuse a token that carries aud. When it names some, require the token's aud to contain one of them. A token without aud is valid only for a verifier that names none.",
+      "why": "This follows RFC 8392 §3.1.3 and RFC 7519 §4.1.3. Some tokens, such as status lists, legitimately carry no aud, so aud is not always required.",
+      "check": "Look for audience checks that skip validation when the configured audience list is empty, or that always require aud.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read registered token claims with strict types and report a claim of the wrong form as invalid_claim. iss and sub are text; aud is text or a non-empty array of text; exp, nbf and iat are integers or finite floating-point numbers without a tag; cti is a byte string; cnf is a map. Keep every claim available as received.",
+      "why": "Claims from a remote party are read strictly, as NumericDate values are elsewhere, so a malformed claim can't be silently coerced.",
+      "check": "Look for claim readers that coerce types, accept NaN or infinite NumericDates or tagged values, or accept an empty aud array.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate token lifetime the same way across token formats. exp is required unless the policy disables it or a maximum lifetime caps it. nbf after exp is invalid_lifetime. nbf or iat later than now plus the clock skew is not_yet_valid. exp earlier than now minus the skew is expired. The maximum lifetime is measured from the earliest of iat and nbf.",
+      "why": "CWT lifetime validation adopts the JWT validator's rule so that the formats behave consistently.",
+      "check": "Compare lifetime checks against these conditions. Look for a missing skew, a wrong comparison direction, or a maximum lifetime measured from only one of iat or nbf.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the caller names an expected token type, require the protected typ header parameter (RFC 9596) to be text equal to it, and treat typ as understood under crit.",
+      "why": "The token type is explicit and must come from the protected, authenticated headers.",
+      "check": "Look for typ checks that read unprotected headers, accept non-text values, or fail to mark typ as understood when processing crit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A token validator's failure codes reuse the existing JWT validator's code strings (invalid_token, invalid_claim, invalid_issuer, invalid_audience, expired, not_yet_valid, invalid_lifetime, invalid_token_type) wherever the meaning is the same, and add new codes only for new concepts. Failures from an underlying layer report that layer's own code.",
+      "why": "Failures stay machine-readable and consistent across token formats.",
+      "check": "Look for new failure-code constants that duplicate an existing JWT concept under a different string.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A validation failure reason must be fixed text that never includes the token or any part of it.",
+      "why": "Tokens are credentials, and failure reasons can end up in logs and responses.",
+      "check": "Look for failure messages or exceptions that interpolate the token, its payload or claim values.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When issuing a token, write every NumericDate as whole seconds in deterministic encoding, refuse additional claims that collide with registered claim keys, and refuse an exp that is not after nbf and iat.",
+      "why": "The issuer must produce well-formed, canonical tokens. Additional claims must not override registered claims.",
+      "check": "Look for issuers that write fractional dates, use non-deterministic CBOR or JSON encoding, let caller claims overwrite registered keys (1 through 8 in CWT), or skip the exp ordering check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

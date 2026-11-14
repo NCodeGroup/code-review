@@ -1,0 +1,113 @@
+{
+  "hash": "30f81ebebf402402",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1205",
+  "rules": [
+    {
+      "statement": "A handler for a cross-replica change announcement must be idempotent and correct when a message is lost, repeated, late or out of order, because delivery is best effort and at most once.",
+      "why": "Replica broadcasts are cache-coherence hints with best-effort, at-most-once, unordered delivery, and the publisher's own replica also receives its message.",
+      "check": "Look for broadcast handlers that assume ordering, exactly-once delivery or that a message was never seen before, such as counters, toggles, or work that fails or duplicates on a second call; evictions and re-reads are fine.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A cross-replica change announcement carries only an identifier of what changed, never the changed data itself; receivers re-read or evict.",
+      "why": "The announcement is a hint that tells other replicas to drop what they cached. The source of truth stays in storage, and materialized state may not be serializable.",
+      "check": "Look for broadcast publishes whose message serializes entity state, settings or secrets instead of an identifier.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change is announced after its write has committed, publish it in a `finally` block (or otherwise after any local follow-up step that can fail), and log and swallow a publish failure instead of failing the write.",
+      "why": "The change is committed either way, so other replicas must still be told even when a local seed fails. A broadcast outage must never fail a management write, because the replicas converge through reconciliation.",
+      "check": "Look for post-commit announcements that a preceding local step's exception can skip, or a publish exception that propagates to the write's caller.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a broadcaster dispatches a message to several handlers, catch and log each handler's failure, keep running the remaining handlers, and never surface a handler failure to the publisher.",
+      "why": "One handler failing must not stop other features' handlers or fail the publishing operation.",
+      "check": "Look for dispatch loops over handlers without a per-handler try/catch and log, or that rethrow handler exceptions to the publisher.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rethrow an `OperationCanceledException` only when the caller's own cancellation token is cancelled; treat a cancellation that comes from a callee's own timeout as an ordinary failure and log it.",
+      "why": "A handler's internal timeout is not the caller cancelling, and it must not be mistaken for the caller cancelling.",
+      "check": "Look for `catch (OperationCanceledException)` blocks that rethrow unconditionally instead of checking that `cancellationToken.IsCancellationRequested` is set for the caller's token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register a default adapter for a port with `TryAdd`, so that a host's own registration wins, and register handlers that several features contribute with `TryAddEnumerable`.",
+      "why": "Hosts must be able to replace defaults, and several handlers may share a channel without duplicate registrations.",
+      "check": "Look for default port implementations registered with `Add*` instead of `TryAdd*`, or multi-handler contributions registered with `Add*` or `TryAdd` instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a new cross-replica invalidation as a new channel name and a registered handler, without changing the broadcast port or its adapters, and compare channel names ordinally.",
+      "why": "Channels are an open vocabulary that the broadcaster does not know, so features extend it without modifying shared infrastructure.",
+      "check": "Look for diffs that add feature-specific channels, enums or branches to the broadcaster interface or adapters, or that compare channel names with a culture-sensitive or case-insensitive comparison.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pub/sub subscriber must hand received messages to handlers off the connection's receive loop (for example on the thread pool), call a missed-messages reconciliation once a subscription takes effect and again whenever the connection is restored, and retry subscribing while the server is unreachable.",
+      "why": "A slow handler must not block the receive loop, and messages published before the subscription or during a disconnect never arrive, so they need to be reconciled.",
+      "check": "Look for subscribers that await handlers inline in the message callback, or that lack reconciliation after a subscribe or reconnect, or a retry when the subscribe fails.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Prefix pub/sub channel names on a shared server with the deployment's configured key prefix, as keys are prefixed.",
+      "why": "The key prefix separates deployments that share one server.",
+      "check": "Look for PUBLISH or SUBSCRIBE calls that use a bare channel name without the configured key prefix.",
+      "scope": "domain",
+      "domain": "multi-replica-shared-state",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

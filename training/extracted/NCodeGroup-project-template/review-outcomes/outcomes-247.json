@@ -1,0 +1,53 @@
+{
+  "hash": "76c75af554ecd9eb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #247",
+  "rules": [
+    {
+      "statement": "In a PowerShell double-quoted string, write a variable that is immediately followed by literal text such as `[`, `:` or a name character with braces (`\"${name}[bot]\"`), not bare (`\"$name[bot]\"`).",
+      "why": "`\"$login[bot]\"` does expand correctly, but readers take it for indexing, so the braced form makes the intent clear.",
+      "check": "Look for double-quoted PowerShell strings where `$var` is directly followed by `[`, `:` or similar text without `${...}` delimiting.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.psm1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test stand-in or parser accepts several syntactic forms of the same input (for example `-X GET`, `-XGET`, `--method=GET`), have at least one check for each form the change claims to support, written so that breaking that form's handling makes the check fail.",
+      "why": "A form with no check of its own can regress while CI still passes, and the PR description then claims more coverage than the tests give.",
+      "check": "Compare the forms the PR description or code says are handled with the test checks, and flag any form that no check exercises.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/tests/**",
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Move the same lookup expression, when it is written out in several places, into one helper and call that helper from each place.",
+      "why": "A later fix to one copy, such as its not-found handling, may not reach the others.",
+      "check": "Look for the same non-trivial lookup or query expression pasted into several route blocks or functions in a diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag a dated `## [<version>] - <date>` CHANGELOG section added in a pull request as breaking the `[Unreleased]` rule when the pull request's plan has a `Release:` line. Such a plan writes its version's section in its last step, leaves `[Unreleased]` empty and points the `[unreleased]` compare link at the new tag.",
+      "why": "The `[Unreleased]` rule applies only to plans without a `Release:` line. Release plans are tagged and published from the dated section after the merge, so the compare links resolve.",
+      "check": "Before reporting, check whether the plan has a `Release:` line, read the plan skills' changelog rule, and see whether earlier versions were released the same way.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

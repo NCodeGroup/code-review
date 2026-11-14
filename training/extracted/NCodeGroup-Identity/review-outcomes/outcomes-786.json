@@ -1,0 +1,67 @@
+{
+  "hash": "b4e8eb332e09c261",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #786",
+  "rules": [
+    {
+      "statement": "When a change amends an accepted architecture decision record, mark the relationship in the amended record's Status line and index entry (\"amended by ADR-N\") and list it on the new record's amends/refines line, rather than rewriting the old record's Decision text; don't ask for the old Decision text to be reworded.",
+      "why": "Decision records relate to each other through Status metadata, so the old text stays as the historical decision and the new record carries the change.",
+      "check": "In a diff that adds a decision record superseding part of an older one, confirm the older record's Status and index row name the new record; don't report the unchanged Decision text of the amended record as a contradiction.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put build logic that several Dockerfiles or pipelines share, such as stamping a version into a file, in one script that each of them runs, and make the script fail when its rewrite didn't produce the expected content.",
+      "why": "Duplicated snippets must be changed in several places, and a text substitution that stops matching fails silently, so the image keeps the old version while its tag claims the new one.",
+      "check": "Look for the same RUN/sed/validation block copied into more than one Dockerfile or workflow, and for in-place file rewrites (sed, regex replace) with no check afterwards that the file now holds the intended value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Dockerfile",
+        "build/**",
+        "**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest passing the version to `dotnet publish` as an MSBuild property (`-p:Version`, `-p:AssemblyInformationalVersion`) when the build uses Nerdbank.GitVersioning with `NBGV_GitEngine=Disabled`; there the version has to be written into `version.json`.",
+      "why": "With the git engine disabled, Nerdbank.GitVersioning ignores those properties and reads only `version.json`.",
+      "check": "Before recommending an MSBuild version property, check whether the build sets `NBGV_GitEngine=Disabled` and takes its version from `version.json`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Dockerfile",
+        "build/**",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a GitHub Actions workflow, define a message or value that several steps of a job use once, as a job-level `env` variable, and refer to it from each step instead of repeating the literal.",
+      "why": "Copies of the same text drift apart from each other and from the documentation they point to.",
+      "check": "Look for the same string literal (hint messages, URLs, names) written out in more than one step of a job.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write an explanatory comment once, above the first place it applies, instead of repeating it word for word above each similar step or block.",
+      "why": "Repeated comments make a reader wonder whether the commented steps differ.",
+      "check": "Look for identical comments placed above several sibling steps or blocks in the same file.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

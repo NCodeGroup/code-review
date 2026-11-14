@@ -1,0 +1,219 @@
+{
+  "hash": "ed80ea866dafce99",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1285",
+  "rules": [
+    {
+      "statement": "A library that does no ASP.NET Core work must not take a `Microsoft.AspNetCore.App` framework reference or reference `Microsoft.AspNetCore.*` packages; it should depend only on `Microsoft.NETCore.App` plus the specific `Microsoft.Extensions.*` packages it needs.",
+      "why": "A framework reference bought only for constants or helpers forces every console app or worker that uses the library to install the ASP.NET Core runtime.",
+      "check": "Look for a `<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />` or `Microsoft.AspNetCore.*` usings or package references in a project whose code handles no HTTP server types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Append query parameters to an endpoint URL by percent-encoding each value with `Uri.EscapeDataString` and joining with `?`, or with `&` when the URL already has a query.",
+      "why": "This follows RFC 3986 without an ASP.NET Core query helper, and it keeps any query the endpoint already has.",
+      "check": "Look for query strings built by string concatenation without `Uri.EscapeDataString`, or code that always uses `?` even when the URL may already contain a query.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Accept an authority or endpoint URL only when it is `https`, or `http` on a loopback host (`Uri.IsLoopback`), and validate the raw string as well as the parsed `Uri`: the string starts with its scheme, contains no whitespace and has no fragment, and an authority also has no query.",
+      "why": "Plain `http` is allowed only to the same machine, for tests against an in-process provider. Checking the raw string catches input that `Uri` parsing would quietly normalize.",
+      "check": "Look for endpoint or authority validation that checks only the parsed `Uri`, allows `http` to hosts that aren't loopback, or doesn't reject fragments, whitespace, or a query on an authority.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When consuming OIDC discovery, require the returned `issuer` to equal the configured authority by ordinal comparison, require `token_endpoint` and `jwks_uri`, and validate every endpoint member that is present against the endpoint rule. Report any violation as a protocol exception.",
+      "why": "OIDC Discovery §4.3 requires the issuer to match exactly, and an unchecked endpoint member could point the client at an insecure or unintended host.",
+      "check": "Look for a case-insensitive or normalized issuer comparison, required metadata members that go unchecked, or endpoint members used without scheme or host validation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take protocol-client credentials from a named, keyed secret-key provider (a key ring) that the caller identifies on each call, not from bound configuration values.",
+      "why": "Credentials in configuration put secrets in configuration and leave no way to rotate them. Key rings rotate and can be held in a key management service.",
+      "check": "Look for client secrets or signing keys read from `IConfiguration` or options, instead of being resolved from a keyed `ISecretKeyCollectionProvider` named by the caller.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use named `int` constants for HTTP status codes instead of casting `HttpStatusCode` members to `int`, and keep a status code as `int` when the public type exposing it is `int`.",
+      "why": "Named constants read better than enum casts, and typing the value as `HttpStatusCode` would only cast straight back to the public `int`.",
+      "check": "Look for `(int)HttpStatusCode.X` expressions, or internal status-code properties typed as `HttpStatusCode` that are then cast to `int`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A cache of remote metadata or key sets must collapse concurrent misses into one fetch. On a failed refresh it serves the last good value only within a bounded stale lifetime and backs off for a minimum interval; it rate-limits forced refreshes (such as an unknown `kid`) by that same interval; and it never relaxes validation in order to serve a stale value.",
+      "why": "This bounds the load on the provider and the exposure to stale data, and it keeps a stale value from ever bypassing validation.",
+      "check": "Look for caches that fetch once per concurrent caller, serve stale values with no age limit, allow forced refreshes without a rate limit, or skip validation on the stale path.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When importing a provider's JWKS for signature verification, skip each unusable key (not an object, not a parseable JWK, `use` other than `sig`, `key_ops` without `verify`, a non-asymmetric or unknown key type, or material that fails to import). Refuse the whole set if it carries private or symmetric material, has two usable keys with the same `kid`, or has no usable key at all.",
+      "why": "RFC 7517 §5 lets a client ignore keys it can't use. A set exposing private or symmetric material, or with ambiguous `kid`s, can't be trusted.",
+      "check": "Look for JWKS import code that throws on a single unusable key, accepts private or symmetric keys, allows duplicate `kid`s, or accepts an empty usable set.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model client authentication methods as an open strategy collection: register each strategy with `TryAddEnumerable`, select it by its method name, and throw at construction when two strategies share a name.",
+      "why": "Vocabularies are open, so a new method is a new registration with no library change, and duplicate names must fail fast.",
+      "check": "Look for a closed `switch` or `enum` over authentication methods, registrations made with `AddSingleton` instead of `TryAddEnumerable`, or selection that silently picks one of two duplicate names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A `private_key_jwt` client assertion (RFC 7523) must have `iss` and `sub` equal to the client id, `aud` set to the provider's issuer as a single string (not the token endpoint URL), a `jti` of 16 random bytes in base64url, `iat` and `nbf` at now, and `exp` 60 seconds later.",
+      "why": "RFC 7523bis and FAPI 2.0 require the audience to be the issuer, and a short fixed lifetime with a random `jti` limits replay.",
+      "check": "Look for an `aud` set to the token endpoint or to an array, a missing or low-entropy `jti`, or a configurable or long assertion lifetime.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Sign client assertions only with asymmetric keys, never with a MAC or `none`. Filter the client's algorithm preference list to what the provider advertises in `token_endpoint_auth_signing_alg_values_supported`, and refuse to start when a configured algorithm entry is blank, is `none` or repeats.",
+      "why": "A MAC or `none` must never sign an assertion, and bad configuration should fail at startup instead of at request time.",
+      "check": "Look for symmetric keys allowed as assertion signing candidates, `none` accepted, or no startup validation of the configured algorithm list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a protocol client, return an OAuth error response (a JSON object with a string `error`, at any status) as a value. Throw a protocol exception, wrapping the cause as the inner exception, for transport, timeout, size, JSON or malformed-response failures. Let caller cancellation propagate as `OperationCanceledException`, and throw `InvalidOperationException` for configuration errors.",
+      "why": "Callers need errors such as `invalid_grant` as values, while real failures and misconfiguration should be exceptions they can tell apart.",
+      "check": "Look for code that throws on OAuth error responses, wraps caller cancellation in another exception, drops the inner exception, or uses a protocol exception for a configuration error.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An outbound HTTP client to an identity provider must not follow redirects or use cookies (`AllowAutoRedirect = false`, `UseCookies = false` on its primary handler), and it must cap the size of every response body.",
+      "why": "Otherwise a hostile or misconfigured provider could redirect the client or exhaust its memory.",
+      "check": "Look for an `HttpClient` or handler registration that leaves auto-redirect or cookies on, or response reads with no size cap.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse a protocol response as JSON only when its body is non-empty and its media type is a JSON type (`application/json` or `application/jwk-set+json`), and treat an empty body as having no JSON whatever its media type.",
+      "why": "A successful response may legitimately be empty (for example revocation under RFC 7009 §2.2), and a body with the wrong media type shouldn't be parsed as JSON.",
+      "check": "Look for JSON deserialization of response bodies with no media-type check, or code that fails on an empty success body.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An authorization-code token request must carry a PKCE `code_verifier`.",
+      "why": "The decision requires PKCE for every authorization-code grant.",
+      "check": "Look for an authorization-code request type or builder where `code_verifier` is optional or missing.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model token requests as an abstract base type carrying the shared parameters (`scope`, the repeated RFC 8707 `resource`), with one sealed subclass per grant, so a new grant is added by subclassing instead of by changing a closed type.",
+      "why": "Vocabularies are open, so a new grant type must be addable without changing library code.",
+      "check": "Look for a single token request type with a grant enum or switch, or grant request classes that aren't sealed.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add `ConfigureAwait(false)` to awaits in library code whose callers are server-side hosts without a `SynchronizationContext`.",
+      "why": "The no-`ConfigureAwait(false)` rule holds because these callers have no synchronization context.",
+      "check": "Look for `.ConfigureAwait(false)` added to awaits in server-side library code.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read text files with an overload that takes an explicit strict encoding, such as `File.ReadAllText(path, SecureEncoding.UTF8)`, never with the overload that takes no encoding.",
+      "why": "The banned-API analyzer forbids the overloads that take no encoding.",
+      "check": "Look for `File.ReadAllText(path)` or similar calls that pass no encoding.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

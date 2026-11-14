@@ -1,0 +1,18 @@
+{
+  "hash": "3168b79249c6c410",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #631",
+  "rules": [
+    {
+      "statement": "When a shared helper method takes a long list of positional parameters, especially several of the same type such as strings, and the same group of inputs recurs across sibling methods, group those inputs into a small sealed descriptor type that is built once and passed instead, so that each method takes at most one or two other inputs besides its context and the cancellation token.",
+      "why": "Long positional argument lists make call sites hard to read, and swapping two same-typed arguments such as a name and a path still compiles, so the mistake only shows up at runtime.",
+      "check": "Look for new or changed methods with roughly six or more parameters before the CancellationToken, particularly with two or more string (or other same-typed) parameters, where the same subset of parameters is repeated across several related methods; ask for a sealed descriptor/record that bundles them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

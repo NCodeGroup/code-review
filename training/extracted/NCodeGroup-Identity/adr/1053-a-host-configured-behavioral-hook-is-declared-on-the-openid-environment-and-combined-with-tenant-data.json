@@ -1,0 +1,91 @@
+{
+  "hash": "4b0deedaedc57bc8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1053",
+  "rules": [
+    {
+      "statement": "Reach a host-replaceable behavioral hook (a delegate the host configures at start-up) through the abstraction-level environment type that declares it, never by injecting `IOptions<T>` of the implementation package's options.",
+      "why": "A consumer that injects the core options depends on the implementation package, and an abstractions-only slice can't inject it at all. Each surface then ends up implementing the hook its own way, and a host's override is honored on some surfaces and ignored on others.",
+      "check": "Look for new `IOptions<...Options>` injections whose only use is reading a behavioral delegate, and for consumers in abstractions-only packages that reimplement a hook's logic. Check also that a new hook is declared on the abstractions environment type and wired from the options in the core implementation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive an end user's subject id only through the single tenant-aware context method, which applies the tenant's ordered subject claim types to the host's extraction delegate. Don't hardcode a list of subject claim types, read `sub` directly or copy the default extraction into a static helper.",
+      "why": "Only the combined seam honors both the host's extraction logic and the tenant's per-tenant claim choice. A hardcoded subset or a static helper ignores the host's override and the tenant's setting.",
+      "check": "Look for code that reads `sub`, `nameid` or `ClaimTypes.NameIdentifier` from a `ClaimsPrincipal` directly, for hardcoded claim-type lists, and for new static helpers that extract a subject.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Extract a control-plane (management or audit) actor's subject with the default subject claim types through the app-level environment provider, never with the target tenant's subject claim types setting.",
+      "why": "The management actor is a control-plane identity, not one of the target tenant's federated users. Both cases share the extraction algorithm and differ only in which claim types are passed in.",
+      "check": "In management or audit code, check that the actor's subject id is extracted with the default claim types and not with the target tenant's `subject_claim_types` or `OpenIdContext.GetSubjectId`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model per-tenant data as a tenant setting and host logic as an environment delegate, and when a concern needs both, add a context method that combines them. Don't fold one into the other, and don't add a dedicated accessor service or a separate options type for it.",
+      "why": "Folding the data into host logic loses per-tenant configuration. A separate service or options type adds a second configuration surface and an extra dependency for something the environment already models.",
+      "check": "When a diff adds a customization point, check whether it puts per-tenant choices into a start-up delegate, puts logic into a setting, or adds a new `I...Accessor` service or slice-local options type for host logic.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a host behavioral hook a leaf operation that derives its value only from the arguments it is given. It must never reach the environment, context, platform, tenant or store creation, and no creation path may call a hook.",
+      "why": "Every call site passes an environment that has already been materialized, so leaf hooks keep the dependency seam acyclic.",
+      "check": "Look at hook implementations and default delegates for calls into environment or context providers, tenant resolution or store managers, and at factory or creation code for calls to hooks.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a handler builds a subject, stamp it under the tenant's primary subject claim type through the normalize hook, so that extracting the subject from the normalized principal returns the same id.",
+      "why": "Extraction and normalization are inverses, so writes and reads have to agree on the claim type for the subject to round-trip.",
+      "check": "Look at grant or sign-in handlers that create a `ClaimsPrincipal` and check whether they add a hardcoded `sub` claim instead of using the tenant-aware normalize method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep raw, store-free subject-claim extraction separate from federated principal resolution. Don't make the extraction hook return the server-owned principal id or depend on a store.",
+      "why": "Resolution takes the raw subject as its input, and the environment can't take a store dependency, so merging the two would make the design circular.",
+      "check": "Look for subject-extraction hooks or environment members that take store or resolver dependencies, or that return resolved principal ids.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "hash": "63bea1dbc09a0814",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1135",
+  "rules": [
+    {
+      "statement": "Give infrastructure resource tags lowercase snake_case keys, and keep tag values lowercase.",
+      "why": "One key style means one query works across vendors and HCL attribute access works. Some vendors normalize tag case when they read it back, which would show up as permanent drift.",
+      "check": "Look for new or changed tag keys that use kebab-case, camelCase or uppercase, or tag values with uppercase letters, in OpenTofu tag maps or merges.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take tag values only from static inputs. Never use timestamps, commit SHAs, run IDs, release versions, or IDs and ARNs that are known only after apply.",
+      "why": "Tags must be stable, so a plan with no code change shows no changes. Dynamic values rewrite every resource on every apply and hide real drift from scheduled drift detection.",
+      "check": "Look for tag values built from timestamp(), git or CI variables, version strings, or other resources' id/arn attributes.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Record deployment provenance (commits, versions, run identifiers) on deployment objects such as image digests and annotations, or in audit trails. Don't record it in cloud resource tags or in OpenTofu-managed 'last deployed' resources such as an SSM parameter holding the commit.",
+      "why": "An infrastructure-managed provenance record always shows a diff and blinds drift detection. CloudTrail, vendor audit logs and GitHub deployments already answer who changed what and from which commit.",
+      "check": "Look for new commit, pipeline_run or deployed_at tags, or new OpenTofu resources whose value is a commit or run ID.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On AWS, apply the shared tag map only through the provider's `default_tags`, and exclude tags written by other systems with the provider's `ignore_tags`.",
+      "why": "This way nothing can be created untagged, and tags managed elsewhere don't show up as drift.",
+      "check": "Look for AWS provider blocks without default_tags fed from the shared tags producer, or shared keys repeated on individual resources' tags.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Produce the shared tag keys in one tags module and translate them into each vendor's format there. Components merge their own keys into that map: callers may add keys but never remove one, and no key is set twice.",
+      "why": "Without one producer, every component invents its own keys and nobody can tell from a resource alone who owns it or what manages it.",
+      "check": "Look for components that hand-write shared keys such as environment, owner_email or managed_by, that drop keys from the shared map, or that set the same key in more than one place.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the owner tag to a routed role mailbox, never to a person's address.",
+      "why": "The infrastructure code and its tags are public, so a personal address would publish personal data. A role mailbox also survives changes of people.",
+      "check": "Look for owner_email values, or owner annotations, that name an individual.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the environment tag to exactly one of `shared`, `lab`, `production` or `ci`, and never to a customer's tenant word such as `dev`, `test` or `staging`.",
+      "why": "A fixed vocabulary lets one query answer what each environment owns.",
+      "check": "Look for environment values outside the allowed set.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a new tag key, such as a cost-center or project code, without a decision record.",
+      "why": "Adding a required key changes the tags producer and every root that calls it.",
+      "check": "Look for new tag keys that aren't in the documented tag set.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In Kubernetes manifests, use the standard `app.kubernetes.io/*` labels exactly as defined, put the platform-domain prefix on custom labels, and put values that contain `@` or `/` (such as the owner email or the source path) in annotations, not labels.",
+      "why": "Kubernetes label values can't contain `@` or `/`, and custom labels need a domain prefix.",
+      "check": "Look for custom labels without the domain prefix, renamed standard labels, or email and path values set as labels.",
+      "scope": "domain",
+      "domain": "kubernetes",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reference workload images, charts and module artifacts by digest. Build them in GitHub Actions with a build-provenance attestation and a keyless Sigstore signature, and make Flux verify that signature against the building workflow's identity before it applies a release.",
+      "why": "Provenance that travels with the artifact is verifiable at deployment and never causes drift.",
+      "check": "Look for image or chart references by tag only, build workflows without attestation or signing steps, and Flux sources without signature verification.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.yaml",
+        "**/*.yml",
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reference infrastructure components by a release ref (`?ref=vX.Y.Z`), not by a branch or an unpinned source.",
+      "why": "The release ref names the component version that defines a resource, as static provenance.",
+      "check": "Look for module sources without a release-version ref.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When CI assumes an AWS role, set the session name to `gh-<run_id>-<run_attempt>`, and make the role trust policy require that form with an `sts:RoleSessionName` condition.",
+      "why": "CloudTrail then attributes every API call to the exact workflow run, and through it the commit and approver. CI can't obtain credentials without naming its run.",
+      "check": "Look for configure-credentials steps without that session name, and GitHub OIDC trust policies without the sts:RoleSessionName condition.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each CI scope its own named Cloudflare API token, not a token shared across pipeline scopes.",
+      "why": "Cloudflare's audit log can then attribute each change to a pipeline scope.",
+      "check": "Look for workflows that reuse one Cloudflare token secret across different scopes.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run every infrastructure apply job in a GitHub environment.",
+      "why": "GitHub then records a deployment with the commit, run and approval, which answers which commit is live.",
+      "check": "Look for apply jobs in workflows that have no `environment:` key.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give each Cloudflare DNS record that has no tag support a comment of at most 100 characters naming `managed_by` and `source`.",
+      "why": "Cloudflare's Free plan has no DNS record tags, so the comment carries the ownership information instead.",
+      "check": "Look for Cloudflare DNS record resources with no comment, or a comment that is missing those values or longer than 100 characters.",
+      "scope": "domain",
+      "domain": "cloud-infrastructure",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

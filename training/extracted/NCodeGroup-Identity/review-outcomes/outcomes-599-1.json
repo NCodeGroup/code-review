@@ -1,0 +1,252 @@
+{
+  "hash": "61cc66f1fadcc990",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #599",
+  "rules": [
+    {
+      "statement": "When a query must exclude rows related to a variable set of other rows, express it as one server-side subquery predicate (e.g. `!db.Set.Any(...)`) instead of pre-reading the set and appending one `Where` clause per item.",
+      "why": "Per-item predicates make the SQL and its parameter count grow with the data, slow every page and can exceed provider limits, which can stop a platform-wide background sweep.",
+      "check": "Look for a loop that adds `.Where(...)` per element of a previously loaded list, or a lookup list re-read on every page of a paged query.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a background loop that isolates each item's failure with try/catch, put all per-item work, including store reads done before the main work, inside the try.",
+      "why": "An exception thrown outside the per-item try leaves the loop, ends the pass for every remaining item and is not logged against the item that caused it.",
+      "check": "In a foreach with a per-item try/catch and failure log, look for awaited store or I/O calls for that item placed before the try.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Compare identifiers in code with the same case sensitivity that the store uses to look them up; if the store matches a normalized (case-insensitive) id, don't use `StringComparison.Ordinal` for guard checks on that id.",
+      "why": "A guard that compares case-sensitively while the lookup is case-insensitive can be bypassed with a differently cased id that still resolves to the protected entity.",
+      "check": "Look for `Ordinal` or `==` comparisons of route or user-supplied ids against a protected or configured id when the store resolves ids through a normalized column.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare an `.Produces(...)` on a minimal API endpoint for every non-2xx status code its handler documents or returns, unless a group-level convention already declares it.",
+      "why": "Otherwise the OpenAPI document leaves out those responses and generated clients never see them.",
+      "check": "Compare the status codes in the handler's XML docs and return paths (403, 404, 409, …) with the `.Produces` calls in the route mapping.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When processing a page of items that each need related data, fetch that related data once per page with a batched query (e.g. GetMany over the page's keys) instead of one query per item.",
+      "why": "Per-item queries add round trips that grow linearly with the number of items.",
+      "check": "Look for an awaited store call inside a per-item loop over a page whose keys could be gathered and read in one call.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Reuse data a method has already loaded, such as a lineage or a parent entity, instead of resolving each piece again through the store.",
+      "why": "Re-resolving data already in hand turns one read into dozens of queries per operation.",
+      "check": "Look for loops that call a store-backed resolve or count method for each element of a collection the method just read.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report per-level store round trips in a recursive cache-miss walk up a hierarchy that stops at the first cached ancestor, and don't propose a lineage-first read in its place.",
+      "why": "Such a walk usually reads only the missing leaf, while a lineage-first read costs more queries in that common case.",
+      "check": "Before reporting, confirm whether the recursion returns at the first cache hit and what the proposed bulk read costs when only the leaf is missing.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an entity as loaded several times in one operation when the callers share one DbContext and the store's lookup checks `DbSet.Local` (the change tracker) before querying.",
+      "why": "Later lookups then come from the change tracker, so the row is read from the database only once.",
+      "check": "Before reporting, check whether the callers share a store manager or DbContext and whether the lookup method consults `DbSet.Local` first.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `TryAdd*` service registration as unused or duplicate when a service that same registration method registers depends on it through its constructor.",
+      "why": "The registration lets that registration method work when no other group is added, and `TryAdd*` registrations of the same implementation cannot drift apart.",
+      "check": "Trace the constructor dependencies of the services the registration method adds, and check that the duplicates are all `TryAdd*` with the same implementation.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to share a private page-size constant or the standard do/while PageRequest/NextCursor paging loop across classes, especially classes in assemblies that don't reference each other.",
+      "why": "Each batch size is tuned for the read of the loop that declares it, and the paging loop is the store idiom every caller writes.",
+      "check": "Before reporting duplication, check whether the constant is private to its loop and whether the classes share an assembly reference.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have a helper return the results it produces, such as validation errors, instead of appending them to a mutable list the caller passes in, and group paired parameters (e.g. current and new values) into a record struct.",
+      "why": "Side effects on an argument are hidden, and long parameter lists are hard to read.",
+      "check": "Look for helper methods that take a `List<T>` parameter only to `Add` to it, or that take several parameters that always travel as a pair.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assign a service or store lookup result (e.g. `GetStore<T>()`) to a local before calling it, rather than chaining the call onto the lookup.",
+      "why": "It is easier to read and matches how sibling code assigns stores to locals.",
+      "check": "Look for `GetStore<...>().Method(...)` chains.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Assign a conditionally built argument (e.g. a ternary choosing between two constructed values) to a local before passing it, instead of building it inline in the call's argument list.",
+      "why": "It is easier to read and to debug.",
+      "check": "Look for ternaries or factory calls that build a value inline in the arguments of an awaited call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same decision rule (e.g. which authorization node to use, or how to build a revision lineage) appears in more than one place, extract one shared helper and call it from every site.",
+      "why": "Copies drift apart and then authorize at different points, or caches disagree about the state they were built from.",
+      "check": "Look for the same conditional or traversal logic repeated across methods or classes in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Store collections held in shared cache state or eviction-callback state as immutable collections (e.g. `ImmutableArray<T>`), not as a `List<T>` exposed through `IReadOnlyList<T>`.",
+      "why": "A cast back to `List<T>` could change shared cache state.",
+      "check": "Look for `List<T>` values stored in caches or in callback state and typed as read-only interfaces.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In client-side query caching, have a mutation invalidate a tag keyed by the entity itself, which the list queries provide for each item, instead of relying on optional caller-supplied parent ids to invalidate the parent's list.",
+      "why": "A caller that omits the parent id or passes a stale one leaves lists showing renamed or deleted items.",
+      "check": "Look for optional mutation arguments used only in `invalidatesTags`.",
+      "scope": "domain",
+      "domain": "frontend-data-caching",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests, assert the behavior the test's name claims (e.g. that a cache is invalidated or refetched), not only incidental effects such as the URL or that no error occurred.",
+      "why": "Otherwise removing the behavior leaves the test passing.",
+      "check": "Compare the test name with its assertions; for invalidation tests, check that a cache is primed and its refetch is asserted, along with a negative case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.test.ts",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when the code under test catches and logs per-item exceptions, don't rely on a strict mock throwing to fail the test; assert directly that no failure was logged (e.g. with FakeLogger) or that the work never ran.",
+      "why": "The production catch swallows the strict-mock exception, so the test claims more than it checks.",
+      "check": "Look for tests or comments that say touching a mock fails the test when the code path wraps the work in try/catch with logging.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, create Moq mocks through the test base's MockRepository that is verified on dispose, and mark the expected setups `.Verifiable()`, rather than calling `new Mock<T>(...)` directly.",
+      "why": "Mocks created outside the verified repository are never verified, so a setup that is never hit fails no test.",
+      "check": "Look for `new Mock<` in test files, and for setups without `.Verifiable()` on mocks whose calls are expected.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a null-forgiving `!` that passes a deliberate null to an argument-validation test.",
+      "why": "Test conventions allow that one use of the null-forgiving operator.",
+      "check": "Before reporting a `!` in a test, check whether it passes a deliberate null in an argument-validation test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting a missing test case, search the project's other test files for the class under test, including files the pull request doesn't touch.",
+      "why": "The requested case often already exists in a sibling test file, such as a lifecycle test next to a hierarchy test.",
+      "check": "Search the test project for tests of the same method before reporting it as untested.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an ADR to list another record as amended when it only describes how it composes with that record without changing that record's decision; citing it in References is enough.",
+      "why": "The Status line lists only the records whose decisions the ADR changes.",
+      "check": "Before reporting a missing amends entry, check whether the ADR actually changes the other record's decision.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

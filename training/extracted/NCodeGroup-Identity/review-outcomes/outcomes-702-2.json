@@ -1,0 +1,42 @@
+{
+  "hash": "30b671fe796bb324",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #702",
+  "rules": [
+    {
+      "statement": "When unwrapping a JWE content key with RSA-OAEP through a remote key provider (KMS/HSM), refuse an encrypted_key whose length is not the RSA modulus size with a CryptographicException before calling the provider.",
+      "why": "A wrong-length key must fail the same way as a tampered tag (uniform JWE failure, random-CEK path), and attacker-chosen garbage shouldn't be sent to a paid remote key service when a local check can reject it.",
+      "check": "In a remote/delegated RSA-OAEP unwrap path, look for a length check of the encrypted key against the modulus size ahead of the provider call. Report it if the raw input goes straight to the provider.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a remote key provider's decrypt operation, turn every service refusal that depends on the caller-supplied ciphertext (such as AWS KMS InvalidCiphertextException and ValidationException) into a CryptographicException, so it doesn't escape as a service-specific exception.",
+      "why": "Every failure caused by the token must take the same random-CEK path and look the same to the sender, otherwise exception type or message differences become an oracle that tells a malformed key from a tampered tag.",
+      "check": "Look at the catch blocks around KMS/HSM decrypt calls. Report it if only some input-dependent error codes become CryptographicException and others, like validation errors, propagate unchanged.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Place an ADR reference comment such as `// See ADR-NNNN.` after the type's XML doc `</summary>` block, directly above the type declaration, not before the doc comment.",
+      "why": "This keeps placement the same as in the other files.",
+      "check": "Look for `// See ADR-` comments that sit above a `/// <summary>` block instead of between the doc comment and the class declaration.",
+      "scope": "repository",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

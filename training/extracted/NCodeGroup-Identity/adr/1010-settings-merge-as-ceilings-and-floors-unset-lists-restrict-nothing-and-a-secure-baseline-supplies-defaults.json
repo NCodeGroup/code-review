@@ -1,0 +1,127 @@
+{
+  "hash": "c9ac0118d0c97c11",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1010",
+  "rules": [
+    {
+      "statement": "In a cascading settings model, each setting's merge must match its polarity: lifetimes, timeouts, clock skew and size caps merge as Min; permissive toggles merge as And; capability lists merge as Intersect; security requirements merge as Or; minimums such as lengths and polling intervals merge as Max; only values with no restriction meaning merge as Replace.",
+      "why": "A narrower scope (team, tenant, client) must never loosen a security setting that a broader scope set. A mismatched merge, such as a requirement merged with Replace, lets a child scope weaken it.",
+      "check": "For each new or changed setting descriptor, compare its merge function with what the value means. Flag a security requirement or capability list merged with Replace or Union, a lifetime merged with Max or Replace, or a minimum merged with Min.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce an optional allow-list setting only when it is present (for example `if (settings.TryGetValue(key, out var allowed) && !allowed.Contains(item)) reject;`): an unset list restricts nothing, while a set but empty list permits nothing.",
+      "why": "Absence means no policy was set. The capability itself is enforced by the registries (grant handlers, algorithm providers), so treating an unset list as empty would block extensions.",
+      "check": "Look for enforcement code that rejects when a capability list is missing, reads it with a throwing GetValue, or swaps in an empty list when it is absent.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat an unset algorithm list that decides what the server accepts from another party, or uses to protect a token, as permitting nothing (fail closed), unlike other capability lists.",
+      "why": "The root baseline always supplies these lists, so a missing one must never mean that any algorithm is accepted.",
+      "check": "Check code that reads accepted or protecting algorithm lists for a path where a missing list allows every algorithm. It should go through the shared permitted-algorithms helper.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't put policy literals, such as a fixed list of supported grant types or scopes, into a setting descriptor's default. Supply them from the replaceable default-settings baseline provider instead.",
+      "why": "A descriptor default freezes the ceiling, and Intersect only narrows, so an extension's grant or custom scope could never be used.",
+      "check": "Flag a new descriptor whose default hard-codes a `*_supported` or similar capability list.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Read a value-type setting that has no default as a nullable (for example `GetValueOrNull<TValue>()`) so that an unset value stays absent and is never materialized as `default(TValue)`.",
+      "why": "A zero or default value would be taken as a real setting (for example a zero max age), and a throwing read fails on an unset, default-less setting.",
+      "check": "Look for reads of default-less struct settings that use GetValue, `GetValueOrDefault`, or that treat `default(TValue)` as the value.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never offer `none`, `dir` or `RSA1_5` in any default algorithm list. Signing lists for tokens that cross a trust boundary offer only asymmetric algorithms, except the request-object and token-endpoint client-auth signing lists, which keep the symmetric algorithms that `client_secret_jwt` needs.",
+      "why": "The out-of-the-box server must advertise and accept only modern, safe values (RFC 9700).",
+      "check": "Inspect default and baseline algorithm lists for `none`, `dir`, `RSA1_5`, or HMAC algorithms outside the request-object and token-endpoint-auth lists.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the default baseline secure: `response_types_supported` is only `code`, `code_challenge_methods_supported` is only `S256`, and grant types are limited to modern flows (authorization_code, refresh_token, device code, CIBA), with no implicit or password grant.",
+      "why": "A host that configures nothing must still advertise and accept only modern, safe values.",
+      "check": "Flag baseline changes that add implicit or hybrid response types, the `plain` PKCE method, or legacy grants such as password or implicit.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make discovery metadata and enforcement read the same effective settings, and omit a setting from discovery when it is unset, rather than keeping a separate advertised list.",
+      "why": "Discovery and enforcement must agree, so that widening a setting both advertises it and accepts it.",
+      "check": "Look for discovery code that hard-codes values, reads a different source than the enforcing handler, or emits empty or default entries for unset settings.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add a separate maximum setting for a lifetime-like scalar. Its default is also its ceiling, and narrower scopes lower it with Min.",
+      "why": "One value states both the default and the maximum. Raising a scope's lifetime means raising the platform's value.",
+      "check": "Flag new paired default/max settings for a lifetime, timeout or cap.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enable an extension grant type, algorithm or custom scope by registering its handler or provider (and optionally listing it), not by widening a library default literal. Reject unknown values through registry lookup.",
+      "why": "The registries enforce the capability, and `*_supported` lists are only policy.",
+      "check": "Flag code that checks a value against a hard-coded capability literal instead of the handler or provider registry, or that edits library defaults to enable an extension.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "hash": "b4e324c389bc05cb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1127",
+  "rules": [
+    {
+      "statement": "Never let a test project (or its Directory.Build.props) set TreatWarningsAsErrors back to false; test projects stay under the same zero-warning gate as every other project.",
+      "why": "The gate covers all code the family maintains, not just code it ships; xUnit analyzers report real defects in tests, and warnings that pile up under an exemption go unread and hide the next real one.",
+      "check": "Look for TreatWarningsAsErrors=false, removed WarningsAsErrors, or similar opt-outs in test project files or tests/Directory.Build.props.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Build.props",
+        "**/Directory.Build.targets"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Resolve a warning by fixing the code first, for example with a nullable local for a [MaybeNullWhen(false)] out argument, Assert.NotNull before a dereference, or a specific exception type instead of new Exception(…). Only then add a per-rule .editorconfig entry with a one-line reason. As a last resort, use a tight #pragma warning disable/restore pair with a reason at a single site.",
+      "why": "Fixing the code is the default remedy. Suppressions are justified exceptions that must be narrow and explained.",
+      "check": "Look for new suppressions (pragma, SuppressMessage, editorconfig severity changes, NoWarn) where a code fix was possible. Also look for a pragma disable without a matching restore, a pragma that covers more than the one site, or a suppression with no reason.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/.editorconfig",
+        "**/*.csproj",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Turn an analyzer rule off for test files only when it is legitimate on shipping code but noise in tests, scope it to the test-files .editorconfig block, and record its reason beside the entry. Never disable rules wholesale for tests.",
+      "why": "A reader then sees each exception and its cause together, and suppressing whole rule sets instead of fixing code was rejected.",
+      "check": "In a diff to .editorconfig, look for new severity=none entries for tests that have no one-line reason comment, that are scoped beyond the test glob, or that are broad category-wide suppressions.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/.editorconfig"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't flag per-test JsonSerializerOptions instances (CA1869), Method_State_Expected underscore test names (CA1707), collaborators held through their interface (CA1859), inline array literals passed to assertion helpers (CA1861), or test base classes without a finalizer (CA1816).",
+      "why": "These rules are deliberately off for tests. JsonSerializerOptions becomes immutable on first use, so each test builds its own for isolation, and caching doesn't matter in a test. The other four are test idioms.",
+      "check": "Before reporting one of these patterns, confirm the file is test code covered by the test-files .editorconfig block.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In shipping code, don't use the legacy JwtSecurityTokenHandler or JwtSecurityToken types.",
+      "why": "These legacy types have no place in shipping code and are banned through the family's BannedSymbols.txt.",
+      "check": "Look for references to System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler or JwtSecurityToken in packable projects.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/src/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "In shipping code, don't convert untrusted numeric dates with the throwing DateTimeOffset.FromUnixTimeSeconds or FromUnixTimeMilliseconds. Use a non-throwing, range-checked numeric-date conversion instead.",
+      "why": "The throwing conversions are banned in shipping code, and the family provides non-throwing coercion helpers to use in their place.",
+      "check": "Look for DateTimeOffset.FromUnixTimeSeconds/FromUnixTimeMilliseconds calls in packable projects.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/src/**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't report a test project for referencing types that are banned in shipping code, such as the legacy JWT handler or a third-party JOSE library, when the test uses them as an independent cross-validation oracle. Don't ask for a suppression for such a reference either.",
+      "why": "Tests use independent implementations as oracles, and banning them would defeat the cross-validation strategy. The shipping-code banned list is intentionally not applied to test projects. The strict-encoding banned list still binds tests.",
+      "check": "Confirm the file is in a test project and the banned type serves as a reference implementation that production output is checked against. Still flag banned strict-encoding APIs in tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag a test project for setting GenerateDocumentationFile to true while suppressing CS1591.",
+      "why": "Roslyn evaluates IDE0005 (unused usings) only when documentation generation is on, and hard-errors if the rule is raised while it is off. The XML is discarded because test assemblies are never packed.",
+      "check": "Before reporting documentation settings in test Directory.Build.props or csproj files, check whether IDE0005 is raised as a warning.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/tests/Directory.Build.props",
+        "**/*Tests*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test project or other non-packable project to add PublicAPI.Shipped/Unshipped tracking or to satisfy PublicApiAnalyzers diagnostics.",
+      "why": "PublicApiAnalyzers run only where IsPackable is not false, because test assemblies have no tracked public surface.",
+      "check": "Check IsPackable for the project before reporting missing public API tracking.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*Tests/**",
+        "**/tests/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

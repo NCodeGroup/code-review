@@ -1,0 +1,65 @@
+{
+  "hash": "9126ac41c0ac4e0e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1493",
+  "rules": [
+    {
+      "statement": "In `global.json`, set `sdk.rollForward` to `latestMinor` and `sdk.allowPrerelease` to `false`; don't use `disable` or `latestPatch`.",
+      "why": "`latestMinor` rolls the build forward to the newest installed SDK of the major, and an older SDK stops `dotnet` at once with the version it needs. `disable` or `latestPatch` locks the build to one band and refuses newer SDKs and servicing releases, which goes against keeping the SDK current.",
+      "check": "Look at the `sdk` section of any changed `global.json`: `rollForward` other than `latestMinor`, `allowPrerelease: true`, or either setting missing.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/global.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Set the `global.json` SDK version to the newest serviced .NET SDK release that is at least three days old, not to the lowest band that happens to compile.",
+      "why": "Only the newest SDK bands get servicing releases. A floor at an older band lets in SDKs that still have unfixed bugs, such as compiler bugs that break correct code.",
+      "check": "Check that a changed `global.json` `sdk.version` is the newest released SDK of its major that is past the three-day cooldown, and that the change doesn't lower it to an older band.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/global.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't raise the `global.json` SDK version above the SDK in the digest-pinned SDK image that the repository's Dockerfiles build from.",
+      "why": "The image builds read the same `global.json`, so a version above the image's SDK breaks them until the image digest is updated.",
+      "check": "When `global.json` `sdk.version` changes, compare it with the SDK version of the pinned `mcr.microsoft.com/dotnet/sdk` image in the Dockerfiles. Flag it if the new version is higher and the same change doesn't update the image digest.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/global.json",
+        "**/Dockerfile"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't rewrite correct C# to get around a known compiler bug (such as a false `CS8620` on a `params IEnumerable<T>` extension-block member); raise the SDK floor to a release that has the fix.",
+      "why": "The calls are correct C#. A rewrite that satisfies one compiler bug still leaves the next call that the same bug miscompiles.",
+      "check": "Look for diffs that reshape correct calls (for example, wrapping a single argument in an array or adding casts or `!`) just to silence a compiler diagnostic that a newer SDK fixes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a `dotnet-sdk` ecosystem entry in `.github/dependabot.yml` with a three-day cooldown that ignores major-version updates, and don't use CI workflows to pin the SDK separately from `global.json`.",
+      "why": "Dependabot keeps the SDK floor current without hand edits, and major versions are planned migrations. CI installs the SDK from `global.json` (`actions/setup-dotnet` with `global-json-file`), so a floor change needs no workflow change.",
+      "check": "Flag a `dependabot.yml` change that removes the `dotnet-sdk` entry, drops its cooldown, or allows major updates. Flag workflows that hard-code a `dotnet-version` instead of using `global-json-file`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/dependabot.yml",
+        ".github/workflows/**",
+        ".github/actions/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

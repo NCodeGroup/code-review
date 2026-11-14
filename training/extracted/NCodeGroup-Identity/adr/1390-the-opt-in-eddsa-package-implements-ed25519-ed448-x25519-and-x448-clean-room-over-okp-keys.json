@@ -1,0 +1,135 @@
+{
+  "hash": "2c36641e64dd38a3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1390",
+  "rules": [
+    {
+      "statement": "Write hand-written cryptographic arithmetic on secret data in constant time: no branches or table indexes that depend on secret values, use masked selects and masked conditional swaps (for example double-and-add-always or a Montgomery ladder), and don't trade constant time for speed.",
+      "why": "Secret-dependent timing leaks key material; the decision states speed yields to constant time.",
+      "check": "Look in scalar multiplication, ladder or field code for `if`, `?:`, early returns, loops or array indexes driven by scalar or private-key bits.",
+      "scope": "domain",
+      "domain": "cryptography",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Zero buffers holding secret key material, seeds, clamped scalars or shared secrets with `CryptographicOperations.ZeroMemory` once they are no longer needed.",
+      "why": "Secrets left in memory can be recovered; the decision requires zeroing with `CryptographicOperations.ZeroMemory`.",
+      "check": "Find stackalloc'd or rented buffers holding private keys, seeds or shared secrets that are never cleared, or are cleared with `Array.Clear` or `Span.Clear` instead of `CryptographicOperations.ZeroMemory`.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In X25519/X448 (OKP) ECDH, refuse an all-zero shared secret on both sides, the recipient for a small-order `epk` and the sender for a small-order recipient key, and check for zero by reading every byte without exiting early.",
+      "why": "RFC 8037 §3.2 and RFC 7748 §6 warn that a small-order public key makes the shared secret all zeros, which the party who chose that key knows in advance, and an early-exit comparison leaks timing.",
+      "check": "Check that both the encrypt and decrypt paths test Z for all zeros, and that the test accumulates over all bytes (for example an OR-reduction) rather than using `SequenceEqual` or a loop that breaks early.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that X25519/X448 public keys are not checked against a list of small-order points or otherwise validated when the all-zero shared-secret check is present.",
+      "why": "The all-zero check catches every small-order point, including non-canonical encodings, at the point where the secret is used, which is what RFC 7748 §6 recommends.",
+      "check": "Before reporting missing public-key validation for Montgomery curves, confirm that the agreement code refuses an all-zero shared secret.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Refuse an ECDH-ES `epk` that contains a private `d` member or is on a different curve from the recipient's key, and write only `kty`, `crv` and `x` into an `epk` you send.",
+      "why": "An ephemeral public key must carry no private material and must match the recipient's curve.",
+      "check": "Look at `epk` parsing for missing checks on `d` and `crv`, and at `epk` serialization for extra members or private material.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Tell OKP keys apart by their `crv` curve, never by key type or key size, and refuse a key whose curve belongs to the other use (for example an Ed25519 key for ECDH-ES or an X25519 key for EdDSA).",
+      "why": "X25519 and Ed25519 keys are both 256 bits, so only the curve says whether a key signs or agrees.",
+      "check": "Find algorithm or key-selection code that accepts OKP keys based on `kty` or bit size alone without checking that the curve belongs to the operation.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Model variants with different capabilities (such as signing curves and key-agreement curves) as types of their own that expose only the operations they support, rather than one record with a use flag that operations switch over by name.",
+      "why": "Switching on names means every new variant has to be added to every switch, and a variant ends up carrying members it doesn't have (such as a signature size on a curve that cannot sign).",
+      "check": "Look for `switch` statements over curve or algorithm name strings, or use-flag properties, repeated across operations, and for members that don't apply to some variants.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make an opt-in package's registration method extend the builder of the library it requires, so that it can't be called without that library, and register its multi-instance services with `TryAddEnumerable`.",
+      "why": "This proves the prerequisite at compile time, and `TryAddEnumerable` avoids duplicate registrations without replacing other implementations.",
+      "check": "Check that a new `AddXxx()` extension targets the prerequisite's `IServiceBuilder<T>` and not `IServiceCollection`, and that collection services use `TryAddEnumerable` rather than `AddSingleton`/`TryAddSingleton`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, don't reference a test-only cryptographic oracle or take a third-party cryptographic dependency; such libraries may appear only in test projects, for differential tests.",
+      "why": "Shipping code stays free of third-party crypto dependencies, and the oracle exists only to check correctness.",
+      "check": "Look at production `.csproj` PackageReferences and `using` directives for third-party crypto libraries, such as BouncyCastle, NSec or Chaos.NaCl.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Cover hand-written cryptographic primitives with the specification's published test vectors, including iterated vectors where the RFC gives them, and with byte-for-byte differential tests against an independent oracle.",
+      "why": "Hand-written curve arithmetic carries the risk of subtle error, and the vectors and differential tests are the check against it.",
+      "check": "When a diff adds or changes a primitive, check that there are tests asserting the RFC vectors and comparisons against a reference implementation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hold private key material data-protected, and expose it only through an explicit private-key export method, never through general properties or public-material serialization.",
+      "why": "The decision keeps the private seed data-protected and exportable only through `ExportPrivateKey`.",
+      "check": "Look for private seeds or scalars stored as plain byte arrays in fields, or included in public-key or SPKI output or `ToString`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

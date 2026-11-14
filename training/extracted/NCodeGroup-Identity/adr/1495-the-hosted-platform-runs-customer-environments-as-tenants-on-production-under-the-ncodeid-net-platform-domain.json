@@ -1,0 +1,46 @@
+{
+  "hash": "768a9c4606349889",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1495",
+  "rules": [
+    {
+      "statement": "On a multi-tenant identity host where tenants share one registrable domain, issue cookies as host-only `__Host-` cookies with no `Domain` attribute.",
+      "why": "Tenants under one registrable domain must not share cookies, and the domain is not on the Public Suffix List, so host-only `__Host-` cookies are the only cookie isolation.",
+      "check": "Look for cookie options in tenant-serving code that set `CookieOptions.Domain`/`Cookie.Domain`, or that use a cookie name without the `__Host-` prefix, or that leave out `Secure` or `Path=/`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never use `dev`, `test` or `staging` to name a platform environment, host, tag or infrastructure root; the platform environments are only `production`, `lab` and `ci`.",
+      "why": "Those words name only customers' tenant environments, and reusing them for the platform would collide with customers' `-dev` tenants and imply production parity the lab doesn't have.",
+      "check": "Look in infrastructure code, configuration and hostnames for a platform environment, tag or root named dev, test, staging or sandbox.",
+      "scope": "repository",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep identity issuer hosts as DNS-only (unproxied) records, and give no hosting-provider, vendor, lab or CI credential a token that can write the platform zone.",
+      "why": "TLS must reach the platform's proxy untouched, and only the platform's OpenTofu roots may change the zone that carries permanent issuers.",
+      "check": "Look for DNS records of issuer or mTLS hosts with `proxied = true`, and for zone-edit API tokens given to vendor integrations or to lab/CI clusters.",
+      "scope": "repository",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.tf",
+        "**/*.tofu"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "hash": "07a1bac188533430",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #785",
+  "rules": [
+    {
+      "statement": "When code guards against request query strings or credentials reaching logs, it must also cap the `Microsoft.AspNetCore.Hosting.Diagnostics` category (for example at Warning, through a `LoggerFilterOptions` rule that covers every provider), because that logger writes `Request starting`/`Request finished` lines with path and query string at Information; otherwise the docs must limit the claim to HTTP logging only.",
+      "why": "Guarding only `HttpLoggingMiddleware` still lets an operator who raises the log level to Debug write `id_token_hint`, request objects, `login_hint` and query-string access tokens to the log through the hosting logger.",
+      "check": "Look for log-redaction or guarded HTTP logging changes, or docs saying no log level writes a query string, that don't filter `Microsoft.AspNetCore.Hosting.Diagnostics`, including provider-scoped levels. Also check for a test that sends a GET with sentinel query values at Debug and asserts no log record contains them.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, to prove that `ValidateOnStart()` stops the host, build a real host (for example with `Host.CreateEmptyApplicationBuilder()`) using invalid options and assert that `StartAsync` throws `OptionsValidationException`, with a control host whose permitted options start; reading `IOptions<T>.Value` is not enough.",
+      "why": "Reading `IOptions<T>.Value` throws whether or not `ValidateOnStart()` is registered, so removing it would leave every test green and let a host with bad options start.",
+      "check": "Find options validation registered with `ValidateOnStart()` whose tests only read `.Value` or resolve the options. Check whether any test starts a host and asserts that startup fails.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that asserts sensitive data is absent from logs must also assert something positive in the same run, such as the expected log record being written, so that it proves the logging stage actually ran.",
+      "why": "A test that only checks for absence still passes if the pipeline short-circuits before logging, so it proves nothing about the guard.",
+      "check": "Look for no-leak or redaction tests that assert only that sentinels don't appear, with no assertion that the relevant log record (for example the HTTP logging response record) was written.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report `null!` when it passes a deliberate null to the code under test, as in an argument-validation test: the test conventions make this the one allowed use of the null-forgiving operator.",
+      "why": "The C# test instructions allow `null!` only for passing a deliberate null in argument-validation tests, and existing null-guard tests already use this pattern.",
+      "check": "Before flagging `null!` in a test, check whether the value is passed straight to the code under test to exercise its null guard. Report it only if it is used for something else.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

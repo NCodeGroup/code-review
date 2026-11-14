@@ -1,0 +1,40 @@
+{
+  "hash": "87d1f1958cbd4a07",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #196",
+  "rules": [
+    {
+      "statement": "Don't report a change as breaking a rule or ADR that belongs to another repository; raise it only when this repository's own docs or instruction files state that rule.",
+      "why": "The maintainer declined findings citing another repository's ADR. That rule doesn't bind this repository, and the change was a deliberate decision recorded here.",
+      "check": "Before reporting a rule violation, confirm the cited ADR or rule exists under this repository's docs/ or its instruction files (AGENTS.md and the like). If it only exists in another repository, and the change records a deliberate decision with its reason, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When two functions make the same external lookup, parse its answer and build the same failure-reason text, move that logic into one shared helper that both call.",
+      "why": "Duplicate copies can drift apart, and then two messages could describe the same state differently.",
+      "check": "Look for the same API call, the same parse/try block and the same reason expression copied into more than one function or script.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a failure-reason branch (no response, an unreadable answer, an answer that isn't the expected format) can be reached from more than one code path that reports it, add tests that send each failure kind through each reporting path and check the reported reason.",
+      "why": "If only one path is tested, the other path's reason text can regress and no test fails.",
+      "check": "For each failure kind a reporting function handles, see whether a test drives it through that function and asserts the message, not only through a sibling function.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

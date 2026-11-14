@@ -1,0 +1,30 @@
+{
+  "hash": "0dbf37b3805bcfd8",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #165",
+  "rules": [
+    {
+      "statement": "In a boundary test, assert the quantity the code actually compares against the limit (for example `value + overhead == limit`), not a value that only follows after incidental steps like trimming, and make the test's name, comments and the related docs describe that same boundary.",
+      "why": "An assertion on a derived value that doesn't match the documented limit invites someone to 'fix' the test or the limit the wrong way. It can also break on an unrelated change while the limit still works.",
+      "check": "Look for limit or boundary tests whose asserted number differs from the limit named in the test title, README or changelog. Look also for tests that depend on later processing (trimming, normalization) instead of the compared quantity. Check that flipping the comparison to the nearest wrong one (`>` vs `>=`) would make the test fail.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/tests/**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you add text to a comment, doc comment or help paragraph, re-wrap it to the line width the rest of the file uses, so you don't leave one overlong line.",
+      "why": "An overlong line makes the help text harder to read and doesn't match the file's wrapping.",
+      "check": "Look for edited comment or help-text lines that are much longer than the file's usual wrapping width.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

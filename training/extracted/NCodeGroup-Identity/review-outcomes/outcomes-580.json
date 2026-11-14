@@ -1,0 +1,96 @@
+{
+  "hash": "457a700b00345a77",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #580",
+  "rules": [
+    {
+      "statement": "Treat a client whose issued tokens carry platform-level authority (such as a bootstrap administrator client) as host-managed, and have management endpoints refuse every change to it (update, delete, settings, secrets, owners), even for callers authorized over its tenant.",
+      "why": "Otherwise authority over the root tenant's clients lets a tenant administrator mint a secret for that client, or delete and re-create it, and get a platform administrator token.",
+      "check": "Look for management write paths (secret creation, settings, delete or re-create, owners) on clients. Confirm that a client whose tokens are stamped with a platform role cannot be changed through them, and that an integration test shows a tenant-level admin gets refused.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test asserting an authorization or validation refusal must also assert that the response body names the specific reason (for example the setting or limit that was refused), not only the status code.",
+      "why": "If the check under test were removed and some other check refused the request, a test that asserts only the status would still pass.",
+      "check": "Find tests that assert only a 403 or 400 status for a specific refusal while sibling tests also assert the body content.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a decision-record index, list under 'amends' only the earlier records a record changes, and list the later records that change it in an 'amended by' clause.",
+      "why": "If the amendment is shown the wrong way round, a reader of the earlier record isn't told that later records change it.",
+      "check": "In ADR index rows, check that every record named in 'amends' is older than the row's record and is amended by it, and that later amending records appear as 'amended by'.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use the `OrDefault` suffix only on a method that returns a value or null/default when there is none, and name the value it returns (for example `GetXRefusalOrDefaultAsync`), not a method whose null return means 'allowed'.",
+      "why": "`OrDefault` marks a lookup that returns null when nothing is found, so using it on a method whose null means success makes readers misread the return.",
+      "check": "Look at new methods ending in `OrDefault` or `OrDefaultAsync`. Confirm that the name says what non-null value is returned and that null means 'none of that value'.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every async method of our own a trailing `CancellationToken` parameter, even when none of its awaited calls accepts one (such as `IAuthorizationService.AuthorizeAsync`). Callers flow their own request token into it, and a root call site with no token in hand passes `CancellationToken.None`.",
+      "why": "Our async methods should follow proper async patterns consistently. The maintainer rejected leaving the token out because the awaited API takes none.",
+      "check": "Flag new or changed async methods that take no `CancellationToken` as their last parameter, and callers that pass `None` while a request token is available. Don't accept 'the underlying API takes no token' as a reason to leave it out.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, give each mutating endpoint handler's not-found early return (such as a missing parent resource) its own unit test, not only the list or read endpoint's.",
+      "why": "Without that test, a regression that grants or changes something on a resource that doesn't exist would go unnoticed.",
+      "check": "For new handler methods with an existence check that returns NotFound, look for a test that sets up the missing resource and asserts NotFound.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, mock setups for calls whose argument order or content matters must match the arguments by value (for example `It.Is<JsonElement>(e => JsonElement.DeepEquals(e, expected))`), not `It.IsAny<T>()`.",
+      "why": "With `It.IsAny`, swapped or wrong arguments (such as current and new documents) would still pass the tests.",
+      "check": "Look for `It.IsAny<T>()` in setups of calls that take several values of the same type or a computed document, where the test should show which value goes where.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap Markdown prose such as CHANGELOG entries evenly at the file's column width (120 columns), without breaking lines mid-sentence and leaving short lines.",
+      "why": "Ragged hard wraps render fine but make the source harder to read and to diff.",
+      "check": "Look at added Markdown paragraphs for uneven line lengths or lines that break early, well short of 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

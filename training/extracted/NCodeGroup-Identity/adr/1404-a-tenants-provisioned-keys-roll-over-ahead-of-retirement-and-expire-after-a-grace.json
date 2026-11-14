@@ -1,0 +1,131 @@
+{
+  "hash": "7ddc892f8d393d37",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1404",
+  "rules": [
+    {
+      "statement": "Publish audit or domain events describing a persisted change only after the unit of work that makes the change has committed, never as the change is made.",
+      "why": "A lost optimistic-concurrency race discards the change but not an event already published, so the trail would name changes that never happened.",
+      "check": "Look for event publishing or audit calls made before SaveChanges/commit, or inside the transaction, instead of after the commit or on a run-after-commit hook.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write a separate log entry for a change that already raises an audit event; log only the mechanics, such as lost races and failures.",
+      "why": "The log entry is written before the commit the audit event waits for, so discarded changes get logged, and the audit pipeline already writes one log entry per event it publishes.",
+      "check": "Look for LogInformation or similar calls that describe each generated, retired or removed entity next to code that also builds an audit event for the same change.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply a collection option's defaults only when configuration supplies no entries, so a configured list replaces the defaults rather than adding to them.",
+      "why": "A bound collection starts empty and configuration binding appends to it, so defaults put in the initializer can't be dropped or replaced by a deployment.",
+      "check": "Look for options classes that pre-populate a List/array property in the initializer or constructor that configuration also binds, instead of filling defaults in a post-configure step when the collection is empty.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an option entry names another registered item, such as a setting, validate at startup that the name resolves to a registered item of the expected kind, and fail startup if it doesn't.",
+      "why": "A misspelled name would otherwise be silently ignored and quietly drop behavior, such as a token lifetime from a safety floor.",
+      "check": "Look for new options that hold string names of settings or registrations and have no IValidateOptions validator with ValidateOnStart that checks each name against the registry.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a periodic background pass takes a distributed lease so that only one replica runs it, make the lease last less than the timer interval, and rely on per-entity optimistic concurrency, not the lease, to keep concurrent writers apart.",
+      "why": "The timer ticks one interval after the pass started, so a lease as long as the interval is still held at the next tick and every other pass is skipped. Overlapping writers are kept correct by each entity's own unit of work.",
+      "check": "Compare the lease duration with the timer period in background services, and check that each entity is changed in its own unit of work under a concurrency token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a plan makes several changes to the same entity, apply each change to the entity as the earlier changes left it, not to the copy the plan originally read.",
+      "why": "Writing a later change from the original record undoes the earlier ones, for example an extension that overwrites an activation.",
+      "check": "Look for loops that apply several changes, each built from the original snapshot, and write them back without carrying the updated entity forward.",
+      "scope": "general",
+      "topic": "persistence",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Run each post-commit step independently: log a step that fails and still run the rest, and don't fail the already-committed operation because of it.",
+      "why": "Once the change has committed, a failed side effect such as a publish must not block the other steps, such as cache-eviction announcements, or the operation itself.",
+      "check": "Look for post-commit step sequences where an exception in one step skips the later steps or propagates as if the commit had failed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never include key material in audit events or logs about key lifecycle changes; record only identifiers, type, algorithm, use and lifecycle instants.",
+      "why": "Audit records are widely readable, and putting key material in them would expose the secret.",
+      "check": "Look at the properties added to key-related audit events and log calls for raw key bytes, private parameters or serialized JWKs.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Automated key rollover must retire, extend or remove only the keys it created itself, identified by an explicit managed-by marker on the key, never by the key's origin; leave operator-generated or imported keys alone.",
+      "why": "Operator keys created through the management API go through the same generator and have the same origin, so an origin check would retire and delete keys that belong to the operator.",
+      "check": "Look for rollover or cleanup code that chooses which keys to retire or delete by origin or by algorithm alone, without checking the key's managed-by marker.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a retired signing or encryption key published for a grace period of at least the longest lifetime of the tokens it protects plus the clock skew, read that grace at every plan, and only ever move a key's expiry later.",
+      "why": "No token may outlive the key that verifies it, including after a token lifetime is raised once the key already exists.",
+      "check": "Look for a fixed grace, a grace computed once when the key is generated, or code that can shorten an existing key's expiry.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Publish a successor signing key for at least the activation delay before it starts signing, and hand over so that exactly one key per algorithm signs at any instant, with no overlap of two active keys.",
+      "why": "Verifiers must already hold the key before the first token it signs. Two active keys let replicas whose clocks differ pick different keys at the hand-over.",
+      "check": "Look for rollover logic that activates a newly generated key immediately while another key is still active, or that gives the old and new keys overlapping active windows.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

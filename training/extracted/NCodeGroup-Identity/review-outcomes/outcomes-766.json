@@ -1,0 +1,18 @@
+{
+  "hash": "4a4f467ead954408",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #766",
+  "rules": [
+    {
+      "statement": "When a method returns a rented buffer lease together with a span or memory view over it, its `///` doc comment (`<summary>`, `<param>`, `<returns>`) states that the caller owns and must dispose the lease and that the view is read-only and valid only until the lease is disposed; private helpers are included.",
+      "why": "Without it the helper doesn't tell callers who owns the returned lease or how long the view stays valid, and the XML documentation convention gives every member whose signature changes a `///` comment, private helpers included.",
+      "check": "Look for new or changed methods, private ones included, that return or `out` a lease (IDisposable/IMemoryOwner/rented buffer) plus a ReadOnlySpan/Memory view. Report any that have no `///` docs, or only `//` comments, or docs that don't say who disposes the lease and how long the view stays valid.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

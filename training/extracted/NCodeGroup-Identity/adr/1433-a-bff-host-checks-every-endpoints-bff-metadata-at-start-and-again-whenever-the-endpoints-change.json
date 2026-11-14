@@ -1,0 +1,86 @@
+{
+  "hash": "1447797054f86c94",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1433",
+  "rules": [
+    {
+      "statement": "A hosted service that validates the application's endpoints must run its check at `IHostedLifecycleService.StartedAsync` (or later), not in `StartAsync` or an earlier hook, because only then does `EndpointDataSource` hold every endpoint.",
+      "why": "DI's `EndpointDataSource` is complete only once the application's pipeline is built, which happens after the hosted services start, so an earlier hook checks an incomplete set.",
+      "check": "Look for endpoint or `EndpointDataSource` inspection in `StartAsync`, `StartingAsync`, a constructor or an options validator instead of `StartedAsync`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A start-time configuration check collects every failure and throws one `InvalidOperationException` that lists them all, instead of throwing at the first failure.",
+      "why": "A misconfigured host should fail at start with a message that names every failure at once, so the operator fixes them all in one pass.",
+      "check": "Look for startup validation loops that throw inside the loop on the first bad item instead of gathering the messages and throwing once.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A startup validation error message names the item that fails and the registration or call that fixes it.",
+      "why": "Messages like \"call MapReverseProxy().AsBffRemoteApis()\" let the operator fix the misconfiguration without having to investigate it.",
+      "check": "Look for new startup validation messages that leave out the identifier of the failing route, endpoint or setting, or that don't say which call or configuration fixes it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When configuration or endpoints that were checked at start change while the host runs, re-check them on the change token and log each failure at `Error` with a defined event ID, without stopping the host.",
+      "why": "A later change must not stop a host that has already started, but the misconfiguration should still be reported where the operator reads it, not only surface as request failures.",
+      "check": "Look for startup-only validation of data that can change at runtime (dynamic providers, reloadable options) with no change-token re-check, or for a re-check that throws or stops the host, or that logs without an `EventId`.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A hosted service that subscribes to change tokens disposes those subscriptions in `StoppingAsync`/`StopAsync` and in `Dispose`.",
+      "why": "An undisposed change-token registration keeps firing callbacks and holds onto the service after the host stops.",
+      "check": "Look for `ChangeToken.OnChange` or `RegisterChangeCallback` results in a hosted service that are not stored and disposed both on stop and on dispose.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A start-time misconfiguration check is added alongside the request-time fail-closed refusals (such as `502` for an unguarded token route or `404` for an unselected frontend) and does not replace or remove them.",
+      "why": "Endpoints can change after start, so the request-time refusal stays as the backstop and the start-time check only reports the failure earlier.",
+      "check": "Look for diffs that remove or weaken a request-time security refusal on the grounds that a startup check now covers it.",
+      "scope": "domain",
+      "domain": "backend-for-frontend",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "To validate conventions that a host applies to YARP endpoints (such as metadata added by `MapReverseProxy()` conventions), read the endpoint metadata from `EndpointDataSource`, not the route configuration through an `IProxyConfigFilter`.",
+      "why": "An `IProxyConfigFilter` sees only the route configuration and not the endpoint conventions, so it can't tell whether a required convention call is missing.",
+      "check": "Look for an `IProxyConfigFilter` or proxy-config inspection used to check whether endpoint conventions or metadata are present.",
+      "scope": "domain",
+      "domain": "yarp-reverse-proxy",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

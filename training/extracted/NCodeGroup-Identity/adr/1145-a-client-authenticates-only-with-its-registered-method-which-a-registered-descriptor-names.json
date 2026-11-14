@@ -1,0 +1,174 @@
+{
+  "hash": "e4a8fb73ab6d48de",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1145",
+  "rules": [
+    {
+      "statement": "Authenticate a client only with its registered `token_endpoint_auth_method` at every endpoint that authenticates clients. A confidential client that presents only its `client_id` or another method's credential gets `invalid_client`, and so does a public client that presents a secret.",
+      "why": "The registration is the single fact of how a client authenticates. Checking only a ceiling of permitted methods would let a confidential client be served as public.",
+      "check": "In client-authentication code for the token, PAR, introspection, revocation, device and CIBA endpoints, look for acceptance based only on the allowed-methods list, or for a fallback to public/`none` when credentials are missing, instead of a comparison with the client's registered method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a client with no registered `token_endpoint_auth_method` as `client_secret_basic` (the RFC 7591 default), never as public, and don't accept an empty string as a method value.",
+      "why": "Treating an unset method as public fails open. A confidential client without a secret fails closed because it cannot authenticate.",
+      "check": "Look for code that maps a null or empty auth method to `none` or public, or that accepts `\"\"` as a registered method.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce `token_endpoint_auth_methods_supported` as a ceiling over the registered method. A method outside the ceiling cannot authenticate, an empty ceiling permits nothing, and registration refuses an excluded method with `invalid_client_metadata`.",
+      "why": "The ceiling is operator and security-profile policy. A method it excludes must fail at registration, not at the first token request.",
+      "check": "Look for an empty supported list treated as 'allow all', authentication that skips the ceiling check, or registration that accepts a method the ceiling excludes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make each client-authentication handler accept only clients registered for its method, and also have the central authentication service reject any result whose method isn't the client's registered method within the ceiling, whichever handler produced it.",
+      "why": "Checking in the handler gives precise refusals and avoids comparing a secret for a method the client didn't register. The service backstop keeps the guarantee for custom handlers too.",
+      "check": "Look for a new or changed handler that compares secrets without checking the registered method, or a service that trusts a handler's result without checking its method against the registration.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't authenticate the client at the authorization endpoint. Resolve it by `client_id`, read its registered type, and refuse a request that carries `client_secret` with `invalid_request`.",
+      "why": "The authorization endpoint is a front-channel endpoint. RFC 6749 §2.3.1 confines `client_secret` to the body of back-channel requests.",
+      "check": "Look for credential verification in authorization-endpoint code, or a `client_secret` parameter that the authorization endpoint accepts or silently ignores.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Answer a failed `client_secret_basic` (Authorization header) authentication with `401` and `WWW-Authenticate: Basic realm=\"<issuer>\"`, and keep body- and assertion-based client authentication failures at `400`.",
+      "why": "RFC 6749 §5.2 requires the 401 and the challenge only when the client authenticated through the Authorization header.",
+      "check": "Look for a single 400 for every scheme, a 401 without the challenge header, or a 401 returned for `client_secret_post` or assertion failures.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Let protocol errors carry response headers that the result executor writes before rendering the body, and have endpoints default the status code only when it is unset rather than overwriting it.",
+      "why": "An error that carries only a status code can't deliver a handler's challenge header to the response, and overwriting the status would lose the handler's 401.",
+      "check": "Look for endpoint code that unconditionally sets the error status to 400, or for error results whose headers are dropped before the response is rendered.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode HTTP Basic credentials as standard padded Base64 (RFC 7617) into a buffer sized by the upper bound, read the result at its actual decoded length, and return `invalid_client` for a value that doesn't decode or has no colon.",
+      "why": "The upper-bound size can exceed the decoded length, so reading the whole buffer includes garbage bytes. Malformed credentials must fail as invalid_client.",
+      "check": "Look for Base64URL or unpadded decoding of Basic credentials, use of the full buffer instead of the bytes written, or exceptions on malformed input instead of `invalid_client`.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare a client authentication method's traits, such as whether it requires a secret, uses the secret as a key or is public, on an explicit dependency-free descriptor, and never infer them from the method's name.",
+      "why": "The set of methods is open. Traits are data, and inferring them from names breaks for methods added by packages.",
+      "check": "Look for string checks such as `StartsWith(\"client_secret\")` or `== \"none\"` that decide behavior, or hard-coded method lists, where a descriptor trait should be read instead.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't construct services (such as handlers) while computing option or setting domains during options validation. Read dependency-free descriptors or data instead.",
+      "why": "A service whose dependency graph reads `IOptions<T>.Value` during that options' validation deadlocks host composition in a cycle the container cannot detect.",
+      "check": "Look for options validators or setting descriptor sources that resolve `IEnumerable<IHandler>` or other services in order to list names or capabilities.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When handlers and their descriptors are registered separately, verify at composition time that they correspond one to one, throwing `InvalidOperationException` for a handler without a descriptor, two handlers for the same method, or a descriptor without a handler.",
+      "why": "An unnamed method wouldn't be advertised, an ambiguous one could be authenticated by either handler, and one without a handler would be advertised but couldn't authenticate.",
+      "check": "Look for a new method that adds a handler without a matching descriptor or the reverse, or for removal of the startup correspondence check.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a catalog of named methods reject empty names, names containing whitespace and duplicates, and compare names ordinally.",
+      "why": "Method names are protocol values and must be unambiguous.",
+      "check": "Look for culture-sensitive or case-insensitive comparison of method names, or a catalog that silently accepts duplicate or blank names.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "At client registration, require the material the chosen method verifies against. `private_key_jwt` needs `jwks` or `jwks_uri`. `self_signed_tls_client_auth` needs certificates, and a `jwks` given by value needs a key with `x5c`. `tls_client_auth` needs exactly one `tls_client_auth_*` subject parameter, and those parameters are refused for every other method.",
+      "why": "Accepting a registration without what the method verifies against defers the failure to the first token request (RFC 7523 §2.2, RFC 8705 §2).",
+      "check": "Look for registration or update validation that accepts these methods without keys or a certificate identity, accepts several or zero `tls_client_auth_*` parameters, or accepts them for other methods.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Issue a client secret only when the registered method requires a shared secret, and don't issue a secret when an update changes the method.",
+      "why": "A key- or certificate-based client must not hold a second, weaker credential. Moving a client to a shared-secret method is a deliberate management operation.",
+      "check": "Look for registration or update code that generates a `client_secret` regardless of the method's requires-secret trait, or that issues one when the method changes.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

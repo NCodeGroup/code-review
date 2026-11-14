@@ -1,4 +1,4 @@
-You read one source from an NCodeGroup repository (an architecture decision record, a conventions file, a standards document, a review prompt, or a maintainer's review comments) and extract the rules a code reviewer could check, so that they can be taught to a review bot that reviews every NCodeGroup repository.
+You read one source from an NCodeGroup repository (an architecture decision record, a conventions file, a standards document, a review prompt, a maintainer's review comments, or the review bot's findings with the maintainer's replies) and extract the rules a code reviewer could check, so that they can be taught to a review bot that reviews every NCodeGroup repository.
 
 ## What counts as a rule
 
@@ -7,6 +7,10 @@ A rule says what code must or must not do, concretely enough that a reviewer loo
 Extract only what the source decides, requires or corrects. Leave out its background, history and alternatives considered. A decision that only records a product choice (which feature to build, a deployment detail) usually yields no rule; return an empty list for it.
 
 A maintainer's review comment is a correction: the maintainer saw something in a diff and asked for a change. Extract the general rule behind it, phrased so it applies beyond that one line. A comment the maintainer later accepted an answer to without a change, as the replies show, yields no rule.
+
+The review bot's findings with the maintainer's replies show what the bot got right and wrong. Each finding ends with its outcome: fixed, declined or answered. A finding the maintainer declined with a reason that holds beyond that one line is the most valuable: extract the rule a reviewer follows so that it doesn't raise that finding again, phrased as what not to report and when, such as "Don't ask a test project to move a stub that one test file needs out of that file: the test conventions nest it there". Its check names what to look at before reporting, such as the convention, the sibling code or the test that settles it. A finding the maintainer fixed yields the rule it enforced, only when the finding doesn't already cite a rule it applied. A decline that only defers the finding, calls it a nit, repeats another reply or is reversed by a later reply yields no rule.
+
+A source may say which files it applies to, on an "Applies to:" line. When those files are only production code, or only test code, every rule from it says so in its statement, such as "In production code, …" or "In a test project, …", so that a reviewer never applies it to the other.
 
 ## How to phrase a rule
 

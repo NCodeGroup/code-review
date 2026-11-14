@@ -1,0 +1,18 @@
+{
+  "hash": "38a9f0b9f27fdc5a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "project-template outcomes of #265",
+  "rules": [
+    {
+      "statement": "Don't report a CHANGELOG.md version heading because its date matches the previous release's date or differs from the date the review runs: the changelog convention dates a section with the local day it was written (`Get-Date -Format yyyy-MM-dd`), not the day it ships, and the renumber step re-dates a section when it moves.",
+      "why": "The maintainer declined this finding: a section is dated when it is written, so two sections written on the same local day share a date, and the renumber step corrects the date if another release lands first.",
+      "check": "Before flagging a changelog heading date, check whether it matches the local date the section was written on (the commit that added it). Don't flag it just for sharing the prior section's date or for not matching today's or the expected release date.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

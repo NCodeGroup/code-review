@@ -1,0 +1,100 @@
+{
+  "hash": "b328d3a25835b2d2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1206",
+  "rules": [
+    {
+      "statement": "Check a relation between two or more of an entity's settings in a registered rule that one shared validator runs, not in an inline check at a single place that stores the entity.",
+      "why": "Inline checks drift: each caller checks a different subset, and entities left incoherent fail later at runtime.",
+      "check": "Look for new code in a registration, management or seeding path that compares one setting against another (for example a client value against a supported list) directly, instead of adding or relying on a registered rule behind the validator.",
+      "scope": "domain",
+      "domain": "settings-cascade",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate a relation against the effective, resolved settings that the shared validator builds, not against the raw stored document or views the caller resolves itself.",
+      "why": "The limiting lists come from the settings cascade and selected profiles, which only the effective settings carry, and callers that resolve their own views drift.",
+      "check": "Look for a rule or caller that reads bounding lists from the entity's own document, or that calls the effective-settings resolver itself before validating instead of passing the raw tenant and entity settings to the validator.",
+      "scope": "domain",
+      "domain": "settings-cascade",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Any write or change that could make an already-stored entity incoherent, such as narrowing a ceiling or selecting a profile, must re-run the coherence validator, and it reports only the violations that the change introduces.",
+      "why": "A settings change that re-checks only some relations leaves stored entities that fail the next time they are used.",
+      "check": "Look for a new settings write path at the platform, team or tenant level, or a reconciliation path, that does not run the coherence check over the affected stored entities, or that reports violations that already existed before the write.",
+      "scope": "domain",
+      "domain": "settings-cascade",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register each implementation in an open, extensible collection of services (rules, handlers, descriptors) with `TryAddEnumerable`, so that a package adds one with a single registration.",
+      "why": "Rules are an open collection, so a package adds one with a single registration and doesn't register a duplicate.",
+      "check": "Look for implementations of a multi-registration interface that are added with `AddSingleton`/`TryAddSingleton` or gathered in a hard-coded list instead of `TryAddEnumerable`.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have an extensible validation-failure type carry its own description that every caller reports, rather than a closed enum of failure kinds that callers turn into text.",
+      "why": "A closed set of kinds makes a package edit the enum to add a new relation, but a violation that carries its own description stays open.",
+      "check": "Look for a new enum of violation or failure kinds in an open rule collection, or for callers that build messages from such a kind instead of reporting the violation's description.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Format the values interpolated into validation and violation messages with the invariant culture.",
+      "why": "The decision requires violation descriptions to use invariant-culture formatting so that values such as TimeSpans read the same everywhere.",
+      "check": "Look for string interpolation or ToString calls on numeric, date or TimeSpan values in validation messages that don't use CultureInfo.InvariantCulture or an invariant FormattableString.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Treat a value an entity registers for a setting that merges with a meet (`Min`, `And`, `Intersect`) as a violation when a ceiling lowers it in the effective settings, but never report a join (`Max`, `Or`, `Union`) raising a value to a floor.",
+      "why": "A silent clamp lowers what was registered without telling anyone, but refusing a join would stop a tenant from raising a floor.",
+      "check": "In coherence or merge validation, look for meet-merged settings whose lowered effective value isn't reported, or for code that reports a join-merged value being raised.",
+      "scope": "domain",
+      "domain": "settings-cascade",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Drive a change-detection gate from the setting names that each rule declares, rather than from a separate gate method that each rule implements.",
+      "why": "A per-rule gate can forget a setting its rule reads, while one generic gate over the declared names cannot leave one out.",
+      "check": "Look for a rule that adds its own change-detection logic, or for a rule whose declared setting names leave out a setting it reads in its check.",
+      "scope": "domain",
+      "domain": "settings-cascade",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

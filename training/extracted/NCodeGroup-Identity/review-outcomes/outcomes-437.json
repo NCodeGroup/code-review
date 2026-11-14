@@ -1,0 +1,18 @@
+{
+  "hash": "b33e5f300c7fd57c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity outcomes of #437",
+  "rules": [
+    {
+      "statement": "Don't hard-code one-off measured figures (frequencies, costs, timings) in a code or config comment; keep the rationale and link to the issue or discussion where the figures were measured.",
+      "why": "Nothing keeps such figures up to date, so a later reader deciding whether to change the code may rely on numbers that are stale.",
+      "check": "Look for comments in changed code or config files that state measured numbers, such as percentages, dollar amounts or durations, with nothing keeping them current, and no link to where they came from.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

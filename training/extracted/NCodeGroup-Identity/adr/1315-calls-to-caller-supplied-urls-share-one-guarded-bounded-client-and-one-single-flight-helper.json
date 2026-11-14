@@ -1,0 +1,229 @@
+{
+  "hash": "9863bcd0aa02a611",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1315",
+  "rules": [
+    {
+      "statement": "Send every request to a URL supplied by a client, a registration or a certificate through the one shared guarded named HttpClient; don't add another named client, typed client or `new HttpClient` for a new purpose.",
+      "why": "A copy of the guard configuration per purpose drifts from the others, so a fix doesn't reach every caller.",
+      "check": "Look for new `AddHttpClient` registrations, `new HttpClient(...)` or `IHttpClientFactory.CreateClient` calls with another name that fetch from or deliver to caller-supplied URLs.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "The handler for calls to caller-supplied URLs must set `AllowAutoRedirect = false`, and a 3xx response is treated as a failure.",
+      "why": "A redirect could otherwise bounce a guarded call to an internal host.",
+      "check": "Check the `SocketsHttpHandler`/`HttpClientHandler` configuration for caller-supplied URL clients, and check that delivery code doesn't follow `Location` headers or treat 3xx as success.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Enforce SSRF protection in the handler's `ConnectCallback`: resolve the host once, skip every IANA special-use address (loopback, RFC 1918, CGNAT, link-local including cloud metadata, unique-local, multicast, reserved, documentation, and IPv4-mapped forms of these), and connect to the exact address that was vetted.",
+      "why": "Checking the name and then connecting by name lets a DNS rebinding move the connection to an internal address.",
+      "check": "Flag guards that validate a URL or resolved address before sending and then let the client resolve the host again, and address checks that miss IPv4-mapped IPv6 or any special-use range.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't add any option or setting that turns off the special-use address floor or allows private addresses again; an address-filter extension point may only add denials, and host allow-lists may only narrow the reachable hosts.",
+      "why": "A setting that permits the private network defeats the guard for every caller.",
+      "check": "Look for flags like `AllowPrivateAddresses` or `DisableGuard`, or filter implementations or contracts that can return allow and override the floor.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an outbound fetch fails, log a reason taken from the shared fixed vocabulary of fetch-failure reasons, and name the URL with its user information, query and fragment removed and never a resolved IP address; an address-refusal exception names only the host.",
+      "why": "A shared vocabulary keeps failures comparable across fetchers, and leaving out the address and URL secrets keeps internal topology and credentials out of logs.",
+      "check": "Inspect log calls and exception messages in fetch failure paths for free-text reasons, full `Uri.ToString()` values with query or userinfo, or `IPAddress` values.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Each guarded fetch decides which exceptions to catch through the one shared fetch-failure classifier, not with its own catch list.",
+      "why": "Each fetcher should treat failures the same way, and a fix to classification should reach all of them.",
+      "check": "Look for guarded fetchers that catch `HttpRequestException`, `SocketException` or similar directly instead of filtering with the shared classifier.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a resilience pipeline bounds outbound calls, set the client's `HttpClient.Timeout` to `Timeout.InfiniteTimeSpan` so that the pipeline's total and per-attempt timeouts are the only bound.",
+      "why": "The framework's 100-second default would silently cut a longer configured total timeout.",
+      "check": "Check that clients wrapped in a timeout pipeline set `Timeout = Timeout.InfiniteTimeSpan`, and flag any extra `HttpClient.Timeout` value.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For calls to caller-supplied URLs, retry only a bodiless GET or HEAD, and only on 408, 429, 5xx or timeout; never retry connection or name-resolution errors, never send a POST twice, and ignore `Retry-After`.",
+      "why": "The guard's refusal is deterministic, so retrying it only adds load (the `jwks_uri` fetch runs per token request). A POST is not safe to repeat, and the endpoint shouldn't choose the server's delay.",
+      "check": "Inspect retry predicates (`ShouldHandle`) and delay generators for POST retries, `HttpRequestException`/`SocketException` retries, or use of `Retry-After`.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't use `AddStandardResilienceHandler` or any shared circuit breaker or rate limiter, and don't create a pipeline per authority, for clients that call caller-supplied hosts.",
+      "why": "A breaker shared across hosts lets one hostile endpoint stop every other client's calls, and a pipeline per authority grows with every host an attacker chooses.",
+      "check": "Look for `AddStandardResilienceHandler`, circuit-breaker or rate-limiter strategies, or per-host pipeline keys on guarded clients.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Send requests to untrusted endpoints with `HttpCompletionOption.ResponseHeadersRead`, and read the body only through the shared capped content reader, which enforces a hard byte cap while streaming into a pooled `IBufferWriter<byte>` and treats `Content-Length` only as a hint.",
+      "why": "The pipeline's timeouts end when the headers arrive, so an uncapped body read is a resource-exhaustion vector, and a missing or false length must not bypass the cap.",
+      "check": "Flag `ReadAsStringAsync`, `ReadAsByteArrayAsync`, `ReadFromJsonAsync` or `ReadAsStreamAsync` copies on untrusted responses, and caps that trust `Content-Length`.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Parse a capped response body directly from the written buffer sequence, without copying it into an intermediate array or string.",
+      "why": "The read is designed to allocate no intermediate array.",
+      "check": "Look for `.ToArray()`, `Encoding.GetString` or `MemoryStream` copies of the written sequence before parsing.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require an absolute `https` URI for fetched documents such as `jwks_uri`, `request_uri` and `sector_identifier_uri`, and reject one that isn't `https` before any request is sent.",
+      "why": "These documents are only trusted when they arrive over TLS from the host the client registered.",
+      "check": "Check URI validation for `IsAbsoluteUri` and an `https` scheme check before the fetch.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a CRL or OCSP retrieval over `http` as insecure, as long as it goes through the same address guard.",
+      "why": "RFC 5280 section 4.2.1.13 and RFC 6960 Appendix A publish these locations as `http` URLs, and the CA's signature, not the transport, protects the data.",
+      "check": "Before flagging an http scheme, check whether the fetch is certificate revocation data sent through the guarded client.",
+      "scope": "domain",
+      "domain": "oauth-oidc-jose",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Merge fetch-limit settings (allowed hosts, fetch timeout, maximum size) across scopes so that a narrower scope can only tighten them: intersect allow-lists and take the minimum of timeouts and sizes.",
+      "why": "Lowering a limit is safe, so tenants and clients may restrict it but never widen it beyond the platform value.",
+      "check": "Check how new limit settings are declared or merged, and flag override or max merges, or a union of allowed hosts.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a document fetch fails, report the specific failure (status, content type, size, timeout) as itself, not as a generic fetch error, and let the caller's own cancellation propagate unchanged.",
+      "why": "A specific failure tells the caller what went wrong, and turning the caller's cancellation into a protocol error hides an aborted request.",
+      "check": "Look for catch blocks that collapse different failures into one error or that catch `OperationCanceledException` without checking whether the caller's token was canceled.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Share a remote fetch between concurrent callers through the shared single-flight helper, not with per-feature bookkeeping of `ConcurrentDictionary` and `Lazy<Task>`; each owner creates its own instance rather than resolving a singleton service.",
+      "why": "A copy of the single-flight bookkeeping misses fixes made to another copy, and a singleton would mix the keys of different features in one dictionary.",
+      "check": "Flag new hand-rolled in-flight dictionaries of tasks for remote fetches, and DI registrations of the single-flight helper.",
+      "scope": "domain",
+      "domain": "outbound-http",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a single-flight shared fetch, run the retrieval without any caller's cancellation token, have each caller stop waiting with its own token through `WaitAsync`, and remove the entry only after the retrieval has recorded its result.",
+      "why": "If the first caller cancels, the shared work must not be canceled for the other callers, and removing the entry early lets a duplicate fetch start.",
+      "check": "Check that the shared task is not passed a caller's `CancellationToken` and that callers await with `.WaitAsync(cancellationToken)`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An owner of a single-flight fetch checks its value cache and its remembered-failure cache before it calls the helper, and checks them again inside the retrieval.",
+      "why": "Another caller's retrieval may have filled the cache in the meantime, and checking twice prevents a redundant remote fetch.",
+      "check": "Look for retrieval delegates that fetch without first checking the cache again.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate outbound HTTP resilience options (attempt timeout, total timeout, retry count, retry delay, failure cache duration) when the host starts.",
+      "why": "An invalid bound should fail at startup, not on the first outbound call.",
+      "check": "Check that new outbound options are registered with validation and `ValidateOnStart`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

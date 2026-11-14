@@ -1,0 +1,101 @@
+{
+  "hash": "f3a561e32696153a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1408",
+  "rules": [
+    {
+      "statement": "Load a recovery or offline-only private key from a file passed explicitly to the offline command, never from configuration, and never register its unwrapper as a service a serving process can resolve (for example as a key wrapper in the serving DI container).",
+      "why": "Configuration is long-lived and replicated, and the recovery private key must never reach a process that serves.",
+      "check": "Look for a recovery or offline private key read through IConfiguration or options, or an unwrapper that uses it registered in the host's service collection.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decrypt unwrapped key material into sensitive buffers that are zeroed after use, not into ordinary arrays or strings.",
+      "why": "Unwrapped master key material must not stay in memory after it is used.",
+      "check": "Look for unwrap or decrypt calls that write key material into plain byte[] or string values that are never cleared, instead of a zeroed sensitive buffer.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Require an RSA key of at least 3072 bits imported from a `PRIVATE KEY` PEM for recovery unwrapping, decrypt with RSA-OAEP using SHA-256, derive the key id from the public half, and refuse a wrapped copy that names a different key id.",
+      "why": "This makes sure recovery uses a strong key and the right padding, and that a copy is only unwrapped by the key it was wrapped for.",
+      "check": "In recovery-key code, look for a missing key size check, padding other than OAEP-SHA256, a key id taken from input instead of derived from the public key, or no key-id match check before decrypting.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When rewrapping a key, keep its material unchanged and check its key size and key check value after unwrapping and before writing the new wrap.",
+      "why": "Rewrapping must not change any stored secret, and verifying first stops a corrupt or wrong unwrap from being saved.",
+      "check": "Look for rewrap code that writes a new wrap without first checking the unwrapped key's size and key check, or that generates new material.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never remove an existing recovery copy of a key just because recovery is not configured; leave it as it is, and remove it only through an explicit operation that requires it.",
+      "why": "A recovery path must never be removed silently.",
+      "check": "Look for rewrap or update code that clears or overwrites the recovery wrap when no recovery public key is configured.",
+      "scope": "domain",
+      "domain": "key-management",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a batch key-maintenance operation, check required preconditions (such as a configured recovery public key) before reading any row, and make the operation safe to run again so that a repeated run gives the same result as the first.",
+      "why": "A run should fail before it does any partial work, and an operator must be able to re-run a Job safely.",
+      "check": "Look for a precondition checked inside the per-row loop rather than before it, or for row handling that changes the result when run a second time.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a host binary also handles an offline command verb, parse the verb and its arguments first and build the host with the remaining arguments only, so the command-line configuration provider never reads the verb or its arguments.",
+      "why": "This stops verb arguments, such as a key file path, from leaking into host configuration.",
+      "check": "Look for the full args array passed to Host.CreateApplicationBuilder or WebApplication.CreateBuilder when the program also handles command verbs.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/Program.cs",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a Helm chart, mount a Secret that holds an offline-only private key into the one-off Job that needs it and never into the serving Deployment.",
+      "why": "The serving process must never be able to reach the recovery private key.",
+      "check": "Look in chart templates for the recovery or offline key Secret mounted or referenced in the Deployment's pod spec.",
+      "scope": "domain",
+      "domain": "kubernetes-helm",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/charts/**/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

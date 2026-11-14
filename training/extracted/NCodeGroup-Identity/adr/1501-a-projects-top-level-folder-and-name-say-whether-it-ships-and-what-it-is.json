@@ -1,0 +1,66 @@
+{
+  "hash": "b7a8a04819521039",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Identity ADR-1501",
+  "rules": [
+    {
+      "statement": "Put a project in the top-level folder for its role: `src/` holds only published NuGet packages, and deployables, analyzers, tests, benchmarks and non-NuGet workspaces each go in a folder of their own.",
+      "why": "The folder should tell a reader whether a project ships. When shipping and non-shipping projects share a folder, the only way to know is to open each project file and read its `IsPackable`.",
+      "check": "Look for a new or moved project whose folder doesn't match its role, such as a deployable host, analyzer or test project under `src/`, or a NuGet package outside `src/`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't set `IsPackable` in a project file outside `src/`; leave packing to the folder's `Directory.Build.props`.",
+      "why": "Packing should follow from the folder so that the folder alone shows whether a project ships, with no project-level flag overriding it.",
+      "check": "Look for an `<IsPackable>` element in a `.csproj` under `hosts/`, `analyzers/`, `tests/`, `benchmarks/` or any other non-package folder.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a project for its role: a shipping library gets a plain product name, a deployable process gets the `.Host` suffix, and projects that travel with a host (its migrations, its migration worker) get the host's name as a prefix, such as `….Host.Database` and `….Host.MigrationService`.",
+      "why": "Names that could be read as synonyms hide the difference between the library a consumer references and the process an operator runs.",
+      "check": "Look for a new project whose name doesn't show whether it's a library, a deployable or a host-owned companion, or whose name could be mistaken for another project's role.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the Aspire local-development orchestrator for its purpose (for example `….LocalDev`), not `AppHost` or `Aspire`; use \"AppHost\" only as Aspire's own vocabulary, as in `Aspire.Hosting.AppHost`.",
+      "why": "`AppHost` sounds like the application's central host when the project is a developer-only tool, and `Aspire` names a technology that could be replaced. Aspire finds the project through `IsAspireHost` and `Aspire.AppHost.Sdk`, not through its name.",
+      "check": "Look for a project, folder or namespace named `AppHost` or `Aspire` that is really a local-dev orchestrator.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never give a deployable or internet-facing project a name that suggests a toy, such as \"playground\"; keep such names for genuine developer playgrounds.",
+      "why": "A toy name invites unsafe defaults in something internet-facing, such as ephemeral signing keys, a wildcard `AllowedHosts` and development seeding left switched on.",
+      "check": "Look for a deployable host, service or chart named \"playground\", \"sandbox\", \"demo\" or similar.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.csproj",
+        "**/*.cs",
+        "charts/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}
