@@ -5,7 +5,9 @@
 //   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules]
 //   node training/run.ts --retag
 //
-// 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The result
+// 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The bot's own
+//    findings that the maintainer answered are a source too, one per pull request, with the replies and whether the
+//    finding was fixed or declined. The result
 //    is saved under training/extracted/<repository>/ with the source's content hash, so a rerun reads only sources that
 //    changed. An instruction file's rules also keep the file's applyTo globs.
 // 2. Generalize: Opus merges every repository's extracted rules, topic by topic, into guidance/<topic>.md, which the
@@ -146,11 +148,15 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
   return sources;
 }
 
-// The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
-function reviewComments(repository: string, repoName: string, maintainer: string): Source[] {
+// Every review comment on a repository's pull requests, as GitHub's REST API lists them.
+function fetchPullComments(repository: string): PullComment[] {
   const raw = execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repository}/pulls/comments?per_page=100`], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  const comments = (JSON.parse(raw) as any[][]).flat();
-  const replies = new Map<number, any[]>();
+  return (JSON.parse(raw) as PullComment[][]).flat();
+}
+
+// The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
+export function maintainerComments(comments: PullComment[], repoName: string, maintainer: string): Source[] {
+  const replies = new Map<number, PullComment[]>();
   for (const c of comments) if (c.in_reply_to_id) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
   const byPull = new Map<string, string[]>();
   for (const c of comments.filter((c) => c.user?.login === maintainer && !c.in_reply_to_id)) {
@@ -188,7 +194,7 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
     const last = answers.at(-1)!.body ?? '';
     const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last) ? 'fixed' : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last) ? 'declined' : 'answered';
     const thread = [
-      `Finding ${c.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
+      `Finding ${finding.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
       findingBody(body).slice(0, 1_500),
       `Outcome: ${verdict}`,
       ...answers.map((r) => `Maintainer: ${(r.body ?? '').slice(0, 1_000)}`),
@@ -468,10 +474,13 @@ async function main(): Promise<void> {
       if (!checkout) throw new Error('Pass --checkout with a clone of the repository at its default branch.');
       const repoName = repository.split('/')[1]!;
       const only = arg('only')?.split(',');
+      const maintainer = arg('maintainer') ?? 'polewskm';
+      const comments = fetchPullComments(repository);
       const sources = [
         ...decisionRecords(checkout, repoName),
         ...conventionFiles(checkout, repoName),
-        ...reviewComments(repository, repoName, arg('maintainer') ?? 'polewskm'),
+        ...maintainerComments(comments, repoName, maintainer),
+        ...outcomeSources(comments, repoName, maintainer),
       ].filter((s) => !only || only.some((o) => s.id.includes(o)));
       console.log(`${sources.length} sources from ${repository}`);
       if (process.argv.includes('--list')) {

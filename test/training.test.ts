@@ -19,8 +19,18 @@ test('outcomeSources reads the verdict of a fixed and a declined finding with th
   assert.equal(source!.id, 'outcomes-7');
   assert.equal(source!.label, 'Repo outcomes of #7');
   assert.match(source!.text, /^The review bot's findings on pull request #7 that the maintainer answered, with the replies:\n\n/);
-  assert.match(source!.text, /Finding 1 \(nit, by tests\) on a\.cs, line 4: One\nThe problem\.\nOutcome: fixed\nMaintainer: Autopilot: fixed in abc1234/);
-  assert.match(source!.text, /Finding 2 \(nit, by tests\) on a\.cs, line 4: Two\nThe problem\.\nOutcome: declined\nMaintainer: Autopilot: not changed\. It is intended\./);
+  assert.match(source!.text, /Finding F1 \(nit, by tests\) on a\.cs, line 4: One\nThe problem\.\nOutcome: fixed\nMaintainer: Autopilot: fixed in abc1234/);
+  assert.match(source!.text, /Finding F1 \(nit, by tests\) on a\.cs, line 4: Two\nThe problem\.\nOutcome: declined\nMaintainer: Autopilot: not changed\. It is intended\./);
+});
+
+test('maintainerComments keeps only the maintainer top-level comments with their replies, one source per pull request', async () => {
+  const { maintainerComments } = await import('../training/run.ts');
+  const other = 'https://api.github.com/repos/o/r/pulls/8';
+  const mine = (id: number, body: string, pullUrl = pull) => ({ id, user: { login: 'polewskm' }, body, path: 'a.cs', line: 3, original_line: 4, diff_hunk: '@@ -1 +1 @@\n+x', pull_request_url: pullUrl });
+  const sources = maintainerComments([mine(1, 'Use a span.'), mine(2, 'Rename it.', other), bot(3), reply(21, 1, 'Done', 'someone-else')], 'Repo', 'polewskm');
+  assert.deepEqual(sources.map((s) => [s.kind, s.id, s.label]), [['review-comments', 'pr-7', 'Repo review of #7'], ['review-comments', 'pr-8', 'Repo review of #8']]);
+  assert.match(sources[0]!.text, /Maintainer: Use a span\.\nReply from someone-else: Done/);
+  assert.doesNotMatch(sources[0]!.text, /Title/);
 });
 
 test('outcomeSources leaves out a finding nobody answered and a reply from another login', async () => {
