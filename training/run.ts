@@ -312,6 +312,13 @@ export function staleExtractions(dir: string, sources: Pick<Source, 'kind' | 'id
   return stale.sort();
 }
 
+// The request the model reads for one source: its label, the files it applies to when it is an instruction file, and
+// its text.
+export function extractRequest(source: Pick<Source, 'label' | 'text' | 'applyTo'>): string {
+  const applies = source.applyTo?.length ? `Applies to: ${source.applyTo.join(', ')}\n` : '';
+  return `Source: ${source.label}\n${applies}\n<source>\n${source.text}\n</source>`;
+}
+
 async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[], prune: boolean): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'extract.md'), 'utf8');
   const promptHash = sha(prompt);
@@ -332,7 +339,7 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
       role: `extract:${source.kind}`,
       tier: 'opus',
       systemPrompt: prompt,
-      prompt: `Source: ${source.label}\n\n<source>\n${source.text}\n</source>`,
+      prompt: extractRequest(source),
       schema: extractSchema,
       maxTurns: 3,
       budgetUsd: 3,

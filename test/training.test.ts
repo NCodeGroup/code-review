@@ -68,6 +68,16 @@ test('extractedFolder names the folder a first run creates when none exists', as
   assert.deepEqual(extractedFolder(base, 'NCodeGroup/identity-platform'), { dir: path.join(base, 'NCodeGroup-identity-platform'), repoName: 'identity-platform' });
 });
 
+test('extractRequest names the files an instruction file applies to', async () => {
+  const { extractRequest } = await import('../training/run.ts');
+  assert.match(extractRequest({ label: 'L', text: 'T', applyTo: ['src/**/*.cs'] }), /^Source: L\nApplies to: src\/\*\*\/\*\.cs\n\n<source>\nT\n<\/source>$/);
+});
+
+test('extractRequest without applyTo is the label and the source only', async () => {
+  const { extractRequest } = await import('../training/run.ts');
+  assert.equal(extractRequest({ label: 'L', text: 'T' }), 'Source: L\n\n<source>\nT\n</source>');
+});
+
 test('staleExtractions lists a saved extraction no source names and not one a source names', async () => {
   const { saveExtracted, staleExtractions } = await import('../training/run.ts');
   const dir = mkdtempSync(path.join(tmpdir(), 'training-stale-'));
