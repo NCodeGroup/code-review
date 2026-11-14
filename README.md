@@ -315,7 +315,7 @@ Each review, all from `ncode-review[bot]`:
 
 - reacts 👀 to a `/review` comment and shows the "Code review" check run in progress within seconds;
 - posts the findings as one review of inline threads on the changed lines: severity, problem, consequence and fix,
-  with the evidence and confidence collapsed. A mechanical fix of up to five lines, all of them added by the pull
+  with the evidence and confidence collapsed. One problem that synthesis finds in several files, such as one rule broken the same way in three of them, is one thread at its first place, whose "Also at" line names the others, so the author answers it once; the check run lists them too ([ADR-1008](docs/decisions/1008-one-problem-gets-one-thread.md)). A mechanical fix of up to five lines, all of them added by the pull
   request, also comes as a suggestion you can apply with one click, when the pull request's author can write to the
   repository. On anyone else's pull request the fix is in prose only, and the check run says how many suggestions were
   held back, so a model-written change prompted by an outsider's code is never one click from being committed. A
