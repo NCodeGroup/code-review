@@ -482,7 +482,7 @@ of review converge:
   thread.
 
 A `/review` of the commit already reviewed, or a last reviewed head that can't be fetched any more (after a force-push),
-gets a full review instead. A review whose reviewers all failed doesn't count as the last review, nor does a re-review
+gets a full review instead, and so does a change since the last review whose hunks are more than one part of a first review holds (160,000 characters): one re-review call per reviewer can't cover it, while a full review splits it into parts under the run's cost ceiling and the check run names the files it couldn't fit ([ADR-1007](docs/decisions/1007-a-re-review-larger-than-one-part-is-a-full-review.md)). A review whose reviewers all failed doesn't count as the last review, nor does a re-review
 any of whose reviewers failed, which posts no findings: its summary records the head reviewed before it, so the next
 re-review still covers what it missed.
 
