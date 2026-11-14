@@ -391,7 +391,7 @@ function loadExtracted(): { rule: Rule; source: string }[] {
 // The files each instruction-file source applies to, by its label, as globs for any NCodeGroup repository.
 export function sourceScopes(extracted: Pick<Extracted, 'label' | 'applyTo'>[] = readExtracted()): Map<string, string[]> {
   const scopes = new Map<string, string[]>();
-  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, applyTo.map(generalGlob));
+  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, [...new Set(applyTo.map(generalGlob))]);
   return scopes;
 }
 

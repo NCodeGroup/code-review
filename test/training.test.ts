@@ -26,6 +26,12 @@ test('outcomeSources reads the verdict of a fixed and a declined finding with th
   assert.match(source!.text, /Finding F1 \(nit, by tests\) on a\.cs, line 4: Two\nThe problem\.\nOutcome: declined\nMaintainer: Autopilot: not changed\. It is intended\./);
 });
 
+test('sourceScopes keeps each general glob once when several folders share a file pattern', async () => {
+  const { sourceScopes } = await import('../training/run.ts');
+  const scopes = sourceScopes([{ label: 'Repo csharp-production.instructions.md', applyTo: ['src/**/*.cs', 'hosts/**/*.cs', 'analyzers/**/*.cs'] }]);
+  assert.deepEqual(scopes.get('Repo csharp-production.instructions.md'), ['**/*.cs']);
+});
+
 test('outcomeSources calls an Autopilot nothing-to-change reply declined', async () => {
   const { outcomeSources } = await import('../training/run.ts');
   const [source] = outcomeSources([bot(1), reply(11, 1, 'Autopilot: nothing to change. The sibling does the same.')], 'Repo', 'polewskm');
