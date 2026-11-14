@@ -30,8 +30,11 @@ import { runAgent, totalCost, type AgentRun, type CallRecord } from '../src/agen
 import { mapWithConcurrency } from '../src/concurrency.ts';
 import { applyToGlobs } from '../src/gather.ts';
 import { bulletGlobs, formatBullet, parseBullet, type GuidanceRule } from '../src/guidance.ts';
+import { isDeclining } from '../src/outcomes.ts';
 import { startProxy } from '../src/proxy.ts';
+import { botLogin } from '../src/results.ts';
 import { orgGuidanceRepository } from '../src/teach.ts';
+import { findingBody, findingTitle, parseFindingComment } from '../src/threads.ts';
 import { fetchGuidanceIssues, taughtRules, withTaughtRules } from './guidance-issues.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +45,7 @@ const topics = [
 ] as const;
 
 // applyTo: the globs of the instruction file a source comes from, as its frontmatter lists them.
-interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
+export interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
 interface Rule {
   statement: string;
   why: string;
@@ -162,6 +165,57 @@ function reviewComments(repository: string, repoName: string, maintainer: string
     label: `${repoName} review of #${pull}`,
     text: `Review comments by the maintainer on pull request #${pull}:\n\n${threads.join('\n\n---\n\n')}`,
   }));
+}
+
+// One review comment as GitHub's REST API lists it for a repository's pull requests.
+export interface PullComment { id: number; in_reply_to_id?: number; user?: { login?: string }; body?: string; path?: string; line?: number | null; original_line?: number | null; diff_hunk?: string; pull_request_url?: string }
+
+// The bot's findings that the maintainer replied to, one source per pull request, with the replies and a verdict read
+// from the last reply: fixed, declined or answered. Only the maintainer's replies count. A pull request whose threads
+// exceed `size` characters is split into several sources that share one label.
+export function outcomeSources(comments: PullComment[], repoName: string, maintainer: string, size = 30_000): Source[] {
+  const replies = new Map<number, PullComment[]>();
+  for (const c of comments) {
+    if (c.in_reply_to_id && c.user?.login?.toLowerCase() === maintainer.toLowerCase()) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
+  }
+  const byPull = new Map<string, string[]>();
+  for (const c of comments) {
+    if (c.in_reply_to_id || c.user?.login !== botLogin) continue;
+    const body = c.body ?? '';
+    const finding = parseFindingComment(body);
+    const answers = replies.get(c.id);
+    if (!finding || !answers?.length) continue;
+    const last = answers.at(-1)!.body ?? '';
+    const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last) ? 'fixed' : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last) ? 'declined' : 'answered';
+    const thread = [
+      `Finding ${c.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
+      findingBody(body).slice(0, 1_500),
+      `Outcome: ${verdict}`,
+      ...answers.map((r) => `Maintainer: ${(r.body ?? '').slice(0, 1_000)}`),
+    ].join('\n');
+    const pull = String(c.pull_request_url).split('/').pop()!;
+    byPull.set(pull, [...(byPull.get(pull) ?? []), thread]);
+  }
+  const sources: Source[] = [];
+  for (const [pull, threads] of byPull) {
+    const pieces: string[] = [];
+    let current = '';
+    for (const thread of threads) {
+      if (current && current.length + 7 + thread.length > size) {
+        pieces.push(current);
+        current = '';
+      }
+      current = current ? `${current}\n\n---\n\n${thread}` : thread;
+    }
+    if (current) pieces.push(current);
+    pieces.forEach((piece, i) => sources.push({
+      kind: 'review-outcomes',
+      id: pieces.length === 1 ? `outcomes-${pull}` : `outcomes-${pull}-${i + 1}`,
+      label: `${repoName} outcomes of #${pull}`,
+      text: `The review bot's findings on pull request #${pull} that the maintainer answered, with the replies:\n\n${piece}`,
+    }));
+  }
+  return sources;
 }
 
 const ruleSchema = {
