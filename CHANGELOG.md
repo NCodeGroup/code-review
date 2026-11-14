@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A training run deletes the rules it extracted from a source the repository no longer has, such as a renumbered decision record, so they no longer reach the guidance; `--repo` finds the repository's extraction folder ignoring case; and a rule learned from an instruction file for production or test code says which, so reviewers no longer apply production rules to test projects ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
+- Training reads a repository's pull request comments one page at a time, by number, so it runs behind a proxy that refuses GitHub's next-page links, such as a Claude Code cloud session's.
 
 ## [1.1.2] - 2026-11-02
 

@@ -607,7 +607,9 @@ node training/run.ts --repo NCodeGroup/project-template --checkout ../project-te
 node training/run.ts --generalize-only
 ```
 
-`node training/run.ts --retag` rewrites the tags without a model. Changing `training/prompts/extract.md` makes the next run extract every source again.
+`node training/run.ts --retag` rewrites the tags without a model. Changing `training/prompts/extract.md` makes the next run extract every source again. Extracting every source of the three repositories cost about $9 per million characters of source text on 2026-11-14.
+
+Behind an HTTPS proxy, such as a Claude Code cloud session's, set `NODE_USE_ENV_PROXY=1`: Node's `https` module ignores `HTTPS_PROXY` without it, so the training's local proxy would reach Bedrock directly. In a cloud session whose network proxy holds the Bedrock key for `bedrock-runtime.us-west-2.amazonaws.com`, set `AWS_BEARER_TOKEN_BEDROCK` to a placeholder such as `proxy-injected`, which the network proxy replaces. The training reads pull request comments one page at a time, by number, since such a proxy refuses GitHub's next-page links.
 
 ## Evals
 
