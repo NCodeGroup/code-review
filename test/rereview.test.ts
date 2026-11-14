@@ -629,7 +629,7 @@ test('reReview runs only correctness on Sonnet, with the changed hunks and the e
     findings: [finding('should-fix', 'a.ts', 25, 'Real'), finding('nit', 'a.ts', 25, 'Style'), finding('blocker', 'a.ts', 56, 'Old code'), { ...finding('should-fix', 'a.ts', 25, 'Doubtful'), confidence: 0.1 }],
     earlier: [{ key: 'E1', status: 'fixed', note: 'Checked.' }, { key: 'E2', status: 'open', note: 'Resolved threads are not checked.' }],
   };
-  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests));
+  const outcome = await reReview({ provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: repo }, gathered, charters, plan, () => {}, fakeAgent(output, requests), { enabled: false });
   assert.equal(requests.length, 1);
   assert.equal(requests[0]!.role, 'reviewer:correctness');
   assert.equal(requests[0]!.tier, 'sonnet');
