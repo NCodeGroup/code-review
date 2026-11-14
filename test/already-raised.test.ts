@@ -238,3 +238,8 @@ test('checkText lists the already raised findings in a section of their own', ()
   assert.ok(text.includes('### Already raised'), text);
   assert.ok(text.includes(raisedCheckLine), text);
 });
+
+test('checkText lists the other places a finding covers after its fix', () => {
+  const text = checkText(resultsWith({ findings: [finding({ places: [{ file: 'src/b.ts', line: 4 }, { file: 'src/c.ts', line: 9 }] })] }));
+  assert.ok(text.includes('*Also at:* `src/b.ts:4`, `src/c.ts:9`'), text);
+});

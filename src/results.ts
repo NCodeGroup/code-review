@@ -479,6 +479,7 @@ export function checkText(results: Results): string {
       '',
       `*Fix:* ${f.fix.replace(/</g, '&lt;')}`,
       '',
+      ...(f.places?.length ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), ''] : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     );
