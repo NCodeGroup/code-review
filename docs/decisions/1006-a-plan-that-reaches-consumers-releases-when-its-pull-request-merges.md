@@ -19,8 +19,8 @@ and a pull request that a workflow opens runs no required check without a GitHub
 
 ## Decision
 
-A plan that reaches consumers releases when its pull request merges, and this repository's own pin follows the release
-within a weekday.
+A plan that reaches consumers releases when its pull request merges, and this repository's own pin
+is set to follow the release within a weekday.
 
 - `AGENTS.md`'s Landing section says `release: tag+release`.
 - A plan whose change reaches consumers carries a `Release:` line. Its last step moves `## [Unreleased]` into that
@@ -29,9 +29,9 @@ within a weekday.
   notes.
 - A plan that changes only CI, tests or docs has no `Release:` line and releases nothing.
 - `release.yml` stays as the fallback for a release the merge didn't make.
-- The `github-actions` Dependabot entry runs daily and excludes `NCodeGroup/code-review` from the cooldown, so this
-  repository's pin follows a release within a weekday. `code-review-auto-merge.yml` still merges only a minor or patch
-  bump, which leaves a major release to a person.
+- The `github-actions` Dependabot entry runs daily and excludes `NCodeGroup/code-review` from the cooldown,
+  which is meant to make this repository's pin follow a release within a weekday. `code-review-auto-merge.yml` still
+  merges only a minor or patch bump, which leaves a major release to a person.
 
 ## Options considered
 
@@ -50,9 +50,8 @@ The fourth wins.
 ## Consequences
 
 - A release can exist before its smoke eval result, and nothing makes this repository's pin wait for it: with the
-  cooldown excluded, the next daily Dependabot run can propose the bump within hours. The smoke eval's job times out at
-  90 minutes, so a failing result usually arrives first. A failure is fixed by releasing the next version, since a
-  release tag can't be moved.
+  cooldown excluded, the next daily Dependabot run can propose the bump within hours. A failure is fixed by releasing the
+  next version, since a release tag can't be moved.
 - Consumers' own Dependabot schedules and cooldowns decide when they move to a release.
 - Every plan that reaches consumers needs a `Release:` line and a dated section.
 - Whether Dependabot's cooldown `exclude` applies to the `github-actions` ecosystem is not documented. Without it the
