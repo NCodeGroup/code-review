@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
-import { dismissApprovals, submitApproval } from '../src/comments.ts';
+import { applyApproval, dismissApprovals, submitApproval } from '../src/comments.ts';
 import type { ThreadNode } from '../src/rereview.ts';
 import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
@@ -96,8 +96,33 @@ test('a full review with no thread list and no posted list does not approve', ()
 
 test('a full review with only a posted list approves when it is empty and not otherwise', () => {
   assert.equal(approvalFor(clean, { dismissed: new Set(), posted: [] }).approve, true);
-  const posted = [{ id: 'F1', path: 'src/A.cs', line: 3, severity: 'nit' as const, fingerprint: 'x', reviewers: [] }];
+  const posted = [{ id: 'F1', path: 'src/A.cs', line: 3, severity: 'should-fix' as const, fingerprint: 'x', reviewers: [] }];
   assert.equal(approvalFor(clean, { dismissed: new Set(), posted }).approve, false);
+});
+
+test('a full review with a posted list of only nits approves', () => {
+  const posted = [{ id: 'F1', path: 'src/A.cs', line: 3, severity: 'nit' as const, fingerprint: 'x', reviewers: [] }];
+  assert.equal(approvalFor(clean, { dismissed: new Set(), posted }).approve, true);
+});
+
+test('an unresolved should-fix already raised blocks a comment review, and a dismissed one does not', () => {
+  const raised = (dismissed: boolean) => ({ ...nitsOnly, alreadyRaised: [{ ...finding, earlier: { dismissed } }] }) as unknown as Parameters<typeof approvalFor>[0];
+  assert.equal(approvalFor(raised(false), none).approve, false);
+  assert.equal(approvalFor(raised(true), none).approve, true);
+});
+
+test('a re-review floor of request-changes does not approve', () => {
+  const results = { ...clean, reReview: { changedLines: {}, earlier: [], verdictFloor: 'request-changes' as const } };
+  assert.equal(approvalFor(results, none).approve, false);
+});
+
+test('a blocker finding does not approve', () => {
+  assert.equal(approvalFor({ ...clean, verdict: 'request-changes', findings: [{ ...finding, severity: 'blocker' }] }, none).approve, false);
+});
+
+test('an approve verdict with a reviewer error does not approve', () => {
+  const reviewers = [{ name: 'correctness', status: 'failed' as const, model: 'm', findingCount: 0, error: 'boom' }];
+  assert.equal(approvalFor({ ...clean, reviewers }, none).approve, false);
 });
 
 test('approvalLine words each state', () => {
@@ -148,6 +173,75 @@ test('submitApproval warns and returns false when the POST throws', async () => 
   });
   assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
   assert.match(logs[0] ?? '', /::warning::Couldn't approve the pull request \(HTTP 422\)/);
+});
+
+test('submitApproval warns and returns false when the head GET throws', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi(() => {
+    throw new Error('HTTP 500');
+  });
+  assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
+  assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7']);
+  assert.match(logs[0] ?? '', /::warning::Couldn't read the pull request's head \(HTTP 500\)/);
+});
+
+test('dismissApprovals warns and returns when the listing throws', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi(() => {
+    throw new Error('HTTP 500');
+  });
+  await dismissApprovals(fake.api, target, (line) => logs.push(line));
+  assert.match(logs[0] ?? '', /::warning::Couldn't list the earlier reviews \(HTTP 500\)/);
+  assert.equal(fake.calls.filter((c) => c.startsWith('PUT')).length, 0);
+});
+
+test('dismissApprovals warns and dismisses nothing when the listing is past the page cap', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi(() => Array.from({ length: 100 }, (_, i) => ({ id: i, state: 'APPROVED', user: { login: 'ncode-review[bot]' } })));
+  await dismissApprovals(fake.api, target, (line) => logs.push(line));
+  assert.match(logs.at(-1) ?? '', /::warning::Couldn't list the earlier reviews \(more than 10000\)/);
+  assert.equal(fake.calls.filter((c) => c.startsWith('PUT')).length, 0);
+});
+
+test('dismissApprovals goes on to the next approval after a refused dismissal', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi((call) => {
+    if (call.startsWith('GET')) {
+      return [
+        { id: 1, state: 'APPROVED', user: { login: 'ncode-review[bot]' } },
+        { id: 2, state: 'APPROVED', user: { login: 'ncode-review[bot]' } },
+      ];
+    }
+    if (call.endsWith('/1/dismissals')) throw new Error('HTTP 403');
+    return {};
+  });
+  await dismissApprovals(fake.api, target, (line) => logs.push(line));
+  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals', 'PUT /repos/o/r/pulls/7/reviews/2/dismissals']);
+  assert.ok(logs.some((l) => /::warning::Couldn't dismiss the earlier approval 1 \(HTTP 403\)/.test(l)));
+});
+
+const botApproval = [{ id: 1, state: 'APPROVED', user: { login: 'ncode-review[bot]' } }];
+
+test('applyApproval dismisses and says not-approved when approve is false', async () => {
+  const fake = fakeApi((call) => (call.startsWith('GET') ? botApproval : {}));
+  assert.equal(await applyApproval(fake.api, target, false, [], () => {}), 'not-approved');
+  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
+});
+
+test('applyApproval approves without dismissing when the head matches', async () => {
+  const fake = fakeApi((call) => (call === `GET /repos/o/r/pulls/7` ? { head: { sha: target.headSha } } : {}));
+  assert.equal(await applyApproval(fake.api, target, true, [], () => {}), 'approved');
+  assert.equal(fake.calls.filter((c) => c.startsWith('PUT')).length, 0);
+});
+
+test('applyApproval dismisses and says refused when the POST fails', async () => {
+  const fake = fakeApi((call) => {
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call.startsWith('POST')) throw new Error('HTTP 422');
+    return call.startsWith('GET') ? botApproval : {};
+  });
+  assert.equal(await applyApproval(fake.api, target, true, [], () => {}), 'refused');
+  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
 });
 
 test('dismissApprovals dismisses only the bot approvals', async () => {
