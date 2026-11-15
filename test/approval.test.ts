@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
 import { dismissApprovals, submitApproval } from '../src/comments.ts';
 import type { ThreadNode } from '../src/rereview.ts';
+import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
 
 const finding = { id: 'F1', file: 'src/A.cs', line: 3, severity: 'should-fix' as const, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
@@ -130,4 +131,38 @@ test('dismissApprovals dismisses only the bot approvals', async () => {
   });
   await dismissApprovals(fake.api, target, () => {});
   assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
+});
+
+const summaryInput: Results = {
+  repository: 'o/r',
+  pullRequest: 1,
+  headSha: 'b'.repeat(40),
+  provider: 'bedrock',
+  providerReason: 'test',
+  summary: 'Clean.',
+  verdict: 'approve',
+  findings: [],
+  reviewers: [],
+  skipped: [],
+  synthesisModel: '',
+  calls: [],
+  costUsd: 0,
+  durationMs: 0,
+  notShown: [],
+  dropped: [],
+  changedLines: {},
+};
+
+test('summaryComment is unchanged without an approval line', () => {
+  assert.equal(summaryComment(summaryInput, 'https://check', 'https://help'), summaryComment(summaryInput, 'https://check', 'https://help', undefined));
+});
+
+test('summaryComment puts the approval line right after the verdict line', () => {
+  const line = approvalLine({ approve: true, blockers: 0, shouldFix: 0, earlierOpen: 0 }, 'approved');
+  const lines = summaryComment(summaryInput, 'https://check', 'https://help', line).split('\n');
+  const at = lines.findIndex((l) => l.startsWith('**Verdict:'));
+  assert.equal(lines[at + 1], '');
+  assert.equal(lines[at + 2], line);
+  assert.equal(lines[at + 3], '');
+  assert.ok(lines[at + 4]!.startsWith('**0 reviewers run**'), lines[at + 4]);
 });
