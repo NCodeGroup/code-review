@@ -424,9 +424,10 @@ export function checkTitle(results: Results): string {
 }
 
 export function checkSummary(results: Results): string {
+  const head = [`**Verdict: ${verdictLabel[results.verdict]}**`, ''];
+  const summaryAt = head.length;
   const lines = [
-    `**Verdict: ${verdictLabel[results.verdict]}**`,
-    '',
+    ...head,
     results.summary.replace(/</g, '&lt;'),
     '',
     `${postedNote(results)} ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
@@ -476,7 +477,10 @@ export function checkSummary(results: Results): string {
   // GitHub holds a check run's summary to the same length as its text, and synthesis's summary is the one part with no
   // bound of its own, so it gives way, cut where it can't leave half an escaped character.
   const over = lines.join('\n').length - maxCheckText;
-  if (over > 0) lines[2] = lines[2]!.slice(0, Math.max(0, lines[2]!.length - over - 1)).replace(/&[a-z]*$/, '') + '…';
+  if (over > 0) {
+    const summary = lines[summaryAt]!;
+    lines[summaryAt] = summary.slice(0, Math.max(0, summary.length - over - 1)).replace(/&[a-z]*$/, '') + '…';
+  }
   return lines.join('\n');
 }
 
@@ -498,11 +502,11 @@ export function checkText(results: Results): string {
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     ]),
-    more: (n) => [`*${n} more finding${n === 1 ? " doesn't fit in this check run; it's" : "s don't fit in this check run; they're"} in the trace.*`, ''],
+    more: (n, all) => [`*${n}${all ? '' : ' more'} finding${n === 1 ? " doesn't fit in this check run; it's" : "s don't fit in this check run; they're"} in the trace.*`, ''],
     tail: [],
   };
   const list = (head: string[], lines: string[], tail: string[] = ['']): CheckPart | undefined =>
-    lines.length ? { head, items: lines.map((l) => [l]), more: (n) => [`- ${n} more, in the trace.`], tail } : undefined;
+    lines.length ? { head, items: lines.map((l) => [l]), more: (n, all) => [all ? `- ${n === 1 ? 'Its entry is' : `All ${n} entries are`} in the trace.` : `- ${n} more, in the trace.`], tail } : undefined;
   const raised = list(['### Already raised', ''], (results.alreadyRaised ?? []).map((f) =>
     `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`));
   const tracked = list(['### Tracked in open issues', ''], (results.tracked ?? []).map((f) =>
@@ -539,11 +543,11 @@ export function checkText(results: Results): string {
 }
 
 // A section of the check run's text: a heading, one entry per item, a note counting the items that don't fit, and
-// what closes it.
+// what closes it. The note says whether it counts all the section's items, because none of them fits.
 interface CheckPart {
   head: string[];
   items: string[][];
-  more: (n: number) => string[];
+  more: (n: number, all: boolean) => string[];
   tail: string[];
 }
 
@@ -554,17 +558,26 @@ function lineSize(lines: string[]): number {
 
 function renderPart(part: CheckPart, shown: number): string[] {
   const rest = part.items.length - shown;
-  return [...part.head, ...part.items.slice(0, shown).flat(), ...(rest ? part.more(rest) : []), ...part.tail];
+  return [...part.head, ...part.items.slice(0, shown).flat(), ...(rest ? part.more(rest, rest === part.items.length) : []), ...part.tail];
 }
 
 // How many items of each part fit in the text GitHub accepts beside the fixed lines. Each part first keeps its heading,
-// its closing lines and the note that counts all its items, so every part says what it holds; the room left goes to the
-// items in order, findings first, and a part's items stop at the first that doesn't fit, so the ones shown stay in
-// severity order. A note's count only shrinks as items are shown, so the reserve is never short.
+// its closing lines and room for the note that counts its items, so every part says what it holds; the room left goes
+// to the items in order, findings first. A part whose items all fit shows them all and gives its note's room back to
+// the parts after it; otherwise its items stop at the first that doesn't fit, so the ones shown stay in severity order.
+// The room kept for a note is the longer of its two wordings for all the part's items, and a note's count only shrinks
+// as items are shown, so that room is never short.
 function fitParts(parts: CheckPart[], fixed: number): Map<CheckPart, number> {
-  let room = maxCheckText - fixed - parts.reduce((sum, p) => sum + lineSize([...p.head, ...p.more(p.items.length), ...p.tail]), 0);
+  const note = (p: CheckPart) => Math.max(lineSize(p.more(p.items.length, true)), lineSize(p.more(p.items.length, false)));
+  let room = maxCheckText - fixed - parts.reduce((sum, p) => sum + lineSize([...p.head, ...p.tail]) + note(p), 0);
   const shown = new Map<CheckPart, number>();
   for (const part of parts) {
+    const all = part.items.reduce((sum, item) => sum + lineSize(item), 0);
+    if (all <= room + note(part)) {
+      room += note(part) - all;
+      shown.set(part, part.items.length);
+      continue;
+    }
     let count = 0;
     while (count < part.items.length && lineSize(part.items[count]!) <= room) room -= lineSize(part.items[count++]!);
     shown.set(part, count);

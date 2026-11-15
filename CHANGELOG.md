@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- A review whose check run would list more than GitHub's 65,535 characters publishes: the check run's text shows as many findings, already raised, tracked, upstream, refuted and dropped entries as fit and says how many more each section has, and its summary is cut to fit, so the review's threads and body are posted instead of the whole publish failing with HTTP 422 ([#201](https://github.com/NCodeGroup/code-review/issues/201)).
+- A review whose check run would list more than GitHub's 65,535 characters publishes: the check run's text shows as many findings, already raised, tracked, upstream, refuted and dropped entries as fit and says how many more each section has, or that all of a section's entries are in the run's trace when none of them fits, and its summary is cut to fit, so the review's threads and body are posted instead of the whole publish failing with HTTP 422 ([#201](https://github.com/NCodeGroup/code-review/issues/201)).
 
 ## [1.3.0] - 2026-11-14
 
