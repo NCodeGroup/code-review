@@ -22,7 +22,7 @@ function thread(id: string, severity: 'blocker' | 'should-fix' | 'nit', isResolv
   };
 }
 
-const clean = { verdict: 'approve' as const, findings: [], alreadyRaised: [], reReview: undefined };
+const clean = { verdict: 'approve' as const, findings: [], alreadyRaised: [] };
 
 test('approveOn is true only for true, ignoring case and spaces', () => {
   assert.equal(approveOn(' TRUE '), true);
@@ -158,11 +158,11 @@ test('summaryComment is unchanged without an approval line', () => {
 });
 
 test('summaryComment puts the approval line right after the verdict line', () => {
-  const line = approvalLine({ approve: true, blockers: 0, shouldFix: 0, earlierOpen: 0 }, 'approved');
+  const line = approvalLine({ approve: true, blockers: 0, shouldFix: 0, earlierOpen: 0 }, 'approved') ?? '';
   const lines = summaryComment(summaryInput, 'https://check', 'https://help', line).split('\n');
   const at = lines.findIndex((l) => l.startsWith('**Verdict:'));
   assert.equal(lines[at + 1], '');
   assert.equal(lines[at + 2], line);
   assert.equal(lines[at + 3], '');
-  assert.ok(lines[at + 4]!.startsWith('**0 reviewers run**'), lines[at + 4]);
+  assert.ok(lines[at + 4]!.startsWith('**0 reviewers run**'), String(lines[at + 4]));
 });

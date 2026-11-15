@@ -729,6 +729,15 @@ test('action.yml keeps the app key and every app token out of the review step', 
   assert.doesNotMatch(reviewStep.text, /app-private-key|app-token|ack-token|steps\.ack/);
 });
 
+test('action.yml gives the approve input to the publish step only', () => {
+  const steps = actionSteps();
+  const reviewStep = steps.find((s) => s.id === 'review');
+  const publishStep = steps.find((s) => s.id === 'publish');
+  assert.ok(reviewStep && publishStep);
+  assert.equal('CODE_REVIEW_APPROVE' in reviewStep.env, false);
+  assert.equal(publishStep.env['CODE_REVIEW_APPROVE'], '${{ inputs.approve }}');
+});
+
 test('action.yml gives the app key only to the token steps, and each token only to the steps that write to the pull request', () => {
   const steps = actionSteps();
   for (const step of steps.filter((s) => s.text.includes('inputs.app-private-key'))) {
