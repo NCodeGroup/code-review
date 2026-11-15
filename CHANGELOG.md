@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-14
+
+### Fixed
+
+- A review whose check run would list more than GitHub's 65,535 characters publishes: the check run's text shows as many findings, already raised, tracked, upstream, refuted and dropped entries as fit and says how many more each section has, or that all of a section's entries are in the run's trace when none of them fits, and its summary is cut to fit, so the review's threads and body are posted instead of the whole publish failing with HTTP 422 ([#201](https://github.com/NCodeGroup/code-review/issues/201)).
+
 ## [1.3.0] - 2026-11-14
 
 ### Added
@@ -239,7 +245,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NCodeGroup/code-review/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/NCodeGroup/code-review/compare/v1.1.1...v1.1.2

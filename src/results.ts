@@ -424,9 +424,10 @@ export function checkTitle(results: Results): string {
 }
 
 export function checkSummary(results: Results): string {
+  const head = [`**Verdict: ${verdictLabel[results.verdict]}**`, ''];
+  const summaryAt = head.length;
   const lines = [
-    `**Verdict: ${verdictLabel[results.verdict]}**`,
-    '',
+    ...head,
     results.summary.replace(/</g, '&lt;'),
     '',
     `${postedNote(results)} ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
@@ -473,13 +474,20 @@ export function checkSummary(results: Results): string {
   if (dropped) {
     lines.push('', `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`);
   }
+  // GitHub holds a check run's summary to the same length as its text, and synthesis's summary is the one part with no
+  // bound of its own, so it gives way, cut where it can't leave half an escaped character.
+  const over = lines.join('\n').length - maxCheckText;
+  if (over > 0) {
+    const summary = lines[summaryAt]!;
+    lines[summaryAt] = summary.slice(0, Math.max(0, summary.length - over - 1)).replace(/&[a-z]*$/, '') + '…';
+  }
   return lines.join('\n');
 }
 
 export function checkText(results: Results): string {
-  const out: string[] = [];
-  for (const f of results.findings) {
-    out.push(
+  const findings: CheckPart = {
+    head: [],
+    items: results.findings.map((f) => [
       `### ${f.id} · ${severityLabel[f.severity]} · \`${cell(f.file)}:${f.line}\``,
       '',
       `**${cell(f.title)}** ${f.problem.replace(/</g, '&lt;')}`,
@@ -493,58 +501,88 @@ export function checkText(results: Results): string {
       ...(f.places?.length ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), ''] : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
-    );
-  }
-  const raised = results.alreadyRaised ?? [];
-  if (raised.length) {
-    out.push('### Already raised', '');
-    for (const f of raised) {
-      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`);
-    }
-    out.push('');
-  }
-  const tracked = results.tracked ?? [];
-  if (tracked.length) {
-    out.push('### Tracked in open issues', '');
-    for (const f of tracked) {
-      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — tracked in #${f.tracked}.`);
-    }
-    out.push('');
-  }
-  const upstream = results.upstream ?? [];
-  if (upstream.length) {
-    out.push(`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, '');
-    for (const f of upstream) {
-      out.push(`- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`);
-    }
-    if (results.upstreamOmitted) out.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
-    out.push('');
-  }
-  if (results.refuted?.length) {
-    out.push('### Refuted by verification', '');
-    for (const { finding: f, path, reason } of results.refuted) {
-      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`);
-    }
-    out.push('');
-  }
+    ]),
+    more: (n, all) => [`*${n}${all ? '' : ' more'} finding${n === 1 ? " doesn't fit in this check run; it's" : "s don't fit in this check run; they're"} in the trace.*`, ''],
+    tail: [],
+  };
+  const list = (head: string[], lines: string[], tail: string[] = ['']): CheckPart | undefined =>
+    lines.length ? { head, items: lines.map((l) => [l]), more: (n, all) => [all ? `- ${n === 1 ? 'Its entry is' : `All ${n} entries are`} in the trace.` : `- ${n} more, in the trace.`], tail } : undefined;
+  const raised = list(['### Already raised', ''], (results.alreadyRaised ?? []).map((f) =>
+    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`));
+  const tracked = list(['### Tracked in open issues', ''], (results.tracked ?? []).map((f) =>
+    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — tracked in #${f.tracked}.`));
+  const upstream = list([`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, ''], (results.upstream ?? []).map((f) =>
+    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`),
+  [...(results.upstreamOmitted ? [`- ${upstreamOmittedText(results.upstreamOmitted)}`] : []), '']);
+  const refuted = list(['### Refuted by verification', ''], (results.refuted ?? []).map(({ finding: f, path, reason }) =>
+    `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`));
+  const dropped = list(['', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', ''], results.dropped.map(({ finding: f, file, claim }) =>
+    `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`), []);
+
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
-  out.push('### Reviewers', '', ...reviewerTable(results.reviewers, costs));
+  const reviewers = ['### Reviewers', '', ...reviewerTable(results.reviewers, costs)];
   for (const role of ['selection', 'synthesis', 'verification']) {
-    if (costs.has(role)) out.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+    if (costs.has(role)) reviewers.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
   }
-  if (results.dropped.length) {
-    out.push('', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', '');
-    for (const { finding: f, file, claim } of results.dropped) {
-      out.push(`- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`);
-    }
-  }
+  const providers: string[] = [];
   if (results.switchedToBedrock) {
-    out.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');
-    for (const e of costsByProvider(results.calls)) out.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
+    providers.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');
+    for (const e of costsByProvider(results.calls)) providers.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
   }
+
+  const parts = [findings, raised, tracked, upstream, refuted, dropped];
+  const shown = fitParts(parts.filter((p) => p !== undefined), lineSize(reviewers) + lineSize(providers));
+  const render = (p: CheckPart | undefined) => (p ? renderPart(p, shown.get(p) ?? 0) : []);
+  const out = [
+    ...render(findings), ...render(raised), ...render(tracked), ...render(upstream), ...render(refuted),
+    ...reviewers, ...render(dropped), ...providers,
+  ];
   return [...out, ...shadowSection(results, costs, maxCheckText - out.join('\n').length - 1)].join('\n');
+}
+
+// A section of the check run's text: a heading, one entry per item, a note counting the items that don't fit, and
+// what closes it. The note says whether it counts all the section's items, because none of them fits.
+interface CheckPart {
+  head: string[];
+  items: string[][];
+  more: (n: number, all: boolean) => string[];
+  tail: string[];
+}
+
+// The joined length of lines, counting a line break after each, so the sum of parts never falls short of their join.
+function lineSize(lines: string[]): number {
+  return lines.reduce((sum, line) => sum + line.length + 1, 0);
+}
+
+function renderPart(part: CheckPart, shown: number): string[] {
+  const rest = part.items.length - shown;
+  return [...part.head, ...part.items.slice(0, shown).flat(), ...(rest ? part.more(rest, rest === part.items.length) : []), ...part.tail];
+}
+
+// How many items of each part fit in the text GitHub accepts beside the fixed lines. Each part first keeps its heading,
+// its closing lines and room for the note that counts its items, so every part says what it holds; the room left goes
+// to the items in order, findings first. A part whose items all fit shows them all and gives its note's room back to
+// the parts after it; otherwise its items stop at the first that doesn't fit, so the ones shown stay in severity order.
+// The room kept for a note is the longer of its two wordings for all the part's items, and a note's count only shrinks
+// as items are shown, so that room is never short.
+function fitParts(parts: CheckPart[], fixed: number): Map<CheckPart, number> {
+  const note = (p: CheckPart) => Math.max(lineSize(p.more(p.items.length, true)), lineSize(p.more(p.items.length, false)));
+  let room = maxCheckText - fixed - parts.reduce((sum, p) => sum + lineSize([...p.head, ...p.tail]) + note(p), 0);
+  const shown = new Map<CheckPart, number>();
+  for (const part of parts) {
+    const all = part.items.reduce((sum, item) => sum + lineSize(item), 0);
+    if (all <= room + note(part)) {
+      room += note(part) - all;
+      shown.set(part, part.items.length);
+      continue;
+    }
+    let count = 0;
+    while (count < part.items.length && lineSize(part.items[count]!) <= room) room -= lineSize(part.items[count++]!);
+    shown.set(part, count);
+  }
+  return shown;
 }
 
 // GitHub refuses a check run whose text is longer than this.
