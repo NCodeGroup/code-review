@@ -23,14 +23,21 @@ export function openEarlierFindings(threads: ThreadNode[], dismissed: ReadonlySe
 export type Approval = { approve: boolean; blockers: number; shouldFix: number; earlierOpen: number };
 
 export function approvalFor(
-  results: Pick<Results, 'verdict' | 'findings' | 'alreadyRaised' | 'reReview'>,
+  results: Pick<Results, 'verdict' | 'findings' | 'alreadyRaised' | 'reReview' | 'reviewers' | 'refuted' | 'demoted'>,
   earlier: { threads?: ThreadNode[]; dismissed: ReadonlySet<string>; posted?: PostedThread[] },
 ): Approval {
   const unresolved = [...results.findings, ...(results.alreadyRaised ?? []).filter((f) => !f.earlier.dismissed)];
   const blockers = unresolved.filter((f) => f.severity === 'blocker').length;
   const shouldFix = unresolved.filter((f) => f.severity === 'should-fix').length;
   const earlierOpen = earlier.threads ? openEarlierFindings(earlier.threads, earlier.dismissed) : (earlier.posted?.length ?? 0);
-  let approve = results.verdict === 'approve';
+  const floor = results.reReview?.verdictFloor;
+  const complete =
+    results.reviewers.every((r) => !r.error) &&
+    !results.refuted?.length &&
+    !results.demoted &&
+    floor !== 'comment' &&
+    floor !== 'request-changes';
+  let approve = results.verdict === 'approve' || (results.verdict === 'comment' && blockers === 0 && shouldFix === 0 && complete);
   if (approve && !results.reReview) {
     approve = earlierOpen === 0 && !(earlier.threads === undefined && earlier.posted === undefined);
   }
@@ -44,6 +51,6 @@ export function approvalLine(approval: Approval, state: 'approved' | 'not-approv
   if (approval.blockers > 0) reasons.push(`${approval.blockers} ${approval.blockers === 1 ? 'blocker' : 'blockers'}`);
   if (approval.shouldFix > 0) reasons.push(`${approval.shouldFix} should-fix`);
   if (approval.earlierOpen > 0) reasons.push(`${approval.earlierOpen} ${approval.earlierOpen === 1 ? 'earlier finding' : 'earlier findings'} still open`);
-  const text = reasons.length > 0 ? reasons.join(', ') : 'the review is incomplete, still has findings waiting, or has only nits';
+  const text = reasons.length > 0 ? reasons.join(', ') : 'the review is incomplete or still has findings waiting';
   return `**Approval: Not approved** — ${text}.`;
 }

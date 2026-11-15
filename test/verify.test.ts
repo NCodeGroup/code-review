@@ -419,7 +419,7 @@ test('verifyReview with verification off returns synthesis\'s review unchanged',
   const synthesized = { summary: 'Risky.', verdict: 'request-changes' as const, findings: [finding('F1', 'blocker')] };
   const out = await verifyReview(synthesized, reviewInput(agent, false));
   assert.equal(requests.length, 0);
-  assert.deepEqual(out, { ...synthesized, refuted: [], calls: [], trace: [] });
+  assert.deepEqual(out, { ...synthesized, refuted: [], demoted: 0, calls: [], trace: [] });
 });
 
 test('verifyReview drops a refuted should-fix, names it in the summary and eases request-changes to comment, not approve', async () => {

@@ -1,9 +1,9 @@
 // The publish step: reads results.json, reads the bot's earlier threads first, so the check run and the summary list the
 // findings those threads already raise apart, completes the "Code review" check run the acknowledgement started (or posts
 // one, when there was no acknowledgement), posts the findings as review threads, resolves or answers the bot's own
-// earlier threads, submits an approving review when the caller turned `approve` on and the review qualifies (or dismisses
-// the bot's earlier approval when it doesn't), posts a new summary comment on the pull request and collapses the bot's earlier summary comments to
-// one line that links to it. For `/review explain` it posts answer.json's comment instead, and for `/review teach` it
+// earlier threads, submits an approving review when the caller turned `approve` on and the review qualifies (or
+// dismisses the bot's earlier approval when it doesn't), posts a new summary comment on the pull request and collapses
+// the bot's earlier summary comments to one line that links to it. For `/review explain` it posts answer.json's comment instead, and for `/review teach` it
 // opens teach.json's `review-guidance` issue and replies; neither has a check run. For a closed pull request it posts
 // outcomes.json's table on the summary comment, with no check run either. When the review step paused instead, it
 // posts the paused notice and nothing else, and the finish step completes an acknowledged check run. It runs after the

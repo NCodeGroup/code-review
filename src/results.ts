@@ -65,6 +65,9 @@ export interface Results {
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
   // is off or there was no blocker or should-fix to check.
   refuted?: RefutedFinding[];
+  // How many findings verification lowered a severity because it couldn't settle them: nits the maintainer should
+  // still look at. Absent when none.
+  demoted?: number;
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;

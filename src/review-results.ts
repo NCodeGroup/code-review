@@ -80,6 +80,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     ...(outcome.tracked?.length ? { tracked: outcome.tracked } : {}),
     dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
+    ...(outcome.demoted ? { demoted: outcome.demoted } : {}),
     reviewers: reviewerResults(outcome.reviewers, outcome.calls),
     skipped: outcome.skipped,
     synthesisModel: lastModel(outcome.calls, 'synthesis'),

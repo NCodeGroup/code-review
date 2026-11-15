@@ -22,7 +22,7 @@ function thread(id: string, severity: 'blocker' | 'should-fix' | 'nit', isResolv
   };
 }
 
-const clean = { verdict: 'approve' as const, findings: [], alreadyRaised: [] };
+const clean = { verdict: 'approve' as const, findings: [], alreadyRaised: [], reviewers: [] };
 
 test('approveOn is true only for true, ignoring case and spaces', () => {
   assert.equal(approveOn(' TRUE '), true);
@@ -54,8 +54,40 @@ test('a re-review with verdict approve approves even with an unresolved thread',
   assert.equal(approvalFor(results, { threads: [thread('T1', 'should-fix')], dismissed: new Set() }).approve, true);
 });
 
-test('a verdict of comment never approves', () => {
-  assert.equal(approvalFor({ ...clean, verdict: 'comment' }, { threads: [], dismissed: new Set() }).approve, false);
+test('a verdict of comment with a should-fix finding never approves', () => {
+  assert.equal(approvalFor({ ...clean, verdict: 'comment', findings: [finding] }, { threads: [], dismissed: new Set() }).approve, false);
+});
+
+const nit = { ...finding, severity: 'nit' as const };
+const nitsOnly = { verdict: 'comment' as const, findings: [nit], alreadyRaised: [], reviewers: [] };
+const none = { threads: [], dismissed: new Set<string>() };
+
+test('a complete comment review with only nit findings approves', () => {
+  assert.equal(approvalFor(nitsOnly, none).approve, true);
+});
+
+test('a nit-only review with a failed reviewer does not approve', () => {
+  const reviewers = [{ name: 'correctness', status: 'failed' as const, model: 'm', findingCount: 0, error: 'boom' }];
+  assert.equal(approvalFor({ ...nitsOnly, reviewers }, none).approve, false);
+});
+
+test('a nit-only review with a refuted finding does not approve', () => {
+  const refuted = [{ finding, path: 'src/A.cs:3', reason: 'r' }];
+  assert.equal(approvalFor({ ...nitsOnly, refuted }, none).approve, false);
+});
+
+test('a nit-only review with a demoted finding does not approve', () => {
+  assert.equal(approvalFor({ ...nitsOnly, demoted: 1 }, none).approve, false);
+});
+
+test('a comment review with a should-fix finding does not approve', () => {
+  assert.equal(approvalFor({ ...nitsOnly, findings: [nit, finding] }, none).approve, false);
+});
+
+test('a nit-only re-review approves with a floor of approve and not with a floor of comment', () => {
+  const reReview = { changedLines: {}, earlier: [] };
+  assert.equal(approvalFor({ ...nitsOnly, reReview: { ...reReview, verdictFloor: 'approve' } }, none).approve, true);
+  assert.equal(approvalFor({ ...nitsOnly, reReview: { ...reReview, verdictFloor: 'comment' } }, none).approve, false);
 });
 
 test('a full review with no thread list and no posted list does not approve', () => {
@@ -72,7 +104,7 @@ test('approvalLine words each state', () => {
   const none = { approve: false, blockers: 0, shouldFix: 0, earlierOpen: 0 };
   assert.equal(approvalLine(none, 'approved'), '**Approval: Approved** — no blocker or should-fix finding remains.');
   assert.equal(approvalLine(none, 'refused'), "**Approval: Not approved** — the approval couldn't be submitted.");
-  assert.equal(approvalLine(none, 'not-approved'), '**Approval: Not approved** — the review is incomplete, still has findings waiting, or has only nits.');
+  assert.equal(approvalLine(none, 'not-approved'), '**Approval: Not approved** — the review is incomplete or still has findings waiting.');
   assert.equal(approvalLine({ approve: false, blockers: 1, shouldFix: 2, earlierOpen: 1 }, 'not-approved'), '**Approval: Not approved** — 1 blocker, 2 should-fix, 1 earlier finding still open.');
   assert.equal(approvalLine({ approve: false, blockers: 2, shouldFix: 0, earlierOpen: 3 }, 'not-approved'), '**Approval: Not approved** — 2 blockers, 3 earlier findings still open.');
 });
