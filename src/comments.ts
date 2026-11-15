@@ -165,6 +165,24 @@ export async function dismissApprovals(
   }
 }
 
+// Approves when the review qualifies; otherwise, and when the approval is refused, dismisses the bot's earlier approval,
+// so a review that doesn't approve never leaves an old approval standing.
+export async function applyApproval(
+  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
+  approve: boolean,
+  secrets: Iterable<string>,
+  log: (line: string) => void = writeLog,
+): Promise<'approved' | 'not-approved' | 'refused'> {
+  if (!approve) {
+    await dismissApprovals(api, results, log);
+    return 'not-approved';
+  }
+  if (await submitApproval(api, results, secrets, log)) return 'approved';
+  await dismissApprovals(api, results, log);
+  return 'refused';
+}
+
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
 // posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
 // A failed collapse only warns, and so does a failed listing, which still posts the new summary.
