@@ -98,6 +98,73 @@ export async function postThreads(
   }
 }
 
+// Submits an approving review at the reviewed head, unless the pull request's head moved or can't be read. A refusal only
+// warns; true when the approval was submitted.
+export async function submitApproval(
+  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
+  secrets: Iterable<string>,
+  log: (line: string) => void = writeLog,
+): Promise<boolean> {
+  const pull = `/repos/${results.repository}/pulls/${results.pullRequest}`;
+  try {
+    const current = (await api('GET', pull)) as { head?: { sha?: string } };
+    const sha = current?.head?.sha;
+    if (sha !== results.headSha) {
+      log(`::warning::The pull request's head moved to ${String(sha).slice(0, 7)} since the review of ${results.headSha.slice(0, 7)}, so it isn't approved.`);
+      return false;
+    }
+  } catch (error) {
+    log(`::warning::Couldn't read the pull request's head (${errorText(error)}), so it isn't approved.`);
+    return false;
+  }
+  const review = {
+    commit_id: results.headSha,
+    event: 'APPROVE',
+    body: `Approved at ${results.headSha.slice(0, 7)}: no blocker or should-fix finding remains.`,
+  };
+  assertNoSecrets(JSON.stringify(review), secrets, 'The approval');
+  try {
+    await api('POST', `${pull}/reviews`, review);
+    log('Approved the pull request.');
+    return true;
+  } catch (error) {
+    log(`::warning::Couldn't approve the pull request (${errorText(error)}).`);
+    return false;
+  }
+}
+
+// Dismisses the bot's own approving reviews of the pull request, so an approval of an earlier head doesn't stand after a
+// review that doesn't approve. A failure only warns.
+export async function dismissApprovals(
+  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
+  log: (line: string) => void = writeLog,
+): Promise<void> {
+  const reviews = `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`;
+  type ListedReview = { id: number; state?: string; user?: { login?: string } };
+  let listed: ListedReview[] | undefined;
+  try {
+    listed = await readCommentPages(reviews, async (url) => (await api('GET', url)) as ListedReview[]);
+  } catch (error) {
+    log(`::warning::Couldn't list the earlier reviews (${errorText(error)}), so an earlier approval stays.`);
+    return;
+  }
+  if (!listed) {
+    log(`::warning::Couldn't list the earlier reviews (more than ${commentPageSize * maxCommentPages}), so an earlier approval stays.`);
+    return;
+  }
+  for (const review of listed) {
+    if (review.user?.login !== botLogin || review.state !== 'APPROVED') continue;
+    try {
+      await api('PUT', `${reviews}/${review.id}/dismissals`, { message: `Dismissed: the review at ${results.headSha.slice(0, 7)} doesn't approve.` });
+      log(`Dismissed the earlier approval ${review.id}.`);
+    } catch (error) {
+      log(`::warning::Couldn't dismiss the earlier approval ${review.id} (${errorText(error)}).`);
+    }
+  }
+}
+
 // Posts a new summary comment, then collapses the bot's earlier ones to a line that links to it. They are listed before
 // posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
 // A failed collapse only warns, and so does a failed listing, which still posts the new summary.

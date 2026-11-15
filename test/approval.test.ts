@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
+import { dismissApprovals, submitApproval } from '../src/comments.ts';
 import type { ThreadNode } from '../src/rereview.ts';
 import { threadBody } from '../src/threads.ts';
 
@@ -73,4 +74,60 @@ test('approvalLine words each state', () => {
   assert.equal(approvalLine(none, 'not-approved'), '**Approval: Not approved** — the review is incomplete, still has findings waiting, or has only nits.');
   assert.equal(approvalLine({ approve: false, blockers: 1, shouldFix: 2, earlierOpen: 1 }, 'not-approved'), '**Approval: Not approved** — 1 blocker, 2 should-fix, 1 earlier finding still open.');
   assert.equal(approvalLine({ approve: false, blockers: 2, shouldFix: 0, earlierOpen: 3 }, 'not-approved'), '**Approval: Not approved** — 2 blockers, 3 earlier findings still open.');
+});
+
+const target = { repository: 'o/r', pullRequest: 7, headSha: 'abcdef1234567' };
+
+function fakeApi(handler: (call: string, body?: unknown) => unknown) {
+  const calls: string[] = [];
+  const bodies: unknown[] = [];
+  const api = async (method: string, url: string, body?: unknown) => {
+    const call = `${method} ${url}`;
+    calls.push(call);
+    bodies.push(body);
+    return handler(call, body);
+  };
+  return { api, calls, bodies };
+}
+
+test('submitApproval approves at the reviewed head and returns true', async () => {
+  const fake = fakeApi((call) => (call.startsWith('GET') ? { head: { sha: target.headSha } } : {}));
+  assert.equal(await submitApproval(fake.api, target, [], () => {}), true);
+  assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7', 'POST /repos/o/r/pulls/7/reviews']);
+  const body = fake.bodies[1] as { event: string; commit_id: string };
+  assert.equal(body.event, 'APPROVE');
+  assert.equal(body.commit_id, target.headSha);
+});
+
+test('submitApproval posts nothing when the head moved', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi(() => ({ head: { sha: '9999999aaaa' } }));
+  assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
+  assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7']);
+  assert.match(logs[0] ?? '', /::warning::.*moved/);
+});
+
+test('submitApproval warns and returns false when the POST throws', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi((call) => {
+    if (call.startsWith('GET')) return { head: { sha: target.headSha } };
+    throw new Error('HTTP 422');
+  });
+  assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
+  assert.match(logs[0] ?? '', /::warning::Couldn't approve the pull request \(HTTP 422\)/);
+});
+
+test('dismissApprovals dismisses only the bot approvals', async () => {
+  const fake = fakeApi((call) => {
+    if (call.startsWith('GET')) {
+      return [
+        { id: 1, state: 'APPROVED', user: { login: 'ncode-review[bot]' } },
+        { id: 2, state: 'APPROVED', user: { login: 'someone' } },
+        { id: 3, state: 'COMMENTED', user: { login: 'ncode-review[bot]' } },
+      ];
+    }
+    return {};
+  });
+  await dismissApprovals(fake.api, target, () => {});
+  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
 });
