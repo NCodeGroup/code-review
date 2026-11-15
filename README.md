@@ -342,12 +342,13 @@ Each review, all from `ncode-review[bot]`:
 ### Approvals
 
 With `approve: true`, a review submits an approving review instead of a comment when its verdict is Approve, the pull
-request's head is still the reviewed commit, and, for a full review, no should-fix or blocker thread of the bot is
-still open. A re-review relies on its verdict, which already counts the earlier findings that wait. A review whose
-only findings are nits approves when every reviewer ran in full and verification lowered or refuted nothing. Every other review stays a comment and dismisses the bot's
-earlier approval of the pull request, so a later blocker never leaves an old approval standing. Drafts are approved
-like any pull request; fork pull requests are skipped, as for every review. The summary comment has an `Approval:`
-line that says "Approved" or "Not approved" with the reason, and a refused approval only warns.
+request's head is still the reviewed commit, and, for a full review, no should-fix or blocker thread of the bot is still
+open. A re-review relies on its verdict, which already counts the earlier findings that wait. A review whose only
+findings are nits approves when every reviewer ran in full and verification lowered or refuted nothing. Every other
+review stays a comment and dismisses the bot's earlier approval of the pull request, so a later blocker never leaves an
+old approval standing. Drafts are approved like any pull request; fork pull requests are skipped, as for every review.
+The summary comment has an `Approval:` line that says "Approved" or "Not approved" with the reason. When GitHub refuses
+an approval, the run warns, dismisses the earlier approval too, and the summary says the approval couldn't be submitted.
 
 A push removes the approval when the ruleset dismisses stale reviews and requires approval of the last push, and
 `/review` approves again. `/run-feedback` and `/run-issues` comment it after each push; after a hand push, comment

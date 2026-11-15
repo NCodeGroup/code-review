@@ -6,9 +6,8 @@
 
 ## Context
 
-The review always posts a `COMMENT` review. OpenSSF Scorecard's Code-Review and Branch-Protection checks, and a sole
-maintainer's required approval, can't be met by a comment
-([#203](https://github.com/NCodeGroup/code-review/issues/203)).
+A `COMMENT` review can't satisfy OpenSSF Scorecard's Code-Review and Branch-Protection checks, or a sole maintainer's
+required approval ([#203](https://github.com/NCodeGroup/code-review/issues/203)).
 
 ## Decision
 
@@ -41,7 +40,8 @@ whose only findings are nits approves too, on the same conditions.
   ruleset changes.
 - A ruleset that dismisses stale approvals on push removes the approval, so a hand push needs a `/review` comment;
   NCode Review doesn't review on `synchronize`.
-- A refused approval only warns, and the summary says it wasn't submitted.
+- A refused approval warns without failing the run, dismisses the bot's earlier approval, and the summary says it
+  wasn't submitted.
 
 ## References
 
