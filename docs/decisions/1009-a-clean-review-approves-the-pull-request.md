@@ -17,14 +17,16 @@ workflow can set it.
 
 When it is on, the publish step submits a review with `event: 'APPROVE'` exactly when:
 
-- the settled verdict (`Results.verdict`) is Approve,
+- the settled verdict (`Results.verdict`) is Approve, or a Comment with only nit findings: approval needs no blocker or
+  should-fix finding, a complete review and no verification doubt (every reviewer ran in full, and verification lowered
+  or refuted nothing),
 - the pull request's head still equals the reviewed commit, and
 - for a full review, no unresolved, undismissed bot thread of should-fix or above is open. A re-review relies on its
   verdict, whose floor already counts the earlier findings that wait.
 
 Any other review dismisses the bot's own earlier approvals of the pull request, so a later blocker never leaves an old
 approval standing. Drafts are approved like any pull request. The summary comment gets an `Approval:` line. A review
-whose only findings are nits stays a Comment.
+whose only findings are nits approves too, on the same conditions.
 
 ## Options considered
 

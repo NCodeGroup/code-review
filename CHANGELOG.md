@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The `approve` input (off by default) submits a review whose verdict is Approve, with the head unchanged and no earlier should-fix thread open, as an approving review, so a ruleset can require one approval and Scorecard's Code-Review check counts it. Any other review stays a comment and dismisses the bot's earlier approval, and the summary says "Approved" or "Not approved" with the reason ([#203](https://github.com/NCodeGroup/code-review/issues/203), [ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md)).
+- The `approve` input (off by default) submits a review whose verdict is Approve, with the head unchanged and no earlier should-fix thread open, as an approving review, so a ruleset can require one approval and Scorecard's Code-Review check counts it. A review with only nits approves too, when every reviewer ran in full and verification lowered or refuted nothing. Any other review stays a comment and dismisses the bot's earlier approval, and the summary says "Approved" or "Not approved" with the reason ([#203](https://github.com/NCodeGroup/code-review/issues/203), [ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md)).
 
 ## [1.3.1] - 2026-11-14
 
