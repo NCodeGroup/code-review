@@ -202,6 +202,7 @@ before 1.0.0 changed it in minor releases; their changelog sections say how.
 | `organization-id` | no | `e9301a37-092f-47c8-9b24-188808b1d576` | The Anthropic organization. |
 | `service-account-id` | no | `svac_012yav3w3rfhH5i9bAgoWLHe` | The Anthropic service account the federation rule maps to. |
 | `workspace-id` | no | `wrkspc_019f5RLk5SG4XWE8XKwWFHZh` | The Anthropic workspace that pays for the review. |
+| `approve` | no | `false` | Submits a review whose verdict is Approve as an approving review, so a ruleset can require one approval; every other review stays a comment and dismisses the bot's earlier approval. |
 
 The action has no outputs. A caller needs:
 
@@ -337,6 +338,24 @@ Each review, all from `ncode-review[bot]`:
   review's summary collapses to one line that links to the new one, so the latest summary is at the bottom;
 - completes that "Code review" check run, neutral, with the new findings and their annotations, and the ones already
   raised or tracked in open issues listed apart.
+
+### Approvals
+
+With `approve: true`, a review submits an approving review instead of a comment when its verdict is Approve, the pull
+request's head is still the reviewed commit, and, for a full review, no should-fix or blocker thread of the bot is
+still open. A re-review relies on its verdict, which already counts the earlier findings that wait. A review whose
+only findings are nits is a comment, not an approval. Every other review stays a comment and dismisses the bot's
+earlier approval of the pull request, so a later blocker never leaves an old approval standing. Drafts are approved
+like any pull request; fork pull requests are skipped, as for every review. The summary comment has an `Approval:`
+line that says "Approved" or "Not approved" with the reason, and a refused approval only warns.
+
+A push removes the approval when the ruleset dismisses stale reviews and requires approval of the last push, and
+`/review` approves again. `/run-feedback` and `/run-issues` comment it after each push; after a hand push, comment
+`/review` yourself, because NCode Review doesn't review on `synchronize`. Require one approval in the ruleset.
+
+The trade-offs: Scorecard's Code-Review check describes human review, so the app's approval may not score as a
+person's does, and an NCode Review outage or budget stop blocks merges until it is fixed or the ruleset changes. See
+[ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md).
 
 ### Outcomes
 

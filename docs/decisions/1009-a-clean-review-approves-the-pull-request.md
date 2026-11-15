@@ -1,0 +1,50 @@
+# 1009. A clean review approves the pull request
+
+- **Status:** Accepted
+- **Date:** 2026-11-15
+- **Deciders:** Marcin Polewski
+
+## Context
+
+The review always posts a `COMMENT` review. OpenSSF Scorecard's Code-Review and Branch-Protection checks, and a sole
+maintainer's required approval, can't be met by a comment
+([#203](https://github.com/NCodeGroup/code-review/issues/203)).
+
+## Decision
+
+An action input `approve` (default `false`) turns approval on. It reaches only the Publish step, so only the caller's
+workflow can set it.
+
+When it is on, the publish step submits a review with `event: 'APPROVE'` exactly when:
+
+- the settled verdict (`Results.verdict`) is Approve,
+- the pull request's head still equals the reviewed commit, and
+- for a full review, no unresolved, undismissed bot thread of should-fix or above is open. A re-review relies on its
+  verdict, whose floor already counts the earlier findings that wait.
+
+Any other review dismisses the bot's own earlier approvals of the pull request, so a later blocker never leaves an old
+approval standing. Drafts are approved like any pull request. The summary comment gets an `Approval:` line. A review
+whose only findings are nits stays a Comment.
+
+## Options considered
+
+1. Submit `APPROVE` on every review. Advice becomes a gate on findings that are not blockers.
+2. A setting in `config.yml`. The workflow input is set from the default branch and costs no settings read.
+3. A check run conclusion instead of a review. Scorecard reads reviews, not check runs.
+
+## Consequences
+
+- Scorecard documents Code-Review as human review, so an approval from the app may not score the way a person's does.
+- An NCode Review outage or budget stop blocks merges, when a ruleset requires the approval, until it is fixed or the
+  ruleset changes.
+- A ruleset that dismisses stale approvals on push removes the approval, so a hand push needs a `/review` comment;
+  NCode Review doesn't review on `synchronize`.
+- A refused approval only warns, and the summary says it wasn't submitted.
+
+## References
+
+- [#203](https://github.com/NCodeGroup/code-review/issues/203)
+- `src/approval.ts` (`approvalFor`, `approvalLine`)
+- `src/comments.ts` (`submitApproval`, `dismissApprovals`)
+- `src/publish.ts`
+- `action.yml`
