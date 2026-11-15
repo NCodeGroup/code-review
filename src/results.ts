@@ -65,6 +65,9 @@ export interface Results {
   // Findings verification dropped, each with the reason it gave; absent when verification made no calls, because it
   // is off or there was no blocker or should-fix to check.
   refuted?: RefutedFinding[];
+  // How many findings verification lowered a severity because it couldn't settle them: nits the maintainer should
+  // still look at. Absent when none.
+  demoted?: number;
   reviewers: ReviewerResult[];
   skipped: string[];
   synthesisModel: string;
@@ -283,7 +286,7 @@ export function keptMarkerLines(body: string): string[] {
   return [...body.matchAll(/<!-- ncode-review:(?:review|outcomes) .+? -->/g)].map((match) => match[0]);
 }
 
-export function summaryComment(results: Results, checkUrl: string, interactUrl: string): string {
+export function summaryComment(results: Results, checkUrl: string, interactUrl: string, approval?: string): string {
   const ran = results.reviewers.filter((r) => r.status === 'ran').length;
   const count = results.findings.length;
   const raised = results.alreadyRaised ?? [];
@@ -299,6 +302,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     '',
     `**Verdict: ${verdictLabel[results.verdict]}** — ${neutralizeProseKeeping(results.summary.replace(/</g, '&lt;').replace(/\s*\n\s*/g, ' '), kept)}`,
     '',
+    ...(approval === undefined ? [] : [approval, '']),
     `**${ran} reviewer${ran === 1 ? '' : 's'} run** — ${count} finding${count === 1 ? '' : 's'}${raised.length ? `, ${raised.length} already raised` : ''} ([run details](${checkUrl}))`,
     '',
     ...droppedNote(results.dropped, checkUrl),

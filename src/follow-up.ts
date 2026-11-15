@@ -17,7 +17,7 @@ import type { WriterCheck } from './writers.ts';
 
 export const stillOpenMarker = '<!-- ncode-review:still-open -->';
 
-function postedFinding(thread: ThreadNode): PostedThread | undefined {
+export function postedFinding(thread: ThreadNode): PostedThread | undefined {
   const first = thread.first.nodes[0];
   if (!first || first.author?.login !== botAuthor) return undefined;
   return parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine, html_url: first.url }])[0];

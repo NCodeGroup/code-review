@@ -106,6 +106,8 @@ export interface Review {
   tracked?: ReviewedFinding[];
   // Findings verification refuted and dropped, with its reasons, and every verification call.
   refuted: RefutedFinding[];
+  // How many findings verification lowered a severity because it couldn't settle them.
+  demoted?: number;
   verification: VerificationCall[];
   calls: CallRecord[];
   // Live roster reviewers the path rules and selection didn't choose.
@@ -954,6 +956,7 @@ async function finishReview(
     dropped,
     tracked: apart.tracked,
     refuted: verified.refuted,
+    demoted: verified.demoted,
     verification: verified.trace,
     calls,
     skipped: notSelected.filter((name) => !shadow.has(name)),

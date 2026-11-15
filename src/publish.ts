@@ -1,19 +1,21 @@
 // The publish step: reads results.json, reads the bot's earlier threads first, so the check run and the summary list the
-// findings those threads already raise apart, completes the "Code review" check run the acknowledgement started (or posts
-// one, when there was no acknowledgement), posts the findings as review threads, resolves or answers the bot's own
-// earlier threads, posts a new summary comment on the pull request and collapses the bot's earlier summary comments to
-// one line that links to it. For `/review explain` it posts answer.json's comment instead, and for `/review teach` it
-// opens teach.json's `review-guidance` issue and replies; neither has a check run. For a closed pull request it posts
-// outcomes.json's table on the summary comment, with no check run either. When the review step paused instead, it
-// posts the paused notice and nothing else, and the finish step completes an acknowledged check run. It runs after the
-// agents have exited, with the app's token, which is limited to the one repository under review and to check runs and
-// pull requests, and for a teach run an issues token as well.
+// findings those threads already raise apart, completes the "Code review" check run the acknowledgement started (or
+// posts one, when there was no acknowledgement), posts the findings as review threads, resolves or answers the bot's
+// own earlier threads, submits an approving review when the caller turned `approve` on and the review qualifies (or
+// dismisses the bot's earlier approval when it doesn't), posts a new summary comment on the pull request and collapses
+// the bot's earlier summary comments to one line that links to it. For `/review explain` it posts answer.json's
+// comment instead, and for `/review teach` it opens teach.json's `review-guidance` issue and replies; neither has a
+// check run. For a closed pull request it posts outcomes.json's table on the summary comment, with no check run
+// either. When the review step paused instead, it posts the paused notice and nothing else, and the finish step
+// completes an acknowledged check run. It runs after the agents have exited, with the app's token, which is limited to
+// the one repository under review and to check runs and pull requests, and for a teach run an issues token as well.
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { acknowledgedFrom, publishCheck } from './checks.ts';
 import { assertNoSecrets } from './outputs.ts';
-import { postSummary, postThreads, errorText, readPostedThreads } from './comments.ts';
+import { approvalFor, approvalLine, approveOn } from './approval.ts';
+import { applyApproval, postSummary, postThreads, errorText, readPostedThreads } from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
 import { githubApi, githubGraphql } from './github.ts';
@@ -91,6 +93,9 @@ async function main(): Promise<void> {
   }
   const results = posted ? settleAlreadyRaised(read, posted, dismissed.map((d) => d.posted)) : read;
 
+  const approving = approveOn(process.env['CODE_REVIEW_APPROVE']);
+  const approval = approvalFor(results, { ...(threads ? { threads } : {}), dismissed: new Set(dismissed.map((d) => d.thread.id)), ...(posted ? { posted } : {}) });
+
   const output = { title: checkTitle(results), summary: checkSummary(results), text: checkText(results), annotations: annotations(results) };
   const check = { head_sha: results.headSha, conclusion: 'neutral' as const, output };
   assertNoSecrets(JSON.stringify(check), [token], 'The check run');
@@ -106,7 +111,9 @@ async function main(): Promise<void> {
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
   }
 
-  const body = summaryComment(results, completed.html_url, interactUrl);
+  const state = approving ? await applyApproval(api, results, approval.approve, [token]) : 'not-approved';
+
+  const body = summaryComment(results, completed.html_url, interactUrl, approving ? approvalLine(approval, state) : undefined);
   assertNoSecrets(body, [token], 'The summary comment');
   await postSummary(api, results, body);
 }

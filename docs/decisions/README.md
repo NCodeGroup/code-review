@@ -74,3 +74,4 @@ records are indexed in [project-template/](project-template/README.md).
 | [1006](1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md) | A plan that reaches consumers releases when its pull request merges, and this repository's own pin is exempt from the Dependabot cooldown | Accepted |
 | [1007](1007-a-re-review-larger-than-one-part-is-a-full-review.md) | A re-review whose changed hunks are more than one part of a first review holds is a full review, in parts and under the run's cost ceiling | Accepted |
 | [1008](1008-one-problem-gets-one-thread.md) | One problem gets one thread: synthesis merges it across files with an "Also at" list, and a re-review lists a finding its reviewer says repeats an earlier one as already raised | Accepted |
+| [1009](1009-a-clean-review-approves-the-pull-request.md) | A clean review approves the pull request when the caller sets `approve: true`, and any other review dismisses the bot's approval | Accepted |

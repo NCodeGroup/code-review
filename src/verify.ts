@@ -399,7 +399,7 @@ export interface SynthesizedReview {
 export async function verifyReview(
   review: SynthesizedReview,
   input: Omit<VerificationInput, 'findings'>,
-): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demoted' | 'demotedBlockers' | 'skipped'>> {
+): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demotedBlockers' | 'skipped'>> {
   const { findings, refuted, questioned, demoted, skipped, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
   let verdict = review.verdict;
   if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
@@ -412,6 +412,7 @@ export async function verifyReview(
     verdict,
     findings,
     refuted,
+    demoted,
     calls,
     trace,
   };

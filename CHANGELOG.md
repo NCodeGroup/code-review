@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-15
+
+### Added
+
+- The `approve` input (off by default) submits a review whose verdict is Approve, with the head unchanged and no earlier should-fix thread open, as an approving review, so a ruleset can require one approval and Scorecard's Code-Review check counts it. A review with only nits approves too, when every reviewer ran in full and verification lowered or refuted nothing. Any other review stays a comment and dismisses the bot's earlier approval, and the summary says "Approved" or "Not approved" with the reason ([#203](https://github.com/NCodeGroup/code-review/issues/203), [ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md)).
+
 ## [1.3.1] - 2026-11-14
 
 ### Fixed
@@ -245,7 +251,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NCodeGroup/code-review/compare/v1.1.2...v1.2.0
