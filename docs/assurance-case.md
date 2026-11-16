@@ -60,9 +60,11 @@ access acting against the project, and a vulnerability in a dependency itself ([
 
 ## Evidence
 
-[//]: # "Maintainers: add the tests and the coverage the project keeps."
-
-- **Gate:** CI runs the project's commands on every pull request.
+- **Gate:** CI runs `npm run typecheck` and `npm test`, the `node:test` suite in `test/`, on every pull request;
+  `test/acknowledge.test.ts` checks that `action.yml` keeps every app token out of the review step's environment.
+  Test coverage isn't measured.
+- **Evals:** the smoke eval runs on every push to `main` that changes the prompts, the reviewers, the guidance or the
+  models, and fails when it catches more than two fewer expected findings than its baseline or flags its must-not case.
 - **Static analysis:** with CodeQL's default setup configured, the repository ruleset blocks a pull request that adds a
   CodeQL alert at warning level or above, or a security alert of any severity
   ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md)).
