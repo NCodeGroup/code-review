@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `GOVERNANCE.md`, `ROADMAP.md`, `docs/architecture.md` and `docs/assurance-case.md` describe code-review itself: its maintainer, its plans for the next twelve months, its components and design rules, and its security requirements, threat model and the weaknesses it counters ([#206](https://github.com/NCodeGroup/code-review/issues/206)).
 - `README.md` shows the OpenSSF Best Practices badge (project 16752, passing) and says how to verify a release with `gh release verify`, and `docs/best-practices-badge.md` records where the silver level stands.
+- CI runs `npm run lint`, which fails on TypeScript that Biome's formatter or linter doesn't accept as `biome.json` sets them, and `npm run format` applies them; the code is reformatted once to match, and `AGENTS.md`, `CONTRIBUTING.md` and `docs/best-practices-badge.md` say so ([#210](https://github.com/NCodeGroup/code-review/issues/210), [ADR-1010](docs/decisions/1010-biome-formats-and-lints-the-typescript.md)).
 
 ## [1.4.1] - 2026-11-15
 
