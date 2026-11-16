@@ -6,15 +6,36 @@ user-facing summary.
 
 ## Security Requirements
 
-[//]: # "Maintainers: list what the project is expected to do as R1, R2, ..., and what users must not rely on."
+- **R1.** The model credentials never reach an agent, a log or anything published.
+- **R2.** The app's private key reaches only the steps that mint its tokens, and no app token is in the review step's
+  environment.
+- **R3.** Code from a pull request is read, never built, run or installed, and an agent reads nothing outside its
+  checkout.
+- **R4.** Text from a pull request is data: only the text of authors who can write to the repository reaches a
+  prompt, and no such text reaches a shell unquoted.
+- **R5.** A pull request can't change how it is reviewed.
+- **R6.** A review's cost is bounded.
 
-Not written yet.
+Users must not rely on a review to find every defect: its findings are advice, and nothing requires its check run.
 
 ## Threat Model
 
-[//]: # "Maintainers: add a table (Threat, In scope, Countered by) and state the trust boundary."
+The trust boundary is the pull request: its author, code and text are untrusted, and the review step, which holds the
+model credentials, reads them. Out of scope: a compromised GitHub, Anthropic or AWS account, a maintainer with write
+access acting against the project, and a vulnerability in a dependency itself ([SECURITY.md](../SECURITY.md)).
 
-Not written yet.
+| Threat | In scope | Countered by |
+| --- | --- | --- |
+| Prompt injection makes an agent leak the model credentials | Yes | R1: `src/proxy.ts` and `src/credentials.ts` keep them in the review step's process; agents get a placeholder |
+| An agent reads a file outside the checkout, through `..` or a symlink | Yes | R3: the path guard in `src/agent.ts` resolves symlinks and refuses any path outside the checkout |
+| The pull request's code runs in the job that holds the credentials | Yes | R3: `src/fetch-head.ts` fetches the head only to read; `pull_request_target` runs the default branch's workflow |
+| A stranger steers the review through a description, comment or issue | Yes | R4: `src/writers.ts` keeps only writers' text; `/review` runs only for writers; a fork's pull request isn't reviewed |
+| A pull request softens its own review | Yes | R5: `src/settings.ts` reads `.github/code-review/` from the default branch only |
+| A secret reaches a comment, the check run or the trace artifact | Yes | R1: `src/outputs.ts` scans everything published |
+| An app token is misused by an agent | Yes | R2: tokens are minted per step, revoked before the review step, and minted again only after the agents exit |
+| A poisoned dependency cache reaches the credentials | Yes | `action.yml` turns off setup-node's cache (`package-manager-cache: false`) |
+| Runaway cost or a review loop | Yes | R6: per-call caps, a cost ceiling per review (`CODE_REVIEW_MAX_RUN_USD`) and at most three reviews without a writer's comment (`src/pause.ts`) |
+| Quoted text notifies people or forges log lines | Yes | `src/markdown.ts` escapes @mentions; `src/log.ts` writes each line as one printable line |
 
 ## Secure Design Principles Applied
 
