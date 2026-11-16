@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-15
+
 ### Changed
 
 - The repository follows project-template v0.96.0 (from v0.86.1): it gains `CODE_OF_CONDUCT.md`, `GOVERNANCE.md`, `ROADMAP.md`, `docs/architecture.md`, `docs/assurance-case.md` and `docs/best-practices-badge.md`, the documents the OpenSSF Best Practices silver level asks for, an OpenSSF Scorecard workflow (`.github/workflows/scorecard.yml`), read-only top-level permissions in `.github/workflows/copilot-setup-steps.yml`, and the template's newer review commands, which judge every NCode Review finding whatever its severity; `AGENTS.md`, `CONTRIBUTING.md`, `README.md` and `docs/README.md` describe them.
@@ -255,7 +257,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/NCodeGroup/code-review/compare/v1.2.0...v1.3.0
