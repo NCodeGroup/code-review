@@ -17,11 +17,18 @@ const bedrockQuotaErrors = new Set(['ThrottlingException', 'ServiceQuotaExceeded
 // (ModelNotReadyException), any other answer, or none, goes on with Bedrock.
 async function bedrockRefusal(key: string, fetchFn: typeof fetch): Promise<string | undefined> {
   try {
-    const response = await fetchFn(`https://bedrock-runtime.${bedrockRegion}.amazonaws.com/model/${encodeURIComponent(modelIds.bedrock.haiku)}/invoke`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ anthropic_version: 'bedrock-2023-05-31', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
-    });
+    const response = await fetchFn(
+      `https://bedrock-runtime.${bedrockRegion}.amazonaws.com/model/${encodeURIComponent(modelIds.bedrock.haiku)}/invoke`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          anthropic_version: 'bedrock-2023-05-31',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
+      },
+    );
     if (response.status === 401 || response.status === 403) return `Bedrock refused the key: HTTP ${response.status}`;
     const errorType = (response.headers.get('x-amzn-errortype') ?? '').split(':')[0] ?? '';
     if (bedrockQuotaErrors.has(errorType) || (response.status === 429 && errorType !== 'ModelNotReadyException')) {
@@ -54,9 +61,13 @@ export async function chooseProvider(credentials: Credentials, fetchFn: typeof f
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ model: modelIds.anthropic.haiku, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
+        body: JSON.stringify({
+          model: modelIds.anthropic.haiku,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
       });
-      if (response.ok) return { provider: 'anthropic', reason: 'the plan\'s API credits' };
+      if (response.ok) return { provider: 'anthropic', reason: "the plan's API credits" };
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
       reason = creditsRanOut(body.error?.message ?? '')
         ? 'the Anthropic organization has no API credits (not linked yet, or used up)'

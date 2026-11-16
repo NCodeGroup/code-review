@@ -52,7 +52,14 @@ function readCall(value: unknown): TimedCall | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as Record<string, unknown>;
   const { role, model, durationMs, turns, costUsd, startedAt, firstResponseMs } = raw;
-  if (typeof role !== 'string' || typeof model !== 'string' || !isNumber(durationMs) || !isNumber(turns) || !isNumber(costUsd)) return undefined;
+  if (
+    typeof role !== 'string' ||
+    typeof model !== 'string' ||
+    !isNumber(durationMs) ||
+    !isNumber(turns) ||
+    !isNumber(costUsd)
+  )
+    return undefined;
   return {
     role,
     model,
@@ -84,7 +91,9 @@ export function readTraces(paths: string[]): Trace[] {
       const rawTimings = (raw as { timings?: unknown }).timings;
       const timings =
         rawTimings && typeof rawTimings === 'object' && !Array.isArray(rawTimings)
-          ? Object.fromEntries(Object.entries(rawTimings).filter((entry): entry is [string, number] => isNumber(entry[1])))
+          ? Object.fromEntries(
+              Object.entries(rawTimings).filter((entry): entry is [string, number] => isNumber(entry[1])),
+            )
           : undefined;
       traces.push({
         file,
@@ -128,24 +137,33 @@ function quantile(sorted: number[], q: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
 }
 
-export function roleSummary(
-  calls: TimedCall[],
-): { role: string; calls: number; medianMs: number; p90Ms: number; medianTurns: number; medianFirstResponseMs?: number }[] {
+export function roleSummary(calls: TimedCall[]): {
+  role: string;
+  calls: number;
+  medianMs: number;
+  p90Ms: number;
+  medianTurns: number;
+  medianFirstResponseMs?: number;
+}[] {
   const byRole = new Map<string, TimedCall[]>();
   for (const call of calls) byRole.set(call.role, [...(byRole.get(call.role) ?? []), call]);
   const ascending = (values: number[]) => values.sort((a, b) => a - b);
-  return [...byRole].map(([role, group]) => {
-    const durations = ascending(group.map((call) => call.durationMs));
-    const first = ascending(group.flatMap((call) => (call.firstResponseMs === undefined ? [] : [call.firstResponseMs])));
-    return {
-      role,
-      calls: group.length,
-      medianMs: quantile(durations, 0.5),
-      p90Ms: quantile(durations, 0.9),
-      medianTurns: quantile(ascending(group.map((call) => call.turns)), 0.5),
-      ...(first.length ? { medianFirstResponseMs: quantile(first, 0.5) } : {}),
-    };
-  }).sort((a, b) => b.medianMs - a.medianMs);
+  return [...byRole]
+    .map(([role, group]) => {
+      const durations = ascending(group.map((call) => call.durationMs));
+      const first = ascending(
+        group.flatMap((call) => (call.firstResponseMs === undefined ? [] : [call.firstResponseMs])),
+      );
+      return {
+        role,
+        calls: group.length,
+        medianMs: quantile(durations, 0.5),
+        p90Ms: quantile(durations, 0.9),
+        medianTurns: quantile(ascending(group.map((call) => call.turns)), 0.5),
+        ...(first.length ? { medianFirstResponseMs: quantile(first, 0.5) } : {}),
+      };
+    })
+    .sort((a, b) => b.medianMs - a.medianMs);
 }
 
 function seconds(ms: number): string {
@@ -162,15 +180,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     } else {
       for (const trace of traces) {
         const spans = phaseSpans(trace.calls);
-        const parts = phases.flatMap((phase) => (spans[phase] === undefined ? [] : [`${phase} ${seconds(spans[phase])}s`]));
-        console.log(`${trace.file}: ${seconds(trace.durationMs)}s, ${trace.calls.length} calls, $${trace.costUsd.toFixed(2)}${parts.length ? `, ${parts.join(', ')}` : ''}`);
+        const parts = phases.flatMap((phase) =>
+          spans[phase] === undefined ? [] : [`${phase} ${seconds(spans[phase])}s`],
+        );
+        console.log(
+          `${trace.file}: ${seconds(trace.durationMs)}s, ${trace.calls.length} calls, $${trace.costUsd.toFixed(2)}${parts.length ? `, ${parts.join(', ')}` : ''}`,
+        );
       }
       console.log('');
       console.log('| Role | Calls | Median s | p90 s | Median turns | Median first response s |');
       console.log('|---|---|---|---|---|---|');
       for (const row of roleSummary(traces.flatMap((trace) => trace.calls))) {
         const first = row.medianFirstResponseMs === undefined ? '' : seconds(row.medianFirstResponseMs);
-        console.log(`| ${row.role} | ${row.calls} | ${seconds(row.medianMs)} | ${seconds(row.p90Ms)} | ${row.medianTurns} | ${first} |`);
+        console.log(
+          `| ${row.role} | ${row.calls} | ${seconds(row.medianMs)} | ${seconds(row.p90Ms)} | ${row.medianTurns} | ${first} |`,
+        );
       }
     }
   } catch (error) {

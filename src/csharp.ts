@@ -127,7 +127,8 @@ export type Declaration =
   | { kind: 'type'; visible: boolean; membersPublic: boolean }
   | { kind: 'member'; visible: boolean };
 
-const modifierRun = /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
+const modifierRun =
+  /^\s*(?:\[[^\]]*\]\s*)*((?:(?:public|protected|private|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|readonly|partial|required|const|volatile|file|ref|event|implicit|explicit)\s+)*)/;
 const accessWords = new Set(['public', 'protected', 'private', 'internal']);
 
 // A C# line read as a declaration, from its leading modifiers. Members without an access modifier are private (or a
@@ -210,7 +211,9 @@ export function declarationSpans(text: string): DeclarationSpan[] | undefined {
     }
     const found = start < 0 ? undefined : classify(masked.slice(start, i));
     if (c === '{') {
-      const span = found ? { start: startLine, open: line, end: line, declaration: found, parent: parent() } : undefined;
+      const span = found
+        ? { start: startLine, open: line, end: line, declaration: found, parent: parent() }
+        : undefined;
       if (span) spans.push(span);
       frames.push(span);
     } else if (c === '}') {

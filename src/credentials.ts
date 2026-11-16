@@ -53,7 +53,9 @@ export class AnthropicTokenSource {
     });
     const body = (await response.json()) as { access_token?: string; expires_in?: number };
     if (!response.ok || !body.access_token) {
-      throw new Error(`Anthropic refused the federated login: HTTP ${response.status}. The Console's authentication events say why.`);
+      throw new Error(
+        `Anthropic refused the federated login: HTTP ${response.status}. The Console's authentication events say why.`,
+      );
     }
     this.#token = body.access_token;
     this.#expiresAt = Date.now() + (body.expires_in ?? 300) * 1000;

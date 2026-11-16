@@ -91,7 +91,8 @@ function scanHead(head: string): HeadScan {
   const spans = declarationSpans(head);
   const innermost: (DeclarationSpan | undefined)[] = new Array(lines.length);
   // A span opens after the one it sits in, so the inner one is written last.
-  for (const span of spans ?? []) for (let line = span.start; line <= span.end && line < lines.length; line++) innermost[line] = span;
+  for (const span of spans ?? [])
+    for (let line = span.start; line <= span.end && line < lines.length; line++) innermost[line] = span;
   const isCode = (line: string) => line.trim() !== '' && !notCode.test(line);
   // Lines from codeStart up to codeEnd aren't code; codeEnd is, or is the end of the file.
   let codeStart = 0;
@@ -180,7 +181,12 @@ export function touchesSerializedContract(section: string): boolean {
 // Marks what the selection floor needs to know about each changed .cs file; which of them are tests is the floor's to
 // say. Whether its project is packed comes from the default branch; the head's copies, read through readHeads as data,
 // only place changed lines. A packed file whose head can't be read counts as a public change, so the floor fails closed.
-export function markContracts(files: ChangedFile[], sections: Map<string, string>, basePath: string, readHeads: (files: string[]) => Map<string, string>): void {
+export function markContracts(
+  files: ChangedFile[],
+  sections: Map<string, string>,
+  basePath: string,
+  readHeads: (files: string[]) => Map<string, string>,
+): void {
   const projects = new Map<string, boolean>();
   const unread: { file: ChangedFile; section: string }[] = [];
   for (const file of files) {

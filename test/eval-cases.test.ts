@@ -18,6 +18,7 @@ test('the re-review subset is every eval case with a reviewed head', () => {
 test('a re-review eval case changes a sensitive: path, and its globs are plain paths', () => {
   assert.ok(allCases.some((c) => c.reviewed && c.sensitive?.length));
   for (const c of allCases) {
-    for (const glob of c.sensitive ?? []) assert.ok(typeof glob === 'string' && glob.length > 0, `${c.id} has an empty sensitive entry`);
+    for (const glob of c.sensitive ?? [])
+      assert.ok(typeof glob === 'string' && glob.length > 0, `${c.id} has an empty sensitive entry`);
   }
 });

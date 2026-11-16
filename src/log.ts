@@ -20,7 +20,10 @@ export function writeErrorLog(line: string): void {
 // The frames of error's stack, each without its indent; empty for a value that isn't an Error or has no stack.
 export function stackFrames(error: unknown): string[] {
   if (!(error instanceof Error) || !error.stack) return [];
-  return error.stack.split('\n').filter((line) => /^\s+at /.test(line)).map((line) => line.trim());
+  return error.stack
+    .split('\n')
+    .filter((line) => /^\s+at /.test(line))
+    .map((line) => line.trim());
 }
 
 // Reports what stopped a step: its message as an ::error:: line, then each frame of its stack on a line of its own,

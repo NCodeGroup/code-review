@@ -17,13 +17,17 @@ import { loadVerdicts, saveVerdicts, type CachedVerdict, type Reality, type Verd
 // The parts of a case that confirming changes.
 export type CaseConcerns = Pick<EvalCase, 'id' | 'expect' | 'mustNotFlag'>;
 export type Confirmation = 'expect' | 'must-not';
-export interface Pending extends CachedVerdict { caseId: string; fingerprint: string }
+export interface Pending extends CachedVerdict {
+  caseId: string;
+  fingerprint: string;
+}
 
 export function unconfirmed(cache: VerdictCache, verdict?: Reality): Pending[] {
   return Object.entries(cache).flatMap(([caseId, entries]) =>
     Object.entries(entries)
       .filter(([, entry]) => !entry.confirmed && (verdict ? entry.verdict === verdict : entry.verdict !== 'unsure'))
-      .map(([fingerprint, entry]) => ({ ...entry, caseId, fingerprint })));
+      .map(([fingerprint, entry]) => ({ ...entry, caseId, fingerprint })),
+  );
 }
 
 // Up to `size` of each verdict, picked at random.
@@ -36,15 +40,29 @@ export function sample(pending: Pending[], size: number, random: () => number = 
     }
     return pool.slice(0, size);
   };
-  return [...pick(pending.filter((p) => p.verdict === 'real')), ...pick(pending.filter((p) => p.verdict === 'not-real')), ...pick(pending.filter((p) => p.verdict === 'unsure'))];
+  return [
+    ...pick(pending.filter((p) => p.verdict === 'real')),
+    ...pick(pending.filter((p) => p.verdict === 'not-real')),
+    ...pick(pending.filter((p) => p.verdict === 'unsure')),
+  ];
 }
 
 export function concernFrom(entry: CachedVerdict): Concern {
-  return { file: entry.file, line: entry.line, concern: `${entry.title.replace(/[.\s]+$/, '')}. ${entry.problem}`.trim() };
+  return {
+    file: entry.file,
+    line: entry.line,
+    concern: `${entry.title.replace(/[.\s]+$/, '')}. ${entry.problem}`.trim(),
+  };
 }
 
 // Adds the cached finding to its case as an expected or must-not-flag concern, and marks the verdict confirmed.
-export function confirm(cases: CaseConcerns[], cache: VerdictCache, caseId: string, fingerprint: string, as?: Confirmation): Concern {
+export function confirm(
+  cases: CaseConcerns[],
+  cache: VerdictCache,
+  caseId: string,
+  fingerprint: string,
+  as?: Confirmation,
+): Concern {
   const entry = cache[caseId]?.[fingerprint];
   if (!entry) throw new Error(`No verdict for ${fingerprint} in case ${caseId}; npm run eval:confirm lists them.`);
   if (entry.confirmed) throw new Error(`${fingerprint} in case ${caseId} is already confirmed as ${entry.confirmed}.`);
@@ -70,15 +88,20 @@ function main(): void {
   const casesFile = path.join(root, 'evals', 'cases.json');
   const verdictFile = path.join(root, 'evals', 'verdicts.json');
   const cache = loadVerdicts(verdictFile);
-  const caseId = arg('case'), fingerprint = arg('fingerprint');
+  const caseId = arg('case'),
+    fingerprint = arg('fingerprint');
   if (!caseId || !fingerprint) {
     const verdict = arg('verdict');
-    if (verdict !== undefined && verdict !== 'real' && verdict !== 'not-real' && verdict !== 'unsure') throw new Error('--verdict is real, not-real or unsure.');
+    if (verdict !== undefined && verdict !== 'real' && verdict !== 'not-real' && verdict !== 'unsure')
+      throw new Error('--verdict is real, not-real or unsure.');
     const size = Number(arg('sample') ?? 0);
     let pending = unconfirmed(cache, verdict);
     if (size > 0) pending = sample(pending, size);
     if (!pending.length) console.log('No unconfirmed verdicts in evals/verdicts.json.');
-    for (const p of pending) console.log(`${p.verdict.padEnd(8)} --case ${p.caseId} --fingerprint ${p.fingerprint}\n  ${p.file}:${p.line} ${p.severity}: ${p.title}\n  ${p.reason}\n`);
+    for (const p of pending)
+      console.log(
+        `${p.verdict.padEnd(8)} --case ${p.caseId} --fingerprint ${p.fingerprint}\n  ${p.file}:${p.line} ${p.severity}: ${p.title}\n  ${p.reason}\n`,
+      );
     return;
   }
   const as = arg('as');

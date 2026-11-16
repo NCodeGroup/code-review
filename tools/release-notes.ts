@@ -51,14 +51,21 @@ export function releaseNotes(changelog: string, version: string): string {
     if (!heading.test(line)) continue;
     const date = exact.exec(line)?.[1];
     if (date === undefined || !isCalendarDate(date)) {
-      throw new Error(`CHANGELOG.md's heading for ${version} is '${line.trim()}'; write it as '## [${version}] - YYYY-MM-DD'.`);
+      throw new Error(
+        `CHANGELOG.md's heading for ${version} is '${line.trim()}'; write it as '## [${version}] - YYYY-MM-DD'.`,
+      );
     }
     if (start >= 0) throw new Error(`CHANGELOG.md has more than one section for ${version}.`);
     start = index;
   }
   if (start < 0) {
-    const unclosed = openFence >= 0 ? ` A code fence opened on line ${openFence + 1} is never closed, so everything after it is code; close it.` : '';
-    throw new Error(`CHANGELOG.md has no '## [${version}] - YYYY-MM-DD' section; add one, with the release's changes, before releasing.${unclosed}`);
+    const unclosed =
+      openFence >= 0
+        ? ` A code fence opened on line ${openFence + 1} is never closed, so everything after it is code; close it.`
+        : '';
+    throw new Error(
+      `CHANGELOG.md has no '## [${version}] - YYYY-MM-DD' section; add one, with the release's changes, before releasing.${unclosed}`,
+    );
   }
 
   // The section runs to the next second-level heading, or to the link definitions at the end of the file.
@@ -69,9 +76,13 @@ export function releaseNotes(changelog: string, version: string): string {
     body.push(line);
     openFence = !inFence ? -1 : openFence < 0 ? start + 1 + index : openFence;
   }
-  if (openFence >= 0) throw new Error(`CHANGELOG.md's section for ${version} has a code fence on line ${openFence + 1} that is never closed; close it.`);
+  if (openFence >= 0)
+    throw new Error(
+      `CHANGELOG.md's section for ${version} has a code fence on line ${openFence + 1} that is never closed; close it.`,
+    );
   const notes = body.join('\n').trim();
-  if (!/^\s*(?:[-*+]|\d{1,9}[.)])\s+\S/m.test(notes)) throw new Error(`CHANGELOG.md's section for ${version} lists no changes.`);
+  if (!/^\s*(?:[-*+]|\d{1,9}[.)])\s+\S/m.test(notes))
+    throw new Error(`CHANGELOG.md's section for ${version} lists no changes.`);
   return `${notes}\n`;
 }
 

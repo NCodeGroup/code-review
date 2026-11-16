@@ -1,7 +1,7 @@
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
-import { githubFetch } from './github.ts';
+import { type Api, githubFetch } from './github.ts';
 import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin, keptMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
@@ -21,7 +21,10 @@ export function errorText(error: unknown): string {
 // Reads a comment endpoint, such as a pull request's issue comments or review comments, oldest first, until a short
 // page; undefined when a page can't be read, or when every page up to maxCommentPages is full, since the newest
 // comments, which hold the newest summary and the newest threads, would be missing. readPage gets each page's URL.
-export async function readCommentPages<T>(endpoint: string, readPage: (url: string) => Promise<T[] | undefined>): Promise<T[] | undefined> {
+export async function readCommentPages<T>(
+  endpoint: string,
+  readPage: (url: string) => Promise<T[] | undefined>,
+): Promise<T[] | undefined> {
   const all: T[] = [];
   for (let page = 1; page <= maxCommentPages; page++) {
     const comments = await readPage(`${endpoint}?per_page=${commentPageSize}&page=${page}`);
@@ -34,7 +37,13 @@ export async function readCommentPages<T>(endpoint: string, readPage: (url: stri
 
 // A comment as GitHub lists it, and the API path of a pull request's issue comments. The publish and review steps read
 // them through different transports: the app's token, which throws, and an optional token, which gives up.
-export type ListedComment = { id: number; body?: string; user?: { login?: string; type?: string }; author_association?: string; created_at?: string };
+export type ListedComment = {
+  id: number;
+  body?: string;
+  user?: { login?: string; type?: string };
+  author_association?: string;
+  created_at?: string;
+};
 function issueComments(repository: string, number: number): string {
   return `/repos/${repository}/issues/${number}/comments`;
 }
@@ -42,12 +51,15 @@ function issueComments(repository: string, number: number): string {
 // The bot's earlier inline threads on a pull request, from its review comments, or undefined when the pull request
 // has more review comments than readCommentPages reads. A page that can't be read throws, as api does.
 export async function readPostedThreads(
-  api: (method: string, url: string) => Promise<any>,
+  api: Api,
   repository: string,
   number: number,
 ): Promise<PostedThread[] | undefined> {
   type ReviewComment = Parameters<typeof parsePosted>[0][number] & { user?: { login?: string } };
-  const listed = await readCommentPages(`/repos/${repository}/pulls/${number}/comments`, async (url) => (await api('GET', url)) as ReviewComment[]);
+  const listed = await readCommentPages(
+    `/repos/${repository}/pulls/${number}/comments`,
+    async (url) => (await api('GET', url)) as ReviewComment[],
+  );
   return listed && parsePosted(listed.filter((comment) => comment.user?.login === botLogin));
 }
 
@@ -59,8 +71,11 @@ export async function readPostedThreads(
 // can't tell which findings are already posted; the check run still has them all. A page that can't be read throws.
 // `posted`, when given, is the bot's earlier threads the caller already read, so they aren't read twice.
 export async function postThreads(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
-  results: Pick<Results, 'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked' | 'alreadyRaised'>,
+  api: Api,
+  results: Pick<
+    Results,
+    'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked' | 'alreadyRaised'
+  >,
   secrets: Iterable<string>,
   log: (line: string) => void = writeLog,
   dismissed: PostedThread[] = [],
@@ -68,15 +83,24 @@ export async function postThreads(
 ): Promise<void> {
   const earlier = posted ?? (await readPostedThreads(api, results.repository, results.pullRequest));
   if (!earlier) {
-    log(`::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`);
+    log(
+      `::warning::Couldn't list the earlier review comments (more than ${commentPageSize * maxCommentPages}), so no threads are posted; the check run has the findings.`,
+    );
     return;
   }
-  const placement = placeFindings([...results.findings, ...(results.alreadyRaised ?? []), ...(results.tracked ?? [])], results.changedLines, earlier, dismissed);
+  const placement = placeFindings(
+    [...results.findings, ...(results.alreadyRaised ?? []), ...(results.tracked ?? [])],
+    results.changedLines,
+    earlier,
+    dismissed,
+  );
   if (!placement.inline.length && !placement.inBody.length) {
     const left = [
       placement.alreadyPosted.length ? `${placement.alreadyPosted.length} already posted` : '',
       placement.tracked.length ? `${placement.tracked.length} tracked in open issues` : '',
-    ].filter(Boolean).join(', ');
+    ]
+      .filter(Boolean)
+      .join(', ');
     log(`No new findings to post${left ? ` (${left})` : ''}.`);
     return;
   }
@@ -93,15 +117,24 @@ export async function postThreads(
     log(`Posted a review with ${placement.inline.length} threads and ${placement.inBody.length} findings in its body.`);
   } catch (error) {
     log(`::warning::GitHub refused the inline threads (${errorText(error)}); posting them in the review's body.`);
-    const fallback = { inline: [], inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody], alreadyPosted: placement.alreadyPosted, tracked: placement.tracked };
-    await api('POST', reviews, { commit_id: results.headSha, event: 'COMMENT', body: reviewBody(fallback, results.headSha) });
+    const fallback = {
+      inline: [],
+      inBody: [...placement.inline.map((p) => p.finding), ...placement.inBody],
+      alreadyPosted: placement.alreadyPosted,
+      tracked: placement.tracked,
+    };
+    await api('POST', reviews, {
+      commit_id: results.headSha,
+      event: 'COMMENT',
+      body: reviewBody(fallback, results.headSha),
+    });
   }
 }
 
 // Submits an approving review at the reviewed head, unless the pull request's head moved or can't be read. A refusal only
 // warns; true when the approval was submitted.
 export async function submitApproval(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   secrets: Iterable<string>,
   log: (line: string) => void = writeLog,
@@ -111,7 +144,9 @@ export async function submitApproval(
     const current = (await api('GET', pull)) as { head?: { sha?: string } };
     const sha = current?.head?.sha;
     if (sha !== results.headSha) {
-      log(`::warning::The pull request's head moved to ${String(sha).slice(0, 7)} since the review of ${results.headSha.slice(0, 7)}, so it isn't approved.`);
+      log(
+        `::warning::The pull request's head moved to ${String(sha).slice(0, 7)} since the review of ${results.headSha.slice(0, 7)}, so it isn't approved.`,
+      );
       return false;
     }
   } catch (error) {
@@ -137,7 +172,7 @@ export async function submitApproval(
 // Dismisses the bot's own approving reviews of the pull request, so an approval of an earlier head doesn't stand after a
 // review that doesn't approve. A failure only warns.
 export async function dismissApprovals(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   log: (line: string) => void = writeLog,
 ): Promise<void> {
@@ -151,13 +186,17 @@ export async function dismissApprovals(
     return;
   }
   if (!listed) {
-    log(`::warning::Couldn't list the earlier reviews (more than ${commentPageSize * maxCommentPages}), so an earlier approval stays.`);
+    log(
+      `::warning::Couldn't list the earlier reviews (more than ${commentPageSize * maxCommentPages}), so an earlier approval stays.`,
+    );
     return;
   }
   for (const review of listed) {
     if (review.user?.login !== botLogin || review.state !== 'APPROVED') continue;
     try {
-      await api('PUT', `${reviews}/${review.id}/dismissals`, { message: `Dismissed: the review at ${results.headSha.slice(0, 7)} doesn't approve.` });
+      await api('PUT', `${reviews}/${review.id}/dismissals`, {
+        message: `Dismissed: the review at ${results.headSha.slice(0, 7)} doesn't approve.`,
+      });
       log(`Dismissed the earlier approval ${review.id}.`);
     } catch (error) {
       log(`::warning::Couldn't dismiss the earlier approval ${review.id} (${errorText(error)}).`);
@@ -168,7 +207,7 @@ export async function dismissApprovals(
 // Approves when the review qualifies; otherwise, and when the approval is refused, dismisses the bot's earlier approval,
 // so a review that doesn't approve never leaves an old approval standing.
 export async function applyApproval(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   approve: boolean,
   secrets: Iterable<string>,
@@ -187,7 +226,7 @@ export async function applyApproval(
 // posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
 // A failed collapse only warns, and so does a failed listing, which still posts the new summary.
 export async function postSummary(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   body: string,
   log: (line: string) => void = writeLog,

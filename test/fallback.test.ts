@@ -55,10 +55,21 @@ function apiErrorMessage(error: string, text: string): SDKMessage {
 
 function outputFor(options: Options): unknown {
   const properties = (options.outputFormat?.schema['properties'] ?? {}) as Record<string, unknown>;
-  const finding = { severity: 'nit', file: 'config/greeting.json', line: 1, title: 'Typo', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
+  const finding = {
+    severity: 'nit',
+    file: 'config/greeting.json',
+    line: 1,
+    title: 'Typo',
+    problem: 'p',
+    consequence: 'c',
+    fix: 'f',
+    evidence: 'e',
+    confidence: 0.9,
+  };
   if ('add' in properties) return { add: [{ reviewer: 'tests', reason: 'the change needs tests' }] };
   if ('rules' in properties) return { rules: ['R-review-1'], decisions: [] };
-  if ('summary' in properties) return { summary: 'One typo.', verdict: 'comment', findings: [{ ...finding, sources: ['R1', 'R2'] }] };
+  if ('summary' in properties)
+    return { summary: 'One typo.', verdict: 'comment', findings: [{ ...finding, sources: ['R1', 'R2'] }] };
   return { findings: [finding] };
 }
 
@@ -83,7 +94,11 @@ const onBedrock = (call: SeenCall) => call.env['CLAUDE_CODE_USE_BEDROCK'] === '1
 // A fake Agent SDK. The Claude API refuses a call whose prompt `apiRefuses` picks the way Claude Code reports a credit
 // refusal, and answers every other; Bedrock fails a call whose prompt `bedrockFails` picks, and answers every other.
 // Refusing by the call itself, not by its position, keeps the fake independent of how the reviewers are scheduled.
-function fakeQuery(seen: SeenCall[], apiRefuses: (prompt: string) => boolean, bedrockFails: (prompt: string) => boolean = () => false): QueryFunction {
+function fakeQuery(
+  seen: SeenCall[],
+  apiRefuses: (prompt: string) => boolean,
+  bedrockFails: (prompt: string) => boolean = () => false,
+): QueryFunction {
   return async function* ({ prompt, options }) {
     const call: SeenCall = { model: options.model ?? '', env: options.env ?? {} };
     seen.push(call);
@@ -102,7 +117,16 @@ function fakeQuery(seen: SeenCall[], apiRefuses: (prompt: string) => boolean, be
 }
 
 function request(fields: Partial<AgentRequest> = {}): AgentRequest {
-  return { role: 'reviewer:tests', tier: 'haiku', systemPrompt: '', prompt: 'review this', schema: { properties: {} }, maxTurns: 1, budgetUsd: 0.1, ...fields };
+  return {
+    role: 'reviewer:tests',
+    tier: 'haiku',
+    systemPrompt: '',
+    prompt: 'review this',
+    schema: { properties: {} },
+    maxTurns: 1,
+    budgetUsd: 0.1,
+    ...fields,
+  };
 }
 
 function gathered(): Gathered {
@@ -139,7 +163,11 @@ function gathered(): Gathered {
 
 // Reviews the change with the engine's charters through the fake Agent SDK, on a run that starts on the Claude API with
 // a Bedrock key.
-async function reviewOnFakeSdk(input: Gathered, apiRefuses: (prompt: string) => boolean, bedrockFails: (prompt: string) => boolean = () => false) {
+async function reviewOnFakeSdk(
+  input: Gathered,
+  apiRefuses: (prompt: string) => boolean,
+  bedrockFails: (prompt: string) => boolean = () => false,
+) {
   const previousTiers = process.env['CODE_REVIEW_TIERS'];
   delete process.env['CODE_REVIEW_TIERS'];
   const seen: SeenCall[] = [];
@@ -153,7 +181,8 @@ async function reviewOnFakeSdk(input: Gathered, apiRefuses: (prompt: string) => 
   };
   try {
     const outcome = await review({ run, gathered: input, charters: loadCharters(root), log: () => {} });
-    const byRole = (role: string) => outcome.calls.filter((c) => c.role === role).map((c) => [c.provider, c.model, c.outcome]);
+    const byRole = (role: string) =>
+      outcome.calls.filter((c) => c.role === role).map((c) => [c.provider, c.model, c.outcome]);
     return { outcome, fallback, seen, byRole };
   } finally {
     if (previousTiers === undefined) delete process.env['CODE_REVIEW_TIERS'];
@@ -165,7 +194,11 @@ async function reviewOnFakeSdk(input: Gathered, apiRefuses: (prompt: string) => 
 // (the floor) and the tests reviewer (added by selection); the Claude API refuses only the tests reviewer's call.
 async function reviewWithTestsRefused(bedrockFails: (prompt: string) => boolean = () => false) {
   const testsCharter = `Your charter:\n${loadCharters(root).reviewers.get('tests')!.text}`;
-  return reviewOnFakeSdk(gathered(), (prompt) => prompt.includes(testsCharter), (prompt) => prompt.includes(testsCharter) && bedrockFails(prompt));
+  return reviewOnFakeSdk(
+    gathered(),
+    (prompt) => prompt.includes(testsCharter),
+    (prompt) => prompt.includes(testsCharter) && bedrockFails(prompt),
+  );
 }
 
 test('a credit error reruns that call on Bedrock and sends every later call there', async () => {
@@ -178,16 +211,25 @@ test('a credit error reruns that call on Bedrock and sends every later call ther
     ['bedrock', modelIds.bedrock.haiku, 'success'],
   ]);
   // The hygiene reviewer runs alongside, on whichever provider the run is on when it starts.
-  assert.deepEqual(byRole('reviewer:hygiene').map(([, , result]) => result), ['success']);
+  assert.deepEqual(
+    byRole('reviewer:hygiene').map(([, , result]) => result),
+    ['success'],
+  );
   assert.deepEqual(byRole('synthesis'), [['bedrock', modelIds.bedrock.opus, 'success']]);
   assert.equal(outcome.calls.length, 5);
   assert.equal(seen.length, 5);
   assert.ok(seen.filter(onBedrock).every((s) => s.model.startsWith('global.')));
-  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['tests', 'ran']]);
+  assert.deepEqual(
+    outcome.reviewers.map((r) => [r.name, r.status]),
+    [
+      ['hygiene', 'ran'],
+      ['tests', 'ran'],
+    ],
+  );
   assert.equal(outcome.summary, 'One typo.');
 });
 
-test('a reviewer whose Bedrock rerun fails too is failed with the rerun\'s error, and both calls are traced', async () => {
+test("a reviewer whose Bedrock rerun fails too is failed with the rerun's error, and both calls are traced", async () => {
   const { outcome, fallback, byRole } = await reviewWithTestsRefused(() => true);
 
   assert.equal(fallback.switched, true);
@@ -211,11 +253,20 @@ test('a credit error on the selection call reruns it on Bedrock, and the review 
   ]);
   assert.deepEqual(byRole('reviewer:tests'), [['bedrock', modelIds.bedrock.haiku, 'success']]);
   assert.deepEqual(byRole('synthesis'), [['bedrock', modelIds.bedrock.opus, 'success']]);
-  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['tests', 'ran']]);
+  assert.deepEqual(
+    outcome.reviewers.map((r) => [r.name, r.status]),
+    [
+      ['hygiene', 'ran'],
+      ['tests', 'ran'],
+    ],
+  );
 });
 
 test('a credit error on the context call reruns it on Bedrock, and the reviewers get the rule the rerun picked', async () => {
-  const withRule: Gathered = { ...gathered(), reviewRules: [{ name: 'review.instructions.md', globs: [], text: '- Keep greetings lowercase.\n' }] };
+  const withRule: Gathered = {
+    ...gathered(),
+    reviewRules: [{ name: 'review.instructions.md', globs: [], text: '- Keep greetings lowercase.\n' }],
+  };
   const { outcome, fallback, byRole } = await reviewOnFakeSdk(withRule, (prompt) => prompt.includes('<catalog>'));
 
   assert.deepEqual(fallback, { switched: true, reason: creditsRanOutReason });
@@ -226,13 +277,28 @@ test('a credit error on the context call reruns it on Bedrock, and the reviewers
   // Selection runs beside the context call, so it started on the Claude API before the context call's refusal moved the run.
   assert.deepEqual(byRole('selection'), [['anthropic', modelIds.anthropic.sonnet, 'success']]);
   // The picked rule puts conventions on the floor and runs a rule check.
-  assert.deepEqual(outcome.reviewers.map((r) => [r.name, r.status]), [['hygiene', 'ran'], ['conventions', 'ran'], ['tests', 'ran'], ['rule-check', 'ran']]);
+  assert.deepEqual(
+    outcome.reviewers.map((r) => [r.name, r.status]),
+    [
+      ['hygiene', 'ran'],
+      ['conventions', 'ran'],
+      ['tests', 'ran'],
+      ['rule-check', 'ran'],
+    ],
+  );
 });
 
-test('withoutTools keeps the run\'s provider, proxy, fallback and query, and drops its checkout and working folder', () => {
+test("withoutTools keeps the run's provider, proxy, fallback and query, and drops its checkout and working folder", () => {
   const fallback: BedrockFallback = { switched: false };
   const query = fakeQuery([], () => false);
-  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work', fallback, query };
+  const run: AgentRun = {
+    provider: 'anthropic',
+    proxyUrl: 'http://127.0.0.1:1',
+    checkout: '/checkout',
+    workdir: '/work',
+    fallback,
+    query,
+  };
   const bare = withoutTools(run);
 
   assert.deepEqual(Object.keys(bare).sort(), ['fallback', 'provider', 'proxyUrl', 'query']);
@@ -247,10 +313,21 @@ test('the Bedrock rerun gets the placeholder and the proxy, never a credential o
   process.env['CODE_REVIEW_BEDROCK_KEY'] = 'ABSKsecret';
   try {
     const seen: SeenCall[] = [];
-    const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', fallback: { switched: false }, query: fakeQuery(seen, () => true) };
-    const result = await runAgent(run, request({ role: 'selection', tier: 'sonnet', schema: { properties: { add: {} } } }));
+    const run: AgentRun = {
+      provider: 'anthropic',
+      proxyUrl: 'http://127.0.0.1:1',
+      fallback: { switched: false },
+      query: fakeQuery(seen, () => true),
+    };
+    const result = await runAgent(
+      run,
+      request({ role: 'selection', tier: 'sonnet', schema: { properties: { add: {} } } }),
+    );
 
-    assert.deepEqual(result.records.map((r) => r.provider), ['anthropic', 'bedrock']);
+    assert.deepEqual(
+      result.records.map((r) => r.provider),
+      ['anthropic', 'bedrock'],
+    );
     const rerun = seen[1]!.env;
     assert.equal(rerun['AWS_BEARER_TOKEN_BEDROCK'], placeholderKey);
     assert.equal(rerun['ANTHROPIC_BEDROCK_BASE_URL'], 'http://127.0.0.1:1/bedrock');
@@ -266,19 +343,34 @@ test('the Bedrock rerun gets the placeholder and the proxy, never a credential o
   }
 });
 
-test('a rerun that fails on Bedrock too returns the rerun\'s error with both records', async () => {
+test("a rerun that fails on Bedrock too returns the rerun's error with both records", async () => {
   const seen: SeenCall[] = [];
   const fallback: BedrockFallback = { switched: false };
-  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', fallback, query: fakeQuery(seen, () => true, () => true) };
+  const run: AgentRun = {
+    provider: 'anthropic',
+    proxyUrl: 'http://127.0.0.1:1',
+    fallback,
+    query: fakeQuery(
+      seen,
+      () => true,
+      () => true,
+    ),
+  };
   const result = await runAgent(run, request());
 
   assert.equal(result.output, undefined);
   assert.equal(result.error, bedrockMessage);
-  assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', creditsRanOutReason], ['bedrock', 'error']]);
+  assert.deepEqual(
+    result.records.map((r) => [r.provider, r.outcome]),
+    [
+      ['anthropic', creditsRanOutReason],
+      ['bedrock', 'error'],
+    ],
+  );
   assert.deepEqual(fallback, { switched: true, reason: creditsRanOutReason });
 });
 
-test('runAgent passes a request\'s effort to the SDK, and none without one', async () => {
+test("runAgent passes a request's effort to the SDK, and none without one", async () => {
   const efforts: unknown[] = [];
   const recording: QueryFunction = async function* ({ options }) {
     efforts.push(options.effort);
@@ -305,11 +397,17 @@ test('a credit error thrown as an exception reruns the call on Bedrock', async (
 
   assert.equal(result.error, undefined);
   assert.deepEqual(result.output, { findings: [] });
-  assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', creditsRanOutReason], ['bedrock', 'success']]);
+  assert.deepEqual(
+    result.records.map((r) => [r.provider, r.outcome]),
+    [
+      ['anthropic', creditsRanOutReason],
+      ['bedrock', 'success'],
+    ],
+  );
   assert.equal(fallback.switched, true);
 });
 
-test('Claude Code\'s billing_error category reruns the call whatever the message says', async () => {
+test("Claude Code's billing_error category reruns the call whatever the message says", async () => {
   const seen: SeenCall[] = [];
   const billing: QueryFunction = async function* ({ options }) {
     const call: SeenCall = { model: options.model ?? '', env: options.env ?? {} };
@@ -321,14 +419,22 @@ test('Claude Code\'s billing_error category reruns the call whatever the message
     }
     yield resultMessage({ structured_output: { findings: [] } });
   };
-  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', fallback: { switched: false }, query: billing };
+  const run: AgentRun = {
+    provider: 'anthropic',
+    proxyUrl: 'http://127.0.0.1:1',
+    fallback: { switched: false },
+    query: billing,
+  };
   const result = await runAgent(run, request());
 
   assert.equal(result.error, undefined);
-  assert.deepEqual(result.records.map((r) => r.provider), ['anthropic', 'bedrock']);
+  assert.deepEqual(
+    result.records.map((r) => r.provider),
+    ['anthropic', 'bedrock'],
+  );
 });
 
-test('an API error that isn\'t about credits fails the call without moving the run', async () => {
+test("an API error that isn't about credits fails the call without moving the run", async () => {
   for (const [kind, text, expected] of [
     ['overloaded', 'Overloaded', 'Overloaded'],
     ['unknown', '', 'API error'],
@@ -344,13 +450,16 @@ test('an API error that isn\'t about credits fails the call without moving the r
     const result = await runAgent(run, request());
 
     assert.equal(result.error, expected);
-    assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', 'error']]);
+    assert.deepEqual(
+      result.records.map((r) => [r.provider, r.outcome]),
+      [['anthropic', 'error']],
+    );
     assert.equal(seen.length, 1);
     assert.deepEqual(fallback, { switched: false });
   }
 });
 
-test('credit wording on a reported API error without the billing category doesn\'t move the run', async () => {
+test("credit wording on a reported API error without the billing category doesn't move the run", async () => {
   for (const kind of ['unknown', undefined] as const) {
     const seen: SeenCall[] = [];
     const failing: QueryFunction = async function* ({ options }) {
@@ -363,7 +472,10 @@ test('credit wording on a reported API error without the billing category doesn\
     const result = await runAgent(run, request());
 
     assert.equal(result.error, creditMessage);
-    assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', 'error']]);
+    assert.deepEqual(
+      result.records.map((r) => [r.provider, r.outcome]),
+      [['anthropic', 'error']],
+    );
     assert.equal(seen.length, 1);
     assert.deepEqual(fallback, { switched: false });
   }
@@ -376,7 +488,10 @@ test('without a Bedrock key a credit error fails the call as before, with nothin
 
   assert.equal(result.output, undefined);
   assert.equal(result.error, creditMessage);
-  assert.deepEqual(result.records.map((r) => [r.provider, r.outcome]), [['anthropic', 'error']]);
+  assert.deepEqual(
+    result.records.map((r) => [r.provider, r.outcome]),
+    [['anthropic', 'error']],
+  );
   assert.equal(seen.length, 1);
 });
 
@@ -386,7 +501,12 @@ test('a run already on Bedrock is not rerun when a call fails', async () => {
     seen.push({ model: options.model ?? '', env: options.env ?? {} });
     yield resultMessage({ is_error: true, result: creditMessage });
   };
-  const run: AgentRun = { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', fallback: { switched: false }, query: failing };
+  const run: AgentRun = {
+    provider: 'bedrock',
+    proxyUrl: 'http://127.0.0.1:1',
+    fallback: { switched: false },
+    query: failing,
+  };
   const result = await runAgent(run, request({ role: 'synthesis', tier: 'opus' }));
 
   assert.equal(result.error, creditMessage);
@@ -394,8 +514,12 @@ test('a run already on Bedrock is not rerun when a call fails', async () => {
   assert.equal(seen.length, 1);
 });
 
-test('creditsRanOut recognizes the API refusal and Claude Code\'s report of it', () => {
-  assert.ok(creditsRanOut('Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'));
+test("creditsRanOut recognizes the API refusal and Claude Code's report of it", () => {
+  assert.ok(
+    creditsRanOut(
+      'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
+    ),
+  );
   assert.ok(creditsRanOut('Credit balance is too low'));
   assert.ok(!creditsRanOut('Overloaded'));
 });
@@ -407,8 +531,25 @@ test('only a run that starts on the Claude API with a Bedrock key gets a fallbac
   assert.equal(bedrockFallbackFor('bedrock', false), undefined);
 });
 
-function call(role: string, provider: 'anthropic' | 'bedrock', costUsd: number, model = modelIds[provider].haiku): CallRecord {
-  return { role, provider, model, costUsd, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' };
+function call(
+  role: string,
+  provider: 'anthropic' | 'bedrock',
+  costUsd: number,
+  model = modelIds[provider].haiku,
+): CallRecord {
+  return {
+    role,
+    provider,
+    model,
+    costUsd,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    turns: 1,
+    durationMs: 1,
+    outcome: 'success',
+  };
 }
 
 test('a reviewer rerun on Bedrock reports the Bedrock model, and the cost adds up both calls', () => {
@@ -430,7 +571,7 @@ function resultsWith(fields: Partial<Results>): Results {
     pullRequest: 7,
     headSha: 'abcdef1234',
     provider: 'anthropic',
-    providerReason: 'the plan\'s API credits',
+    providerReason: "the plan's API credits",
     summary: 'No findings.',
     verdict: 'approve',
     findings: [],
@@ -451,13 +592,24 @@ test('the check run and the summary say the run switched to Bedrock and split th
   const results = resultsWith({
     switchedToBedrock: creditsRanOutReason,
     reviewers: [{ name: 'tests', status: 'ran', model: modelIds.bedrock.haiku, findingCount: 0 }],
-    calls: [call('selection', 'anthropic', 0.1), call('reviewer:tests', 'anthropic', 0), call('reviewer:tests', 'bedrock', 0.25), call('synthesis', 'bedrock', 0.05)],
+    calls: [
+      call('selection', 'anthropic', 0.1),
+      call('reviewer:tests', 'anthropic', 0),
+      call('reviewer:tests', 'bedrock', 0.25),
+      call('synthesis', 'bedrock', 0.05),
+    ],
     costUsd: 0.4,
     durationMs: 30_000,
   });
 
-  assert.match(checkSummary(results), /\$0\.10 on the Claude API and \$0\.30 on Amazon Bedrock, 30s\. Switched to Bedrock partway: credits ran out\./);
-  assert.match(summaryComment(results, 'https://check', 'https://help'), /\$0\.10 on Claude API and \$0\.30 on Amazon Bedrock, 30s, at abcdef1\. Switched to Bedrock partway: credits ran out\./);
+  assert.match(
+    checkSummary(results),
+    /\$0\.10 on the Claude API and \$0\.30 on Amazon Bedrock, 30s\. Switched to Bedrock partway: credits ran out\./,
+  );
+  assert.match(
+    summaryComment(results, 'https://check', 'https://help'),
+    /\$0\.10 on Claude API and \$0\.30 on Amazon Bedrock, 30s, at abcdef1\. Switched to Bedrock partway: credits ran out\./,
+  );
   const text = checkText(results);
   assert.match(text, /### Cost by provider\n\nSwitched to Bedrock partway: credits ran out\./);
   assert.match(text, /\| Claude API \| 2 \| \$0\.100 \|\n\| Amazon Bedrock \| 2 \| \$0\.300 \|/);
@@ -466,6 +618,9 @@ test('the check run and the summary say the run switched to Bedrock and split th
 test('a run that stayed on one provider reads as before', () => {
   const results = resultsWith({ costUsd: 0.5, durationMs: 10_000, summary: '' });
   assert.match(checkSummary(results), /\$0\.50 on the Claude API, 10s\.$/);
-  assert.match(summaryComment(results, 'https://check', 'https://help'), /\$0\.50 on Claude API, 10s, at abcdef1\. \(\[how to interact\]/);
+  assert.match(
+    summaryComment(results, 'https://check', 'https://help'),
+    /\$0\.50 on Claude API, 10s, at abcdef1\. \(\[how to interact\]/,
+  );
   assert.doesNotMatch(checkText(results), /Cost by provider/);
 });

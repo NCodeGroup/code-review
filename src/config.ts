@@ -44,7 +44,10 @@ export function reviewerTiers(
   depth: Record<string, ModelTier> = {},
 ): Record<string, ModelTier> {
   const tiers = { ...defaultReviewerTiers, ...repository, ...depth };
-  for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
+  for (const pair of override
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const [name, tier] = pair.split('=').map((s) => s.trim());
     if (name && (tier === 'haiku' || tier === 'sonnet' || tier === 'opus')) tiers[name] = tier;
   }
@@ -57,7 +60,10 @@ export function synthesisTier(
   warn: (message: string) => void = () => {},
 ): ModelTier {
   let synthesis: ModelTier = 'opus';
-  for (const pair of override.split(',').map((p) => p.trim()).filter(Boolean)) {
+  for (const pair of override
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const [name, tier] = pair.split('=').map((s) => s.trim());
     if (name !== 'synthesis') continue;
     if (tier === 'haiku' || tier === 'sonnet' || tier === 'opus') synthesis = tier;
@@ -78,7 +84,9 @@ export function synthesisEffort(
   const level = value.trim();
   if (!level) return undefined;
   if ((effortLevels as readonly string[]).includes(level)) return level as (typeof effortLevels)[number];
-  warn(`CODE_REVIEW_SYNTHESIS_EFFORT must be ${effortLevels.slice(0, -1).join(', ')} or ${effortLevels[effortLevels.length - 1]}; "${value}" is ignored.`);
+  warn(
+    `CODE_REVIEW_SYNTHESIS_EFFORT must be ${effortLevels.slice(0, -1).join(', ')} or ${effortLevels[effortLevels.length - 1]}; "${value}" is ignored.`,
+  );
   return undefined;
 }
 
@@ -112,7 +120,9 @@ export function runCeiling(
   const value = override.trim();
   if (!value) return fallback;
   if (/^\d+(\.\d+)?$/.test(value) && Number(value) > 0) return Number(value);
-  warn(`CODE_REVIEW_MAX_RUN_USD isn't a positive number of dollars (${JSON.stringify(value.slice(0, 40))}), so the run's cost ceiling stays at $${fallback.toFixed(2)}.`);
+  warn(
+    `CODE_REVIEW_MAX_RUN_USD isn't a positive number of dollars (${JSON.stringify(value.slice(0, 40))}), so the run's cost ceiling stays at $${fallback.toFixed(2)}.`,
+  );
   return fallback;
 }
 
@@ -127,10 +137,14 @@ export const findingsPerVerification = 8;
 export const verificationConcurrency = 6;
 
 // Verification is on unless CODE_REVIEW_VERIFICATION=off; the README's Evals section has the evidence (issue #41).
-export function verificationOn(value = process.env['CODE_REVIEW_VERIFICATION'] ?? '', warn: (message: string) => void = () => {}): boolean {
+export function verificationOn(
+  value = process.env['CODE_REVIEW_VERIFICATION'] ?? '',
+  warn: (message: string) => void = () => {},
+): boolean {
   const setting = value.trim().toLowerCase();
   if (setting === 'off') return false;
-  if (setting !== '' && setting !== 'on') warn(`CODE_REVIEW_VERIFICATION must be on or off; "${value}" is ignored, so verification stays on.`);
+  if (setting !== '' && setting !== 'on')
+    warn(`CODE_REVIEW_VERIFICATION must be on or off; "${value}" is ignored, so verification stays on.`);
   return true;
 }
 
@@ -146,7 +160,12 @@ export function ruleChecksOn(value = process.env['CODE_REVIEW_RULE_CHECKS'] ?? '
 // Shadow reviewers run but post nothing: a charter marked shadow: true in its frontmatter, and, for an experiment, the
 // reviewers CODE_REVIEW_SHADOW names, comma-separated, such as "performance,rule-check".
 export function shadowOverride(value = process.env['CODE_REVIEW_SHADOW'] ?? ''): Set<string> {
-  return new Set(value.split(',').map((name) => name.trim()).filter(Boolean));
+  return new Set(
+    value
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
 }
 
 // The share of reviews, from 0 (the default: none) to 1 (all), on which each prompts/<name>.shadow.md runs alongside its

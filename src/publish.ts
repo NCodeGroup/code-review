@@ -23,7 +23,15 @@ import { writeFailure, writeLog } from './log.ts';
 import { publishOutcomes, readOutcomes } from './outcomes.ts';
 import { postPausedNotice, type Paused } from './pause.ts';
 import { readReviewThreads } from './rereview.ts';
-import { annotations, checkSummary, checkText, checkTitle, settleAlreadyRaised, summaryComment, type Results } from './results.ts';
+import {
+  annotations,
+  checkSummary,
+  checkText,
+  checkTitle,
+  settleAlreadyRaised,
+  summaryComment,
+  type Results,
+} from './results.ts';
 import type { PostedThread } from './threads.ts';
 import { publishTeaching } from './teach.ts';
 import { writerCheck } from './writers.ts';
@@ -75,11 +83,17 @@ async function main(): Promise<void> {
     return;
   }
   const read = JSON.parse(readFileSync(path.join(outDir, 'results.json'), 'utf8')) as Results;
-  const acknowledged = acknowledgedFrom(process.env['CODE_REVIEW_CHECK_RUN_ID'], process.env['CODE_REVIEW_CHECK_RUN_SHA']);
+  const acknowledged = acknowledgedFrom(
+    process.env['CODE_REVIEW_CHECK_RUN_ID'],
+    process.env['CODE_REVIEW_CHECK_RUN_SHA'],
+  );
 
   // The bot's earlier threads, to tell which ones the maintainer dismissed and to resolve or answer them.
   const threads = await readReviewThreads(read.repository, read.pullRequest, token);
-  if (!threads) writeLog("::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered.");
+  if (!threads)
+    writeLog(
+      "::warning::Couldn't read the review threads, so dismissed findings count only as posted, and no thread is resolved or answered.",
+    );
   const isWriter = writerCheck(read.repository, api, writeLog);
   const dismissed = threads ? await dismissedThreads(threads, (login) => isWriter(login, undefined)) : [];
 
@@ -89,14 +103,31 @@ async function main(): Promise<void> {
   try {
     posted = await readPostedThreads(api, read.repository, read.pullRequest);
   } catch (error) {
-    writeLog(`::warning::Couldn't read the earlier review comments (${errorText(error)}), so the check run and the summary count every finding as new.`);
+    writeLog(
+      `::warning::Couldn't read the earlier review comments (${errorText(error)}), so the check run and the summary count every finding as new.`,
+    );
   }
-  const results = posted ? settleAlreadyRaised(read, posted, dismissed.map((d) => d.posted)) : read;
+  const results = posted
+    ? settleAlreadyRaised(
+        read,
+        posted,
+        dismissed.map((d) => d.posted),
+      )
+    : read;
 
   const approving = approveOn(process.env['CODE_REVIEW_APPROVE']);
-  const approval = approvalFor(results, { ...(threads ? { threads } : {}), dismissed: new Set(dismissed.map((d) => d.thread.id)), ...(posted ? { posted } : {}) });
+  const approval = approvalFor(results, {
+    ...(threads ? { threads } : {}),
+    dismissed: new Set(dismissed.map((d) => d.thread.id)),
+    ...(posted ? { posted } : {}),
+  });
 
-  const output = { title: checkTitle(results), summary: checkSummary(results), text: checkText(results), annotations: annotations(results) };
+  const output = {
+    title: checkTitle(results),
+    summary: checkSummary(results),
+    text: checkText(results),
+    annotations: annotations(results),
+  };
   const check = { head_sha: results.headSha, conclusion: 'neutral' as const, output };
   assertNoSecrets(JSON.stringify(check), [token], 'The check run');
   const completed = await publishCheck(api, results.repository, check, acknowledged);
@@ -105,7 +136,14 @@ async function main(): Promise<void> {
   const stepOutput = process.env['GITHUB_OUTPUT'];
   if (stepOutput) appendFileSync(stepOutput, 'check-completed=true\n');
 
-  await postThreads(api, results, [token], writeLog, dismissed.map((d) => d.posted), posted);
+  await postThreads(
+    api,
+    results,
+    [token],
+    writeLog,
+    dismissed.map((d) => d.posted),
+    posted,
+  );
   if (threads) {
     const actions = await planFollowUps(threads, results, isWriter, new Set(dismissed.map((d) => d.thread.id)));
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
@@ -113,7 +151,12 @@ async function main(): Promise<void> {
 
   const state = approving ? await applyApproval(api, results, approval.approve, [token]) : 'not-approved';
 
-  const body = summaryComment(results, completed.html_url, interactUrl, approving ? approvalLine(approval, state) : undefined);
+  const body = summaryComment(
+    results,
+    completed.html_url,
+    interactUrl,
+    approving ? approvalLine(approval, state) : undefined,
+  );
   assertNoSecrets(body, [token], 'The summary comment');
   await postSummary(api, results, body);
 }

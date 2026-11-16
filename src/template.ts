@@ -48,9 +48,17 @@ export function parseAnswers(text: string): { srcPath: string; commit: string; p
   const projectOwned: string[] = [];
   const index = lines.findIndex((l) => l.startsWith('project_owned_files:'));
   if (index >= 0) {
-    const inline = lines[index]!.slice('project_owned_files:'.length).replace(/\s+#.*$/, '').trim();
+    const inline = lines[index]!.slice('project_owned_files:'.length)
+      .replace(/\s+#.*$/, '')
+      .trim();
     if (inline.startsWith('[')) {
-      projectOwned.push(...inline.replace(/^\[|\]$/g, '').split(',').map(unquote).filter(Boolean));
+      projectOwned.push(
+        ...inline
+          .replace(/^\[|\]$/g, '')
+          .split(',')
+          .map(unquote)
+          .filter(Boolean),
+      );
     } else {
       for (const line of lines.slice(index + 1)) {
         const item = /^\s*-\s+(.+)$/.exec(line);
@@ -59,13 +67,20 @@ export function parseAnswers(text: string): { srcPath: string; commit: string; p
       }
     }
   }
-  return { srcPath: scalar('_src_path'), commit: scalar('_commit'), projectOwned: projectOwned.map((p) => p.replace(/\\/g, '/').replace(/^\.\//, '')) };
+  return {
+    srcPath: scalar('_src_path'),
+    commit: scalar('_commit'),
+    projectOwned: projectOwned.map((p) => p.replace(/\\/g, '/').replace(/^\.\//, '')),
+  };
 }
 
 // "https://github.com/NCodeGroup/project-template.git", "gh:NCodeGroup/project-template" and
 // "git@github.com:NCodeGroup/project-template.git" all read as "NCodeGroup/project-template".
 export function templateRepository(srcPath: string): string {
-  const trimmed = srcPath.trim().replace(/[\\/]+$/, '').replace(/\.git$/, '');
+  const trimmed = srcPath
+    .trim()
+    .replace(/[\\/]+$/, '')
+    .replace(/\.git$/, '');
   const github = /(?:github\.com[:/]|^gh:)([^/\s]+\/[^/\s]+)$/i.exec(trimmed);
   return github ? github[1]! : trimmed;
 }
@@ -110,11 +125,15 @@ export function templateRef(commit: string): string | undefined {
 // renders from the template/ folder; a `{% if … %}name{% endif %}` path part renders as the name when the project has
 // the file, and a .jinja source drops its suffix. A path still holding a Jinja expression, such as the answers file's,
 // is left out.
-export function renderedTemplatePaths(tree: { path?: string; type?: string; sha?: string }[]): Map<string, { sha: string; jinja: boolean }> {
+export function renderedTemplatePaths(
+  tree: { path?: string; type?: string; sha?: string }[],
+): Map<string, { sha: string; jinja: boolean }> {
   const rendered = new Map<string, { sha: string; jinja: boolean }>();
   for (const entry of tree) {
     if (entry.type !== 'blob' || !entry.sha || !entry.path?.startsWith('template/')) continue;
-    let file = entry.path.slice('template/'.length).replace(/\{%-?\s*if\b[^%]*-?%\}([^{}]*?)\{%-?\s*endif\s*-?%\}/g, '$1');
+    let file = entry.path
+      .slice('template/'.length)
+      .replace(/\{%-?\s*if\b[^%]*-?%\}([^{}]*?)\{%-?\s*endif\s*-?%\}/g, '$1');
     if (/\{\{|\{%/.test(file)) continue;
     const jinja = file.endsWith('.jinja');
     if (jinja) file = file.slice(0, -'.jinja'.length);
@@ -143,7 +162,8 @@ export function templateOwnedFiles(paths: Iterable<string>, copier: string): Set
   const skipped = settings['_skip_if_exists'];
   const merged = settings['_merged_files'];
   if (settings['_subdirectory'] !== 'template') return undefined;
-  const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
+  const isStrings = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.every((item) => typeof item === 'string');
   if (!isStrings(skipped) || !isStrings(merged)) return undefined;
   const entries: string[] = [];
   for (const raw of [...skipped, ...merged]) {

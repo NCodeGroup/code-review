@@ -29,12 +29,16 @@ export function writerCheck(repository: string, api: Api, log: (line: string) =>
   const known = new Map<string, Promise<boolean>>();
   const lookUp = async (login: string): Promise<boolean> => {
     try {
-      const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as { permission?: string; role_name?: string } | undefined;
+      const answer = (await api('GET', `/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)) as
+        | { permission?: string; role_name?: string }
+        | undefined;
       return writerRoles.has(answer?.permission ?? '') || writerRoles.has(answer?.role_name ?? '');
     } catch (error) {
       // A 404 is an answer: the login isn't a collaborator, or doesn't exist.
       if (error instanceof GitHubError && error.status === 404) return false;
-      log(`::warning::Couldn't read ${login}'s permission (${failureText(error)}); their text counts as a non-writer's.`);
+      log(
+        `::warning::Couldn't read ${login}'s permission (${failureText(error)}); their text counts as a non-writer's.`,
+      );
       return false;
     }
   };
@@ -75,7 +79,13 @@ export async function readWritersIssues(
   isWriter: WriterCheck,
   unreadable: (number: number, reason: string) => void,
 ): Promise<ClosedIssue[]> {
-  type Issue = { title?: unknown; body?: unknown; author_association?: string; user?: { login?: string }; pull_request?: unknown };
+  type Issue = {
+    title?: unknown;
+    body?: unknown;
+    author_association?: string;
+    user?: { login?: string };
+    pull_request?: unknown;
+  };
   const issues: ClosedIssue[] = [];
   for (const number of numbers) {
     let issue: Issue;
@@ -102,6 +112,8 @@ export function readClosedIssues(
 ): Promise<ClosedIssue[]> {
   const readIssue = (number: number): Promise<unknown> => api('GET', `/repos/${repository}/issues/${number}`);
   return readWritersIssues(numbers, readIssue, isWriter, (number, reason) =>
-    log(`::warning::Couldn't read issue #${number}, which the description closes (${reason}); the reviewers go without it.`),
+    log(
+      `::warning::Couldn't read issue #${number}, which the description closes (${reason}); the reviewers go without it.`,
+    ),
   );
 }

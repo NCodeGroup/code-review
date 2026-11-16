@@ -41,13 +41,31 @@ import { fetchGuidanceIssues, taughtRules, withTaughtRules } from './guidance-is
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const topics = [
-  'allocations-and-buffers', 'text-and-encoding', 'async-and-concurrency', 'public-api', 'errors-and-validation',
-  'security-and-crypto', 'protocols', 'testing', 'logging-and-telemetry', 'configuration-and-options',
-  'dependency-injection', 'persistence', 'code-organization', 'documentation', 'performance',
+  'allocations-and-buffers',
+  'text-and-encoding',
+  'async-and-concurrency',
+  'public-api',
+  'errors-and-validation',
+  'security-and-crypto',
+  'protocols',
+  'testing',
+  'logging-and-telemetry',
+  'configuration-and-options',
+  'dependency-injection',
+  'persistence',
+  'code-organization',
+  'documentation',
+  'performance',
 ] as const;
 
 // applyTo: the globs of the instruction file a source comes from, as its frontmatter lists them.
-export interface Source { kind: string; id: string; label: string; text: string; applyTo?: string[] }
+export interface Source {
+  kind: string;
+  id: string;
+  label: string;
+  text: string;
+  applyTo?: string[];
+}
 interface Rule {
   statement: string;
   why: string;
@@ -58,7 +76,13 @@ interface Rule {
   applies_to: string[];
   enforced_by_tools: boolean;
 }
-interface Extracted { hash: string; promptHash: string; label: string; applyTo?: string[]; rules: Rule[] }
+interface Extracted {
+  hash: string;
+  promptHash: string;
+  label: string;
+  applyTo?: string[];
+  rules: Rule[];
+}
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -68,7 +92,9 @@ function arg(name: string): string | undefined {
 // The source labels the eval cases draw on: the review and the answered bot findings of each pull request a case names,
 // and each decision record its source cites. Labels look like "Identity review of #341", "Identity outcomes of #341"
 // and "Identity ADR-0266".
-export function holdoutLabels(cases: { id: string; repository: string; pullRequest?: number; source?: string }[]): Set<string> {
+export function holdoutLabels(
+  cases: { id: string; repository: string; pullRequest?: number; source?: string }[],
+): Set<string> {
   const labels = new Set<string>();
   for (const c of cases) {
     const repo = c.repository.split('/')[1]!;
@@ -85,7 +111,12 @@ export function holdoutLabels(cases: { id: string; repository: string; pullReque
 }
 
 const sha = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16);
-const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+const slug = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
 
 // Splits a long document at its ## headings into pieces of at most `size` characters.
 export function chunkByHeading(text: string, size = 30_000): string[] {
@@ -107,7 +138,9 @@ function decisionRecords(checkout: string, repoName: string): Source[] {
   for (const folder of ['docs/decisions', 'docs/adr', 'doc/adr', 'adr']) {
     const dir = path.join(checkout, folder);
     if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).filter((n) => /^\d{4}-.+\.md$/.test(n) && !n.startsWith('0000-')).sort()) {
+    for (const name of readdirSync(dir)
+      .filter((n) => /^\d{4}-.+\.md$/.test(n) && !n.startsWith('0000-'))
+      .sort()) {
       const text = readFileSync(path.join(dir, name), 'utf8');
       const status = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(text)?.[1] ?? 'Accepted';
       if (status !== 'Accepted') continue;
@@ -121,32 +154,50 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
   const sources: Source[] = [];
   const instructions = path.join(checkout, '.github', 'instructions');
   if (existsSync(instructions)) {
-    for (const name of readdirSync(instructions).filter((n) => n.endsWith('.instructions.md')).sort()) {
+    for (const name of readdirSync(instructions)
+      .filter((n) => n.endsWith('.instructions.md'))
+      .sort()) {
       const file = readFileSync(path.join(instructions, name), 'utf8');
       const applyTo = applyToGlobs(file);
-      chunkByHeading(file).forEach((text, i) =>
-        sources.push({ kind: 'instructions', id: `${name.replace('.instructions.md', '')}-${i + 1}`, label: `${repoName} ${name}`, text, ...(applyTo.length ? { applyTo } : {}) }),
-      );
+      chunkByHeading(file).forEach((text, i) => {
+        sources.push({
+          kind: 'instructions',
+          id: `${name.replace('.instructions.md', '')}-${i + 1}`,
+          label: `${repoName} ${name}`,
+          text,
+          ...(applyTo.length ? { applyTo } : {}),
+        });
+      });
     }
   }
   const agents = path.join(checkout, 'AGENTS.md');
   if (existsSync(agents)) {
-    const section = readFileSync(agents, 'utf8').split(/^(?=## )/m).find((s) => s.startsWith('## Coding conventions'));
-    if (section) sources.push({ kind: 'agents', id: 'coding-conventions', label: `${repoName} AGENTS.md`, text: section });
+    const section = readFileSync(agents, 'utf8')
+      .split(/^(?=## )/m)
+      .find((s) => s.startsWith('## Coding conventions'));
+    if (section)
+      sources.push({ kind: 'agents', id: 'coding-conventions', label: `${repoName} AGENTS.md`, text: section });
   }
   for (const folder of ['.claude/commands', '.github/agents']) {
     const dir = path.join(checkout, folder);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir).filter((n) => /review/i.test(n) && n.endsWith('.md'))) {
-      sources.push({ kind: 'prompt', id: slug(`${folder}-${name}`), label: `${repoName} ${folder}/${name}`, text: readFileSync(path.join(dir, name), 'utf8') });
+      sources.push({
+        kind: 'prompt',
+        id: slug(`${folder}-${name}`),
+        label: `${repoName} ${folder}/${name}`,
+        text: readFileSync(path.join(dir, name), 'utf8'),
+      });
     }
   }
   const docs = path.join(checkout, 'docs');
   if (existsSync(docs)) {
-    for (const name of readdirSync(docs).filter((n) => n.endsWith('.md') && n !== 'README.md').sort()) {
-      chunkByHeading(readFileSync(path.join(docs, name), 'utf8')).forEach((text, i) =>
-        sources.push({ kind: 'doc', id: `${name.slice(0, -3)}-${i + 1}`, label: `${repoName} docs/${name}`, text }),
-      );
+    for (const name of readdirSync(docs)
+      .filter((n) => n.endsWith('.md') && n !== 'README.md')
+      .sort()) {
+      chunkByHeading(readFileSync(path.join(docs, name), 'utf8')).forEach((text, i) => {
+        sources.push({ kind: 'doc', id: `${name.slice(0, -3)}-${i + 1}`, label: `${repoName} docs/${name}`, text });
+      });
     }
   }
   return sources;
@@ -158,7 +209,10 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
 function fetchPullComments(repository: string): PullComment[] {
   const comments: PullComment[] = [];
   for (let page = 1; ; page++) {
-    const raw = execFileSync('gh', ['api', `repos/${repository}/pulls/comments?per_page=100&page=${page}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const raw = execFileSync('gh', ['api', `repos/${repository}/pulls/comments?per_page=100&page=${page}`], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
     const batch = JSON.parse(raw) as PullComment[];
     comments.push(...batch);
     if (batch.length < 100) return comments;
@@ -168,13 +222,22 @@ function fetchPullComments(repository: string): PullComment[] {
 // The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
 export function maintainerComments(comments: PullComment[], repoName: string, maintainer: string): Source[] {
   const replies = new Map<number, PullComment[]>();
-  for (const c of comments) if (c.in_reply_to_id) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
+  for (const c of comments)
+    if (c.in_reply_to_id) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
   const byPull = new Map<string, string[]>();
   for (const c of comments.filter((c) => c.user?.login === maintainer && !c.in_reply_to_id)) {
     const pull = String(c.pull_request_url).split('/').pop()!;
-    const hunk = String(c.diff_hunk ?? '').split('\n').slice(-12).join('\n');
-    const answers = (replies.get(c.id) ?? []).map((r) => `Reply from ${r.user?.login}: ${String(r.body).slice(0, 700)}`).join('\n');
-    byPull.set(pull, [...(byPull.get(pull) ?? []), `File ${c.path}, line ${c.original_line ?? c.line}:\n\`\`\`diff\n${hunk}\n\`\`\`\nMaintainer: ${c.body}\n${answers}`]);
+    const hunk = String(c.diff_hunk ?? '')
+      .split('\n')
+      .slice(-12)
+      .join('\n');
+    const answers = (replies.get(c.id) ?? [])
+      .map((r) => `Reply from ${r.user?.login}: ${String(r.body).slice(0, 700)}`)
+      .join('\n');
+    byPull.set(pull, [
+      ...(byPull.get(pull) ?? []),
+      `File ${c.path}, line ${c.original_line ?? c.line}:\n\`\`\`diff\n${hunk}\n\`\`\`\nMaintainer: ${c.body}\n${answers}`,
+    ]);
   }
   return [...byPull].map(([pull, threads]) => ({
     kind: 'review-comments',
@@ -190,7 +253,17 @@ const maxOutcomeReplyChars = 1_000;
 const threadSeparator = '\n\n---\n\n';
 
 // One review comment as GitHub's REST API lists it for a repository's pull requests.
-export interface PullComment { id: number; in_reply_to_id?: number; user?: { login?: string }; body?: string; path?: string; line?: number | null; original_line?: number | null; diff_hunk?: string; pull_request_url?: string }
+export interface PullComment {
+  id: number;
+  in_reply_to_id?: number;
+  user?: { login?: string };
+  body?: string;
+  path?: string;
+  line?: number | null;
+  original_line?: number | null;
+  diff_hunk?: string;
+  pull_request_url?: string;
+}
 
 // The bot's findings that the maintainer replied to, one source per pull request, with the replies and a verdict read
 // from the last reply: fixed, declined or answered. Only the maintainer's replies count. A pull request whose threads
@@ -198,7 +271,8 @@ export interface PullComment { id: number; in_reply_to_id?: number; user?: { log
 export function outcomeSources(comments: PullComment[], repoName: string, maintainer: string, size = 30_000): Source[] {
   const replies = new Map<number, PullComment[]>();
   for (const c of comments) {
-    if (c.in_reply_to_id && c.user?.login?.toLowerCase() === maintainer.toLowerCase()) replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
+    if (c.in_reply_to_id && c.user?.login?.toLowerCase() === maintainer.toLowerCase())
+      replies.set(c.in_reply_to_id, [...(replies.get(c.in_reply_to_id) ?? []), c]);
   }
   const byPull = new Map<string, string[]>();
   for (const c of comments) {
@@ -208,7 +282,11 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
     const answers = replies.get(c.id);
     if (!finding || !answers?.length) continue;
     const last = answers.at(-1)!.body ?? '';
-    const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last) ? 'fixed' : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last) ? 'declined' : 'answered';
+    const verdict = /^\s*Autopilot:\s*fixed in\b/i.test(last)
+      ? 'fixed'
+      : /^\s*Autopilot:\s*(not changed|nothing to change)\b/i.test(last) || isDeclining(last)
+        ? 'declined'
+        : 'answered';
     const thread = [
       `Finding ${finding.id} (${finding.severity}, by ${finding.reviewers.join(', ')}) on ${c.path}, line ${c.original_line ?? c.line}: ${findingTitle(body)}`,
       findingBody(body).slice(0, maxOutcomeFindingChars),
@@ -230,12 +308,14 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
       current = current ? `${current}${threadSeparator}${thread}` : thread;
     }
     if (current) pieces.push(current);
-    pieces.forEach((piece, i) => sources.push({
-      kind: 'review-outcomes',
-      id: pieces.length === 1 ? `outcomes-${pull}` : `outcomes-${pull}-${i + 1}`,
-      label: `${repoName} outcomes of #${pull}`,
-      text: `The review bot's findings on pull request #${pull} that the maintainer answered, with the replies:\n\n${piece}`,
-    }));
+    pieces.forEach((piece, i) => {
+      sources.push({
+        kind: 'review-outcomes',
+        id: pieces.length === 1 ? `outcomes-${pull}` : `outcomes-${pull}-${i + 1}`,
+        label: `${repoName} outcomes of #${pull}`,
+        text: `The review bot's findings on pull request #${pull} that the maintainer answered, with the replies:\n\n${piece}`,
+      });
+    });
   }
   return sources;
 }
@@ -255,7 +335,12 @@ const ruleSchema = {
   required: ['statement', 'why', 'check', 'scope', 'topic', 'applies_to', 'enforced_by_tools'],
   additionalProperties: false,
 };
-const extractSchema = { type: 'object', properties: { rules: { type: 'array', items: ruleSchema } }, required: ['rules'], additionalProperties: false };
+const extractSchema = {
+  type: 'object',
+  properties: { rules: { type: 'array', items: ruleSchema } },
+  required: ['rules'],
+  additionalProperties: false,
+};
 const guidanceSchema = {
   type: 'object',
   properties: {
@@ -290,7 +375,12 @@ export function saveExtracted(file: string, { hash, promptHash, label, applyTo, 
 // A saved extraction a rerun reuses instead of calling the model: one whose source text and prompt are unchanged. It
 // takes the source's current applyTo, so an instruction file whose globs changed and whose text didn't keeps its rules
 // with the new globs; changed says it differs from what was saved. Undefined when the source must be extracted again.
-export function reuseExtraction(saved: Extracted | undefined, hash: string, promptHash: string, applyTo: string[] | undefined): { saved: Extracted; changed: boolean } | undefined {
+export function reuseExtraction(
+  saved: Extracted | undefined,
+  hash: string,
+  promptHash: string,
+  applyTo: string[] | undefined,
+): { saved: Extracted; changed: boolean } | undefined {
   if (!saved || saved.hash !== hash || saved.promptHash !== promptHash) return undefined;
   const { applyTo: before, ...rest } = saved;
   const changed = (before ?? []).join(',') !== (applyTo ?? []).join(',');
@@ -303,7 +393,11 @@ export function reuseExtraction(saved: Extracted | undefined, hash: string, prom
 export function extractedFolder(base: string, repository: string): { dir: string; repoName: string } {
   const owner = repository.split('/')[0]!;
   const wanted = repository.replace('/', '-');
-  const found = existsSync(base) ? readdirSync(base, { withFileTypes: true }).find((e) => e.isDirectory() && e.name.toLowerCase() === wanted.toLowerCase()) : undefined;
+  const found = existsSync(base)
+    ? readdirSync(base, { withFileTypes: true }).find(
+        (e) => e.isDirectory() && e.name.toLowerCase() === wanted.toLowerCase(),
+      )
+    : undefined;
   if (found) return { dir: path.join(base, found.name), repoName: found.name.slice(owner.length + 1) };
   return { dir: path.join(base, wanted), repoName: repository.split('/')[1]! };
 }
@@ -331,17 +425,33 @@ export function extractRequest(source: Pick<Source, 'label' | 'text' | 'applyTo'
   return `Source: ${source.label}\n${applies}\n<source>\n${source.text}\n</source>`;
 }
 
-async function extract(run: AgentRun, sources: Source[], outDir: string, calls: CallRecord[], prune: boolean): Promise<void> {
+async function extract(
+  run: AgentRun,
+  sources: Source[],
+  outDir: string,
+  calls: CallRecord[],
+  prune: boolean,
+): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'extract.md'), 'utf8');
   const promptHash = sha(prompt);
-  let reused = 0, failed = 0;
+  let reused = 0,
+    failed = 0;
   await mapWithConcurrency(sources, 6, async (source) => {
     const file = path.join(outDir, source.kind, `${source.id}.json`);
     const hash = sha(source.text);
     // Read it directly rather than checking first, so the file can't change between the check and the read.
     let text: string | undefined;
-    try { text = readFileSync(file, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    const reuse = reuseExtraction(text === undefined ? undefined : (JSON.parse(text) as Extracted), hash, promptHash, source.applyTo);
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const reuse = reuseExtraction(
+      text === undefined ? undefined : (JSON.parse(text) as Extracted),
+      hash,
+      promptHash,
+      source.applyTo,
+    );
     if (reuse) {
       if (reuse.changed) saveExtracted(file, reuse.saved);
       reused++;
@@ -358,8 +468,18 @@ async function extract(run: AgentRun, sources: Source[], outDir: string, calls: 
       cache: false,
     });
     calls.push(...result.records);
-    if (!result.output) { failed++; console.log(`  ${source.label}: failed (${result.error})`); return; }
-    saveExtracted(file, { hash, promptHash, label: source.label, ...(source.applyTo ? { applyTo: source.applyTo } : {}), rules: result.output.rules });
+    if (!result.output) {
+      failed++;
+      console.log(`  ${source.label}: failed (${result.error})`);
+      return;
+    }
+    saveExtracted(file, {
+      hash,
+      promptHash,
+      label: source.label,
+      ...(source.applyTo ? { applyTo: source.applyTo } : {}),
+      rules: result.output.rules,
+    });
     console.log(`  ${source.label}: ${result.output.rules.length} rules, $${totalCost(result.records).toFixed(3)}`);
   });
   console.log(`Extracted ${sources.length - reused - failed} sources, reused ${reused}, failed ${failed}.`);
@@ -389,9 +509,12 @@ function loadExtracted(): { rule: Rule; source: string }[] {
 }
 
 // The files each instruction-file source applies to, by its label, as globs for any NCodeGroup repository.
-export function sourceScopes(extracted: Pick<Extracted, 'label' | 'applyTo'>[] = readExtracted()): Map<string, string[]> {
+export function sourceScopes(
+  extracted: Pick<Extracted, 'label' | 'applyTo'>[] = readExtracted(),
+): Map<string, string[]> {
   const scopes = new Map<string, string[]>();
-  for (const { label, applyTo } of extracted) if (applyTo?.length) scopes.set(label, [...new Set(applyTo.map(generalGlob))]);
+  for (const { label, applyTo } of extracted)
+    if (applyTo?.length) scopes.set(label, [...new Set(applyTo.map(generalGlob))]);
   return scopes;
 }
 
@@ -423,7 +546,8 @@ export function retagGuidance(text: string, scopes: Map<string, string[]>): stri
     .map((line) => {
       if (!line.startsWith('- **')) return line;
       const rule = parseBullet(line);
-      if (!rule || formatBullet(rule, bulletGlobs(line)) !== line) throw new Error(`Can't retag this bullet: ${line.slice(0, 120)}`);
+      if (!rule || formatBullet(rule, bulletGlobs(line)) !== line)
+        throw new Error(`Can't retag this bullet: ${line.slice(0, 120)}`);
       return formatBullet(rule, ruleScope(rule.sources, scopes));
     })
     .join('\n');
@@ -434,29 +558,50 @@ function retag(folders: string[]): void {
   for (const folder of folders) {
     const dir = path.join(root, folder);
     if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).filter((n) => n.endsWith('.md')).sort()) {
+    for (const name of readdirSync(dir)
+      .filter((n) => n.endsWith('.md'))
+      .sort()) {
       const file = path.join(dir, name);
       const text = readFileSync(file, 'utf8');
       const retagged = retagGuidance(text, scopes);
       if (retagged !== text) writeFileSync(file, retagged);
-      console.log(`  ${folder}/${name}: ${retagged.split('\n').filter((l) => l.startsWith('- **') && bulletGlobs(l).length).length} tagged rules`);
+      console.log(
+        `  ${folder}/${name}: ${retagged.split('\n').filter((l) => l.startsWith('- **') && bulletGlobs(l).length).length} tagged rules`,
+      );
     }
   }
 }
 
 const titles: Record<string, string> = {
-  'allocations-and-buffers': 'Allocations and buffers', 'text-and-encoding': 'Text and encoding', 'async-and-concurrency': 'Async and concurrency',
-  'public-api': 'Public API', 'errors-and-validation': 'Errors and validation', 'security-and-crypto': 'Security and cryptography',
-  protocols: 'Protocols', testing: 'Testing', 'logging-and-telemetry': 'Logging and telemetry', 'configuration-and-options': 'Configuration and options',
-  'dependency-injection': 'Dependency injection', persistence: 'Persistence', 'code-organization': 'Code organization',
-  documentation: 'Documentation', performance: 'Performance',
+  'allocations-and-buffers': 'Allocations and buffers',
+  'text-and-encoding': 'Text and encoding',
+  'async-and-concurrency': 'Async and concurrency',
+  'public-api': 'Public API',
+  'errors-and-validation': 'Errors and validation',
+  'security-and-crypto': 'Security and cryptography',
+  protocols: 'Protocols',
+  testing: 'Testing',
+  'logging-and-telemetry': 'Logging and telemetry',
+  'configuration-and-options': 'Configuration and options',
+  'dependency-injection': 'Dependency injection',
+  persistence: 'Persistence',
+  'code-organization': 'Code organization',
+  documentation: 'Documentation',
+  performance: 'Performance',
 };
 
-async function generalize(run: AgentRun, calls: CallRecord[], folder: string, exclude = new Set<string>()): Promise<void> {
+async function generalize(
+  run: AgentRun,
+  calls: CallRecord[],
+  folder: string,
+  exclude = new Set<string>(),
+): Promise<void> {
   const prompt = readFileSync(path.join(root, 'training', 'prompts', 'generalize.md'), 'utf8');
   const feedbackFile = path.join(root, 'training', 'feedback.md');
   const feedback = existsSync(feedbackFile) ? readFileSync(feedbackFile, 'utf8') : '';
-  const usable = loadExtracted().filter(({ rule, source }) => rule.scope !== 'repository' && !rule.enforced_by_tools && !exclude.has(source));
+  const usable = loadExtracted().filter(
+    ({ rule, source }) => rule.scope !== 'repository' && !rule.enforced_by_tools && !exclude.has(source),
+  );
   const scopes = sourceScopes();
   console.log(`${folder}/: ${usable.length} rules${exclude.size ? `, holding out ${exclude.size} sources` : ''}`);
   const out = path.join(root, folder);
@@ -477,7 +622,10 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       cache: false,
     });
     calls.push(...result.records);
-    if (!result.output) { console.log(`  ${folder}/${topic}: failed (${result.error})`); return; }
+    if (!result.output) {
+      console.log(`  ${folder}/${topic}: failed (${result.error})`);
+      return;
+    }
     const { description, applies_to, rules: final } = result.output;
     const lines = [
       '---',
@@ -493,7 +641,9 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
       '',
     ];
     writeFileSync(path.join(out, `${topic}.md`), lines.join('\n'));
-    console.log(`  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${totalCost(result.records).toFixed(2)}`);
+    console.log(
+      `  ${folder}/${topic}: ${rules.length} extracted rules -> ${final.length}, $${totalCost(result.records).toFixed(2)}`,
+    );
   });
 }
 
@@ -502,7 +652,14 @@ async function generalize(run: AgentRun, calls: CallRecord[], folder: string, ex
 async function updateFeedback(): Promise<void> {
   let token = process.env['GH_TOKEN'] || process.env['GITHUB_TOKEN'];
   if (!token) {
-    try { token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined; } catch { token = undefined; console.warn('No GitHub token from GH_TOKEN, GITHUB_TOKEN or `gh auth token`; reading the guidance issues without one.'); }
+    try {
+      token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined;
+    } catch {
+      token = undefined;
+      console.warn(
+        'No GitHub token from GH_TOKEN, GITHUB_TOKEN or `gh auth token`; reading the guidance issues without one.',
+      );
+    }
   }
   const rules = taughtRules(await fetchGuidanceIssues(orgGuidanceRepository, token));
   const file = path.join(root, 'training', 'feedback.md');
@@ -541,7 +698,10 @@ async function main(): Promise<void> {
       if (process.argv.includes('--list')) {
         const kinds = new Map<string, number>();
         for (const s of sources) kinds.set(s.kind, (kinds.get(s.kind) ?? 0) + 1);
-        console.log([...kinds].map(([k, n]) => `${k}: ${n}`).join(', '), `| ${Math.round(sources.reduce((n, s) => n + s.text.length, 0) / 1000)}K characters`);
+        console.log(
+          [...kinds].map(([k, n]) => `${k}: ${n}`).join(', '),
+          `| ${Math.round(sources.reduce((n, s) => n + s.text.length, 0) / 1000)}K characters`,
+        );
         return;
       }
       await extract(run, sources, extractedDir, calls, !only);
@@ -550,15 +710,23 @@ async function main(): Promise<void> {
     if (!process.argv.includes('--generalize-only') && !process.argv.includes('--list')) {
       const dir = path.join(root, 'training', 'sources');
       const own: Source[] = existsSync(dir)
-        ? readdirSync(dir).filter((n) => n.endsWith('.md')).map((name) => ({
-            kind: 'maintainer', id: name.slice(0, -3), label: `NCodeGroup maintainer: ${name.slice(0, -3)}`, text: readFileSync(path.join(dir, name), 'utf8'),
-          }))
+        ? readdirSync(dir)
+            .filter((n) => n.endsWith('.md'))
+            .map((name) => ({
+              kind: 'maintainer',
+              id: name.slice(0, -3),
+              label: `NCodeGroup maintainer: ${name.slice(0, -3)}`,
+              text: readFileSync(path.join(dir, name), 'utf8'),
+            }))
         : [];
-      if (own.length) await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls, true);
+      if (own.length)
+        await extract(run, own, path.join(root, 'training', 'extracted', 'NCodeGroup-maintainer'), calls, true);
     }
     if (!process.argv.includes('--extract-only')) {
       if (!process.argv.includes('--no-taught-rules')) await updateFeedback();
-      const cases = JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Parameters<typeof holdoutLabels>[0];
+      const cases = JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as Parameters<
+        typeof holdoutLabels
+      >[0];
       if (!process.argv.includes('--holdout-only')) await generalize(run, calls, 'guidance');
       await generalize(run, calls, 'guidance-holdout', holdoutLabels(cases));
     }

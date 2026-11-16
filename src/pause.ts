@@ -86,14 +86,17 @@ export async function checkPause(options: {
   log: (line: string) => void;
 }): Promise<PauseDecision> {
   const { repository, number, token, issueComments, log } = options;
-  const reviewComments = issueComments && (await readComments(`/repos/${repository}/pulls/${number}/comments`, token, options.fetchPage ?? fetch, log));
+  const reviewComments =
+    issueComments &&
+    (await readComments(`/repos/${repository}/pulls/${number}/comments`, token, options.fetchPage ?? fetch, log));
   if (!issueComments || !reviewComments) {
     log("::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.");
     return 'review';
   }
   const state = await unansweredReviews([...issueComments, ...reviewComments], options.isWriter);
   const decision = pauseDecision(state);
-  if (decision !== 'review') log(`${state.reviews} reviews since the last comment from someone with write access; paused until a /review.`);
+  if (decision !== 'review')
+    log(`${state.reviews} reviews since the last comment from someone with write access; paused until a /review.`);
   return decision;
 }
 
@@ -104,7 +107,13 @@ export interface Paused {
 }
 
 // Posts the paused notice with the app's token.
-export async function postPausedNotice(api: Api, paused: Paused, log: (line: string) => void = writeLog): Promise<void> {
-  const comment = (await api('POST', `/repos/${paused.repository}/issues/${paused.pullRequest}/comments`, { body: pausedNotice() })) as { html_url?: string };
+export async function postPausedNotice(
+  api: Api,
+  paused: Paused,
+  log: (line: string) => void = writeLog,
+): Promise<void> {
+  const comment = (await api('POST', `/repos/${paused.repository}/issues/${paused.pullRequest}/comments`, {
+    body: pausedNotice(),
+  })) as { html_url?: string };
   log(`Posted the paused notice ${comment?.html_url ?? ''}`.trimEnd());
 }

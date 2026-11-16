@@ -6,8 +6,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxRuleChars, type Command, type FindingRef } from './command.ts';
-import { findFinding, type Answer, type GitHubApi, type Resolution } from './explain.ts';
-import { GitHubError, type ReadApi } from './github.ts';
+import { findFinding, type Answer, type Resolution } from './explain.ts';
+import { type Api, GitHubError, type ReadApi } from './github.ts';
 import { neutralizeMentions, plainText } from './markdown.ts';
 import { assertNoSecrets } from './outputs.ts';
 
@@ -51,7 +51,11 @@ const maxTitleRuleChars = 72;
 const maxFindingChars = 4_000;
 
 export function issueTitle(rule: string): string {
-  const line = rule.split(/\r?\n/).find((l) => l.trim())?.trim() ?? '';
+  const line =
+    rule
+      .split(/\r?\n/)
+      .find((l) => l.trim())
+      ?.trim() ?? '';
   const short = line.length > maxTitleRuleChars ? `${line.slice(0, maxTitleRuleChars - 1).trimEnd()}…` : line;
   return `Review guidance: ${neutralizeMentions(short)}`;
 }
@@ -75,17 +79,31 @@ export interface TeachContext {
 export type IssueSource = Omit<TeachContext, 'number' | 'host'> & { pullRequest: number };
 
 // The issue's body: the rule quoted as data, where it was taught, the finding it comes from, and what to do with it.
-export function issueBody(scope: Teaching['scope'], rule: string, source: IssueSource, finding?: TaughtFinding): string {
+export function issueBody(
+  scope: Teaching['scope'],
+  rule: string,
+  source: IssueSource,
+  finding?: TaughtFinding,
+): string {
   const who = source.author ? `\`${plainText(source.author)}\`` : 'A writer';
   const hidden = scope === 'org' && source.isPrivate;
   const where = hidden
     ? 'in a private repository'
     : `on ${source.commentUrl ? `[${source.repository}#${source.pullRequest}](${source.commentUrl})` : `${source.repository}#${source.pullRequest}`}`;
-  const parts = [guidanceMarker(scope), `${who} taught this ${scope === 'org' ? 'NCodeGroup-wide' : 'project'} review rule with \`/review teach\` ${where}.`, '### Rule', fenced(rule)];
+  const parts = [
+    guidanceMarker(scope),
+    `${who} taught this ${scope === 'org' ? 'NCodeGroup-wide' : 'project'} review rule with \`/review teach\` ${where}.`,
+    '### Rule',
+    fenced(rule),
+  ];
   if (finding && !hidden) {
     const line = finding.line ? `:${finding.line}` : '';
     const at = `\`${plainText(finding.path ?? '(no file)')}${line}\``;
-    parts.push(`### From finding ${finding.id}`, `${finding.url ? `[${at}](${finding.url})` : at}, as NCode Review posted it:`, fenced(finding.text.slice(0, maxFindingChars)));
+    parts.push(
+      `### From finding ${finding.id}`,
+      `${finding.url ? `[${at}](${finding.url})` : at}, as NCode Review posted it:`,
+      fenced(finding.text.slice(0, maxFindingChars)),
+    );
   }
   parts.push(
     '### To do',
@@ -110,8 +128,13 @@ export function tooLongBody(length: number): string {
 }
 
 export function teachUnknownRefBody(ref: FindingRef, validIds: string[]): string {
-  const asked = ref.kind === 'id' ? `There's no ${ref.id} in the newest review.` : "That link isn't to one of NCode Review's finding comments on this pull request.";
-  const valid = validIds.length ? `The newest review's findings are ${validIds.join(', ')}.` : 'This pull request has no findings posted as inline comments yet.';
+  const asked =
+    ref.kind === 'id'
+      ? `There's no ${ref.id} in the newest review.`
+      : "That link isn't to one of NCode Review's finding comments on this pull request.";
+  const valid = validIds.length
+    ? `The newest review's findings are ${validIds.join(', ')}.`
+    : 'This pull request has no findings posted as inline comments yet.';
   return `${asked} ${valid} To teach from a finding of an earlier review, use its comment's link: \`/review teach <link> <rule>\`.`;
 }
 
@@ -119,8 +142,14 @@ export type TeachPlan = { answer: Answer } | { teaching: Teaching };
 
 // What a `/review teach` comment leads to: a reply saying what's wrong with it, or the issue to open. A finding ref is
 // looked up with the read-only reader; an unknown one gets the newest review's ids.
-export async function planTeaching(command: Extract<Command, { kind: 'teach' }>, context: TeachContext, read: ReadApi): Promise<TeachPlan> {
-  const reply = (body: string): TeachPlan => ({ answer: { repository: context.repository, pullRequest: context.number, body } });
+export async function planTeaching(
+  command: Extract<Command, { kind: 'teach' }>,
+  context: TeachContext,
+  read: ReadApi,
+): Promise<TeachPlan> {
+  const reply = (body: string): TeachPlan => ({
+    answer: { repository: context.repository, pullRequest: context.number, body },
+  });
   if (!command.rule) return reply(usageBody());
   if (command.rule.length > maxRuleChars) return reply(tooLongBody(command.rule.length));
   let finding: TaughtFinding | undefined;
@@ -128,7 +157,13 @@ export async function planTeaching(command: Extract<Command, { kind: 'teach' }>,
     const resolution: Resolution = await findFinding(command.ref, context, read);
     if ('validIds' in resolution) return reply(teachUnknownRefBody(command.ref, resolution.validIds));
     const c = resolution.found.comment;
-    finding = { id: resolution.found.id, path: c.path, line: c.line ?? c.original_line, url: c.html_url, text: findingText(c.body) };
+    finding = {
+      id: resolution.found.id,
+      path: c.path,
+      line: c.line ?? c.original_line,
+      url: c.html_url,
+      text: findingText(c.body),
+    };
   }
   const { number, host, ...where } = context;
   const source: IssueSource = { ...where, pullRequest: number };
@@ -149,13 +184,17 @@ export type IssueOutcome = { issue: { number: number; url: string } } | { refuse
 
 // Creates the label when the target repository doesn't have it yet. A 422 from the create means another teach run made
 // it in between, which is as good.
-async function ensureLabel(api: GitHubApi, target: string): Promise<void> {
+async function ensureLabel(api: Api, target: string): Promise<void> {
   try {
     await api('GET', `/repos/${target}/labels/${guidanceLabel}`);
   } catch (error) {
     if (!(error instanceof GitHubError) || error.status !== 404) throw error;
     try {
-      await api('POST', `/repos/${target}/labels`, { name: guidanceLabel, color: '0e8a16', description: 'A rule taught with /review teach, to add to the review guidance' });
+      await api('POST', `/repos/${target}/labels`, {
+        name: guidanceLabel,
+        color: '0e8a16',
+        description: 'A rule taught with /review teach, to add to the review guidance',
+      });
     } catch (createError) {
       if (!(createError instanceof GitHubError) || createError.status !== 422) throw createError;
     }
@@ -164,13 +203,18 @@ async function ensureLabel(api: GitHubApi, target: string): Promise<void> {
 
 // Opens the issue with the issues token. A 403 or 404 means the app can't write issues there; a 410 means the
 // repository has issues turned off. Any other refusal fails the step.
-export async function openGuidanceIssue(api: GitHubApi, teaching: Teaching): Promise<IssueOutcome> {
+export async function openGuidanceIssue(api: Api, teaching: Teaching): Promise<IssueOutcome> {
   try {
     await ensureLabel(api, teaching.target);
-    const issue = (await api('POST', `/repos/${teaching.target}/issues`, { title: teaching.title, body: teaching.body, labels: [guidanceLabel] })) as { number: number; html_url: string };
+    const issue = (await api('POST', `/repos/${teaching.target}/issues`, {
+      title: teaching.title,
+      body: teaching.body,
+      labels: [guidanceLabel],
+    })) as { number: number; html_url: string };
     return { issue: { number: issue.number, url: issue.html_url } };
   } catch (error) {
-    if (error instanceof GitHubError && (error.status === 403 || error.status === 404)) return { refused: 'permission' };
+    if (error instanceof GitHubError && (error.status === 403 || error.status === 404))
+      return { refused: 'permission' };
     if (error instanceof GitHubError && error.status === 410) return { refused: 'disabled' };
     throw error;
   }
@@ -191,17 +235,29 @@ export function replyBody(teaching: Teaching, outcome: IssueOutcome): string {
 // Opens the issue, when there's an issues token, and replies on the pull request with the app's token. Both texts are
 // scanned for secrets first. Without an issues token, which happens when the app can't get issues write there, the
 // reply says so.
-export async function postTeaching(api: GitHubApi, issuesApi: GitHubApi | undefined, teaching: Teaching, secrets: string[]): Promise<string> {
+export async function postTeaching(
+  api: Api,
+  issuesApi: Api | undefined,
+  teaching: Teaching,
+  secrets: string[],
+): Promise<string> {
   assertNoSecrets(`${teaching.title}\n${teaching.body}`, secrets, 'The guidance issue');
   const outcome: IssueOutcome = issuesApi ? await openGuidanceIssue(issuesApi, teaching) : { refused: 'permission' };
   const body = replyBody(teaching, outcome);
   assertNoSecrets(body, secrets, 'The reply');
-  const comment = (await api('POST', `/repos/${teaching.repository}/issues/${teaching.pullRequest}/comments`, { body })) as { html_url: string };
+  const comment = (await api('POST', `/repos/${teaching.repository}/issues/${teaching.pullRequest}/comments`, {
+    body,
+  })) as { html_url: string };
   return comment.html_url;
 }
 
 // The publish step's teach branch: returns the reply's URL, or undefined, without a call, when the run wasn't a teach.
-export async function publishTeaching(outDir: string, api: GitHubApi, issuesApi: GitHubApi | undefined, secrets: string[]): Promise<string | undefined> {
+export async function publishTeaching(
+  outDir: string,
+  api: Api,
+  issuesApi: Api | undefined,
+  secrets: string[],
+): Promise<string | undefined> {
   const file = path.join(outDir, teachingFile);
   if (!existsSync(file)) return undefined;
   return postTeaching(api, issuesApi, JSON.parse(readFileSync(file, 'utf8')) as Teaching, secrets);

@@ -7,7 +7,7 @@ import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
-import type { ReadApi } from './github.ts';
+import type { Api, ReadApi } from './github.ts';
 import { neutralizeProse, plainText } from './markdown.ts';
 import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
@@ -59,19 +59,37 @@ export function newestReviewFindings(comments: ReviewComment[]): FoundFinding[] 
     })
     .sort((a, b) => b.comment.id - a.comment.id);
   const review = findings[0]?.comment.pull_request_review_id;
-  return findings.filter((f) => f.comment.pull_request_review_id === review).sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  return findings
+    .filter((f) => f.comment.pull_request_review_id === review)
+    .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
 }
 
 // Finds the finding a ref names on this pull request, reading the comments with the read-only token. A link must be to
 // one of the bot's finding comments on this pull request, from any review; anything else gets the newest review's ids.
-export async function findFinding(ref: FindingRef, where: { repository: string; number: number; host: string }, read: ReadApi): Promise<Resolution> {
-  if (ref.kind === 'url' && ref.host === where.host.toLowerCase() && ref.repository.toLowerCase() === where.repository.toLowerCase() && ref.number === where.number) {
-    const comment = (await read(`/repos/${where.repository}/pulls/comments/${ref.commentId}`)) as ReviewComment | undefined;
+export async function findFinding(
+  ref: FindingRef,
+  where: { repository: string; number: number; host: string },
+  read: ReadApi,
+): Promise<Resolution> {
+  if (
+    ref.kind === 'url' &&
+    ref.host === where.host.toLowerCase() &&
+    ref.repository.toLowerCase() === where.repository.toLowerCase() &&
+    ref.number === where.number
+  ) {
+    const comment = (await read(`/repos/${where.repository}/pulls/comments/${ref.commentId}`)) as
+      | ReviewComment
+      | undefined;
     const id = comment && comment.id === ref.commentId ? findingId(comment) : undefined;
-    const onThis = comment?.pull_request_url?.toLowerCase().endsWith(`/repos/${where.repository.toLowerCase()}/pulls/${where.number}`);
+    const onThis = comment?.pull_request_url
+      ?.toLowerCase()
+      .endsWith(`/repos/${where.repository.toLowerCase()}/pulls/${where.number}`);
     if (comment && id && onThis) return { found: { id, comment } };
   }
-  const all = await readCommentPages(`/repos/${where.repository}/pulls/${where.number}/comments`, (url) => read(url) as Promise<ReviewComment[] | undefined>);
+  const all = await readCommentPages(
+    `/repos/${where.repository}/pulls/${where.number}/comments`,
+    (url) => read(url) as Promise<ReviewComment[] | undefined>,
+  );
   if (!all) throw new Error(`Couldn't list the review comments on #${where.number}.`);
   const newest = newestReviewFindings(all);
   const found = ref.kind === 'id' ? newest.find((f) => f.id === ref.id) : undefined;
@@ -97,7 +115,9 @@ export function explainPrompt({ found, question, headSha }: ExplainRequest, chec
   return [
     `Finding ${found.id}, posted on ${c.path ?? '(no file)'}${line ? ` line ${line}` : ''}${c.original_commit_id ? ` at commit ${c.original_commit_id.slice(0, 7)}` : ''}.${moved}`,
     dataBlock('finding', c.body ?? ''),
-    question ? `The question asked about it:\n${dataBlock('question', question)}` : 'No question was asked: say whether the finding holds, and why.',
+    question
+      ? `The question asked about it:\n${dataBlock('question', question)}`
+      : 'No question was asked: say whether the finding holds, and why.',
     `The pull request's latest commit, ${headSha.slice(0, 7)}, is checked out at: ${checkout}`,
   ].join('\n\n');
 }
@@ -169,7 +189,9 @@ export function unknownRefBody(ref: FindingRef, validIds: string[]): string {
         : ref.text
           ? `\`${text(ref.text.replace(/[`\r\n]/g, ''), maxEchoedRefChars)}\` isn't a finding id or a link to a finding comment.`
           : 'Name the finding to explain, such as `/review explain F1`.';
-  const valid = validIds.length ? `The newest review's findings are ${validIds.join(', ')}.` : 'This pull request has no findings posted as inline comments yet.';
+  const valid = validIds.length
+    ? `The newest review's findings are ${validIds.join(', ')}.`
+    : 'This pull request has no findings posted as inline comments yet.';
   return `${asked} ${valid} To ask about a finding from an earlier review, use its comment's link: \`/review explain <link> <question>\`.`;
 }
 
@@ -202,27 +224,37 @@ export async function writeAnswer(
   ask: (found: FoundFinding) => Promise<AgentResult<Explanation>>,
 ): Promise<void> {
   const { body, explained } = await answerFor(ref, resolution, ask);
-  const files: Record<string, unknown> = { [answerFile]: { repository: where.repository, pullRequest: where.number, body } satisfies Answer };
+  const files: Record<string, unknown> = {
+    [answerFile]: { repository: where.repository, pullRequest: where.number, body } satisfies Answer,
+  };
   if (explained) {
     const { found, result } = explained;
-    files['trace.json'] = { explain: { id: found.id, comment: found.comment.html_url ?? found.comment.id, question: where.question, output: result.output, calls: result.records } };
+    files['trace.json'] = {
+      explain: {
+        id: found.id,
+        comment: found.comment.html_url ?? found.comment.id,
+        question: where.question,
+        output: result.output,
+        calls: result.records,
+      },
+    };
   }
   writeForPublish(outDir, files, where.secrets, 'answered');
 }
 
-export type GitHubApi = (method: string, url: string, body?: unknown) => Promise<any>;
-
 // Posts the answer as a top-level comment, with the app's token, after the agent has exited. It is scanned for secrets
 // first, and nothing is posted when it holds one.
-export async function postAnswer(api: GitHubApi, answer: Answer, secrets: string[]): Promise<string> {
+export async function postAnswer(api: Api, answer: Answer, secrets: string[]): Promise<string> {
   assertNoSecrets(answer.body, secrets, 'The answer');
-  const comment = (await api('POST', `/repos/${answer.repository}/issues/${answer.pullRequest}/comments`, { body: answer.body })) as { html_url: string };
+  const comment = (await api('POST', `/repos/${answer.repository}/issues/${answer.pullRequest}/comments`, {
+    body: answer.body,
+  })) as { html_url: string };
   return comment.html_url;
 }
 
 // The publish step's explain branch: posts the answer the review step left in outDir and returns the comment's URL, or
 // returns undefined, without a call, when there's none because the run was a review.
-export async function publishAnswer(outDir: string, api: GitHubApi, secrets: string[]): Promise<string | undefined> {
+export async function publishAnswer(outDir: string, api: Api, secrets: string[]): Promise<string | undefined> {
   const answerPath = path.join(outDir, answerFile);
   if (!existsSync(answerPath)) return undefined;
   const answer = JSON.parse(readFileSync(answerPath, 'utf8')) as Answer;

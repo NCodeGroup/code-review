@@ -17,9 +17,10 @@ OpenSSF Scorecard's CII-Best-Practices check scores the badge level: in progress
 ## Where It Stands
 
 Passing since 2026-11-16. Silver can't be claimed while the project has one developer: `access_continuity` needs a
-second owner. Its other unmet MUST is `coding_standards_enforced`, since nothing enforces the formatting style yet.
-Releases meet `signed_releases` through GitHub's release attestations, which [README.md](../README.md#versions) says
-how to verify; release tags aren't signed (`version_tags_signed`, SUGGESTED).
+second owner. `coding_standards_enforced` is met: CI's `npm run lint` runs Biome, which fails on code that
+`biome.json`'s formatting or lint rules don't accept. Releases meet `signed_releases` through GitHub's release
+attestations, which [README.md](../README.md#versions) says how to verify; release tags aren't signed
+(`version_tags_signed`, SUGGESTED).
 
 ## Toward Silver
 
@@ -33,8 +34,8 @@ The silver criteria that need a document point to these:
 | `documentation_architecture` | [architecture.md](architecture.md) |
 | `documentation_security`, `assurance_case`, `implement_secure_design` | [assurance-case.md](assurance-case.md) |
 | Vulnerability response and credit | [SECURITY.md](../SECURITY.md) |
-| `coding_standards` | [CONTRIBUTING.md](../CONTRIBUTING.md#conventions), [AGENTS.md](../AGENTS.md), `.editorconfig` |
-| `coding_standards_enforced` (unmet) | CI's `npm run typecheck` enforces `tsconfig.json`'s strict checks; nothing enforces the formatting `.editorconfig` sets |
+| `coding_standards` | [CONTRIBUTING.md](../CONTRIBUTING.md#conventions), [AGENTS.md](../AGENTS.md), `.editorconfig`, `biome.json` |
+| `coding_standards_enforced` | CI's `npm run typecheck` enforces `tsconfig.json`'s strict checks, and `npm run lint` fails on code that `biome.json`'s formatting and lint rules don't accept ([ADR-1010](decisions/1010-biome-formats-and-lints-the-typescript.md)) |
 | Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3 |
 
 ## Needs a Person

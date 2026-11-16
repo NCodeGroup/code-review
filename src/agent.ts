@@ -1,11 +1,18 @@
 // Runs one model call through the Agent SDK, locked down: no settings, hooks, MCP servers or CLAUDE.md from anywhere,
 // read-only tools confined to the checkout, and an environment that holds no secret.
 
-import type { HookCallback, Options, SDKAssistantMessageError, SDKMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  HookCallback,
+  Options,
+  SDKAssistantMessageError,
+  SDKMessage,
+  SDKResultMessage,
+  SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { bedrockRegion, effortLevels, modelIds, type ModelTier, type Provider } from './config.ts';
+import { bedrockRegion, type effortLevels, modelIds, type ModelTier, type Provider } from './config.ts';
 import { creditsRanOut, creditsRanOutReason } from './provider.ts';
 import { placeholderKey } from './proxy.ts';
 
@@ -22,7 +29,10 @@ export function bedrockFallbackFor(provider: Provider, hasBedrockKey: boolean): 
   return provider === 'anthropic' && hasBedrockKey ? { switched: false } : undefined;
 }
 
-export type QueryFunction = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage>;
+export type QueryFunction = (params: {
+  prompt: string | AsyncIterable<SDKUserMessage>;
+  options: Options;
+}) => AsyncIterable<SDKMessage>;
 
 export interface AgentRun {
   provider: Provider;
@@ -201,13 +211,21 @@ export async function runAgent<T>(run: AgentRun, request: AgentRequest): Promise
   const provider = run.fallback?.switched ? 'bedrock' : run.provider;
   const first = await callOnce<T>({ ...run, provider }, request);
   if (provider !== 'anthropic' || !run.fallback || first.error === undefined || !first.creditsRanOut) {
-    return { output: first.output, records: [first.record], ...(first.error === undefined ? {} : { error: first.error }) };
+    return {
+      output: first.output,
+      records: [first.record],
+      ...(first.error === undefined ? {} : { error: first.error }),
+    };
   }
   run.fallback.switched = true;
   run.fallback.reason = creditsRanOutReason;
   first.record.outcome = creditsRanOutReason;
   const retry = await callOnce<T>({ ...run, provider: 'bedrock' }, request);
-  return { output: retry.output, records: [first.record, retry.record], ...(retry.error === undefined ? {} : { error: retry.error }) };
+  return {
+    output: retry.output,
+    records: [first.record, retry.record],
+    ...(retry.error === undefined ? {} : { error: retry.error }),
+  };
 }
 
 interface CallOutcome<T> {
@@ -239,7 +257,9 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
     outputFormat: { type: 'json_schema', schema: request.schema },
     persistSession: false,
     env: agentEnvironment(run, home, request.cache ?? true),
-    ...(run.checkout ? { hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [pathGuard(run.checkout)] }] } } : {}),
+    ...(run.checkout
+      ? { hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [pathGuard(run.checkout)] }] } }
+      : {}),
   };
 
   const started = Date.now();

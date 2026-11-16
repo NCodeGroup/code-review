@@ -35,11 +35,18 @@ export function ruleFromIssue(issue: GuidanceIssue): string | undefined {
 const pageSize = 100;
 
 // Reads every closed issue with the label, a page at a time. Tests pass their own fetch.
-export async function fetchGuidanceIssues(repository: string, token: string | undefined, fetchApi: typeof fetch = fetch): Promise<GuidanceIssue[]> {
+export async function fetchGuidanceIssues(
+  repository: string,
+  token: string | undefined,
+  fetchApi: typeof fetch = fetch,
+): Promise<GuidanceIssue[]> {
   const api = githubApi(token, fetchApi);
   const issues: GuidanceIssue[] = [];
   for (let page = 1; ; page++) {
-    const batch = (await api('GET', `/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=${pageSize}&page=${page}`)) as GuidanceIssue[];
+    const batch = (await api(
+      'GET',
+      `/repos/${repository}/issues?state=closed&labels=${guidanceLabel}&per_page=${pageSize}&page=${page}`,
+    )) as GuidanceIssue[];
     issues.push(...batch);
     if (batch.length < pageSize) return issues;
   }

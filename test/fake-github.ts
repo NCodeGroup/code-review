@@ -25,13 +25,20 @@ if (routesFile && logFile) {
     const url = String(input);
     const method = init?.method ?? 'GET';
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    const logged: LoggedRequest = { method, url, authorization: new Headers(init?.headers).get('authorization'), ...(body ? { body } : {}) };
+    const logged: LoggedRequest = {
+      method,
+      url,
+      authorization: new Headers(init?.headers).get('authorization'),
+      ...(body ? { body } : {}),
+    };
     appendFileSync(logFile, `${JSON.stringify(logged)}\n`);
     if (url === 'https://api.github.com/graphql') {
       const match = routes.graphql.find(([text]) => String(body?.query ?? '').includes(text));
       return Response.json(match ? match[1] : { errors: [{ message: 'no fake answer' }] });
     }
     const key = `${method} ${url}`;
-    return key in routes.rest ? Response.json(routes.rest[key], { status: method === 'POST' ? 201 : 200 }) : new Response('Not Found', { status: 404 });
+    return key in routes.rest
+      ? Response.json(routes.rest[key], { status: method === 'POST' ? 201 : 200 })
+      : new Response('Not Found', { status: 404 });
   };
 }

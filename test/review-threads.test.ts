@@ -6,7 +6,13 @@ const paging = { fields: 'id path', pageSize: 7, maxPages: 3 };
 
 // One page of threads, with a next page when `next` names its cursor.
 function page(nodes: unknown[], next: string | null = null) {
-  return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: next !== null, endCursor: next }, nodes } } } } };
+  return {
+    data: {
+      repository: {
+        pullRequest: { reviewThreads: { pageInfo: { hasNextPage: next !== null, endCursor: next }, nodes } },
+      },
+    },
+  };
 }
 
 test('readThreadPages reads every page, passing the cursor', async () => {
@@ -30,8 +36,14 @@ test("readThreadPages stops at maxPages and says it isn't complete", async () =>
 });
 
 test('readThreadPages throws on GraphQL errors and on an answer without threads', async () => {
-  await assert.rejects(readThreadPages(async () => ({ errors: [{ message: 'boom' }] }), 'o/r', 5, paging), /GitHub refused the review threads: boom/);
-  await assert.rejects(readThreadPages(async () => ({ data: { repository: null } }), 'o/r', 5, paging), /Couldn't read the review threads of #5\./);
+  await assert.rejects(
+    readThreadPages(async () => ({ errors: [{ message: 'boom' }] }), 'o/r', 5, paging),
+    /GitHub refused the review threads: boom/,
+  );
+  await assert.rejects(
+    readThreadPages(async () => ({ data: { repository: null } }), 'o/r', 5, paging),
+    /Couldn't read the review threads of #5\./,
+  );
 });
 
 test("readThreadPages asks for the caller's fields and page size", async () => {

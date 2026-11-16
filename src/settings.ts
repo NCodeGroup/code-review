@@ -7,7 +7,14 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type * as Yaml from 'yaml';
 import { parseCharter } from './charter.ts';
-import { maxPolicyChars, maxProjectReviewers, maxSettingsFileChars, minimumSecurityTier, tierRank, type ModelTier } from './config.ts';
+import {
+  maxPolicyChars,
+  maxProjectReviewers,
+  maxSettingsFileChars,
+  minimumSecurityTier,
+  tierRank,
+  type ModelTier,
+} from './config.ts';
 
 // The yaml library is loaded on first use, not at the top: a closed pull request's run loads this module and
 // src/template.ts through gather.ts without npm ci, and never reads settings or the template's copier.yml.
@@ -33,25 +40,31 @@ export function parseYaml(text: string): Record<string, YamlValue> {
   const { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } = yaml();
   const lines = new LineCounter();
   const doc = parseDocument(text, { schema: 'failsafe', lineCounter: lines, prettyErrors: false, uniqueKeys: true });
-  const at = (offset: number | undefined, message: string) => new YamlError(`line ${lines.linePos(offset ?? 0).line}: ${message}`);
+  const at = (offset: number | undefined, message: string) =>
+    new YamlError(`line ${lines.linePos(offset ?? 0).line}: ${message}`);
   const problem = doc.errors[0] ?? doc.warnings[0];
   if (problem) throw at(problem.pos[0], problem.message);
   const plain = (node: unknown): string => {
     const where = (node as { range?: [number, number, number] } | null)?.range;
-    if (isAlias(node) || (node as { anchor?: string } | null)?.anchor || (node as { tag?: string } | null)?.tag) throw at(where?.[0], 'unsupported YAML: anchors, aliases and tags');
+    if (isAlias(node) || (node as { anchor?: string } | null)?.anchor || (node as { tag?: string } | null)?.tag)
+      throw at(where?.[0], 'unsupported YAML: anchors, aliases and tags');
     if (!isScalar(node)) throw at(where?.[0], 'nested lists and mappings are not supported');
     const range = node.range!;
-    if (node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED' || text.slice(range[0], range[1]).includes('\n')) throw at(range[0], 'multi-line values are not supported');
+    if (node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED' || text.slice(range[0], range[1]).includes('\n'))
+      throw at(range[0], 'multi-line values are not supported');
     return String(node.value);
   };
   const scalar = (node: unknown): YamlScalar => {
     const value = plain(node);
-    return isScalar(node) && node.type === 'PLAIN' && (value === '' || value === '~' || value === 'null') ? null : value;
+    return isScalar(node) && node.type === 'PLAIN' && (value === '' || value === '~' || value === 'null')
+      ? null
+      : value;
   };
   // "__proto__" would set the parsed object's prototype instead of adding a key.
   const key = (node: unknown): string => {
     const name = plain(node);
-    if (name === '__proto__') throw at((node as { range?: [number, number, number] }).range?.[0], `"${name}" is not allowed as a key`);
+    if (name === '__proto__')
+      throw at((node as { range?: [number, number, number] }).range?.[0], `"${name}" is not allowed as a key`);
     return name;
   };
   const out: Record<string, YamlValue> = {};
@@ -93,14 +106,19 @@ const reviewerName = /^[A-Za-z0-9][A-Za-z0-9:_-]*$/;
 // Why one item of a list of paths or globs can't be used, or undefined when it can.
 function pathItemProblem(key: string, item: unknown): string | undefined {
   if (typeof item !== 'string' || !item.trim()) return `"${key}" has an empty item`;
-  if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item)) return `"${key}" has an item that is too long or has control characters`;
+  if (item.length > maxPathChars || /[\u0000-\u001f]/.test(item))
+    return `"${key}" has an item that is too long or has control characters`;
   return undefined;
 }
 
 // The schema: every key optional; the three path lists are lists of strings; tiers maps a reviewer to a model tier.
 // Any error drops the whole file for the defaults. A security tier below minimumSecurityTier isn't an error, which would
 // drop every other setting too: it is raised to the minimum, with a warning.
-export function validateConfig(value: Record<string, YamlValue>): { config: RepoConfig; errors: string[]; warnings: string[] } {
+export function validateConfig(value: Record<string, YamlValue>): {
+  config: RepoConfig;
+  errors: string[];
+  warnings: string[];
+} {
   const config = defaultConfig();
   const errors: string[] = [];
   for (const [key, raw] of Object.entries(value)) {
@@ -123,7 +141,8 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
       }
       for (const [name, tier] of Object.entries(raw)) {
         if (!reviewerName.test(name)) errors.push(`"tiers" has an invalid reviewer name "${name}"`);
-        else if (tier !== 'haiku' && tier !== 'sonnet' && tier !== 'opus') errors.push(`"tiers.${name}" must be haiku, sonnet or opus`);
+        else if (tier !== 'haiku' && tier !== 'sonnet' && tier !== 'opus')
+          errors.push(`"tiers.${name}" must be haiku, sonnet or opus`);
         else config.tiers[name] = tier;
       }
     } else {
@@ -134,7 +153,9 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
   const warnings: string[] = [];
   const security = config.tiers['security'];
   if (security && tierRank[security] < tierRank[minimumSecurityTier]) {
-    warnings.push(`"tiers.security" in ${configPath} is ${security}, below the security reviewer's minimum; it runs on ${minimumSecurityTier}.`);
+    warnings.push(
+      `"tiers.security" in ${configPath} is ${security}, below the security reviewer's minimum; it runs on ${minimumSecurityTier}.`,
+    );
     config.tiers['security'] = minimumSecurityTier;
   }
   return { config, errors, warnings };
@@ -144,7 +165,8 @@ export function validateConfig(value: Record<string, YamlValue>): { config: Repo
 // and backslashes are refused before anything touches the disk.
 export function unsafePath(relative: string): string | undefined {
   if (relative.includes('\\')) return 'uses a backslash; write paths with forward slashes';
-  if (relative.startsWith('/') || /^[A-Za-z]:/.test(relative)) return 'is absolute; write it relative to the repository root';
+  if (relative.startsWith('/') || /^[A-Za-z]:/.test(relative))
+    return 'is absolute; write it relative to the repository root';
   if (relative.split('/').includes('..')) return 'leaves the repository';
   if (/[\u0000-\u001f]/.test(relative)) return 'has control characters';
   return undefined;
@@ -169,14 +191,21 @@ function resolveInside(root: string, relative: string): { real?: string; problem
     real = realpathSync(path.resolve(realRoot, relative));
   } catch (error) {
     const code = failure(error);
-    return code === 'ENOENT' || code === 'ENOTDIR' ? { problem: 'does not exist', missing: true } : { problem: `can't be read (${code})` };
+    return code === 'ENOENT' || code === 'ENOTDIR'
+      ? { problem: 'does not exist', missing: true }
+      : { problem: `can't be read (${code})` };
   }
   const rel = path.relative(realRoot, real);
-  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return { problem: 'resolves outside the repository' };
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))
+    return { problem: 'resolves outside the repository' };
   return { real };
 }
 
-function readInside(root: string, relative: string, maxChars: number): { text?: string; problem?: string; truncated?: boolean; missing?: boolean } {
+function readInside(
+  root: string,
+  relative: string,
+  maxChars: number,
+): { text?: string; problem?: string; truncated?: boolean; missing?: boolean } {
   const unsafe = unsafePath(relative);
   if (unsafe) return { problem: unsafe };
   const { real, problem, missing } = resolveInside(root, relative);
@@ -230,7 +259,9 @@ function readConfig(basePath: string, warnings: string[]): RepoConfig {
   const file = readInside(basePath, configPath, maxSettingsFileChars);
   if (file.missing) return defaultConfig();
   if (file.text === undefined || file.truncated) {
-    warnings.push(`${configPath} ${file.problem ?? `is larger than ${maxSettingsFileChars} characters`}; using the defaults.`);
+    warnings.push(
+      `${configPath} ${file.problem ?? `is larger than ${maxSettingsFileChars} characters`}; using the defaults.`,
+    );
     return defaultConfig();
   }
   let value: Record<string, YamlValue>;
@@ -241,7 +272,10 @@ function readConfig(basePath: string, warnings: string[]): RepoConfig {
     return defaultConfig();
   }
   const { config, errors, warnings: notes } = validateConfig(value);
-  if (errors.length) warnings.push(`${configPath} is not valid: ${errors.slice(0, 5).map(oneLine).join('; ')}${errors.length > 5 ? `; and ${errors.length - 5} more` : ''}; using the defaults.`);
+  if (errors.length)
+    warnings.push(
+      `${configPath} is not valid: ${errors.slice(0, 5).map(oneLine).join('; ')}${errors.length > 5 ? `; and ${errors.length - 5} more` : ''}; using the defaults.`,
+    );
   else warnings.push(...notes);
   return config;
 }
@@ -252,7 +286,9 @@ function readPolicies(basePath: string, policies: string[], warnings: string[]):
   for (const policy of [...new Set(policies)]) {
     const left = maxPolicyChars - used;
     if (left <= 0) {
-      warnings.push(`Policy ${policy} was left out: the policies are over their budget of ${maxPolicyChars} characters.`);
+      warnings.push(
+        `Policy ${policy} was left out: the policies are over their budget of ${maxPolicyChars} characters.`,
+      );
       continue;
     }
     const file = readInside(basePath, policy, maxSettingsFileChars);
@@ -263,7 +299,9 @@ function readPolicies(basePath: string, policies: string[], warnings: string[]):
     let text = file.text.trim();
     if (file.truncated || text.length > left) {
       text = `${text.slice(0, left)}\n[policy truncated]`;
-      warnings.push(`Policy ${policy} was truncated: the policies are over their budget of ${maxPolicyChars} characters.`);
+      warnings.push(
+        `Policy ${policy} was truncated: the policies are over their budget of ${maxPolicyChars} characters.`,
+      );
     }
     used += text.length;
     out.push({ path: policy, text });
@@ -280,7 +318,10 @@ export function splitFrontmatter(text: string): { frontmatter?: string; body: st
 
 // A comma-separated list of globs, as applyTo: and a one-line paths: write them.
 export function globList(value: string): string[] {
-  return value.split(',').map((g) => g.trim()).filter(Boolean);
+  return value
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean);
 }
 
 // A project reviewer's frontmatter: paths:, a list of globs or one comma-separated string, and shadow:, true or false,
@@ -336,7 +377,9 @@ function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
     const where = `${reviewersPath}/${file}`;
     const name = file.slice(0, -3);
     if (!charterName.test(name)) {
-      warnings.push(`${where} was not loaded: a reviewer's name is lowercase letters, digits and hyphens, at most 40 characters.`);
+      warnings.push(
+        `${where} was not loaded: a reviewer's name is lowercase letters, digits and hyphens, at most 40 characters.`,
+      );
       continue;
     }
     if (charters.length >= maxProjectReviewers) {
@@ -345,7 +388,9 @@ function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
     }
     const read = readInside(basePath, where, maxSettingsFileChars);
     if (read.text === undefined || read.truncated) {
-      warnings.push(`${where} ${read.problem ?? `is larger than ${maxSettingsFileChars} characters`}; it was not loaded.`);
+      warnings.push(
+        `${where} ${read.problem ?? `is larger than ${maxSettingsFileChars} characters`}; it was not loaded.`,
+      );
       continue;
     }
     const { frontmatter } = splitFrontmatter(read.text);
@@ -354,7 +399,10 @@ function readReviewers(basePath: string, warnings: string[]): ProjectCharter[] {
     if (frontmatter !== undefined) {
       const parsed = charterPaths(frontmatter);
       paths = parsed.paths;
-      if (parsed.problems.length) warnings.push(`${where} has frontmatter that is not valid (${parsed.problems.slice(0, 5).map(oneLine).join('; ')}); its paths were ignored.`);
+      if (parsed.problems.length)
+        warnings.push(
+          `${where} has frontmatter that is not valid (${parsed.problems.slice(0, 5).map(oneLine).join('; ')}); its paths were ignored.`,
+        );
     }
     const text = charter.text.trim();
     if (!text) {

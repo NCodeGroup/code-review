@@ -23,7 +23,10 @@ test('neutralizeProse leaves an inline code span as written', () => {
 });
 
 test('neutralizeProse leaves a fenced code block as written', () => {
-  assert.equal(neutralizeProse('Fix:\n```java\n@Override\n```\nthen @team'), 'Fix:\n```java\n@Override\n```\nthen @\u200bteam');
+  assert.equal(
+    neutralizeProse('Fix:\n```java\n@Override\n```\nthen @team'),
+    'Fix:\n```java\n@Override\n```\nthen @\u200bteam',
+  );
 });
 
 test('neutralizeProse opens no code span at a backslash-escaped backtick', () => {
@@ -62,7 +65,10 @@ test('neutralizeProse breaks character references where a ] meets a (, [ or :', 
 });
 
 test('neutralizeProse breaks issue and pull request references in prose', () => {
-  assert.equal(neutralizeProse('See #12, o/r#3, GH-4 and gh-5'), 'See #\u200b12, o/r#\u200b3, GH\u200b-4 and gh\u200b-5');
+  assert.equal(
+    neutralizeProse('See #12, o/r#3, GH-4 and gh-5'),
+    'See #\u200b12, o/r#\u200b3, GH\u200b-4 and gh\u200b-5',
+  );
 });
 
 test('neutralizeProse breaks character references that make an issue reference', () => {
@@ -102,7 +108,9 @@ test('neutralizeProse reads a lone carriage return as a line break', () => {
 
 test('neutralizeProseKeeping leaves each kept link as written and neutralizes the text around it', () => {
   assert.equal(
-    neutralizeProseKeeping('See [F1](https://x.y/1), [F1](https://x.y/1) and [a](https://evil) @t', ['[F1](https://x.y/1)']),
+    neutralizeProseKeeping('See [F1](https://x.y/1), [F1](https://x.y/1) and [a](https://evil) @t', [
+      '[F1](https://x.y/1)',
+    ]),
     'See [F1](https://x.y/1), [F1](https://x.y/1) and [a]\u200b(https:\u200b//evil) @\u200bt',
   );
 });

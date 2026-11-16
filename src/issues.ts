@@ -22,12 +22,21 @@ export async function readOpenIssues(
   isWriter: WriterCheck,
   exclude: number[] = [],
 ): Promise<{ number: number; title: string }[]> {
-  type Listed = { number?: number; title?: string; author_association?: string; user?: { login?: string; type?: string }; pull_request?: unknown };
+  type Listed = {
+    number?: number;
+    title?: string;
+    author_association?: string;
+    user?: { login?: string; type?: string };
+    pull_request?: unknown;
+  };
   const read: Listed[] = [];
   for (let page = 1; page <= maxOpenIssuePages; page++) {
     let issues: Listed[];
     try {
-      issues = (await api('GET', `/repos/${repository}/issues?state=open&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`)) as Listed[];
+      issues = (await api(
+        'GET',
+        `/repos/${repository}/issues?state=open&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`,
+      )) as Listed[];
     } catch {
       break;
     }

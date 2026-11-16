@@ -18,7 +18,7 @@ export function droppedLine(dropped: DroppedFinding[]): string {
   return `Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => printable(d.file)))].join(', ')}`;
 }
 
-function escape(text: string): string {
+function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -32,10 +32,11 @@ function baseName(file: string): string {
 function mention(file: string, nameIsUnique: boolean): string {
   const name = baseName(file);
   const names = nameIsUnique && name !== file ? [file, name] : [file];
-  const paths = names.filter((n) => /[./]/.test(n)).map(escape);
-  const words = names.filter((n) => !/[./]/.test(n)).map(escape);
+  const paths = names.filter((n) => /[./]/.test(n)).map(escapeRegExp);
+  const words = names.filter((n) => !/[./]/.test(n)).map(escapeRegExp);
   const forms: string[] = [];
-  if (paths.length) forms.push(String.raw`[\x60'"]?(?<![\w./-])(?:\.\/)?(?:${paths.join('|')})(?![\w/-]|\.\w|'s\b)[\x60'"]?`);
+  if (paths.length)
+    forms.push(String.raw`[\x60'"]?(?<![\w./-])(?:\.\/)?(?:${paths.join('|')})(?![\w/-]|\.\w|'s\b)[\x60'"]?`);
   if (words.length) forms.push(String.raw`[\x60'"](?:\.\/)?(?:${words.join('|')})[\x60'"]`);
   return `(?:${forms.join('|')})`;
 }
@@ -76,7 +77,10 @@ function normalize(text: string): string {
 
 // Splits the findings into the ones to post and the ones that say a changed file isn't changed. Only the title, problem
 // and consequence are read: the evidence and the fix quote the pull request's own lines, which its author controls.
-export function dropContradicted<T extends Omit<ReviewedFinding, 'id'>>(findings: T[], changedFiles: string[]): { kept: T[]; dropped: DroppedFinding[] } {
+export function dropContradicted<T extends Omit<ReviewedFinding, 'id'>>(
+  findings: T[],
+  changedFiles: string[],
+): { kept: T[]; dropped: DroppedFinding[] } {
   const nameCounts = new Map<string, number>();
   for (const file of changedFiles) {
     const name = baseName(file);

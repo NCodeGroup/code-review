@@ -7,10 +7,18 @@
 
 export const appliesToLabel = '*Applies to:*';
 
-export interface GuidanceRule { statement: string; why: string; check: string; sources: string[]; note?: string }
+export interface GuidanceRule {
+  statement: string;
+  why: string;
+  check: string;
+  sources: string[];
+  note?: string;
+}
 
 const appliesTo = String.raw` \*Applies to:\* ((?:\`[^\`]+\`(?:, )?)+)`;
-const bullet = new RegExp(String.raw`^- \*\*(.+?)\*\* (.*?) \*Check:\* (.*?)(?: \*Note:\* (.*?))?(?:${appliesTo})? <sub>(.*)<\/sub>$`);
+const bullet = new RegExp(
+  String.raw`^- \*\*(.+?)\*\* (.*?) \*Check:\* (.*?)(?: \*Note:\* (.*?))?(?:${appliesTo})? <sub>(.*)<\/sub>$`,
+);
 const tag = new RegExp(`${appliesTo}(?: <sub>.*</sub>)?$`);
 
 export function formatBullet(rule: GuidanceRule, globs: string[]): string {

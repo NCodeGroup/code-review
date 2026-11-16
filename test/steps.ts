@@ -10,7 +10,10 @@ import type { FakeRoutes, LoggedRequest } from './fake-github.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const fakeGithub = pathToFileURL(path.join(import.meta.dirname, 'fake-github.ts')).href;
-const baseEnv = () => ({ PATH: process.env['PATH'] ?? '', ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}) });
+const baseEnv = () => ({
+  PATH: process.env['PATH'] ?? '',
+  ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}),
+});
 
 // `dir` holds the routes and the request log. The step gets only the variables in `env`, no secret from this process.
 // A step that exits non-zero throws, unless `fails` says the test expects it to.
@@ -30,8 +33,12 @@ export function runStep(
     env: { ...baseEnv(), FAKE_GITHUB_ROUTES: routesFile, FAKE_GITHUB_LOG: logFile, ...env },
   });
   if (run.error) throw run.error;
-  if ((run.status !== 0) !== fails) throw new Error(`${script} exited with ${run.status}:\n${run.stdout}\n${run.stderr}`);
-  const requests = readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as LoggedRequest);
+  if ((run.status !== 0) !== fails)
+    throw new Error(`${script} exited with ${run.status}:\n${run.stdout}\n${run.stderr}`);
+  const requests = readFileSync(logFile, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as LoggedRequest);
   return { requests, stdout: run.stdout, stderr: run.stderr, status: run.status };
 }
 
@@ -67,10 +74,26 @@ export function pullRequestCheckout(dir: string): { path: string; base: string; 
   const checkout = path.join(dir, 'pr');
   const home = mkdtempSync(path.join(tmpdir(), 'steps-home-'));
   const git = (...args: string[]) =>
-    execFileSync('git', ['-C', checkout, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], {
-      encoding: 'utf8',
-      env: { ...baseEnv(), HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: '1' },
-    }).trim();
+    execFileSync(
+      'git',
+      [
+        '-C',
+        checkout,
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        '-c',
+        'commit.gpgsign=false',
+        '-c',
+        'init.defaultBranch=main',
+        ...args,
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...baseEnv(), HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: '1' },
+      },
+    ).trim();
   const commit = (content: string) => {
     writeFileSync(path.join(checkout, 'a.ts'), content);
     git('add', '.');
@@ -78,7 +101,9 @@ export function pullRequestCheckout(dir: string): { path: string; base: string; 
     return git('rev-parse', 'HEAD');
   };
   try {
-    execFileSync('git', ['init', '-q', checkout], { env: { ...baseEnv(), HOME: home, USERPROFILE: home, GIT_CONFIG_NOSYSTEM: '1' } });
+    execFileSync('git', ['init', '-q', checkout], {
+      env: { ...baseEnv(), HOME: home, USERPROFILE: home, GIT_CONFIG_NOSYSTEM: '1' },
+    });
     const base = commit('export const a = 1;\n');
     const reviewed = commit('export const a = 2;\n');
     const head = commit('export const a = 3;\n');

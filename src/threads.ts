@@ -21,7 +21,10 @@ const repeatDistance = 3;
 
 // The same defect worded a little differently on a rerun keeps its fingerprint: file, severity and the title's words.
 export function fingerprint(finding: Pick<ReviewedFinding, 'file' | 'severity' | 'title'>): string {
-  const words = finding.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const words = finding.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
   return createHash('sha256').update(`${finding.file}\n${finding.severity}\n${words}`).digest('hex').slice(0, 16);
 }
 
@@ -56,12 +59,17 @@ export function parseFindingComment(body: string): { id: string; severity: Sever
   const listed = (fields?.get('reviewer') ?? '').split(',').filter(Boolean);
   const reviewers = listed.length
     ? listed
-    : (/<sub>[^<]*? · ([^<]*)<\/sub>/.exec(body)?.[1]?.split(', ').map((r) => r.replace(/&lt;/g, '<')) ?? []);
+    : (/<sub>[^<]*? · ([^<]*)<\/sub>/
+        .exec(body)?.[1]
+        ?.split(', ')
+        .map((r) => r.replace(/&lt;/g, '<')) ?? []);
   return { id, severity, reviewers: reviewers.filter(Boolean) };
 }
 
 // Reads the bot's earlier inline comments. `line` is GitHub's current line, or the original one once the code moved.
-export function parsePosted(comments: { body?: string; path?: string; line?: number | null; original_line?: number | null; html_url?: string }[]): PostedThread[] {
+export function parsePosted(
+  comments: { body?: string; path?: string; line?: number | null; original_line?: number | null; html_url?: string }[],
+): PostedThread[] {
   const posted: PostedThread[] = [];
   for (const comment of comments) {
     const fields = markerFields(comment.body);
@@ -113,7 +121,11 @@ function discussionId(url: string | undefined): string | undefined {
 
 // The thread a finding repeats, a dismissed one first: the thread a finding names as the one it repeats matches first, then
 // the rule `repeats` gives.
-export function earlierThread(finding: ReviewedFinding, posted: PostedThread[], dismissed: PostedThread[] = []): { thread: PostedThread; dismissed: boolean } | undefined {
+export function earlierThread(
+  finding: ReviewedFinding,
+  posted: PostedThread[],
+  dismissed: PostedThread[] = [],
+): { thread: PostedThread; dismissed: boolean } | undefined {
   const named = discussionId(finding.repeatsEarlier?.url);
   if (named) {
     const namedDismissed = dismissed.find((p) => discussionId(p.url) === named);
@@ -134,13 +146,21 @@ export function nearby(a: Pick<ReviewedFinding, 'file' | 'line'>, b: Pick<Review
 
 // Two findings of one review that repeat each other: in the same file within a few lines and with the same title words,
 // whatever their severity.
-export function sameProblem(a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>, b: Pick<ReviewedFinding, 'file' | 'line' | 'title'>): boolean {
+export function sameProblem(
+  a: Pick<ReviewedFinding, 'file' | 'line' | 'title'>,
+  b: Pick<ReviewedFinding, 'file' | 'line' | 'title'>,
+): boolean {
   return nearby(a, b) && fingerprint({ ...a, severity: 'nit' }) === fingerprint({ ...b, severity: 'nit' });
 }
 
 // `posted` holds the bot's earlier threads; `dismissed`, the ones among them the maintainer dismissed. A finding that names
 // the earlier thread it repeats is never posted again, even when that thread isn't listed.
-export function placeFindings(findings: ReviewedFinding[], changed: Record<string, number[]>, posted: PostedThread[], dismissed: PostedThread[] = []): Placement {
+export function placeFindings(
+  findings: ReviewedFinding[],
+  changed: Record<string, number[]>,
+  posted: PostedThread[],
+  dismissed: PostedThread[] = [],
+): Placement {
   const placement: Placement = { inline: [], inBody: [], alreadyPosted: [], tracked: [] };
   for (const finding of findings) {
     if (finding.repeatsEarlier || earlierThread(finding, posted, dismissed)) {
@@ -153,7 +173,8 @@ export function placeFindings(findings: ReviewedFinding[], changed: Record<strin
     }
     const lines = changed[finding.file] ?? [];
     const nearest = lines.reduce<number | undefined>(
-      (best, line) => (best === undefined || Math.abs(line - finding.line) < Math.abs(best - finding.line) ? line : best),
+      (best, line) =>
+        best === undefined || Math.abs(line - finding.line) < Math.abs(best - finding.line) ? line : best,
       undefined,
     );
     if (nearest === undefined || Math.abs(nearest - finding.line) > snapDistance) {
@@ -162,7 +183,8 @@ export function placeFindings(findings: ReviewedFinding[], changed: Record<strin
     }
     const suggestion = nearest === finding.line ? usableSuggestion(finding, new Set(lines)) : undefined;
     if (!suggestion) placement.inline.push({ finding, line: nearest });
-    else if (suggestion.startLine === suggestion.endLine) placement.inline.push({ finding, line: suggestion.endLine, suggestion });
+    else if (suggestion.startLine === suggestion.endLine)
+      placement.inline.push({ finding, line: suggestion.endLine, suggestion });
     else placement.inline.push({ finding, line: suggestion.endLine, startLine: suggestion.startLine, suggestion });
   }
   return placement;
@@ -177,7 +199,8 @@ function replacementLines(replacement: string): string[] {
 // Any other suggestion is dropped and the prose fix stands alone.
 function usableSuggestion(finding: ReviewedFinding, added: Set<number>): Suggestion | undefined {
   const s = finding.suggestion;
-  if (!s || !Number.isInteger(s.startLine) || !Number.isInteger(s.endLine) || typeof s.replacement !== 'string') return undefined;
+  if (!s || !Number.isInteger(s.startLine) || !Number.isInteger(s.endLine) || typeof s.replacement !== 'string')
+    return undefined;
   if (s.startLine < 1 || s.endLine < s.startLine || s.endLine - s.startLine + 1 > maxSuggestionLines) return undefined;
   if (finding.line < s.startLine || finding.line > s.endLine) return undefined;
   if (replacementLines(s.replacement).length > maxSuggestionLines) return undefined;
@@ -204,7 +227,7 @@ function prose(value: string): string {
 
 // The places in other files that a finding covers, each as a code span, escaped as text() does.
 function placesText(places: Place[]): string {
-  return places.map((p) => '`' + text(p.file) + ':' + p.line + '`').join(', ');
+  return places.map((p) => `\`${text(p.file)}:${p.line}\``).join(', ');
 }
 
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {
@@ -255,16 +278,25 @@ export function reviewComment({ finding, line, startLine, suggestion }: InlineFi
 }
 
 export function reviewBody(placement: Placement, headSha: string): string {
-  const lines = [`🤖 **NCode Review** at ${headSha.slice(0, 7)}: ${placement.inline.length} new finding${placement.inline.length === 1 ? '' : 's'} on the changed lines.`];
-  if (placement.alreadyPosted.length) lines.push(`${placement.alreadyPosted.length} more ${placement.alreadyPosted.length === 1 ? 'was' : 'were'} already posted on this pull request.`);
+  const lines = [
+    `🤖 **NCode Review** at ${headSha.slice(0, 7)}: ${placement.inline.length} new finding${placement.inline.length === 1 ? '' : 's'} on the changed lines.`,
+  ];
+  if (placement.alreadyPosted.length)
+    lines.push(
+      `${placement.alreadyPosted.length} more ${placement.alreadyPosted.length === 1 ? 'was' : 'were'} already posted on this pull request.`,
+    );
   if (placement.tracked.length) {
     const issues = [...new Set(placement.tracked.map((f) => `#${f.tracked}`))].join(', ');
-    lines.push(`${placement.tracked.length} more ${placement.tracked.length === 1 ? 'is' : 'are'} tracked in ${issues}.`);
+    lines.push(
+      `${placement.tracked.length} more ${placement.tracked.length === 1 ? 'is' : 'are'} tracked in ${issues}.`,
+    );
   }
   if (placement.inBody.length) {
     lines.push('', 'Not on a changed line:', '');
     for (const f of placement.inBody) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}${f.places?.length ? ` **Also at:** ${placesText(f.places)}.` : ''}`);
+      lines.push(
+        `- ${severityDot[f.severity]} **${f.id} ${severityLabel[f.severity]}: ${prose(f.title)}** \`${text(f.file)}:${f.line}\`. ${prose(f.problem)} **Fix:** ${prose(f.fix)}${f.places?.length ? ` **Also at:** ${placesText(f.places)}.` : ''}`,
+      );
     }
   }
   return lines.join('\n');

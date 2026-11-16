@@ -28,7 +28,10 @@ export interface CachedVerdict {
 // Case id, then finding fingerprint.
 export type VerdictCache = Record<string, Record<string, CachedVerdict>>;
 
-export interface RealityVerdict { verdict: Reality; reason: string }
+export interface RealityVerdict {
+  verdict: Reality;
+  reason: string;
+}
 // Undefined when the judge gave no verdict; such a finding counts as unsure and is judged again on the next run.
 export type RealityJudge = (finding: Finding) => Promise<RealityVerdict | undefined>;
 
@@ -59,7 +62,8 @@ export interface CasePrecision extends PrecisionCounts {
   judged: JudgedFinding[];
 }
 
-export const posts = (finding: Pick<Finding, 'severity'>): boolean => finding.severity === 'blocker' || finding.severity === 'should-fix';
+export const posts = (finding: Pick<Finding, 'severity'>): boolean =>
+  finding.severity === 'blocker' || finding.severity === 'should-fix';
 
 export function precisionOf(counts: Omit<PrecisionCounts, 'precision'>): number | null {
   return counts.posted ? (counts.matched + counts.real) / counts.posted : null;
@@ -91,7 +95,13 @@ export async function judgePosted(input: {
   const judged: JudgedFinding[] = [];
   for (const finding of input.findings.filter(posts)) {
     const fp = fingerprint(finding);
-    const entry = { fingerprint: fp, file: finding.file, line: finding.line, severity: finding.severity, title: finding.title };
+    const entry = {
+      fingerprint: fp,
+      file: finding.file,
+      line: finding.line,
+      severity: finding.severity,
+      title: finding.title,
+    };
     if (input.matched.has(finding)) {
       judged.push({ ...entry, status: 'matched' });
       continue;
@@ -110,9 +120,15 @@ export async function judgePosted(input: {
       judged.push({ ...entry, status: 'unsure', reason: 'The judge gave no verdict.' });
       continue;
     }
-    (input.cache[input.caseId] ??= {})[fp] = {
-      verdict: verdict.verdict, reason: verdict.reason, file: finding.file, line: finding.line,
-      severity: finding.severity, title: finding.title, problem: finding.problem,
+    input.cache[input.caseId] ??= {};
+    input.cache[input.caseId]![fp] = {
+      verdict: verdict.verdict,
+      reason: verdict.reason,
+      file: finding.file,
+      line: finding.line,
+      severity: finding.severity,
+      title: finding.title,
+      problem: finding.problem,
     };
     judged.push({ ...entry, status: verdict.verdict, reason: verdict.reason });
   }
@@ -121,21 +137,39 @@ export async function judgePosted(input: {
 
 function countStatuses(statuses: Status[]): PrecisionCounts {
   const count = (status: Status) => statuses.filter((s) => s === status).length;
-  const counts = { posted: statuses.length, matched: count('matched'), mustNot: count('must-not'), real: count('real'), notReal: count('not-real'), unsure: count('unsure') };
+  const counts = {
+    posted: statuses.length,
+    matched: count('matched'),
+    mustNot: count('must-not'),
+    real: count('real'),
+    notReal: count('not-real'),
+    unsure: count('unsure'),
+  };
   return { ...counts, precision: precisionOf(counts) };
 }
 
 export function totalPrecision(cases: PrecisionCounts[]): PrecisionCounts {
   const sum = (key: keyof Omit<PrecisionCounts, 'precision'>) => cases.reduce((total, c) => total + c[key], 0);
-  const counts = { posted: sum('posted'), matched: sum('matched'), mustNot: sum('mustNot'), real: sum('real'), notReal: sum('notReal'), unsure: sum('unsure') };
+  const counts = {
+    posted: sum('posted'),
+    matched: sum('matched'),
+    mustNot: sum('mustNot'),
+    real: sum('real'),
+    notReal: sum('notReal'),
+    unsure: sum('unsure'),
+  };
   return { ...counts, precision: precisionOf(counts) };
 }
 
 export function spread(values: number[]): { mean: number; max: number } {
-  return { mean: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0, max: values.length ? Math.max(...values) : 0 };
+  return {
+    mean: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0,
+    max: values.length ? Math.max(...values) : 0,
+  };
 }
 
-export const percent = (ratio: number | null | undefined): string => (ratio === null || ratio === undefined ? '—' : `${Math.round(ratio * 100)}%`);
+export const percent = (ratio: number | null | undefined): string =>
+  ratio === null || ratio === undefined ? '—' : `${Math.round(ratio * 100)}%`;
 
 const realitySchema = {
   type: 'object',
@@ -168,7 +202,16 @@ export function realityJudge(
 ): RealityJudge {
   return async (finding) => {
     const diff = context.diffFor(finding.file)?.slice(0, judgeMaxDiffChars) ?? '(no diff for this file)';
-    const data = JSON.stringify({ severity: finding.severity, file: finding.file, line: finding.line, title: finding.title, problem: finding.problem, consequence: finding.consequence, fix: finding.fix, evidence: finding.evidence });
+    const data = JSON.stringify({
+      severity: finding.severity,
+      file: finding.file,
+      line: finding.line,
+      title: finding.title,
+      problem: finding.problem,
+      consequence: finding.consequence,
+      fix: finding.fix,
+      evidence: finding.evidence,
+    });
     const result = await agent<RealityVerdict>(run, {
       role: 'precision-judge',
       tier: 'opus',
