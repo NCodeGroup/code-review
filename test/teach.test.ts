@@ -584,7 +584,7 @@ test('fetchGuidanceIssues reads every page of closed review-guidance issues with
   const pages = [Array.from({ length: 100 }, (_, i) => issue(i + 1, `Rule ${i + 1}.`)), [issue(101, 'Rule 101.')]];
   const fetchApi = (async (url: string, init?: RequestInit) => {
     urls.push(url);
-    auth.push((init?.headers as Record<string, string>)['authorization']);
+    auth.push((init?.headers as Record<string, string>)?.['authorization']);
     return new Response(JSON.stringify(pages[urls.length - 1]), { status: 200 });
   }) as typeof fetch;
   const issues = await fetchGuidanceIssues('NCodeGroup/code-review', 'tok', fetchApi);

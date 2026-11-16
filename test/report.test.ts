@@ -84,23 +84,28 @@ class FakeGitHub {
     const paged = <T>(items: T[]) => json(items.slice((page - 1) * perPage, page * perPage));
     const json = (value: unknown, status = 200) =>
       new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
-    let match: RegExpExecArray | null;
-    if ((match = /^\/orgs\/([^/]+)\/repos$/.exec(url.pathname))) return paged(this.orgRepos);
-    if ((match = /^\/repos\/([^/]+\/[^/]+)\/contents\/(.+)$/.exec(url.pathname))) {
-      if (this.failingContents.has(match[1]!)) return json({ message: 'boom' }, 500);
-      return this.callers.has(match[1]!) && match[2] === '.github/workflows/code-review.yml'
+    if (/^\/orgs\/([^/]+)\/repos$/.test(url.pathname)) return paged(this.orgRepos);
+    const contentsMatch = /^\/repos\/([^/]+\/[^/]+)\/contents\/(.+)$/.exec(url.pathname);
+    if (contentsMatch) {
+      if (this.failingContents.has(contentsMatch[1]!)) return json({ message: 'boom' }, 500);
+      return this.callers.has(contentsMatch[1]!) && contentsMatch[2] === '.github/workflows/code-review.yml'
         ? json({ name: 'code-review.yml' })
         : json({ message: 'Not Found' }, 404);
     }
-    if ((match = /^\/repos\/([^/]+\/[^/]+)\/pulls$/.exec(url.pathname))) {
-      if (this.failingPulls.has(match[1]!)) return json({ message: 'boom' }, 500);
-      const pulls = [...(this.pulls.get(match[1]!) ?? [])].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    const pullsMatch = /^\/repos\/([^/]+\/[^/]+)\/pulls$/.exec(url.pathname);
+    if (pullsMatch) {
+      if (this.failingPulls.has(pullsMatch[1]!)) return json({ message: 'boom' }, 500);
+      const pulls = [...(this.pulls.get(pullsMatch[1]!) ?? [])].sort((a, b) =>
+        b.updated_at.localeCompare(a.updated_at),
+      );
       return paged(pulls);
     }
-    if ((match = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(url.pathname))) {
-      return paged(this.comments.get(`${match[1]}#${match[2]}`) ?? []);
+    const commentsMatch = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(url.pathname);
+    if (commentsMatch) {
+      return paged(this.comments.get(`${commentsMatch[1]}#${commentsMatch[2]}`) ?? []);
     }
-    if ((match = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(url.pathname))) {
+    const issuesMatch = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(url.pathname);
+    if (issuesMatch) {
       if (method === 'POST') {
         const sent = JSON.parse(String(init?.body)) as { title: string; body: string; labels: string[] };
         const number = 1000 + this.issues.length;
@@ -110,7 +115,7 @@ class FakeGitHub {
           body: sent.body,
           labels: sent.labels,
           user: { login: this.login },
-          html_url: `https://github.com/${match[1]}/issues/${number}`,
+          html_url: `https://github.com/${issuesMatch[1]}/issues/${number}`,
         };
         this.issues.push(issue);
         return json(issue, 201);
@@ -118,8 +123,9 @@ class FakeGitHub {
       const label = url.searchParams.get('labels');
       return paged(this.issues.filter((i) => !label || i.labels.includes(label)));
     }
-    if ((match = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(url.pathname)) && method === 'PATCH') {
-      const issue = this.issues.find((i) => i.number === Number(match![2]));
+    const issueMatch = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(url.pathname);
+    if (issueMatch && method === 'PATCH') {
+      const issue = this.issues.find((i) => i.number === Number(issueMatch[2]));
       if (!issue) return json({ message: 'Not Found' }, 404);
       issue.body = (JSON.parse(String(init?.body)) as { body: string }).body;
       return json(issue);
