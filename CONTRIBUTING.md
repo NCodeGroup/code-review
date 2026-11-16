@@ -17,6 +17,7 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 | Task | Command |
 | --- | --- |
 | Build | `npm run typecheck` |
+| Lint | `npm run lint`; `npm run format` fixes what it can |
 | Test | `npm test` |
 
 CI runs the same commands on every pull request.
