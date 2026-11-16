@@ -44,5 +44,6 @@ Not written yet.
   NCode Review reviews each pull request and posts its findings as review threads, which are resolved before the merge.
 - **Dependencies:** pinned, and moved by reviewed updates
   ([ADR-0008](decisions/project-template/0008-external-inputs-are-pinned-and-kept-current.md)) that wait three days for
-  a new version ([ADR-0009](decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)). Dependabot proposes the updates.
+  a new version ([ADR-0009](decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)). Dependabot
+  proposes the updates.
 - **Response:** [SECURITY.md](../SECURITY.md) defines private reporting, coordinated disclosure and credit.

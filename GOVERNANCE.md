@@ -1,7 +1,6 @@
 # Governance
 
-code-review belongs to the repository's owners. This page says who does
-what and how decisions are made.
+code-review belongs to the repository's owners. This page says who does what and how decisions are made.
 
 ## Roles
 
@@ -33,15 +32,13 @@ release from that version's section of `CHANGELOG.md`, as
 
 ## Continuity
 
-The repository, its issues, decision records, build, release automation and documentation are all in the
-GitHub organization that owns it, so anyone given access can carry
-on with no knowledge held elsewhere.
+The repository, its issues, decision records, build, release automation and documentation are all in the GitHub
+organization that owns it, so anyone given access can carry on with no knowledge held elsewhere.
 
 [//]: # "Maintainers: name the owners, and keep the list current."
 
-Owners today: the repository's owners. Continuity
-needs at least two people who can administer the repository; until there are
-two, it is incomplete, and the OpenSSF Best Practices silver level can't be claimed
+Owners today: the repository's owners. Continuity needs at least two people who can administer the repository; until
+there are two, it is incomplete, and the OpenSSF Best Practices silver level can't be claimed
 ([docs/best-practices-badge.md](docs/best-practices-badge.md)).
 
 ## Changing This Document
