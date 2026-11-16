@@ -1,6 +1,8 @@
 # code-review
 AI pull request review for NCodeGroup repositories: a GitHub composite action on the Claude Agent SDK
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)
+
 A set of narrow reviewers on Claude Haiku, chosen by path rules plus Claude Opus, with Opus merging their findings.
 Results go to review threads on the changed lines, a summary comment and a neutral "Code review" check run with
 annotations, and a trace artifact. The plan's API credits pay first through keyless login; once they run out, the
@@ -229,6 +231,14 @@ release that isn't marked as a pre-release (see [Dependabot and pre-releases](#d
 
 Releases are immutable from v0.3.1 on, and the "Protect release tags" ruleset forbids moving or deleting a `v*` tag, so
 the tag in the comment always names the commit it sits beside.
+
+Each immutable release carries an attestation GitHub signs when it publishes the release. To check the release a pin
+names, run `gh release verify v1.4.1 -R NCodeGroup/code-review`, which fetches GitHub's public signing material and
+prints `✓ Release v1.4.1 verified!`, then `gh api repos/NCodeGroup/code-review/commits/v1.4.1 --jq .sha`, which prints
+the commit the pin must name. Releases from v0.3.1 on carry the attestation; v0.3.0 and earlier, published before
+releases were immutable, don't. The releases have no assets: the action is its source at that commit. GitHub's
+[Verifying the integrity of a release](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity)
+explains the attestation.
 
 A release is made by merging. A plan whose change reaches consumers carries a `Release:` line, such as `v1.2.0`, and its last step moves `## [Unreleased]` in `CHANGELOG.md` into that version's dated section, `## [1.2.0] - 2026-11-14`, with its entries. When its pull request merges, `tag-release.yml` tags the merge commit and publishes a GitHub release whose notes are that section, so nobody runs a workflow ([ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)). A plan that changes only CI, tests or docs has no `Release:` line and releases nothing. A tag can't be deleted afterwards, so a mistake is fixed by releasing the next version.
 
