@@ -45,7 +45,8 @@ access acting against the project, and a vulnerability in a dependency itself ([
   an approval.
 - **Complete mediation:** the path guard checks every tool call, and the writer check applies to every text source.
 - **Least privilege:** the workflow starts with `permissions: {}`; each app token can write only what its step needs,
-  on the one repository under review, and is revoked; only default-branch jobs get an Anthropic token.
+  on one repository, the one under review or, for `/review teach`, the one its issue opens in, and is revoked; only
+  default-branch jobs get an Anthropic token.
 - **Open design:** the code, prompts, reviewers, guidance, evals and decision records are public.
 
 ## Common Weaknesses Countered
