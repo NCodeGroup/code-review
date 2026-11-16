@@ -242,11 +242,9 @@ export async function writeAnswer(
   writeForPublish(outDir, files, where.secrets, 'answered');
 }
 
-export type GitHubApi = Api;
-
 // Posts the answer as a top-level comment, with the app's token, after the agent has exited. It is scanned for secrets
 // first, and nothing is posted when it holds one.
-export async function postAnswer(api: GitHubApi, answer: Answer, secrets: string[]): Promise<string> {
+export async function postAnswer(api: Api, answer: Answer, secrets: string[]): Promise<string> {
   assertNoSecrets(answer.body, secrets, 'The answer');
   const comment = (await api('POST', `/repos/${answer.repository}/issues/${answer.pullRequest}/comments`, {
     body: answer.body,
@@ -256,7 +254,7 @@ export async function postAnswer(api: GitHubApi, answer: Answer, secrets: string
 
 // The publish step's explain branch: posts the answer the review step left in outDir and returns the comment's URL, or
 // returns undefined, without a call, when there's none because the run was a review.
-export async function publishAnswer(outDir: string, api: GitHubApi, secrets: string[]): Promise<string | undefined> {
+export async function publishAnswer(outDir: string, api: Api, secrets: string[]): Promise<string | undefined> {
   const answerPath = path.join(outDir, answerFile);
   if (!existsSync(answerPath)) return undefined;
   const answer = JSON.parse(readFileSync(answerPath, 'utf8')) as Answer;

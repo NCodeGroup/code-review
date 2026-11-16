@@ -6,8 +6,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { maxRuleChars, type Command, type FindingRef } from './command.ts';
-import { findFinding, type Answer, type GitHubApi, type Resolution } from './explain.ts';
-import { GitHubError, type ReadApi } from './github.ts';
+import { findFinding, type Answer, type Resolution } from './explain.ts';
+import { type Api, GitHubError, type ReadApi } from './github.ts';
 import { neutralizeMentions, plainText } from './markdown.ts';
 import { assertNoSecrets } from './outputs.ts';
 
@@ -184,7 +184,7 @@ export type IssueOutcome = { issue: { number: number; url: string } } | { refuse
 
 // Creates the label when the target repository doesn't have it yet. A 422 from the create means another teach run made
 // it in between, which is as good.
-async function ensureLabel(api: GitHubApi, target: string): Promise<void> {
+async function ensureLabel(api: Api, target: string): Promise<void> {
   try {
     await api('GET', `/repos/${target}/labels/${guidanceLabel}`);
   } catch (error) {
@@ -203,7 +203,7 @@ async function ensureLabel(api: GitHubApi, target: string): Promise<void> {
 
 // Opens the issue with the issues token. A 403 or 404 means the app can't write issues there; a 410 means the
 // repository has issues turned off. Any other refusal fails the step.
-export async function openGuidanceIssue(api: GitHubApi, teaching: Teaching): Promise<IssueOutcome> {
+export async function openGuidanceIssue(api: Api, teaching: Teaching): Promise<IssueOutcome> {
   try {
     await ensureLabel(api, teaching.target);
     const issue = (await api('POST', `/repos/${teaching.target}/issues`, {
@@ -236,8 +236,8 @@ export function replyBody(teaching: Teaching, outcome: IssueOutcome): string {
 // scanned for secrets first. Without an issues token, which happens when the app can't get issues write there, the
 // reply says so.
 export async function postTeaching(
-  api: GitHubApi,
-  issuesApi: GitHubApi | undefined,
+  api: Api,
+  issuesApi: Api | undefined,
   teaching: Teaching,
   secrets: string[],
 ): Promise<string> {
@@ -254,8 +254,8 @@ export async function postTeaching(
 // The publish step's teach branch: returns the reply's URL, or undefined, without a call, when the run wasn't a teach.
 export async function publishTeaching(
   outDir: string,
-  api: GitHubApi,
-  issuesApi: GitHubApi | undefined,
+  api: Api,
+  issuesApi: Api | undefined,
   secrets: string[],
 ): Promise<string | undefined> {
   const file = path.join(outDir, teachingFile);

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { commandFromEvent, maxRuleChars, parseCommand, type Command } from '../src/command.ts';
-import type { GitHubApi, ReviewComment } from '../src/explain.ts';
+import type { ReviewComment } from '../src/explain.ts';
+import type { Api } from '../src/github.ts';
 import { SecretFoundError } from '../src/outputs.ts';
 import {
   fenced,
@@ -377,7 +378,7 @@ const teaching: Teaching = {
 };
 
 // Records each call; `answer` decides each one's result, and an Error it returns is thrown.
-function recorder(answer: (method: string, url: string) => unknown): { calls: unknown[][]; api: GitHubApi } {
+function recorder(answer: (method: string, url: string) => unknown): { calls: unknown[][]; api: Api } {
   const calls: unknown[][] = [];
   return {
     calls,
