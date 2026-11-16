@@ -1,16 +1,14 @@
 # OpenSSF Best Practices Badge
 
-A maintainer registers code-review at [bestpractices.dev](https://www.bestpractices.dev) and answers the criteria
-there, which is the source of truth; this page doesn't copy the answers. It maps the criteria that need a document to
-the evidence this repository holds, so registering is answering, not researching.
-
-[//]: # "Maintainers: once registered, name the project's number here and in the badge below, in place of PROJECT_ID."
+code-review is registered at bestpractices.dev as
+[project 16752](https://www.bestpractices.dev/projects/16752), where the answers are kept: this page doesn't copy them.
+It maps the criteria that need a document to the evidence this repository holds.
 
 ## The Badge
 
 ```html
-<a href="https://www.bestpractices.dev/projects/PROJECT_ID"><img alt="OpenSSF Best Practices"
-  src="https://www.bestpractices.dev/projects/PROJECT_ID/badge"></a>
+<a href="https://www.bestpractices.dev/projects/16752"><img alt="OpenSSF Best Practices"
+  src="https://www.bestpractices.dev/projects/16752/badge"></a>
 ```
 
 OpenSSF Scorecard's CII-Best-Practices check scores the badge level: in progress 2, passing 5, silver 7, gold 10
