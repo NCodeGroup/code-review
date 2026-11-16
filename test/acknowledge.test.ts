@@ -610,7 +610,7 @@ test('githubApi sends the token and JSON, and throws on a refusal', async () => 
   assert.deepEqual(await githubApi('t0ken', ok.fn)('POST', '/repos/o/r/check-runs', { a: 1 }), { id: 42 });
   const [request] = ok.requests;
   assert.equal(request?.url, 'https://api.github.com/repos/o/r/check-runs');
-  assert.equal((request?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
+  assert.equal((request?.init?.headers as Record<string, string>)?.['authorization'], 'Bearer t0ken');
   assert.equal(request?.init?.body, '{"a":1}');
   assert.equal(
     await githubApi('t', fakeFetch({ 'api.github.com': { status: 204 } }).fn)('DELETE', '/installation/token'),
@@ -644,7 +644,7 @@ test('decideAcknowledgement passes on the head and comment of a /review from a w
     fetched.requests.map((r) => r.url),
     [`https://api.github.com/repos/${repository}/pulls/7`],
   );
-  assert.equal((fetched.requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer read-only');
+  assert.equal((fetched.requests[0]?.init?.headers as Record<string, string>)?.['authorization'], 'Bearer read-only');
 });
 
 test('decideAcknowledgement passes on the head of an automatic review of a new commit, after reading the reviewed head', async () => {
@@ -922,7 +922,7 @@ test('chooseProvider gives no provider when the credits are used up and Bedrock 
   const error = await chooseProvider({ anthropic, bedrockKey: 'bedrock-key' }, fetched.fn).catch((e: unknown) => e);
   assert.ok(error instanceof NoProviderError);
   assert.match(error.reason, /no API credits .*, and Bedrock refused the key: HTTP 403$/);
-  assert.equal((fetched.requests[1]?.init?.headers as Record<string, string>)['authorization'], 'Bearer bedrock-key');
+  assert.equal((fetched.requests[1]?.init?.headers as Record<string, string>)?.['authorization'], 'Bearer bedrock-key');
 });
 
 test('chooseProvider gives no provider when the Anthropic login fails and there is no Bedrock key', async () => {

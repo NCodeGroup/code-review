@@ -60,7 +60,7 @@ test('githubFetch sends an absolute url on the configured origin, with the token
   };
   await githubFetch(client, 'GET', 'https://ghe.example/api/v3/repos/o/r/issues/1/comments?page=2');
   assert.equal(requests[0]?.url, 'https://ghe.example/api/v3/repos/o/r/issues/1/comments?page=2');
-  assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
+  assert.equal((requests[0]?.init?.headers as Record<string, string>)?.['authorization'], 'Bearer t0ken');
 });
 
 test('githubFetch refuses a url that resolves to another origin and sends nothing', async () => {
@@ -90,7 +90,7 @@ test('githubFetch still sends a path under the REST address, with the token', as
     '/repos/o/r',
   );
   assert.equal(requests[0]?.url, 'https://api.github.com/repos/o/r');
-  assert.equal((requests[0]?.init?.headers as Record<string, string>)['authorization'], 'Bearer t0ken');
+  assert.equal((requests[0]?.init?.headers as Record<string, string>)?.['authorization'], 'Bearer t0ken');
 });
 
 const dotCom = { api: 'https://api.github.com', graphql: 'https://api.github.com/graphql' };
@@ -114,7 +114,7 @@ test('githubFetch follows a redirect on the configured origin, with the token', 
     ['https://api.github.com/repos/o/r/pulls/2', 'https://api.github.com/repositories/1/pulls/2'],
   );
   assert.equal(requests[0]?.init?.redirect, 'manual');
-  assert.ok((requests[1]?.init?.headers as Record<string, string>)['authorization']?.endsWith(' t0ken'));
+  assert.ok((requests[1]?.init?.headers as Record<string, string>)?.['authorization']?.endsWith(' t0ken'));
 });
 
 test('githubFetch refuses a redirect to another origin and sends nothing there', async () => {

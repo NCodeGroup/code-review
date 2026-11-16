@@ -498,7 +498,7 @@ test('githubReader reads a path with the token and gives undefined only for a 40
   assert.deepEqual(await read('/repos/o/r/pulls/comments/9'), { id: 9 });
   assert.equal(seen[0]![0], 'https://api.github.com/repos/o/r/pulls/comments/9');
   assert.ok(seen[0]![1]?.signal instanceof AbortSignal, 'the read has a time limit');
-  assert.equal((seen[0]![1]?.headers as Record<string, string>)['authorization'], 'Bearer tok');
+  assert.equal((seen[0]![1]?.headers as Record<string, string>)?.['authorization'], 'Bearer tok');
   assert.equal(await githubReader(undefined, async () => response(404))('/x'), undefined);
 });
 
