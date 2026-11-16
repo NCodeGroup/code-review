@@ -468,6 +468,7 @@ export function closedIssues(body: string | undefined): number[] {
 
 // canWrite is whether the author has write access, from writerCheck. It is required: the event's author_association
 // alone reports a private organization member as CONTRIBUTOR.
+// biome-ignore lint/suspicious/noExplicitAny: the webhook event is GitHub's JSON, read field by field below.
 export function readPullRequest(event: any, repository: string, canWrite: boolean): PullRequest {
   const pr = event.pull_request ?? event.issue;
   if (!pr) throw new Error('The event has no pull request.');
