@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `GOVERNANCE.md`, `ROADMAP.md`, `docs/architecture.md` and `docs/assurance-case.md` describe code-review itself: its maintainer, its plans for the next twelve months, its components and design rules, and its security requirements, threat model and the weaknesses it counters ([#206](https://github.com/NCodeGroup/code-review/issues/206)).
+
 ## [1.4.1] - 2026-11-15
 
 ### Changed
