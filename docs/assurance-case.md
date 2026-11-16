@@ -39,16 +39,24 @@ access acting against the project, and a vulnerability in a dependency itself ([
 
 ## Secure Design Principles Applied
 
-[//]: # "Maintainers: say how the design applies economy of mechanism, fail-safe defaults, complete mediation, least
-privilege and open design."
-
-Not written yet.
+- **Economy of mechanism:** each agent has three read-only tools, and the acknowledgement runs with no npm package.
+- **Fail-safe defaults:** an author whose permission can't be read counts as no writer; with no provider the check run
+  says so and nothing is charged; an incomplete review doesn't approve, and verification never turns a review into
+  an approval.
+- **Complete mediation:** the path guard checks every tool call, and the writer check applies to every text source.
+- **Least privilege:** the workflow starts with `permissions: {}`; each app token can write only what its step needs,
+  on the one repository under review, and is revoked; only default-branch jobs get an Anthropic token.
+- **Open design:** the code, prompts, reviewers, guidance, evals and decision records are public.
 
 ## Common Weaknesses Countered
 
-[//]: # "Maintainers: list the CWE ids the design counters, each with the requirement that counters it."
-
-Not written yet.
+- CWE-22 and CWE-59, path traversal and link following: R3.
+- CWE-77, CWE-78 and CWE-94, command and code injection: R3 and R4.
+- CWE-1427, improper neutralization of input used for LLM prompting: R4.
+- CWE-200, CWE-522 and CWE-532, exposed information, unprotected credentials and secrets in logs: R1 and R2.
+- CWE-117, improper output neutralization for logs: `src/log.ts`.
+- CWE-400, uncontrolled resource consumption: R6.
+- CWE-829, inclusion of functionality from an untrusted control sphere: R5, and actions pinned by full commit SHA.
 
 ## Evidence
 
