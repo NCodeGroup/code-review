@@ -7,7 +7,7 @@ import { runAgent, type AgentResult, type AgentRun } from './agent.ts';
 import type { FindingRef } from './command.ts';
 import { errorText, readCommentPages } from './comments.ts';
 import { budgets, maxTurns } from './config.ts';
-import type { ReadApi } from './github.ts';
+import type { Api, ReadApi } from './github.ts';
 import { neutralizeProse, plainText } from './markdown.ts';
 import { assertNoSecrets, writeForPublish } from './outputs.ts';
 import { botLogin } from './results.ts';
@@ -242,7 +242,7 @@ export async function writeAnswer(
   writeForPublish(outDir, files, where.secrets, 'answered');
 }
 
-export type GitHubApi = (method: string, url: string, body?: unknown) => Promise<any>;
+export type GitHubApi = Api;
 
 // Posts the answer as a top-level comment, with the app's token, after the agent has exited. It is scanned for secrets
 // first, and nothing is posted when it holds one.

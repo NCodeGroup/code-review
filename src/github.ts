@@ -2,6 +2,7 @@
 // GitHub the runner names. Nothing here imports an npm package: the acknowledgement runs it with the runner's own node,
 // before setup-node and npm ci.
 
+// biome-ignore lint/suspicious/noExplicitAny: GitHub's JSON responses are read by shape at each call site.
 export type Api = (method: string, url: string, body?: unknown) => Promise<any>;
 
 // A refusal from GitHub's API, with its status, so the publish step can tell a missing permission from an outage.

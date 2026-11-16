@@ -1,7 +1,7 @@
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 
-import { githubFetch } from './github.ts';
+import { type Api, githubFetch } from './github.ts';
 import { writeLog } from './log.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { botLogin, keptMarkerLines, summaryComments, supersededComment, type Results } from './results.ts';
@@ -51,7 +51,7 @@ function issueComments(repository: string, number: number): string {
 // The bot's earlier inline threads on a pull request, from its review comments, or undefined when the pull request
 // has more review comments than readCommentPages reads. A page that can't be read throws, as api does.
 export async function readPostedThreads(
-  api: (method: string, url: string) => Promise<any>,
+  api: Api,
   repository: string,
   number: number,
 ): Promise<PostedThread[] | undefined> {
@@ -71,7 +71,7 @@ export async function readPostedThreads(
 // can't tell which findings are already posted; the check run still has them all. A page that can't be read throws.
 // `posted`, when given, is the bot's earlier threads the caller already read, so they aren't read twice.
 export async function postThreads(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<
     Results,
     'repository' | 'pullRequest' | 'headSha' | 'findings' | 'changedLines' | 'tracked' | 'alreadyRaised'
@@ -134,7 +134,7 @@ export async function postThreads(
 // Submits an approving review at the reviewed head, unless the pull request's head moved or can't be read. A refusal only
 // warns; true when the approval was submitted.
 export async function submitApproval(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   secrets: Iterable<string>,
   log: (line: string) => void = writeLog,
@@ -172,7 +172,7 @@ export async function submitApproval(
 // Dismisses the bot's own approving reviews of the pull request, so an approval of an earlier head doesn't stand after a
 // review that doesn't approve. A failure only warns.
 export async function dismissApprovals(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   log: (line: string) => void = writeLog,
 ): Promise<void> {
@@ -207,7 +207,7 @@ export async function dismissApprovals(
 // Approves when the review qualifies; otherwise, and when the approval is refused, dismisses the bot's earlier approval,
 // so a review that doesn't approve never leaves an old approval standing.
 export async function applyApproval(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   approve: boolean,
   secrets: Iterable<string>,
@@ -226,7 +226,7 @@ export async function applyApproval(
 // posting, so the new one is never collapsed, and collapsed after it, so a failed post leaves the old one intact.
 // A failed collapse only warns, and so does a failed listing, which still posts the new summary.
 export async function postSummary(
-  api: (method: string, url: string, body?: unknown) => Promise<any>,
+  api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   body: string,
   log: (line: string) => void = writeLog,
