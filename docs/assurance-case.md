@@ -41,7 +41,7 @@ Not written yet.
   resolved, and the ruleset refuses force pushes and deletion
   ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
   [ADR-0014](decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)).
-  NCode Review reviews each pull request and approves a clean one.
+  NCode Review reviews each pull request and posts its findings as review threads, which are resolved before the merge.
 - **Dependencies:** pinned, and moved by reviewed updates
   ([ADR-0008](decisions/project-template/0008-external-inputs-are-pinned-and-kept-current.md)) that wait three days for
   a new version ([ADR-0009](decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)). Dependabot proposes the updates.

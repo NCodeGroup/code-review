@@ -11,7 +11,7 @@ what and how decisions are made.
 | --- | --- | --- |
 | Maintainer | The repository's owners | Sets direction, triages issues, reviews and merges pull requests, answers vulnerability reports, owns the repository's settings |
 | Contributor | Anyone | Opens issues and pull requests, under [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) |
-| Automation | `ncode-review[bot]`, Dependabot, GitHub Actions | Reviews and approves a clean pull request, proposes dependency updates, runs CI, tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`; never merges a pull request except the pin bump `code-review-auto-merge.yml` merges once a maintainer approves it |
+| Automation | `ncode-review[bot]`, Dependabot, GitHub Actions | Reviews each pull request, proposes dependency updates, runs CI, tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`; never merges a pull request except the pin bump `code-review-auto-merge.yml` merges once a maintainer approves it |
 
 Only a maintainer has write access. A contributor who keeps contributing reviewed, merged work can be invited to become
 a maintainer; the existing maintainers decide, and the change is recorded in this file.
