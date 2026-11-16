@@ -33,6 +33,11 @@ never brings a number the project already uses
 | [0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) | On GitHub, CI tags and publishes a release when its pull request merges, from the changelog or the pull request's `Release:` line; `/ship-plan` is the fallback |
 | [0017](0017-cloud-sessions-bootstrap-their-tools-through-ensure-scripts.md) | A Claude Code cloud session bootstraps its tools through `.claude/hooks/ensure-*.sh` scripts that `session-start.sh` runs; a project adds a tool by adding a script |
 | [0018](0018-agent-attribution-is-avoided-not-enforced.md) | Agents avoid adding attribution to commits and pull requests, and nothing enforces it: no hook, CI check or read-back fails, rewrites or reports work over it (supersedes 0002, amends 0005 and 0013) |
+| [0019](0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md) | No ruleset requires NCode Review's "Code review" check; the person who merges waits for the review before merging or turning on auto-merge |
+| [0020](0020-github-projects-are-scored-by-openssf-scorecard.md) | A GitHub project runs the OpenSSF Scorecard workflow; the record lists what the template controls and what needs a person |
+| [0021](0021-tooling-is-written-in-nodejs-then-go-then-powershell.md) | Tooling is written in Node.js first, then Go, then PowerShell 7; Python is left out of the toolchain, except for Python programs such as Copier |
+| [0022](0022-ncode-reviews-approval-gates-the-merge.md) | Where `code-review.yml` passes NCode Review's `approve: true`, the ruleset requires one approval and approval of the last push, never the latter alone, and a new such project opens every pull request as a draft (amends 0005, 0006, 0019 and 0020) |
+| [0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md) | Every project ships the governance, conduct, roadmap, architecture and assurance documents the OpenSSF Best Practices silver level asks for, with a map from each criterion to its evidence |
 
 ## Node.js
 

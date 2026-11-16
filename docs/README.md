@@ -5,6 +5,10 @@ offers. Every document in `docs/` has a line here.
 
 ## What Lives Where
 
+- [architecture.md](architecture.md) and [assurance-case.md](assurance-case.md): the components and the rules the design
+  keeps, and why the design meets its security requirements.
+- [best-practices-badge.md](best-practices-badge.md): where the repository meets each OpenSSF Best Practices criterion,
+  for registering at bestpractices.dev.
 - [decisions/](decisions/README.md): architecture decision records, one short file per decision, with the project
   template's own decisions in [decisions/project-template/](decisions/project-template/README.md).
 - [designs/](designs/_template.md): design documents for work bigger than one plan, started from

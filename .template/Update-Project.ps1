@@ -69,7 +69,12 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add.
+    trigger, it says what to add. When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
+    doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
+    ADR-0151). When the project has version.json, it also warns about a publish.yml or a
+    .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
+    themselves (the template's ADR-0138).
+    When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
@@ -129,12 +134,18 @@ function Get-PreReleaseAnswer {
     'tracked'
 }
 
+# An existing project is not opted in to the C# formatter: false when its answers have no csharp_format and -Data sets none.
+function Get-CSharpFormatAnswer {
+    if (-not (Get-Answer 'csharp_format') -and -not $Data.ContainsKey('csharp_format')) { 'false' }
+}
+
 # Render the template at a version into a folder with the project's answers;
 # false, with a warning that says why, when Copier can't.
 function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
     if (-not $Data.ContainsKey('pre_release')) { $renderArgs += '--data', "pre_release=$(Get-PreReleaseAnswer)" }
+    $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $renderArgs += '--data', "csharp_format=$csharpFormat" }
     $copierOutput = [Collections.Generic.List[string]]::new()
     try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
     catch { Write-Warning ((@("Copier couldn't render template $Version with this project's answers: $_") + $copierOutput) -join "`n"); $false }
@@ -352,6 +363,22 @@ function Get-AttributionCheckNote([object[]]$Changes) {
     if ($callers) { "These files still call .githooks/commit-msg, which this update removed, so every commit fails until you delete that call: $($callers -join ', ')" }
 }
 
+# The *.cs files under the current folder that don't start with the header .editorconfig's file_header_template sets,
+# as relative paths with /: what IDE0073 fails once a project turns csharp_format on (the template's ADR-0148). Nothing
+# when .editorconfig sets no header. Generated code is skipped, as IDE0073 skips it.
+# tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
+function Get-CSharpFileWithoutHeader {
+    if (-not (Test-Path -LiteralPath .editorconfig -PathType Leaf)) { return }
+    $setting = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location).Path '.editorconfig')), '(?m)^file_header_template\s*=\s*(.+?)\r?$')
+    if (-not $setting.Success) { return }
+    $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
+        $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
+        if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
+    }
+}
+
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
 # With pre-release: untracked in the Landing section, a tag below 1.0.0 needs no section.
@@ -408,6 +435,208 @@ function Get-AssemblyVersionFloor {
         if (-not $best -or $shipped -gt $best) { $best = $shipped; $bestTag = $tag }
     }
     if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
+}
+
+function Get-PublishedPackageVersion {
+    param([scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 })
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        if ($text -match '<IsPackable>\s*false') { continue }
+        $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
+        try { $response = & $Fetch "https://api.nuget.org/v3-flatcontainer/$($id.ToLowerInvariant())/index.json" } catch { continue }
+        $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
+        if ($stable.Count -gt 0) { [pscustomobject]@{ Id = $id; Version = $stable[-1] } }
+    }
+}
+
+# A deliberate copy of tools/adopt/Adoption.psm1's Get-PackageMetadataDrift: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Get-PackageMetadataDrift {
+    param(
+        [scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 },
+        [scriptblock]$Evaluate = {
+            param($Project)
+            try {
+                $json = & dotnet msbuild $Project -getProperty:Description -getProperty:PackageTags -nologo 2>$null
+                if ($LASTEXITCODE -ne 0) { return $null }
+                $properties = ($json -join "`n" | ConvertFrom-Json).Properties
+                @{ Description = $properties.Description; PackageTags = $properties.PackageTags }
+            }
+            catch { $null }
+        }
+    )
+    $root = (Get-Location).ProviderPath
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        if ($text -match '<IsPackable>\s*false') { continue }
+        $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
+        $lower = $id.ToLowerInvariant()
+        try {
+            $response = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/index.json"
+            $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
+            if ($stable.Count -eq 0) { continue }
+            $version = $stable[-1]
+            $nuspec = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/$version/$lower.nuspec"
+            if ($nuspec -is [string]) { $nuspec = [xml]$nuspec }
+            $metadata = $nuspec.package.metadata
+            $publishedValues = @{ Description = [string]$metadata.description; PackageTags = [string]$metadata.tags }
+            $local = & $Evaluate $file.FullName
+        }
+        catch { continue }
+        if (-not $local) { continue }
+        $relative = [IO.Path]::GetRelativePath($root, $file.FullName) -replace '\\', '/'
+        foreach ($field in 'Description', 'PackageTags') {
+            $publishedText = ($publishedValues[$field] -replace '\s+', ' ').Trim()
+            $localText = ([string]$local[$field] -replace '\s+', ' ').Trim()
+            if (-not $publishedText) { continue }
+            if ($field -eq 'PackageTags') {
+                $publishedKey = (@($publishedText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+                $localKey = (@($localText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+            }
+            else { $publishedKey = $publishedText; $localKey = $localText }
+            if ($publishedKey -ne $localKey) {
+                [pscustomobject]@{ Id = $id; Version = $version; Field = $field; Message = "$relative would publish $field '$localText' where $id $version published '$publishedText': restore it in the project or Directory.Build.props (NCodeGroup/Buffers#33 lost both when a .props file stopped being imported)." }
+            }
+        }
+    }
+}
+
+# A deliberate copy of tools/adopt/Adoption.psm1's Get-NuGetLogistics: change both, or tests\Test-NuGetLogistics.ps1 fails.
+function Get-NuGetLogistics {
+    $root = (Get-Location).ProviderPath
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $found = [Collections.Generic.List[object]]::new()
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($root)
+    while ($pending.Count) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction SilentlyContinue) {
+            if ($entry.PSIsContainer) {
+                if ($entry.Name -notin $excluded) { $pending.Push($entry.FullName) }
+                continue
+            }
+            $path = $entry.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            $found.Add([pscustomobject]@{ Path = $path; Name = $entry.Name; Full = $entry.FullName })
+        }
+    }
+    $files = @($found | Sort-Object { $_.Path } -CaseSensitive)
+    $projectFiles = @($files | Where-Object { $_.Path -ne 'build/ProjectTemplate.props' -and $_.Name -match '\.(csproj|props)$' })
+    $mentioning = @($files | Where-Object { $_.Name -match '\.(csproj|props|targets|slnx)$' } | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Text = Get-Content -LiteralPath $_.Full -Raw } })
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.props' -and $_.Name -notlike 'Directory.*.props' -and $_.Name -ne 'ProjectTemplate.props' }) {
+        if ($mentioning | Where-Object { $_.Path -ne $file.Path -and $_.Text -and $_.Text.IndexOf($file.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0 }) { continue }
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $settings = @('Description', 'PackageTags', 'Authors', 'PackageProjectUrl', 'PackageReleaseNotes', 'PackageIcon' | Where-Object { $text -match "<$_[\s>]" })
+        $message = if ($settings.Count) { "$($file.Path) is imported by no project, so the $($settings -join ', ') it sets no longer reach the package: import it from Directory.Build.props, after the import of build/ProjectTemplate.props, or move its settings into the project file." }
+        else { "$($file.Path) is imported by no project: import it or delete it." }
+        [pscustomobject]@{ Kind = 'OrphanProps'; Message = $message }
+    }
+
+    foreach ($file in $projectFiles) {
+        if ((Get-Content -LiteralPath $file.Full -Raw) -match '<GeneratePackageOnBuild>\s*true') {
+            [pscustomobject]@{ Kind = 'GeneratePackageOnBuild'; Message = "$($file.Path) sets GeneratePackageOnBuild to true, which races with dotnet pack from a clean tree (NU5026): delete it; build/dod.ps1 packs on its own." }
+        }
+    }
+
+    $elements = 'ImplicitUsings', 'Nullable', 'LangVersion', 'PublishRepositoryUrl', 'EmbedUntrackedSources', 'IncludeSymbols', 'SymbolPackageFormat', 'DocumentationFile'
+    foreach ($file in $projectFiles | Where-Object { $_.Name -like '*.csproj' -or $_.Name -in 'Directory.Build.props', 'Directory.Packages.props' }) {
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $repeated = @($elements | Where-Object { $text -match "<$_[\s>]" })
+        if ($text -match '<Package(Reference|Version)\b[^>]*\bInclude\s*=\s*"Microsoft\.SourceLink\.GitHub"') { $repeated += 'Microsoft.SourceLink.GitHub' }
+        if ($repeated.Count) {
+            [pscustomobject]@{ Kind = 'RepeatedSettings'; Message = "$($file.Path) repeats settings build/ProjectTemplate.props makes: $($repeated -join ', '). Delete them, or keep one only to differ from the template on purpose." }
+        }
+    }
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.sln' }) {
+        $folder = if ($file.Path.Contains('/')) { $file.Path.Substring(0, $file.Path.LastIndexOf('/') + 1) } else { '' }
+        if (($file.Path.Split('/').Count -le 3) -and -not ($files | Where-Object { $_.Name -like '*.slnx' -and $_.Path -eq "$folder$($_.Name)" })) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+            [pscustomobject]@{ Kind = 'Solution'; Message = "$($file.Path) is a .sln where the template and current SDKs use .slnx: run dotnet sln $($file.Path) migrate, delete the .sln, and rename $name.sln.DotSettings to $name.slnx.DotSettings if it exists." }
+        }
+    }
+
+    $bomExtensions = '.cs', '.csproj', '.props', '.targets', '.slnx', '.json', '.md', '.yml', '.yaml', '.xml', '.txt', '.editorconfig'
+    $withBom = [Collections.Generic.List[string]]::new()
+    foreach ($file in $files | Where-Object { [IO.Path]::GetExtension($_.Name) -in $bomExtensions }) {
+        $bytes = [byte[]]::new(3)
+        try {
+            $stream = [IO.File]::Open($file.Full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try { $read = $stream.Read($bytes, 0, 3) } finally { $stream.Dispose() }
+        }
+        catch [IO.IOException], [UnauthorizedAccessException] {
+            Write-Verbose "Skipped $($file.Path), which can't be read for a byte order mark: $($_.Exception.Message)"
+            continue
+        }
+        if ($read -eq 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $withBom.Add($file.Path) }
+    }
+    if ($withBom.Count) {
+        $listed = ($withBom | Select-Object -First 5) -join ', '
+        if ($withBom.Count -gt 5) { $listed += ", and $($withBom.Count - 5) more" }
+        [pscustomobject]@{ Kind = 'ByteOrderMark'; Message = "$($withBom.Count) file(s) start with a UTF-8 byte order mark, which the template's encoding rule (UTF-8 without BOM) forbids: $listed. Save them without it." }
+    }
+
+    $rootProjects = @($files | Where-Object { $_.Name -like '*.csproj' -and -not $_.Path.Contains('/') })
+    if ($rootProjects.Count) {
+        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') $(if ($rootProjects.Count -eq 1) { 'is' } else { 'are' }) at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
+    }
+}
+
+# Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
+# tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
+function Test-PackageValidationBaseline {
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+}
+
+# A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Update-VersionFile {
+    $path = Join-Path (Get-Location) 'version.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $text = [IO.File]::ReadAllText($path)
+    $result = [pscustomobject]@{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }
+    $tag = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v') }) | Select-Object -Last 1
+    if ($tag) {
+        $number = [version]($tag -replace '^v')
+        $version = "$($number.Major).$($number.Minor).$($number.Build + 1)"
+        $updated = [regex]::Replace($text, '(?m)^  "version": "[^"]*"', "  `"version`": `"$version`"")
+        if ($updated -ne $text) { $text = $updated; $result.Version = $version; $result.Tag = $tag }
+    }
+    $shipped = $null
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = $Matches[1] }
+    if (-not $shipped) { $shipped = (Get-AssemblyVersionFloor).AssemblyVersion }
+    if ($shipped) {
+        $number = [version]$shipped
+        $parts = @($number.Major, $number.Minor, [Math]::Max($number.Build, 0), [Math]::Max($number.Revision, 0))
+        if ($parts[3] -gt 0) { $assembly = $parts -join '.'; $precision = 'revision' }
+        elseif ($parts[2] -gt 0) { $assembly = $parts[0..2] -join '.'; $precision = 'build' }
+        else { $assembly = $parts[0..1] -join '.'; $precision = 'minor' }
+        $updated = $text.Replace('"assemblyVersion": { "precision": "major" }', "`"assemblyVersion`": { `"version`": `"$assembly`", `"precision`": `"$precision`" }")
+        if ($updated -ne $text) { $text = $updated; $result.AssemblyVersion = $assembly; $result.Precision = $precision }
+    }
+    if ($result.Version -or $result.AssemblyVersion) { [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false)) }
+    $result
+}
+
+# The files, other than the template's own, that reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references once version.json exists (the template's ADR-0138).
+function Get-GitVersioningReference {
+    $found = foreach ($file in @(git ls-files -- '*.props' '*.targets' '*.csproj') | Where-Object { $_ -ne 'build/ProjectTemplate.props' }) {
+        $text = Get-Content -LiteralPath $file -Raw
+        if ($file -eq 'Directory.Packages.props') {
+            if ([regex]::Matches($text, '<PackageVersion\s+Include="Nerdbank\.GitVersioning"').Count -gt 1) { $file }
+        }
+        elseif ($text -match '<PackageReference\s+Include="Nerdbank\.GitVersioning"') { $file }
+    }
+    @($found) | Sort-Object
+}
+
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice.
+function Get-CSharpierWrapper([string[]]$TemplateFiles) {
+    if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        $relative = "build/$($file.Name)"
+        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+    }
 }
 
 $project = (Resolve-Path -LiteralPath $Path).Path
@@ -529,10 +758,12 @@ try {
         New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
         [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
     }
+    $versionFileNew = $false
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
-        Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
+        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }
+        Invoke-Copier recopy --force --quiet --vcs-ref :current: @recopyData @exclude
         $reset = @(Get-Change)
         # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
         # and that the target version doesn't skip, was never updated, such as docs/decisions/project-template/README.md. Reset it to the
@@ -577,6 +808,7 @@ try {
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
+        $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $copierArgs += '--data', "csharp_format=$csharpFormat" }
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }
@@ -586,6 +818,7 @@ try {
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
+        $versionFileNew = -not (Test-Path -LiteralPath version.json) -and 'version.json' -notin @($deleted)
         Invoke-Copier @copierArgs
 
         # Put the kept lines back at the end, after any conflict.
@@ -602,6 +835,8 @@ try {
         throw
     }
 
+    # version.json this update added starts after the newest release (Update-VersionFile, ADR-0138).
+    $versionFile = if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) { Update-VersionFile }
     $conflicts = @(git diff --name-only --diff-filter=U)
     if (-not $conflicts) {
         Add-UpdateChange $scratch
@@ -708,12 +943,23 @@ try {
         $ownedCommand
     }
 
-    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor).
-    $floor = Get-AssemblyVersionFloor
+    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor), in a library without version.json, whose assemblyVersion holds it instead.
+    $floor = if (-not (Test-Path -LiteralPath version.json)) { Get-AssemblyVersionFloor }
     if ($floor) {
         ''
         "$($floor.Tag) was released with AssemblyVersion $($floor.AssemblyVersion), and build/ProjectTemplate.props gives every $($floor.Major).x release $($floor.Major).0.0.0, which an application compiled against $($floor.AssemblyVersion) can't load. Until the next major version, set it in Directory.Build.props, after the import of build/ProjectTemplate.props (ADR-0136):"
         "  <PropertyGroup><AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion></PropertyGroup>"
+    }
+    if ($versionFile) {
+        ''
+        $versionLine = 'Added version.json, which Nerdbank.GitVersioning now builds every assembly''s and package''s version from (the template''s ADR-0138, in docs/decisions/project-template/).'
+        $versionLine += if ($versionFile.Version) { " Its version is $($versionFile.Version), the patch after $($versionFile.Tag): the next plan with a Release: line sets it to that release's version." } else { ' Its version is 0.1.0, as the project has no release tag yet.' }
+        if ($versionFile.AssemblyVersion) { $versionLine += " Its assemblyVersion is $($versionFile.AssemblyVersion) with precision $($versionFile.Precision), the AssemblyVersion the current major version's releases need; the change that starts the next major version sets it to { `"precision`": `"major`" }." }
+        $versionLine
+    }
+    if ((Test-Path -LiteralPath version.json) -and (Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') {
+        ''
+        'Directory.Build.props sets AssemblyVersion, which version.json''s assemblyVersion sets once Nerdbank.GitVersioning builds the project (the template''s ADR-0138): delete it from Directory.Build.props.'
     }
     # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
     if ($publishLeftOut) {
@@ -728,6 +974,71 @@ try {
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
+    }
+    # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
+    # workflow_run, so a release misses what each one it doesn't call makes.
+    $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
+    if ($publishText -and (((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/release-provenance\.yml\s*(#.*)?$') -or ((Test-Path -LiteralPath .github/workflows/raise-baseline.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/raise-baseline\.yml\s*(#.*)?$'))) {
+        ''
+        '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
+    }
+    # A library without a package validation baseline (ADR-0147): name the published version to set.
+    if ((Get-Answer 'nuget_package') -eq 'true') {
+        if (-not (Test-PackageValidationBaseline)) {
+            foreach ($published in @(Get-PublishedPackageVersion)) {
+                Write-Warning "$($published.Id) is published on nuget.org at $($published.Version). The template now validates every pack against the last published package (ADR-0147): set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props after the import, or in the project's file."
+            }
+        }
+    }
+    # The stale NuGet logistics of an older library (ADR-0149): named, never fixed.
+    $logistics = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-NuGetLogistics })
+    if ($logistics.Count) {
+        ''
+        'Stale NuGet logistics, which the template now makes or checks itself:'
+        foreach ($finding in $logistics) { "  - $($finding.Message)" }
+        'To fix them in the repository, run:'
+        "  /plan-migration Bring the NuGet logistics up to the template: $(($logistics.Kind | Select-Object -Unique) -join ', ')"
+    }
+    $drifts = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-PackageMetadataDrift })
+    if ($drifts.Count) {
+        ''
+        'Package metadata that differs from the published package:'
+        foreach ($drift in $drifts) { "  - $($drift.Message)" }
+    }
+    # A project that has just turned the C# formatter on: the files IDE0073 now fails (Get-CSharpFileWithoutHeader).
+    if ($Data.ContainsKey('csharp_format') -and (Get-Answer 'csharp_format') -eq 'true') {
+        $headerless = @(Get-CSharpFileWithoutHeader)
+        if ($headerless.Count -gt 0) {
+            ''
+            "csharp_format is on, and $($headerless.Count) C# file$(if ($headerless.Count -ne 1) { 's' }) don't start with the header .editorconfig sets (file_header_template): IDE0073 is a warning, which fails the build, for each. Rewrite each once, as the template's ADR-0148 describes: replace its old header, such as a #region Copyright Preamble block, with the header's lines as // comments, and drop a UTF-8 byte order mark. $(($headerless | Select-Object -First 5) -join ', ')$(if ($headerless.Count -gt 5) { ', ...' })"
+        }
+    }
+    $wrappers = @(Get-CSharpierWrapper $ownable)
+    if ($wrappers.Count -gt 0) {
+        ''
+        "These build scripts of the project's own run dotnet csharpier check, which build/dod.ps1 already runs in its Format stage now that .config/dotnet-tools.json names CSharpier (the template's ADR-0148): $($wrappers -join ', '). Drop that check from them, and update any comment or decision record of the project's that says build/dod.ps1 doesn't check the formatting."
+    }
+    if (Test-Path -LiteralPath version.json) {
+        # Nerdbank.GitVersioning ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix.
+        if ((Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch 'PublicRelease=true') {
+            ''
+            '.github/workflows/publish.yml packs without -p:PublicRelease=true. Nerdbank.GitVersioning takes each package''s version from version.json and ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix, so the check that every package has the tag''s version stops each release before it publishes. Add -p:PublicRelease=true to its dotnet test and dotnet pack commands, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0138, in docs/decisions/project-template/).'
+        }
+        $gitlabCi = if (Test-Path -LiteralPath .gitlab-ci.yml) { Get-Content -LiteralPath .gitlab-ci.yml -Raw } else { '' }
+        if ($gitlabCi -match 'dotnet\s+pack\b|nuget(?:\.exe)?\s+push\b') {
+            $missing = @()
+            if ($gitlabCi -notmatch 'PublicRelease=true') { $missing += '-p:PublicRelease=true' }
+            if ($gitlabCi -notmatch '(?m)GIT_DEPTH:[ \t]*["'']?0["'']?[ \t]*(?:#.*)?\r?$') { $missing += 'GIT_DEPTH: "0"' }
+            if ($missing.Count) {
+                ''
+                ".gitlab-ci.yml packs or pushes packages without $($missing -join ' and '). Nerdbank.GitVersioning takes each package's version from version.json and ignores -p:Version, adds a -g<commit> suffix without PublicRelease, and fails on a shallow clone, which GitLab CI makes unless GIT_DEPTH is `"0`". Add -p:PublicRelease=true to its dotnet pack command and set GIT_DEPTH: `"0`" in its variables, as the publish.yml the project template gives a .NET library on GitHub does (the template's ADR-0138, in docs/decisions/project-template/)."
+            }
+        }
+        $gitVersioning = @(Get-GitVersioningReference)
+        if ($gitVersioning.Count -gt 0) {
+            ''
+            "These files reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references for every project once version.json exists (the template's ADR-0138): $($gitVersioning -join ', '). A second reference fails the build (NU1504, NU1506): delete the project's own PackageReference of it, and its own PackageVersion of it in Directory.Packages.props, keeping the template's."
+        }
     }
 
     Get-AttributionCheckNote $changes

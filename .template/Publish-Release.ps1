@@ -15,10 +15,11 @@
     /ship-plan names it, unless the remote's version tags have no v. Its section, without the heading, is the release's
     notes: up to the next `## ` heading or the link reference definitions that end a Keep a Changelog file. When the
     merged pull request's description also has a `Release:` line, which /ship-plan writes, that names another version,
-    it fails. With pre-release: untracked and no release heading, the version is the pull request's `Release:` line and
-    the notes are the `## [Unreleased]` section. With no such line, or with pre-release: tracked and no release
-    heading, it publishes nothing and leaves the release to /ship-plan. The merged pull request is the one GitHub's
-    commits/<sha>/pulls endpoint returns whose merge_commit_sha is -Commit.
+    it fails. When the commit has a version.json whose version isn't the release's, or that Git can't read, it fails
+    without tagging. With pre-release: untracked and no release heading, the version is the pull request's `Release:`
+    line and the notes are the `## [Unreleased]` section. With no such line, or with pre-release: tracked and no
+    release heading, it publishes nothing and leaves the release to /ship-plan. The merged pull request is the one
+    GitHub's commits/<sha>/pulls endpoint returns whose merge_commit_sha is -Commit.
 
     It tags -Commit, the commit the pull request merged as, with an annotated tag, and only when the version is newer
     than every version tag the remote has, so an edit to an older section tags nothing. It's safe to run again: a tag the
@@ -174,6 +175,16 @@ if ($tags -ccontains $version) {
     if ($newer.Count) {
         "The release is $version, but $Remote has $(($newer | Sort-Object { [version]($_ -replace '^v') } | Select-Object -Last 1)) already: nothing to tag."
         exit 0
+    }
+    # A .NET library's packages take their version from version.json (ADR-0138): a tag whose commit holds another would publish none.
+    # Only a commit without the file skips the check; one whose file Git can't list or read stops the release, because a tag is never moved.
+    $listed = @(& git ls-tree --name-only $sha -- version.json)
+    if ($LASTEXITCODE) { throw "git ls-tree couldn't list $sha (exit $LASTEXITCODE), so version.json can't be checked: nothing is tagged." }
+    if ($listed -contains 'version.json') {
+        $versionJson = & git show "${sha}:version.json" 2>$null
+        if ($LASTEXITCODE) { throw "version.json at $sha can't be read (git show exited $LASTEXITCODE): nothing is tagged." }
+        $held = try { "$((($versionJson -join "`n") | ConvertFrom-Json).version)" } catch { '' }
+        if ($held -ne $number) { throw "version.json at $sha holds version '$held', but the release is ${number}: set its version to $number in a pull request, whose merge tags the release." }
     }
     if ($PSCmdlet.ShouldProcess("$sha on $Remote", "Tag $version")) {
         & git tag -a $version -m $version $sha
