@@ -487,6 +487,9 @@ function droppedNote(dropped: DroppedFinding[], checkUrl: string): string[] {
 }
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
+// Backslashes stay as they are: GitHub's table parser never splits a cell at a pipe that follows a backslash, and
+// a backslash escape isn't processed inside a code span, so doubling them would show \\ in every file path and
+// backticked title. CodeQL's js/incomplete-sanitization alert on the pipe escape is a false positive for that reason.
 function cell(text: string): string {
   return text
     .replace(/\|/g, '\\|')
