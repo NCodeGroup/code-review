@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The repository follows project-template v0.96.0 (from v0.86.1): it gains `CODE_OF_CONDUCT.md`, `GOVERNANCE.md`, `ROADMAP.md`, `docs/architecture.md`, `docs/assurance-case.md` and `docs/best-practices-badge.md`, the documents the OpenSSF Best Practices silver level asks for, an OpenSSF Scorecard workflow (`.github/workflows/scorecard.yml`), read-only top-level permissions in `.github/workflows/copilot-setup-steps.yml`, and the template's newer review commands, which judge every NCode Review finding whatever its severity; `AGENTS.md`, `CONTRIBUTING.md`, `README.md` and `docs/README.md` describe them.
+
 ## [1.4.0] - 2026-11-15
 
 ### Added
