@@ -1,0 +1,5 @@
+# The one-time Biome reformat of the TypeScript (#210).
+# Plan step 2: Reformat the code with Biome
+8c7b8407595f0bca90f9a4463dd9aeb290ecf956
+# Plan step 3: Apply Biome's template-literal and optional-chain fixes
+c7c09d339270a4d6108a6445b2ad772fbf40a7bc
