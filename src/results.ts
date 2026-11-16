@@ -180,7 +180,10 @@ export function costsByProvider(calls: CallRecord[]): { provider: Provider; call
   const out: { provider: Provider; calls: number; costUsd: number }[] = [];
   for (const call of calls) {
     let entry = out.find((e) => e.provider === call.provider);
-    if (!entry) out.push((entry = { provider: call.provider, calls: 0, costUsd: 0 }));
+    if (!entry) {
+      entry = { provider: call.provider, calls: 0, costUsd: 0 };
+      out.push(entry);
+    }
     entry.calls++;
     entry.costUsd += call.costUsd;
   }
@@ -404,8 +407,8 @@ function raisedAs(earlier: EarlierThread): string {
 
 // How a re-review's summary names an earlier finding: a link to its thread, or its id as plain text when the thread's
 // address isn't an https link. The name is escaped as the caller's text needs, as plain text unless it says otherwise.
-export function earlierFindingLink(id: string, url: string, escape: (text: string) => string = plainText): string {
-  const name = escape(id) || 'an earlier finding';
+export function earlierFindingLink(id: string, url: string, escapeText: (text: string) => string = plainText): string {
+  const name = escapeText(id) || 'an earlier finding';
   return threadUrlPattern.test(url) ? `[${name}](${url})` : name;
 }
 

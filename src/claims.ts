@@ -18,7 +18,7 @@ export function droppedLine(dropped: DroppedFinding[]): string {
   return `Dropped ${dropped.length} finding${dropped.length === 1 ? '' : 's'} saying a changed file isn't changed: ${[...new Set(dropped.map((d) => printable(d.file)))].join(', ')}`;
 }
 
-function escape(text: string): string {
+function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -32,8 +32,8 @@ function baseName(file: string): string {
 function mention(file: string, nameIsUnique: boolean): string {
   const name = baseName(file);
   const names = nameIsUnique && name !== file ? [file, name] : [file];
-  const paths = names.filter((n) => /[./]/.test(n)).map(escape);
-  const words = names.filter((n) => !/[./]/.test(n)).map(escape);
+  const paths = names.filter((n) => /[./]/.test(n)).map(escapeRegExp);
+  const words = names.filter((n) => !/[./]/.test(n)).map(escapeRegExp);
   const forms: string[] = [];
   if (paths.length)
     forms.push(String.raw`[\x60'"]?(?<![\w./-])(?:\.\/)?(?:${paths.join('|')})(?![\w/-]|\.\w|'s\b)[\x60'"]?`);
