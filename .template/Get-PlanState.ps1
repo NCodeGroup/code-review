@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, push-branch, pr-branch, default, host, plan, issue, refs, feedback, release, steps, reviewed, landing, pre-release, protected, ahead, behind, landed,
-    pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans, analyses and next. A fact that does not apply prints
+    pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, version-file, published, issue-state, issue-states, unfiled, dirty, plans, analyses and next. A fact that does not apply prints
     "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD, or has HEAD's tree while HEAD changes a file since it left the default branch, so a new plan's empty commits on top of an earlier request's merge don't count. pr names that request, or else the newest one.
@@ -22,12 +22,13 @@
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     review-bots names the review bots whose findings /run-issues and /address-feedback may act on, by login without
     the [bot] suffix GitHub's REST API adds, joined by commas: ncode-review by default, or none.
-    max-review-rounds is the number of rounds of pull request feedback after which /run-issues recommends the merge
-    and stops adding steps for the bots' findings, 3 by default; a value that isn't a whole number from 1 to 999 reads as 3.
+    max-review-rounds is the number of rounds of pull request feedback after which /run-issues and /run-feedback ask
+    the review bot for no further review, while still fixing and answering its findings, 3 by default; a value that isn't a whole number from 1 to 999 reads as 3.
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag on origin (the clone's tags when origin's can't be read) or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
     tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
     changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none. With pre-release untracked, a tag below 1.0.0 doesn't count. changelog-duplicates names each Keep a Changelog heading (### Added, Changed, Deprecated, Removed, Fixed or Security) that a section of the changelog has more than once, as <section> <heading> joined by ", ", such as [Unreleased] Changed, or - when every section has at most one of each; two pull requests that each add the same heading to a section leave it twice once both merge.
+    version-file is match when the root version.json's version is the plan's Release: version without its v, mismatch <version> when it holds another (mismatch unreadable when it can't be read), and - without the file or a Release: line.
     unfiled counts the lines of PLAN.md's ## Follow-ups section, up to the next ## heading, that start with "- " or "* " and don't end with a mark /ship-plan appends: an em dash, then "filed as #<number>" or "already tracked as #<number>", either with <owner/repo> before the #, or "dropped". A line that says only None or Nothing doesn't count. It is 0 without the section and - without a plan. next is ship-plan rather than finish-plan for a landed plan while unfiled is above 0 and the Landing section's follow-ups isn't none, so /ship-plan files them.
     analyses names the other worktrees under .claude/worktrees/ that hold no PLAN.md but an ANALYSIS.md, or whose newest commit's subject starts with "Record decision: ", as <name>=<title> sorted by name and joined by "; ", or -. The title is ANALYSIS.md's first # heading without an "Analysis:" prefix, else the subject after "Record decision: ". Without a plan, next names the open plans and analyses.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
@@ -129,6 +130,13 @@ function Get-ChangelogDuplicate([string[]]$Lines) {
         }
     }
     if ($found.Count) { $found -join ', ' } else { '-' }
+}
+
+# version.json's version against the plan's Release: version: match, mismatch <version>, or - without the file or the line.
+function Get-VersionFileState([string]$Path, [string]$Release) {
+    if ($Release -eq '-' -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return '-' }
+    $held = try { "$((Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json).version)" } catch { '' }
+    if ($held -eq ($Release -replace '^v')) { 'match' } elseif ($held) { "mismatch $held" } else { 'mismatch unreadable' }
 }
 
 # The number of follow-ups in a plan's ## Follow-ups section that /ship-plan has not filed, tracked or dropped.
@@ -561,6 +569,7 @@ try {
     $mergedTags = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $tv = ConvertTo-PlanVersion "$t"; if ($null -ne $tv) { [pscustomobject]@{ Tag = "$t"; Version = $tv } } })
     $changelogBackfill = Get-ChangelogBackfill $changelogLines $mergedTags -Untracked:($policy['pre-release'] -eq 'untracked')
     $changelogDuplicates = Get-ChangelogDuplicate $changelogLines
+    $versionFile = Get-VersionFileState (Join-Path $folder 'version.json') $release
     # Pre-release: the Landing section says untracked, no stable version (1.0.0 or later) is tagged in HEAD's history, and the plan's Release: version isn't stable.
     $preRelease = 'no'
     if ($policy['pre-release'] -eq 'untracked') {
@@ -725,6 +734,7 @@ try {
     Write-Output "changelog-version: $changelogVersion"
     Write-Output "changelog-backfill: $changelogBackfill"
     Write-Output "changelog-duplicates: $changelogDuplicates"
+    Write-Output "version-file: $versionFile"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"
