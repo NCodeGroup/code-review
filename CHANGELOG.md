@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The repository is licensed under the Apache License 2.0, as the other NCodeGroup repositories are: `LICENSE.txt` holds the license and `COPYRIGHT.txt` the copyright notice.
+- `.git-blame-ignore-revs` lists the commits of the one-time Biome reformat, so GitHub's blame view and `git blame` (with `git config blame.ignoreRevsFile .git-blame-ignore-revs`) show who last changed a line instead of the reformat ([#212](https://github.com/NCodeGroup/code-review/issues/212), [ADR-1010](docs/decisions/1010-biome-formats-and-lints-the-typescript.md)).
 
 ### Changed
 
