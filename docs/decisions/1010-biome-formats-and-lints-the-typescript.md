@@ -18,7 +18,7 @@ and `.template/`, as `biome.json` sets: 2 spaces, single quotes, semicolons, tra
 columns, and the recommended rules with five off:
 
 - `complexity/useLiteralKeys` conflicts with `noPropertyAccessFromIndexSignature` in `tsconfig.json` (`env['X']`).
-- `style/noNonNullAssertion`: `noUncheckedIndexedAccess` makes `!` the deliberate idiom, with 417 uses.
+- `style/noNonNullAssertion`: `noUncheckedIndexedAccess` makes `!` the deliberate idiom.
 - `suspicious/noControlCharactersInRegex`: the `printable` regex matches control characters on purpose.
 - `suspicious/noTemplateCurlyInString`: GitHub `${{ }}` expressions appear in strings.
 - `complexity/noUselessStringRaw`: `String.raw` marks regex and PowerShell source on purpose.
@@ -33,12 +33,13 @@ reason.
 
 1. ESLint with typescript-eslint and Prettier. It takes several packages and has no TypeScript 7 support.
 2. dprint with no linter. It only formats, so the lint half of the criterion stays unmet.
-3. Biome. It is one package that does both jobs, and it checks the repository's 114 TypeScript files in about 0.1 s.
+3. Biome. It is one package that does both jobs, and it parses TypeScript itself, so the
+   compiler's version doesn't hold it back.
    Chosen.
 
 ## Consequences
 
-- One reformat commit touches about 101 files.
+- One reformat commit touches most files.
 - A Biome update can change formatting, and its Dependabot pull request then fails CI until `npm run format` runs on
   that branch.
 - Markdown, JSON and YAML aren't formatted.
