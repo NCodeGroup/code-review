@@ -981,8 +981,8 @@ test('earlierBlock stops at its size cap with whole entries, the unresolved ones
 
 test('takenBackText stops before a file that would pass its size cap, and keeps whole files', () => {
   const text = takenBackText({
-    'a.ts': ['+' + 'a'.repeat(15_000)],
-    'b.ts': ['+' + 'b'.repeat(15_000)],
+    'a.ts': [`+${'a'.repeat(15_000)}`],
+    'b.ts': [`+${'b'.repeat(15_000)}`],
     'c.ts': ['+c'],
   });
   assert.equal(text, `a.ts:\n+${'a'.repeat(15_000)}\n`);

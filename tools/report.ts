@@ -418,13 +418,7 @@ export function parseReportMarker(body: string): ReportData | undefined {
   } catch {
     return undefined;
   }
-  if (
-    !raw ||
-    raw['version'] !== 1 ||
-    typeof raw['month'] !== 'string' ||
-    typeof raw['totals'] !== 'object' ||
-    !raw['totals']
-  )
+  if (raw?.['version'] !== 1 || typeof raw['month'] !== 'string' || typeof raw['totals'] !== 'object' || !raw['totals'])
     return undefined;
   const totals = raw['totals'] as Record<string, unknown>;
   const cost = (totals['cost'] ?? {}) as Record<string, unknown>;

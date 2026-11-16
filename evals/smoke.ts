@@ -87,7 +87,7 @@ export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined, de
       : '**Passed.**';
   const messages = [...failures, ...notices];
   const body = baseline ? compare(baseline, run, ['baseline', 'this run']) : runTable(run);
-  const markdown = `## Smoke eval\n\n${status}\n\n${messages.length ? fenced(messages.join('\n')) + '\n' : ''}${fenced(body)}`;
+  const markdown = `## Smoke eval\n\n${status}\n\n${messages.length ? `${fenced(messages.join('\n'))}\n` : ''}${fenced(body)}`;
   return { failures, notices, markdown };
 }
 

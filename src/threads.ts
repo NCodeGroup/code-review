@@ -227,7 +227,7 @@ function prose(value: string): string {
 
 // The places in other files that a finding covers, each as a code span, escaped as text() does.
 function placesText(places: Place[]): string {
-  return places.map((p) => '`' + text(p.file) + ':' + p.line + '`').join(', ');
+  return places.map((p) => `\`${text(p.file)}:${p.line}\``).join(', ');
 }
 
 export function threadBody(finding: ReviewedFinding, suggestion?: Suggestion): string {

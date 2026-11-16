@@ -844,7 +844,7 @@ test('supersededComment collapses an older summary so only the newest is still a
   const { summaryComments, supersededComment, supersededMarker, summaryMarker, reviewedHead } = await import(
     '../src/results.ts'
   );
-  const body = supersededComment('121b99b0' + '0'.repeat(32), 'https://github.com/o/r/pull/1#issuecomment-9');
+  const body = supersededComment(`121b99b0${'0'.repeat(32)}`, 'https://github.com/o/r/pull/1#issuecomment-9');
   assert.ok(body.startsWith(supersededMarker));
   assert.ok(!body.startsWith(summaryMarker));
   assert.equal(reviewedHead(body), undefined);

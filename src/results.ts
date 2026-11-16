@@ -590,7 +590,7 @@ export function checkSummary(results: Results): string {
   const over = lines.join('\n').length - maxCheckText;
   if (over > 0) {
     const summary = lines[summaryAt]!;
-    lines[summaryAt] = summary.slice(0, Math.max(0, summary.length - over - 1)).replace(/&[a-z]*$/, '') + '…';
+    lines[summaryAt] = `${summary.slice(0, Math.max(0, summary.length - over - 1)).replace(/&[a-z]*$/, '')}…`;
   }
   return lines.join('\n');
 }
@@ -610,7 +610,7 @@ export function checkText(results: Results): string {
       // The check run escapes each place with cell(), as its own file:line spans do; a thread uses placesText and
       // text().
       ...(f.places?.length
-        ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), '']
+        ? [`*Also at:* ${f.places.map((p) => `\`${cell(p.file)}:${p.line}\``).join(', ')}`, '']
         : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
