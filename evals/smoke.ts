@@ -23,7 +23,11 @@ export const proposedName = 'proposed-baseline-smoke.json';
 // The environment variables that may hold a secret of the smoke eval's job.
 export const secretVariables = ['AWS_BEARER_TOKEN_BEDROCK', 'CODE_REVIEW_BEDROCK_KEY', 'GH_TOKEN', 'GITHUB_TOKEN'];
 
-export interface SmokeVerdict { failures: string[]; notices: string[]; markdown: string }
+export interface SmokeVerdict {
+  failures: string[];
+  notices: string[];
+  markdown: string;
+}
 
 const caseIds = (output: EvalOutput) => output.cases.map((c) => c.id).sort();
 
@@ -41,30 +45,46 @@ function runTable(run: EvalOutput): string {
 }
 
 // Model output reaches the summary only inside a code block, which a run of backticks could otherwise close.
-const fenced = (text: string) => `\`\`\`text\n${text.replace(/`{3,}/g, (ticks) => "'".repeat(ticks.length)).trimEnd()}\n\`\`\`\n`;
+const fenced = (text: string) =>
+  `\`\`\`text\n${text.replace(/`{3,}/g, (ticks) => "'".repeat(ticks.length)).trimEnd()}\n\`\`\`\n`;
 
 export function smokeCheck(run: EvalOutput, baseline: EvalOutput | undefined, deletedIn?: string): SmokeVerdict {
   const failures: string[] = [];
   const notices: string[] = [];
   for (const c of run.cases) {
     for (const f of c.forbidden.filter((x) => x.raisedBy.length)) {
-      failures.push(`${c.id} raised a must-not-flag concern (by ${f.raisedBy.join('; ')})${f.concern ? `: ${f.concern}` : '.'}`);
+      failures.push(
+        `${c.id} raised a must-not-flag concern (by ${f.raisedBy.join('; ')})${f.concern ? `: ${f.concern}` : '.'}`,
+      );
     }
   }
   if (baseline) {
     const [ours, theirs] = [caseIds(run), caseIds(baseline)];
     if (ours.join(',') !== theirs.join(',')) {
-      failures.push(`The run covers ${ours.join(', ')} but ${baselineFile} covers ${theirs.join(', ')}, so caught can't be compared. Adopt this run's proposed baseline once it looks right.`);
+      failures.push(
+        `The run covers ${ours.join(', ')} but ${baselineFile} covers ${theirs.join(', ')}, so caught can't be compared. Adopt this run's proposed baseline once it looks right.`,
+      );
     } else {
       const drop = baseline.summary.caught - run.summary.caught;
-      if (drop > noiseLimit) failures.push(`Caught dropped by ${drop}, from ${baseline.summary.caught}/${baseline.summary.expected} to ${run.summary.caught}/${run.summary.expected}: more than the ${noiseLimit} a run varies by.`);
+      if (drop > noiseLimit)
+        failures.push(
+          `Caught dropped by ${drop}, from ${baseline.summary.caught}/${baseline.summary.expected} to ${run.summary.caught}/${run.summary.expected}: more than the ${noiseLimit} a run varies by.`,
+        );
     }
   } else if (deletedIn) {
-    failures.push(`${baselineFile} is missing, but commit ${deletedIn} deleted it: restore it, or adopt a new baseline from this run's ${proposedName} in a pull request.`);
+    failures.push(
+      `${baselineFile} is missing, but commit ${deletedIn} deleted it: restore it, or adopt a new baseline from this run's ${proposedName} in a pull request.`,
+    );
   } else {
-    notices.push(`There is no ${baselineFile} yet, so caught wasn't compared. This run is the proposed baseline: ${proposedName} in the smoke-eval artifact. The README's Smoke eval section says how to adopt it.`);
+    notices.push(
+      `There is no ${baselineFile} yet, so caught wasn't compared. This run is the proposed baseline: ${proposedName} in the smoke-eval artifact. The README's Smoke eval section says how to adopt it.`,
+    );
   }
-  const status = failures.length ? '**Failed.**' : notices.length ? '**Passed** with no baseline to compare with.' : '**Passed.**';
+  const status = failures.length
+    ? '**Failed.**'
+    : notices.length
+      ? '**Passed** with no baseline to compare with.'
+      : '**Passed.**';
   const messages = [...failures, ...notices];
   const body = baseline ? compare(baseline, run, ['baseline', 'this run']) : runTable(run);
   const markdown = `## Smoke eval\n\n${status}\n\n${messages.length ? fenced(messages.join('\n')) + '\n' : ''}${fenced(body)}`;
@@ -77,7 +97,10 @@ export function trimmed(output: EvalOutput): EvalOutput {
   return {
     summary: output.summary,
     cases: output.cases.map(({ id, verdicts, forbidden, findings, precision, reviewCostUsd, costUsd }) => ({
-      id, verdicts, forbidden, findings,
+      id,
+      verdicts,
+      forbidden,
+      findings,
       ...(precision === undefined ? {} : { precision }),
       ...(reviewCostUsd === undefined ? {} : { reviewCostUsd }),
       costUsd,
@@ -136,20 +159,31 @@ export function checkFiles(runFile: string, baselinePath: string, deletedIn?: st
 // The last commit that changed baselineFile in root's history, or undefined when none did. A shallow checkout can't
 // tell, so it throws rather than pass a deleted baseline.
 export function lastBaselineCommit(root: string): string | undefined {
-  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  if (git('rev-parse', '--is-shallow-repository') === 'true') throw new Error(`The checkout is shallow, so it can't tell whether ${baselineFile} was deleted; check out with fetch-depth: 0.`);
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  if (git('rev-parse', '--is-shallow-repository') === 'true')
+    throw new Error(
+      `The checkout is shallow, so it can't tell whether ${baselineFile} was deleted; check out with fetch-depth: 0.`,
+    );
   return git('log', '-1', '--format=%h', '--', baselineFile) || undefined;
 }
 
 function main(): void {
   const [command, target] = process.argv.slice(2);
   const annotate = (kind: 'notice' | 'error', message: string) =>
-    console.log(process.env['GITHUB_ACTIONS'] === 'true' ? `::${kind} title=Smoke eval::${commandData(message)}` : `${kind}: ${message}`);
+    console.log(
+      process.env['GITHUB_ACTIONS'] === 'true'
+        ? `::${kind} title=Smoke eval::${commandData(message)}`
+        : `${kind}: ${message}`,
+    );
   if (command === 'check' && target) {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const baselinePath = baselinePathFrom(process.argv, root);
     // Only the committed baseline has a history; a --baseline file is the caller's.
-    const deletedIn = baselinePath === path.join(root, baselineFile) && !existsSync(baselinePath) ? lastBaselineCommit(root) : undefined;
+    const deletedIn =
+      baselinePath === path.join(root, baselineFile) && !existsSync(baselinePath)
+        ? lastBaselineCommit(root)
+        : undefined;
     const verdict = checkFiles(path.resolve(target), baselinePath, deletedIn);
     const summaryFile = process.env['GITHUB_STEP_SUMMARY'];
     if (summaryFile) appendFileSync(summaryFile, verdict.markdown);

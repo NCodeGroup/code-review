@@ -62,7 +62,8 @@ export function monthWindow(input: string | undefined, now: Date): Month {
   const given = input?.trim();
   if (given) {
     const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(given);
-    if (!match) throw new Error(`The month must be YYYY-MM, such as 2026-10; got ${JSON.stringify(given.slice(0, 40))}.`);
+    if (!match)
+      throw new Error(`The month must be YYYY-MM, such as 2026-10; got ${JSON.stringify(given.slice(0, 40))}.`);
     year = Number(match[1]);
     month = Number(match[2]);
   } else {
@@ -96,23 +97,34 @@ const repositoryPattern = /^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9._-]+$/;
 export function parseRepositories(list: string | undefined): string[] {
   const names = (list ?? '').split(/[\s,]+/).filter(Boolean);
   for (const name of names) {
-    if (!repositoryPattern.test(name)) throw new Error(`${JSON.stringify(name.slice(0, 100))} isn't a repository's owner/name.`);
+    if (!repositoryPattern.test(name))
+      throw new Error(`${JSON.stringify(name.slice(0, 100))} isn't a repository's owner/name.`);
   }
   return [...new Set(names)].sort();
 }
 
 // The owner's public repositories that run the review: those with the caller workflow. The workflow's GITHUB_TOKEN can't
 // list the app's installations, which needs the app's own key, but it reads any public repository.
-export async function discoverRepositories(api: Api, owner: string, notes: string[], log: (line: string) => void): Promise<string[]> {
+export async function discoverRepositories(
+  api: Api,
+  owner: string,
+  notes: string[],
+  log: (line: string) => void,
+): Promise<string[]> {
   type Listed = { full_name?: string; fork?: boolean; private?: boolean };
   const candidates: string[] = [];
   for (let page = 1; page <= maxRepositoryPages; page++) {
-    const listed = (await api('GET', `/orgs/${encodeURIComponent(owner)}/repos?type=public&per_page=${pageSize}&page=${page}`)) as Listed[];
+    const listed = (await api(
+      'GET',
+      `/orgs/${encodeURIComponent(owner)}/repos?type=public&per_page=${pageSize}&page=${page}`,
+    )) as Listed[];
     for (const repo of listed) {
-      if (typeof repo.full_name === 'string' && repositoryPattern.test(repo.full_name) && !repo.fork && !repo.private) candidates.push(repo.full_name);
+      if (typeof repo.full_name === 'string' && repositoryPattern.test(repo.full_name) && !repo.fork && !repo.private)
+        candidates.push(repo.full_name);
     }
     if (listed.length < pageSize) break;
-    if (page === maxRepositoryPages) notes.push(`Only the first ${maxRepositoryPages * pageSize} of ${owner}'s repositories were checked.`);
+    if (page === maxRepositoryPages)
+      notes.push(`Only the first ${maxRepositoryPages * pageSize} of ${owner}'s repositories were checked.`);
   }
   const found: string[] = [];
   for (const repository of candidates) {
@@ -136,20 +148,31 @@ export interface ListedPull {
 
 // The pull requests closed in the month, merged or not. GitHub lists them by last update, newest first, and a pull
 // request is updated when it closes, so the listing stops at the first one last updated before the month began.
-export async function listClosedPulls(api: Api, repository: string, month: Month, notes: string[]): Promise<ListedPull[]> {
+export async function listClosedPulls(
+  api: Api,
+  repository: string,
+  month: Month,
+  notes: string[],
+): Promise<ListedPull[]> {
   type Listed = { number?: number; closed_at?: string | null; updated_at?: string };
   const pulls: ListedPull[] = [];
   for (let page = 1; page <= maxPullPages; page++) {
-    const listed = (await api('GET', `/repos/${repository}/pulls?state=closed&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`)) as Listed[];
+    const listed = (await api(
+      'GET',
+      `/repos/${repository}/pulls?state=closed&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`,
+    )) as Listed[];
     for (const pull of listed) {
       if (typeof pull.number !== 'number' || typeof pull.closed_at !== 'string') continue;
       const closed = Date.parse(pull.closed_at);
-      if (closed >= month.start.getTime() && closed < month.end.getTime()) pulls.push({ number: pull.number, closed_at: pull.closed_at });
+      if (closed >= month.start.getTime() && closed < month.end.getTime())
+        pulls.push({ number: pull.number, closed_at: pull.closed_at });
     }
     const oldest = listed.at(-1)?.updated_at;
     if (listed.length < pageSize || (oldest !== undefined && Date.parse(oldest) < month.start.getTime())) return pulls;
   }
-  notes.push(`${repository} has more closed pull requests updated since ${month.name} began than the ${maxPullPages * pageSize} read; the rest are left out.`);
+  notes.push(
+    `${repository} has more closed pull requests updated since ${month.name} began than the ${maxPullPages * pageSize} read; the rest are left out.`,
+  );
   return pulls;
 }
 
@@ -170,7 +193,8 @@ export interface PullRecord {
 }
 
 // The cost line of a summary comment posted before summaries had a review marker.
-const visibleCost = /^<sub>Trial: findings are posted as review threads and in the check run\. \$(\d+(?:\.\d+)?) on (Claude API|Amazon Bedrock), \d+s, at [0-9a-f]{7}\./m;
+const visibleCost =
+  /^<sub>Trial: findings are posted as review threads and in the check run\. \$(\d+(?:\.\d+)?) on (Claude API|Amazon Bedrock), \d+s, at [0-9a-f]{7}\./m;
 
 function isCost(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -179,12 +203,18 @@ function isCost(value: unknown): value is number {
 // The reviews one bot comment records.
 function commentReviews(body: string): { reviews: Review[]; unknown: number } {
   const reviews = reviewRecords(body).flatMap((record) =>
-    providers.includes(record.provider) && isCost(record.costUsd) ? [{ provider: record.provider, costUsd: record.costUsd }] : [],
+    providers.includes(record.provider) && isCost(record.costUsd)
+      ? [{ provider: record.provider, costUsd: record.costUsd }]
+      : [],
   );
   if (reviews.length) return { reviews, unknown: 0 };
   if (body.startsWith(summaryMarker)) {
     const line = visibleCost.exec(body);
-    if (line) return { reviews: [{ provider: line[2] === 'Claude API' ? 'anthropic' : 'bedrock', costUsd: Number(line[1]) }], unknown: 0 };
+    if (line)
+      return {
+        reviews: [{ provider: line[2] === 'Claude API' ? 'anthropic' : 'bedrock', costUsd: Number(line[1]) }],
+        unknown: 0,
+      };
     return { reviews: [], unknown: 1 };
   }
   return { reviews: [], unknown: body.startsWith(supersededMarker) ? 1 : 0 };
@@ -196,7 +226,9 @@ function markerFindings(body: string): PullRecord['findings'] {
   return marker.findings.flatMap((finding: unknown) => {
     const { outcome, reviewers } = (finding ?? {}) as { outcome?: unknown; reviewers?: unknown };
     if (!outcomes.includes(outcome as Outcome)) return [];
-    const names = Array.isArray(reviewers) ? reviewers.filter((r): r is string => typeof r === 'string' && r.length > 0) : [];
+    const names = Array.isArray(reviewers)
+      ? reviewers.filter((r): r is string => typeof r === 'string' && r.length > 0)
+      : [];
     return [{ reviewers: [...new Set(names)], outcome: outcome as Outcome }];
   });
 }
@@ -216,7 +248,8 @@ export async function readPull(api: Api, repository: string, number: number): Pr
       return undefined;
     }
   });
-  if (!comments) throw new Error(failure ? `couldn't read its comments (${failure})` : 'it has more comments than are read');
+  if (!comments)
+    throw new Error(failure ? `couldn't read its comments (${failure})` : 'it has more comments than are read');
   let findings: PullRecord['findings'];
   const reviews: Review[] = [];
   let unknownCost = 0;
@@ -229,7 +262,8 @@ export async function readPull(api: Api, repository: string, number: number): Pr
     const found = commentReviews(body);
     reviews.push(...found.reviews);
     unknownCost += found.unknown;
-    reviewed ||= !!recorded || body.startsWith(summaryMarker) || body.startsWith(supersededMarker) || found.reviews.length > 0;
+    reviewed ||=
+      !!recorded || body.startsWith(summaryMarker) || body.startsWith(supersededMarker) || found.reviews.length > 0;
   }
   if (!reviewed) return undefined;
   return { repository, number, ...(findings ? { findings } : {}), reviews, unknownCost };
@@ -274,7 +308,12 @@ function roundUsd(value: number): number {
 }
 
 export function aggregate(month: string, repositories: string[], pulls: PullRecord[]): ReportData {
-  const totals: Totals = { ...emptyRepository(), cost: { anthropic: 0, bedrock: 0 }, outcomeCostUsd: 0, unknownCost: 0 };
+  const totals: Totals = {
+    ...emptyRepository(),
+    cost: { anthropic: 0, bedrock: 0 },
+    outcomeCostUsd: 0,
+    unknownCost: 0,
+  };
   const reviewers = new Map<string, Tally>();
   const byRepository = new Map<string, RepositoryTally>();
   for (const pull of pulls) {
@@ -306,8 +345,16 @@ export function aggregate(month: string, repositories: string[], pulls: PullReco
   totals.outcomeCostUsd = roundUsd(totals.outcomeCostUsd);
   for (const provider of providers) totals.cost[provider] = roundUsd(totals.cost[provider]);
   for (const repo of byRepository.values()) repo.costUsd = roundUsd(repo.costUsd);
-  const sorted = <T>(map: Map<string, T>) => Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-  return { version: 1, month, repositories: repositories.length, totals, reviewers: sorted(reviewers), byRepository: sorted(byRepository) };
+  const sorted = <T>(map: Map<string, T>) =>
+    Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return {
+    version: 1,
+    month,
+    repositories: repositories.length,
+    totals,
+    reviewers: sorted(reviewers),
+    byRepository: sorted(byRepository),
+  };
 }
 
 export function findingCount(tally: Tally): number {
@@ -338,12 +385,22 @@ function count(value: unknown): number {
 
 function readTally(value: unknown): Tally {
   const raw = (value ?? {}) as Record<string, unknown>;
-  return { fixed: count(raw['fixed']), dismissed: count(raw['dismissed']), acknowledged: count(raw['acknowledged']), ignored: count(raw['ignored']) };
+  return {
+    fixed: count(raw['fixed']),
+    dismissed: count(raw['dismissed']),
+    acknowledged: count(raw['acknowledged']),
+    ignored: count(raw['ignored']),
+  };
 }
 
 function readRepository(value: unknown): RepositoryTally {
   const raw = (value ?? {}) as Record<string, unknown>;
-  return { ...readTally(raw), pulls: count(raw['pulls']), withOutcomes: count(raw['withOutcomes']), costUsd: isCost(raw['costUsd']) ? raw['costUsd'] : 0 };
+  return {
+    ...readTally(raw),
+    pulls: count(raw['pulls']),
+    withOutcomes: count(raw['withOutcomes']),
+    costUsd: isCost(raw['costUsd']) ? raw['costUsd'] : 0,
+  };
 }
 
 function readMap<T>(value: unknown, read: (entry: unknown) => T): Record<string, T> {
@@ -361,7 +418,14 @@ export function parseReportMarker(body: string): ReportData | undefined {
   } catch {
     return undefined;
   }
-  if (!raw || raw['version'] !== 1 || typeof raw['month'] !== 'string' || typeof raw['totals'] !== 'object' || !raw['totals']) return undefined;
+  if (
+    !raw ||
+    raw['version'] !== 1 ||
+    typeof raw['month'] !== 'string' ||
+    typeof raw['totals'] !== 'object' ||
+    !raw['totals']
+  )
+    return undefined;
   const totals = raw['totals'] as Record<string, unknown>;
   const cost = (totals['cost'] ?? {}) as Record<string, unknown>;
   return {
@@ -370,7 +434,10 @@ export function parseReportMarker(body: string): ReportData | undefined {
     repositories: count(raw['repositories']),
     totals: {
       ...readRepository(totals),
-      cost: { anthropic: isCost(cost['anthropic']) ? cost['anthropic'] : 0, bedrock: isCost(cost['bedrock']) ? cost['bedrock'] : 0 },
+      cost: {
+        anthropic: isCost(cost['anthropic']) ? cost['anthropic'] : 0,
+        bedrock: isCost(cost['bedrock']) ? cost['bedrock'] : 0,
+      },
       outcomeCostUsd: isCost(totals['outcomeCostUsd']) ? totals['outcomeCostUsd'] : 0,
       unknownCost: count(totals['unknownCost']),
     },
@@ -380,7 +447,13 @@ export function parseReportMarker(body: string): ReportData | undefined {
 }
 
 function cell(text: string): string {
-  return neutralizeMentions(text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;'));
+  return neutralizeMentions(
+    text
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/</g, '&lt;'),
+  );
 }
 
 const dash = '—';
@@ -451,25 +524,37 @@ export function reportBody(data: ReportData, previous: ReportData | undefined, n
     ['Ignored', 'count', (x) => x.ignored],
     ['Precision', 'percent', (x) => precision(x)],
     ['Cost', 'usd', (x) => x.costUsd],
-    ...providers.map((provider): [string, Kind, (totals: Totals) => number | undefined] => [`Cost on ${providerLabel[provider]}`, 'usd', (x) => x.cost[provider]]),
+    ...providers.map((provider): [string, Kind, (totals: Totals) => number | undefined] => [
+      `Cost on ${providerLabel[provider]}`,
+      'usd',
+      (x) => x.cost[provider],
+    ]),
     ['Cost per fixed finding', 'usd', (x) => costPerFixed(x)],
   ];
   for (const [label, kind, value] of rows) {
     const current = value(t);
     const before = p && value(p);
-    lines.push(`| ${label} | ${format(kind, current)} | ${p ? format(kind, before) : dash} | ${change(kind, current, before)} |`);
+    lines.push(
+      `| ${label} | ${format(kind, current)} | ${p ? format(kind, before) : dash} | ${change(kind, current, before)} |`,
+    );
   }
   lines.push(
     '',
     'Findings per pull request counts the pull requests with outcomes recorded, and cost per fixed finding divides their cost by their fixed findings.',
   );
-  if (t.unknownCost) lines.push(`${t.unknownCost} review${t.unknownCost === 1 ? '' : 's'} from before summaries recorded their cost ${t.unknownCost === 1 ? 'is' : 'are'} left out of it.`);
+  if (t.unknownCost)
+    lines.push(
+      `${t.unknownCost} review${t.unknownCost === 1 ? '' : 's'} from before summaries recorded their cost ${t.unknownCost === 1 ? 'is' : 'are'} left out of it.`,
+    );
 
   lines.push('', '### By reviewer', '');
   const reviewers = Object.entries(data.reviewers);
   if (!reviewers.length) lines.push('No findings with outcomes.');
   else {
-    lines.push('| Reviewer | Findings | Fixed | Dismissed | Acknowledged | Ignored | Precision | Change |', '|---|---|---|---|---|---|---|---|');
+    lines.push(
+      '| Reviewer | Findings | Fixed | Dismissed | Acknowledged | Ignored | Precision | Change |',
+      '|---|---|---|---|---|---|---|---|',
+    );
     for (const [name, tally] of reviewers) {
       const before = previous?.reviewers[name];
       lines.push(
@@ -511,14 +596,35 @@ export interface ReportIssue {
 // The report issues, by title: only those the report author opened, since anyone can open an issue with that title.
 // Where there are two for a month, the older one is kept.
 export async function findReports(api: Api, repository: string, author: string): Promise<Map<string, ReportIssue>> {
-  type Listed = { number?: number; title?: string; body?: string | null; html_url?: string; user?: { login?: string }; pull_request?: unknown };
+  type Listed = {
+    number?: number;
+    title?: string;
+    body?: string | null;
+    html_url?: string;
+    user?: { login?: string };
+    pull_request?: unknown;
+  };
   const reports = new Map<string, ReportIssue>();
   for (let page = 1; page <= maxIssuePages; page++) {
-    const listed = (await api('GET', `/repos/${repository}/issues?labels=${reportLabel}&state=all&sort=created&direction=asc&per_page=${pageSize}&page=${page}`)) as Listed[];
+    const listed = (await api(
+      'GET',
+      `/repos/${repository}/issues?labels=${reportLabel}&state=all&sort=created&direction=asc&per_page=${pageSize}&page=${page}`,
+    )) as Listed[];
     for (const issue of listed) {
-      if (issue.pull_request || issue.user?.login !== author || typeof issue.number !== 'number' || typeof issue.title !== 'string') continue;
+      if (
+        issue.pull_request ||
+        issue.user?.login !== author ||
+        typeof issue.number !== 'number' ||
+        typeof issue.title !== 'string'
+      )
+        continue;
       if (!/^Review report \d{4}-\d{2}$/.test(issue.title) || reports.has(issue.title)) continue;
-      reports.set(issue.title, { number: issue.number, title: issue.title, body: issue.body ?? '', ...(issue.html_url ? { html_url: issue.html_url } : {}) });
+      reports.set(issue.title, {
+        number: issue.number,
+        title: issue.title,
+        body: issue.body ?? '',
+        ...(issue.html_url ? { html_url: issue.html_url } : {}),
+      });
     }
     if (listed.length < pageSize) break;
   }
@@ -546,7 +652,8 @@ export interface ReportResult {
 
 export async function runReport(options: ReportOptions): Promise<ReportResult> {
   const log = options.log ?? console.log;
-  if (!repositoryPattern.test(options.repository)) throw new Error(`${JSON.stringify(options.repository)} isn't a repository's owner/name.`);
+  if (!repositoryPattern.test(options.repository))
+    throw new Error(`${JSON.stringify(options.repository)} isn't a repository's owner/name.`);
   const month = monthWindow(options.month, options.now ?? new Date());
   const api = githubApi(options.token, options.fetch, { terseErrors: true });
   const notes: string[] = [];
@@ -554,7 +661,9 @@ export async function runReport(options: ReportOptions): Promise<ReportResult> {
   const repositories = options.repositories?.length
     ? options.repositories
     : await discoverRepositories(api, options.repository.split('/')[0]!, notes, log);
-  log(`Reporting ${month.name} for ${repositories.length} repositor${repositories.length === 1 ? 'y' : 'ies'}: ${repositories.join(', ') || 'none'}.`);
+  log(
+    `Reporting ${month.name} for ${repositories.length} repositor${repositories.length === 1 ? 'y' : 'ies'}: ${repositories.join(', ') || 'none'}.`,
+  );
 
   const pulls: PullRecord[] = [];
   for (const repository of repositories) {
@@ -593,15 +702,37 @@ export async function runReport(options: ReportOptions): Promise<ReportResult> {
   if (existing) {
     if (existing.body === body) {
       log(`${title} (#${existing.number}) is already up to date.`);
-      return { month: month.name, body, issue: { number: existing.number, ...(existing.html_url ? { url: existing.html_url } : {}), action: 'unchanged' } };
+      return {
+        month: month.name,
+        body,
+        issue: {
+          number: existing.number,
+          ...(existing.html_url ? { url: existing.html_url } : {}),
+          action: 'unchanged',
+        },
+      };
     }
-    const updated = (await api('PATCH', `/repos/${options.repository}/issues/${existing.number}`, { body })) as { html_url?: string };
+    const updated = (await api('PATCH', `/repos/${options.repository}/issues/${existing.number}`, { body })) as {
+      html_url?: string;
+    };
     log(`Updated ${title}: ${updated?.html_url ?? `#${existing.number}`}`);
-    return { month: month.name, body, issue: { number: existing.number, ...(updated?.html_url ? { url: updated.html_url } : {}), action: 'updated' } };
+    return {
+      month: month.name,
+      body,
+      issue: { number: existing.number, ...(updated?.html_url ? { url: updated.html_url } : {}), action: 'updated' },
+    };
   }
-  const created = (await api('POST', `/repos/${options.repository}/issues`, { title, body, labels: [reportLabel] })) as { number: number; html_url?: string };
+  const created = (await api('POST', `/repos/${options.repository}/issues`, {
+    title,
+    body,
+    labels: [reportLabel],
+  })) as { number: number; html_url?: string };
   log(`Opened ${title}: ${created.html_url ?? `#${created.number}`}`);
-  return { month: month.name, body, issue: { number: created.number, ...(created.html_url ? { url: created.html_url } : {}), action: 'created' } };
+  return {
+    month: month.name,
+    body,
+    issue: { number: created.number, ...(created.html_url ? { url: created.html_url } : {}), action: 'created' },
+  };
 }
 
 // Not `import.meta.main`: it needs Node 24.2, and on an older 24.x the script would exit 0 without a report.

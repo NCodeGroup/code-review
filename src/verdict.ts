@@ -13,9 +13,14 @@ export function verdictFor(findings: Pick<Finding, 'severity'>[]): Verdict {
 // way to the one the kept findings call for. Its request-changes on should-fixes that together make the change unsafe
 // stands while one is kept and no blocker was removed. Without synthesis's verdict there is none to settle: review()
 // derives one from the findings it posts, after verification.
-export function settleVerdict(verdict: Verdict | undefined, findings: Pick<Finding, 'severity'>[], removed: Pick<Finding, 'severity'>[]): Verdict | undefined {
+export function settleVerdict(
+  verdict: Verdict | undefined,
+  findings: Pick<Finding, 'severity'>[],
+  removed: Pick<Finding, 'severity'>[],
+): Verdict | undefined {
   if (!verdict || !removed.length) return verdict;
-  if (verdict === 'request-changes' && findings.length && !removed.some((f) => f.severity === 'blocker')) return verdict;
+  if (verdict === 'request-changes' && findings.length && !removed.some((f) => f.severity === 'blocker'))
+    return verdict;
   const fromFindings = verdictFor(findings);
   return verdictRank[fromFindings] < verdictRank[verdict] ? fromFindings : verdict;
 }

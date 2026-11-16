@@ -206,10 +206,21 @@ const threadFields = `isResolved isOutdated path comments(first: 30) { nodes { a
 
 // Every review thread on a pull request, through the pager re-reviews share, with a warning when there are more than
 // it reads.
-export async function readReviewThreads(api: Api, repository: string, number: number, log: (line: string) => void): Promise<GraphThread[]> {
-  const { threads, complete } = await readThreadPages<GraphThread>(api, repository, number, { fields: threadFields, pageSize: threadPageSize, maxPages: maxThreadPages });
+export async function readReviewThreads(
+  api: Api,
+  repository: string,
+  number: number,
+  log: (line: string) => void,
+): Promise<GraphThread[]> {
+  const { threads, complete } = await readThreadPages<GraphThread>(api, repository, number, {
+    fields: threadFields,
+    pageSize: threadPageSize,
+    maxPages: maxThreadPages,
+  });
   if (complete) return threads;
-  log(`::warning::#${number} has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${threads.length}.`);
+  log(
+    `::warning::#${number} has more than ${maxThreadPages * threadPageSize} review threads; outcomes are recorded for the first ${threads.length}.`,
+  );
   return threads;
 }
 
@@ -266,7 +277,9 @@ export async function collectOutcomes(
       compared.set(commit, comparison.files ?? []);
       commitsAfter.set(commit, comparison.commits?.map((c) => c.sha) ?? []);
     } catch (error) {
-      log(`::warning::Couldn't compare ${commit.slice(0, 7)} with ${head.slice(0, 7)} (${errorText(error)}); its findings count as unchanged.`);
+      log(
+        `::warning::Couldn't compare ${commit.slice(0, 7)} with ${head.slice(0, 7)} (${errorText(error)}); its findings count as unchanged.`,
+      );
       compared.set(commit, undefined);
       commitsAfter.set(commit, []);
     }
@@ -284,18 +297,24 @@ export async function collectOutcomes(
     const reactions: Evidence['reactions'] = [];
     for (const reaction of first.reactions.nodes) {
       const login = reaction.user?.login;
-      if (!login || botLogins.has(login) || (reaction.content !== 'THUMBS_UP' && reaction.content !== 'THUMBS_DOWN')) continue;
+      if (!login || botLogins.has(login) || (reaction.content !== 'THUMBS_UP' && reaction.content !== 'THUMBS_DOWN'))
+        continue;
       reactions.push({ content: reaction.content, writer: await isWriter(login, undefined) });
     }
     // When the comparison can't tell, GitHub's own judgment that the code under the thread changed stands in.
     const changed = files && first.originalLine !== null ? lineChanged(files, thread.path, first.originalLine) : false;
     if (changed === undefined) {
-      log(`::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${printable(thread.path)} changed; its thread being outdated decides.`);
+      log(
+        `::warning::Comparing ${reviewedAt.slice(0, 7)} with ${head.slice(0, 7)} doesn't show whether ${finding.id}'s line in ${printable(thread.path)} changed; its thread being outdated decides.`,
+      );
     }
     const replyEvidence: Evidence['replies'] = [];
     for (const reply of replies) {
       if (botLogins.has(reply.author?.login ?? '')) continue;
-      replyEvidence.push({ body: reply.body, writer: await isReplyWriter(reply.author?.login, reply.authorAssociation) });
+      replyEvidence.push({
+        body: reply.body,
+        writer: await isReplyWriter(reply.author?.login, reply.authorAssociation),
+      });
     }
     const outcome = classify({
       linesChanged: changed ?? thread.isOutdated,
@@ -328,7 +347,12 @@ export async function collectOutcomes(
 }
 
 const severityLabel: Record<Severity, string> = { blocker: '🔴 Blocker', 'should-fix': '🟠 Should fix', nit: '🟡 Nit' };
-const outcomeLabel: Record<Outcome, string> = { fixed: '✅ fixed', dismissed: '👎 dismissed', acknowledged: '👍 acknowledged', ignored: '➖ ignored' };
+const outcomeLabel: Record<Outcome, string> = {
+  fixed: '✅ fixed',
+  dismissed: '👎 dismissed',
+  acknowledged: '👍 acknowledged',
+  ignored: '➖ ignored',
+};
 // Rows shown in the table at most; the marker holds every finding that fits in maxMarkerLength.
 export const maxOutcomeRows = 100;
 // The marker's JSON at most, so the outcomes section, table and all, fits in a comment (GitHub takes 65,536 characters).
@@ -336,7 +360,13 @@ export const maxMarkerLength = 40_000;
 
 // How many of the findings, from the first, fit in the marker.
 export function markerFindingCount(report: Pick<OutcomesReport, 'state' | 'head' | 'findings'>): number {
-  let length = markerJson({ version: 1, state: report.state, head: report.head, findings: [], omitted: report.findings.length }).length;
+  let length = markerJson({
+    version: 1,
+    state: report.state,
+    head: report.head,
+    findings: [],
+    omitted: report.findings.length,
+  }).length;
   let kept = 0;
   for (const finding of report.findings) {
     length += markerJson(finding).length + 1;
@@ -351,11 +381,19 @@ export function markerFindingCount(report: Pick<OutcomesReport, 'state' | 'head'
 export function outcomesMarker(report: Pick<OutcomesReport, 'state' | 'head' | 'findings'>): string {
   const kept = markerFindingCount(report);
   const omitted = report.findings.length - kept;
-  const record = { version: 1, state: report.state, head: report.head, findings: report.findings.slice(0, kept), ...(omitted ? { omitted } : {}) };
+  const record = {
+    version: 1,
+    state: report.state,
+    head: report.head,
+    findings: report.findings.slice(0, kept),
+    ...(omitted ? { omitted } : {}),
+  };
   return `${outcomesMarkerStart}${markerJson(record)} -->`;
 }
 
-export function parseOutcomesMarker(body: string): { version: number; state: ClosedState; head: string; findings: FindingOutcome[]; omitted?: number } | undefined {
+export function parseOutcomesMarker(
+  body: string,
+): { version: number; state: ClosedState; head: string; findings: FindingOutcome[]; omitted?: number } | undefined {
   const match = /<!-- ncode-review:outcomes (.+?) -->/.exec(body);
   if (!match) return undefined;
   try {
@@ -366,7 +404,13 @@ export function parseOutcomesMarker(body: string): { version: number; state: Clo
 }
 
 function cell(text: string): string {
-  return neutralizeProse(text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;'));
+  return neutralizeProse(
+    text
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/</g, '&lt;'),
+  );
 }
 
 // The outcomes section: the marker, then a table of finding, reviewer, severity and outcome.
@@ -377,13 +421,17 @@ export function outcomesSection(report: Pick<OutcomesReport, 'state' | 'head' | 
     lines.push(`${state}. No findings were posted as threads.`);
     return lines.join('\n');
   }
-  const counts = (['fixed', 'dismissed', 'acknowledged', 'ignored'] as const).map((o) => `${report.findings.filter((f) => f.outcome === o).length} ${o}`);
+  const counts = (['fixed', 'dismissed', 'acknowledged', 'ignored'] as const).map(
+    (o) => `${report.findings.filter((f) => f.outcome === o).length} ${o}`,
+  );
   lines.push(`${state}: ${counts.join(', ')}.`, '', '| Finding | Reviewer | Severity | Outcome |', '|---|---|---|---|');
   // A finding id names a finding within one review, so the commit tells apart findings from different reviews.
   const several = new Set(report.findings.map((f) => f.reviewedAt)).size > 1;
   for (const f of report.findings.slice(0, maxOutcomeRows)) {
     const id = several && f.reviewedAt ? `${cell(f.id)} at ${f.reviewedAt.slice(0, 7)}` : cell(f.id);
-    lines.push(`| ${id} | ${cell(f.reviewers.join(', ')) || '—'} | ${severityLabel[f.severity] ?? cell(f.severity)} | ${outcomeLabel[f.outcome]} |`);
+    lines.push(
+      `| ${id} | ${cell(f.reviewers.join(', ')) || '—'} | ${severityLabel[f.severity] ?? cell(f.severity)} | ${outcomeLabel[f.outcome]} |`,
+    );
   }
   if (report.findings.length > maxOutcomeRows) lines.push('', `*And ${report.findings.length - maxOutcomeRows} more.*`);
   return lines.join('\n');
@@ -399,7 +447,9 @@ export function withOutcomes(body: string, section: string): string {
 // a model call, so the provider, the proxy and the credentials are never set up.
 export async function recordOutcomes(
   api: Api,
-  event: { pull_request?: { number?: number; merged?: boolean; head?: { sha?: string; repo?: { full_name?: string } | null } } },
+  event: {
+    pull_request?: { number?: number; merged?: boolean; head?: { sha?: string; repo?: { full_name?: string } | null } };
+  },
   repository: string,
   outDir: string,
   log: (line: string) => void = writeLog,
@@ -409,8 +459,14 @@ export async function recordOutcomes(
     log(`#${pullRequest?.number} comes from a fork, and forks aren't reviewed; no outcomes to record.`);
     return;
   }
-  if (typeof pullRequest?.number !== 'number' || !pullRequest.head?.sha) throw new Error("The closed event doesn't name the pull request and its head.");
-  const report = await collectOutcomes(api, repository, { number: pullRequest.number, merged: !!pullRequest.merged, head: { sha: pullRequest.head.sha } }, log);
+  if (typeof pullRequest?.number !== 'number' || !pullRequest.head?.sha)
+    throw new Error("The closed event doesn't name the pull request and its head.");
+  const report = await collectOutcomes(
+    api,
+    repository,
+    { number: pullRequest.number, merged: !!pullRequest.merged, head: { sha: pullRequest.head.sha } },
+    log,
+  );
   if (!report) {
     log(`#${pullRequest.number} was never reviewed; no outcomes to record.`);
     return;
@@ -421,15 +477,25 @@ export async function recordOutcomes(
   writeFileSync(path.join(outDir, 'outcomes.json'), json);
   const output = process.env['GITHUB_OUTPUT'];
   if (output) appendFileSync(output, 'outcomes=true\n');
-  log(`${report.state === 'merged' ? 'Merged' : 'Closed'}: ${report.findings.map((f) => `${f.id} ${f.outcome}`).join(', ') || 'no finding threads'}.`);
+  log(
+    `${report.state === 'merged' ? 'Merged' : 'Closed'}: ${report.findings.map((f) => `${f.id} ${f.outcome}`).join(', ') || 'no finding threads'}.`,
+  );
 }
 
 // The publish step's half: edits the newest summary comment to add the outcomes, or posts a final comment when there's
 // none or it can't be edited.
-export async function publishOutcomes(api: Api, report: OutcomesReport, secrets: Iterable<string>, log: (line: string) => void = writeLog): Promise<void> {
+export async function publishOutcomes(
+  api: Api,
+  report: OutcomesReport,
+  secrets: Iterable<string>,
+  log: (line: string) => void = writeLog,
+): Promise<void> {
   const section = outcomesSection(report);
   const kept = markerFindingCount(report);
-  if (kept < report.findings.length) log(`::warning::The outcomes marker holds the first ${kept} of ${report.findings.length} findings, to fit in a comment.`);
+  if (kept < report.findings.length)
+    log(
+      `::warning::The outcomes marker holds the first ${kept} of ${report.findings.length} findings, to fit in a comment.`,
+    );
   const known = [...secrets];
   if (report.summaryCommentId !== undefined) {
     const body = withOutcomes(report.summaryBody ?? summaryMarker, section);
@@ -439,7 +505,9 @@ export async function publishOutcomes(api: Api, report: OutcomesReport, secrets:
       log(`Added the outcomes to the summary comment ${report.summaryCommentId}.`);
       return;
     } catch (error) {
-      log(`::warning::Couldn't edit the summary comment ${report.summaryCommentId} (${errorText(error)}); posting the outcomes as a new comment.`);
+      log(
+        `::warning::Couldn't edit the summary comment ${report.summaryCommentId} (${errorText(error)}); posting the outcomes as a new comment.`,
+      );
     }
   }
   // A final comment is shaped like a summary, so it names the commit the summary it couldn't edit reviewed: a reopened
@@ -447,7 +515,9 @@ export async function publishOutcomes(api: Api, report: OutcomesReport, secrets:
   const reviewed = report.summaryBody ? reviewedHead(report.summaryBody) : undefined;
   const body = [summaryMarker, ...(reviewed ? [headMarker(reviewed)] : []), section].join('\n');
   assertNoSecrets(body, known, 'The outcomes comment');
-  const comment = (await api('POST', `/repos/${report.repository}/issues/${report.pullRequest}/comments`, { body })) as { html_url?: string };
+  const comment = (await api('POST', `/repos/${report.repository}/issues/${report.pullRequest}/comments`, {
+    body,
+  })) as { html_url?: string };
   log(`Posted the outcomes: ${comment.html_url ?? ''}`);
 }
 

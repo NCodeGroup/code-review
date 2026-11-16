@@ -50,15 +50,30 @@ const diff = [
 
 const gathered: Gathered = {
   pullRequest: {
-    repository: 'o/r', number: 7, title: 'Add values', body: 'Adds values.', author: 'someone', authorAssociation: 'MEMBER', authorCanWrite: true,
-    draft: false, baseRef: 'main', baseSha: 'b'.repeat(40), headSha: 'a'.repeat(40),
+    repository: 'o/r',
+    number: 7,
+    title: 'Add values',
+    body: 'Adds values.',
+    author: 'someone',
+    authorAssociation: 'MEMBER',
+    authorCanWrite: true,
+    draft: false,
+    baseRef: 'main',
+    baseSha: 'b'.repeat(40),
+    headSha: 'a'.repeat(40),
   },
   mergeBase: 'b'.repeat(40),
   files: [{ path: 'src/Lib/A.cs', additions: 70, deletions: 0, generated: false, shown: true }],
   diff,
   chunks: [diff],
   conventions: '',
-  reviewRules: [{ name: 'repo.instructions.md', globs: [], text: Array.from({ length: 48 }, (_, i) => `- Rule ${i + 1}: keep it small.`).join('\n') }],
+  reviewRules: [
+    {
+      name: 'repo.instructions.md',
+      globs: [],
+      text: Array.from({ length: 48 }, (_, i) => `- Rule ${i + 1}: keep it small.`).join('\n'),
+    },
+  ],
   guidance: [],
   decisions: [],
   commits: [],
@@ -79,10 +94,19 @@ function answer(request: AgentRequest): unknown {
   if (request.role === 'selection') return { add: [{ reviewer: 'security', reason: 'bench' }] };
   if (request.role === 'reviewer:correctness') {
     return {
-      findings: [{
-        severity: 'should-fix', file: 'src/Lib/A.cs', line: 2, title: 'Bench finding', problem: 'Bench problem', consequence: 'c', fix: 'Bench fix',
-        evidence: 'e', confidence: 0.9,
-      }],
+      findings: [
+        {
+          severity: 'should-fix',
+          file: 'src/Lib/A.cs',
+          line: 2,
+          title: 'Bench finding',
+          problem: 'Bench problem',
+          consequence: 'c',
+          fix: 'Bench fix',
+          evidence: 'e',
+          confidence: 0.9,
+        },
+      ],
     };
   }
   if (request.role.startsWith('reviewer:')) return { findings: [] };
@@ -90,10 +114,19 @@ function answer(request: AgentRequest): unknown {
 }
 
 // Runs the review once on the fake agent and returns its wall time and when each call started and ended.
-export async function benchReview(options: { msPerSecond?: number } = {}): Promise<{ wallMs: number; calls: BenchCall[] }> {
+export async function benchReview(
+  options: { msPerSecond?: number } = {},
+): Promise<{ wallMs: number; calls: BenchCall[] }> {
   const scale = options.msPerSecond ?? msPerSecond;
   // The review reads these settings; a runner that sets one would change which calls it makes.
-  for (const name of ['CODE_REVIEW_SHADOW', 'CODE_REVIEW_SHADOW_RATE', 'CODE_REVIEW_RULE_CHECKS', 'CODE_REVIEW_VERIFICATION', 'CODE_REVIEW_TIERS', 'CODE_REVIEW_MAX_RUN_USD']) {
+  for (const name of [
+    'CODE_REVIEW_SHADOW',
+    'CODE_REVIEW_SHADOW_RATE',
+    'CODE_REVIEW_RULE_CHECKS',
+    'CODE_REVIEW_VERIFICATION',
+    'CODE_REVIEW_TIERS',
+    'CODE_REVIEW_MAX_RUN_USD',
+  ]) {
     delete process.env[name];
   }
   const calls: BenchCall[] = [];
@@ -106,11 +139,22 @@ export async function benchReview(options: { msPerSecond?: number } = {}): Promi
     await sleep(total - firstResponseSeconds * scale);
     calls.push({ role: request.role, startMs, endMs: performance.now() - began });
     const record: CallRecord = {
-      role: request.role, provider: 'bedrock', model: `claude-${request.tier}-5-5`, costUsd: 0.01, inputTokens: 0, outputTokens: 0,
-      cacheReadTokens: 0, cacheWriteTokens: 0, turns: 2, durationMs: total, outcome: 'success',
+      role: request.role,
+      provider: 'bedrock',
+      model: `claude-${request.tier}-5-5`,
+      costUsd: 0.01,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      turns: 2,
+      durationMs: total,
+      outcome: 'success',
     };
     const output = answer(request);
-    return output === undefined ? { output: undefined, records: [record], error: 'bench' } : { output, records: [record] };
+    return output === undefined
+      ? { output: undefined, records: [record], error: 'bench' }
+      : { output, records: [record] };
   }) as typeof runAgent;
   await review({
     run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1', checkout: root },
@@ -129,10 +173,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   for (let i = 0; i < runs; i++) results.push(await benchReview());
   const sorted = [...results].sort((a, b) => a.wallMs - b.wallMs);
   const median = sorted[runs >> 1]!;
-  console.log(JSON.stringify({ medianWallMs: Math.round(median.wallMs), wallsMs: results.map((r) => Math.round(r.wallMs)), calls: median.calls }));
+  console.log(
+    JSON.stringify({
+      medianWallMs: Math.round(median.wallMs),
+      wallsMs: results.map((r) => Math.round(r.wallMs)),
+      calls: median.calls,
+    }),
+  );
   const max = values['max-ms'] === undefined ? undefined : Number(values['max-ms']);
   if (max !== undefined && median.wallMs > max) {
-    console.error(`::error::The review's median wall time was ${Math.round(median.wallMs)} ms, over the limit of ${max} ms.`);
+    console.error(
+      `::error::The review's median wall time was ${Math.round(median.wallMs)} ms, over the limit of ${max} ms.`,
+    );
     process.exitCode = 1;
   }
 }

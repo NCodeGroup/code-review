@@ -8,7 +8,7 @@ export function neutralizeMentions(text: string): string {
 
 // Text for a code span or a link's text: without a backtick, bracket or line break, which could end it or start a link.
 export function plainText(text: string): string {
-  return text.replace(/[`\[\]\r\n]/g, '');
+  return text.replace(/[`[\]\r\n]/g, '');
 }
 
 // Model-written text for a comment, neutralized so it can't mention anyone, post a link or cross-reference an issue or
@@ -41,7 +41,8 @@ export function neutralizeProse(text: string): string {
     const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (opening) {
       const run = opening[1]!;
-      if (i === 0 || opening[0] !== run || (run[0] === '`' && line.slice(run.length).includes('`'))) return escapeProse(text);
+      if (i === 0 || opening[0] !== run || (run[0] === '`' && line.slice(run.length).includes('`')))
+        return escapeProse(text);
       fence = run;
       out.push(line);
       continue;

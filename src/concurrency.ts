@@ -48,14 +48,11 @@ export async function runLeadersFirst<T>(
           pump();
         };
         running++;
-        fn(item, release).then(
-          () => {
-            running--;
-            release();
-            pump();
-          },
-          reject,
-        );
+        fn(item, release).then(() => {
+          running--;
+          release();
+          pump();
+        }, reject);
       }
       if (!running && !leaders.length && !waiting.length && !tail.length) resolve();
     };

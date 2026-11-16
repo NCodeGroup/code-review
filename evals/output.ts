@@ -28,7 +28,14 @@ export interface EvalSummary {
 
 export interface EvalCaseOutput {
   id: string;
-  verdicts: { concern?: string; caught: boolean; caughtRaw: boolean; by?: string[]; caughtShadow?: boolean; byShadow?: string[] }[];
+  verdicts: {
+    concern?: string;
+    caught: boolean;
+    caughtRaw: boolean;
+    by?: string[];
+    caughtShadow?: boolean;
+    byShadow?: string[];
+  }[];
   forbidden: { concern?: string; raisedBy: string[]; raisedByShadow?: string[] }[];
   findings: unknown[];
   // precision and reviewCostUsd are absent from an output written without the precision judge.

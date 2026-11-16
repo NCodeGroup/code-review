@@ -68,13 +68,21 @@ test('the review, publish and finish steps report a crash with writeFailure', ()
   for (const file of ['main.ts', 'publish.ts', 'finish.ts']) {
     const source = readFileSync(path.join(root, 'src', file), 'utf8');
     assert.match(source, /\bwriteFailure\(error\)/, `src/${file} doesn't report a crash with writeFailure`);
-    assert.doesNotMatch(source, /::error::\$\{\(error as Error\)\.message\}/, `src/${file} still writes a crash's message by hand`);
+    assert.doesNotMatch(
+      source,
+      /::error::\$\{\(error as Error\)\.message\}/,
+      `src/${file} still writes a crash's message by hand`,
+    );
   }
 });
 
 test('no file in src/ but log.ts writes to the console', () => {
   const src = path.join(root, 'src');
   for (const file of readdirSync(src).filter((name) => name.endsWith('.ts') && name !== 'log.ts')) {
-    assert.doesNotMatch(readFileSync(path.join(src, file), 'utf8'), /\bconsole\b|\bprocess\s*(\?\.|\.|\[\s*['"`])\s*std(out|err)\b|\{[^}]*\bstd(out|err)\b[^}]*\}\s*=\s*process\b/, `src/${file} writes to the console; use writeLog or writeErrorLog from src/log.ts`);
+    assert.doesNotMatch(
+      readFileSync(path.join(src, file), 'utf8'),
+      /\bconsole\b|\bprocess\s*(\?\.|\.|\[\s*['"`])\s*std(out|err)\b|\{[^}]*\bstd(out|err)\b[^}]*\}\s*=\s*process\b/,
+      `src/${file} writes to the console; use writeLog or writeErrorLog from src/log.ts`,
+    );
   }
 });

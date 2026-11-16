@@ -24,7 +24,11 @@ export interface ReviewerResult {
 
 // The earlier thread a finding repeats: its finding's id there, its link ('' when the listing gave none), and whether the
 // maintainer dismissed it.
-export interface EarlierThread { id: string; url: string; dismissed: boolean }
+export interface EarlierThread {
+  id: string;
+  url: string;
+  dismissed: boolean;
+}
 
 // A finding that repeats one of the bot's earlier threads, with that thread.
 export type RaisedFinding = ReviewedFinding & { earlier: EarlierThread };
@@ -96,7 +100,11 @@ export interface Results {
   // autopilot once. Each earlier finding comes with its id and the URL of its thread's first comment, so the summary
   // comment can keep its link live. The verdictFloor is the verdict the re-review's earlier findings and completeness
   // call for, which settling never goes below.
-  reReview?: { changedLines: Record<string, number[]>; earlier: { id: string; url: string; status: EarlierState; note: string }[]; verdictFloor?: Verdict };
+  reReview?: {
+    changedLines: Record<string, number[]>;
+    earlier: { id: string; url: string; status: EarlierState; note: string }[];
+    verdictFloor?: Verdict;
+  };
   // Present when a shadow reviewer or shadow prompt ran. Never posted as threads or counted in the summary.
   shadow?: ShadowResults;
 }
@@ -114,12 +122,25 @@ export function settleAlreadyRaised(results: Results, posted: PostedThread[], di
   const raised: RaisedFinding[] = [];
   for (const finding of results.findings) {
     const match = earlierThread(finding, posted, dismissed);
-    if (match) raised.push({ ...finding, earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed } });
-    else if (finding.repeatsEarlier) raised.push({ ...finding, earlier: { id: finding.repeatsEarlier.id, url: finding.repeatsEarlier.url, dismissed: false } });
+    if (match)
+      raised.push({
+        ...finding,
+        earlier: { id: match.thread.id, url: match.thread.url ?? '', dismissed: match.dismissed },
+      });
+    else if (finding.repeatsEarlier)
+      raised.push({
+        ...finding,
+        earlier: { id: finding.repeatsEarlier.id, url: finding.repeatsEarlier.url, dismissed: false },
+      });
     else findings.push(finding);
   }
   if (!raised.length) return results;
-  const settled = settleVerdict(results.verdict, [...findings, ...raised.filter((f) => !f.earlier.dismissed && !f.repeatsEarlier)], raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier)) ?? results.verdict;
+  const settled =
+    settleVerdict(
+      results.verdict,
+      [...findings, ...raised.filter((f) => !f.earlier.dismissed && !f.repeatsEarlier)],
+      raised.filter((f) => f.earlier.dismissed && !f.repeatsEarlier),
+    ) ?? results.verdict;
   const floor = results.reReview?.verdictFloor;
   return {
     ...results,
@@ -137,7 +158,11 @@ export function upstreamTotal(results: Pick<Results, 'upstream' | 'upstreamOmitt
 
 const severityLabel = { blocker: 'Blocker', 'should-fix': 'Should fix', nit: 'Nit' } as const;
 const severityDot: Record<Severity, string> = { blocker: '🔴', 'should-fix': '🟠', nit: '🟡' };
-export const verdictLabel: Record<Verdict, string> = { approve: '✅ Approve', 'request-changes': '⛔ Request changes', comment: '💬 Comment' };
+export const verdictLabel: Record<Verdict, string> = {
+  approve: '✅ Approve',
+  'request-changes': '⛔ Request changes',
+  comment: '💬 Comment',
+};
 
 export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | undefined {
   return findings.map((f) => f.severity).sort((a, b) => severityRank[a] - severityRank[b])[0];
@@ -145,7 +170,10 @@ export function topSeverity(findings: Pick<Finding, 'severity'>[]): Severity | u
 
 // The summary comment names a provider as a label ("$0.12 on Claude API"); the check run's sentence takes the article.
 const providerLabel: Record<Provider, string> = { anthropic: 'Claude API', bedrock: 'Amazon Bedrock' };
-const providerName: Record<Provider, string> = { anthropic: `the ${providerLabel.anthropic}`, bedrock: providerLabel.bedrock };
+const providerName: Record<Provider, string> = {
+  anthropic: `the ${providerLabel.anthropic}`,
+  bedrock: providerLabel.bedrock,
+};
 
 // The calls and cost on each provider the run used, in the order it used them.
 export function costsByProvider(calls: CallRecord[]): { provider: Provider; calls: number; costUsd: number }[] {
@@ -162,7 +190,9 @@ export function costsByProvider(calls: CallRecord[]): { provider: Provider; call
 // "$0.69 on Amazon Bedrock", or for a run that switched partway "$0.12 on the Claude API and $0.57 on Amazon Bedrock".
 function costLine(results: Results, names: Record<Provider, string>): string {
   if (!results.switchedToBedrock) return `$${results.costUsd.toFixed(2)} on ${names[results.provider]}`;
-  return costsByProvider(results.calls).map((e) => `$${e.costUsd.toFixed(2)} on ${names[e.provider]}`).join(' and ');
+  return costsByProvider(results.calls)
+    .map((e) => `$${e.costUsd.toFixed(2)} on ${names[e.provider]}`)
+    .join(' and ');
 }
 
 function switchNote(results: Results): string {
@@ -179,9 +209,12 @@ function postedNote(results: Pick<Results, 'upstream'>): string {
 export function shortModel(model: string): string {
   return [
     ...new Set(
-      model
-        .split(', ')
-        .map((m) => m.replace(/^(global|us|eu|apac)\./, '').replace(/^anthropic\./, '').replace(/^claude-/, '')),
+      model.split(', ').map((m) =>
+        m
+          .replace(/^(global|us|eu|apac)\./, '')
+          .replace(/^anthropic\./, '')
+          .replace(/^claude-/, ''),
+      ),
     ),
   ].join(', ');
 }
@@ -189,8 +222,13 @@ export function shortModel(model: string): string {
 // The models a role's calls ran on, once each, in the order they ran: a deep review's reviewer runs on Opus for the
 // parts with a sensitive file and on its usual model for the rest. A call the Claude API refused for credits, and that
 // reran on Bedrock, didn't run on its model.
-export function callModels(calls: (Pick<CallRecord, 'role' | 'model'> & Partial<Pick<CallRecord, 'outcome'>>)[], role: string): string {
-  return [...new Set(calls.filter((c) => c.role === role && c.outcome !== creditsRanOutReason).map((c) => c.model))].join(', ');
+export function callModels(
+  calls: (Pick<CallRecord, 'role' | 'model'> & Partial<Pick<CallRecord, 'outcome'>>)[],
+  role: string,
+): string {
+  return [
+    ...new Set(calls.filter((c) => c.role === role && c.outcome !== creditsRanOutReason).map((c) => c.model)),
+  ].join(', ');
 }
 
 // Marks the bot's summary comments on a pull request; each review posts a new one and collapses the earlier ones.
@@ -225,7 +263,9 @@ export interface ReviewRecord {
 
 const reviewMarkerPattern = /<!-- ncode-review:review (.+?) -->/g;
 
-export function reviewMarker(results: Pick<Results, 'headSha' | 'provider' | 'costUsd' | 'synthesisModel' | 'reviewers'>): string {
+export function reviewMarker(
+  results: Pick<Results, 'headSha' | 'provider' | 'costUsd' | 'synthesisModel' | 'reviewers'>,
+): string {
   const record: ReviewRecord = {
     head: results.headSha,
     provider: results.provider,
@@ -252,7 +292,11 @@ export function reviewRecords(body: string): ReviewRecord[] {
 
 // The head a summary records as reviewed. A run whose reviewers all failed reviewed nothing, so it records the last head
 // that was reviewed, or none (''), and the next re-review still covers what this run missed.
-export function recordedHead(reviewers: Pick<ReviewerResult, 'status'>[], headSha: string, lastHead: string | undefined): string {
+export function recordedHead(
+  reviewers: Pick<ReviewerResult, 'status'>[],
+  headSha: string,
+  lastHead: string | undefined,
+): string {
   return reviewers.length && reviewers.every((r) => r.status === 'failed') ? (lastHead ?? '') : headSha;
 }
 
@@ -265,7 +309,9 @@ export function summaryComments<T extends { body?: string; user?: { login?: stri
 
 // The commit the bot's newest summary comment says it reviewed, from a pull request's comments listed oldest first;
 // undefined when there's no summary, or when the comments couldn't be read.
-export function newestReviewedHead(comments: { body?: string; user?: { login?: string } }[] | undefined): string | undefined {
+export function newestReviewedHead(
+  comments: { body?: string; user?: { login?: string } }[] | undefined,
+): string | undefined {
   const newest = summaryComments(comments ?? []).at(-1);
   return newest ? reviewedHead(newest.body ?? '') : undefined;
 }
@@ -278,7 +324,11 @@ export const outcomesMarkerStart = '<!-- ncode-review:outcomes ';
 // markers, given as `kept`, stay so the outcomes can still name that review's cost and models, and the outcomes recorded
 // before a reopen aren't lost.
 export function supersededComment(headSha: string, commentUrl: string, kept: string[] = []): string {
-  return [supersededMarker, ...kept, `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`].join('\n');
+  return [
+    supersededMarker,
+    ...kept,
+    `<sub>Superseded by [the review at ${headSha.slice(0, 7)}](${commentUrl}).</sub>`,
+  ].join('\n');
 }
 
 // The review and outcomes marker lines of a summary comment, in order, to keep when it's superseded.
@@ -293,7 +343,9 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
   const recorded = results.recordedHead ?? results.headSha;
   // The links a re-review's summary writes to the earlier findings' threads are the engine's own and stay live; the
   // rest of the summary is neutralized.
-  const kept = (results.reReview?.earlier ?? []).filter((e) => threadUrlPattern.test(e.url)).map((e) => earlierFindingLink(e.id, e.url));
+  const kept = (results.reReview?.earlier ?? [])
+    .filter((e) => threadUrlPattern.test(e.url))
+    .map((e) => earlierFindingLink(e.id, e.url));
   const lines = [
     summaryMarker,
     ...(recorded ? [headMarker(recorded)] : []),
@@ -310,18 +362,25 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
     '|---|---|---|---|',
   ];
   if (results.synthesisModel && count) {
-    lines.push(`| synthesis | ${shortModel(results.synthesisModel)} | ${count} | ${severityDot[topSeverity(results.findings)!]} |`);
+    lines.push(
+      `| synthesis | ${shortModel(results.synthesisModel)} | ${count} | ${severityDot[topSeverity(results.findings)!]} |`,
+    );
   }
   for (const r of [...results.reviewers].sort((a, b) => a.name.localeCompare(b.name))) {
-    const top = r.status === 'failed' ? '⚠️' : r.status === 'skipped' ? '⏭️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
-    lines.push(`| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status === 'ran' ? r.findingCount : r.status} | ${top} |`);
+    const top =
+      r.status === 'failed' ? '⚠️' : r.status === 'skipped' ? '⏭️' : r.topSeverity ? severityDot[r.topSeverity] : '🟢';
+    lines.push(
+      `| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status === 'ran' ? r.findingCount : r.status} | ${top} |`,
+    );
   }
   lines.push('');
   if (results.skipped.length) lines.push(`*Skipped: ${results.skipped.join(', ')}*`, '');
   if (count) {
     lines.push('<details><summary>Findings</summary>', '');
     for (const f of results.findings) {
-      lines.push(`- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`);
+      lines.push(
+        `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`,
+      );
     }
     lines.push('', '</details>', '');
   }
@@ -335,7 +394,7 @@ export function summaryComment(results: Results, checkUrl: string, interactUrl: 
 }
 
 // Only an https link to the earlier thread is written as a link; anything else is shown as plain text.
-const threadUrlPattern = /^https:\/\/[^\s()<>\[\]]+$/;
+const threadUrlPattern = /^https:\/\/[^\s()<>[\]]+$/;
 
 // How an already raised finding names the earlier thread it repeats, escaped like the rest of the text it sits in.
 function raisedAs(earlier: EarlierThread): string {
@@ -359,7 +418,10 @@ function alreadyRaisedList(results: Results): string[] {
     '',
     "Threads on this pull request already raise these, so they aren't posted again or counted in the findings; a dismissed one isn't counted in the verdict either.",
     '',
-    ...raised.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (${raisedAs(f.earlier)})`),
+    ...raised.map(
+      (f) =>
+        `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (${raisedAs(f.earlier)})`,
+    ),
     '',
     '</details>',
     '',
@@ -375,7 +437,10 @@ function trackedList(results: Results): string[] {
     '',
     "Open issues already track these, so they aren't posted as threads or counted in the verdict.",
     '',
-    ...tracked.map((f) => `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (tracked in #${f.tracked})`),
+    ...tracked.map(
+      (f) =>
+        `- ${severityDot[f.severity]} **${f.id}** \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))} (tracked in #${f.tracked})`,
+    ),
     '',
     '</details>',
     '',
@@ -392,7 +457,8 @@ function upstreamList(results: Results): string[] {
     'These are in files the project template owns. A template update replaces them, so fix them in the template, not here.',
     '',
   ];
-  for (const f of upstream) lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`);
+  for (const f of upstream)
+    lines.push(`- ${severityDot[f.severity]} \`${cell(f.file)}:${f.line}\`: ${neutralizeProse(cell(f.title))}`);
   if (results.upstreamOmitted) lines.push(`- ${upstreamOmittedText(results.upstreamOmitted)}`);
   lines.push('', '</details>', '');
   return lines;
@@ -407,14 +473,22 @@ function droppedNote(dropped: DroppedFinding[], checkUrl: string): string[] {
   if (!dropped.length) return [];
   const counts = new Map<Severity, number>();
   for (const { finding } of dropped) counts.set(finding.severity, (counts.get(finding.severity) ?? 0) + 1);
-  const severities = (['blocker', 'should-fix', 'nit'] as const).filter((s) => counts.has(s)).map((s) => `${counts.get(s)} ${s}`);
+  const severities = (['blocker', 'should-fix', 'nit'] as const)
+    .filter((s) => counts.has(s))
+    .map((s) => `${counts.get(s)} ${s}`);
   const one = dropped.length === 1;
-  return [`*Left out ${dropped.length} finding${one ? '' : 's'} (${severities.join(', ')}) that said a file this pull request changes isn't changed; [run details](${checkUrl}) list${one ? 's it' : 's them'}.*`, ''];
+  return [
+    `*Left out ${dropped.length} finding${one ? '' : 's'} (${severities.join(', ')}) that said a file this pull request changes isn't changed; [run details](${checkUrl}) list${one ? 's it' : 's them'}.*`,
+    '',
+  ];
 }
 
 // GitHub renders the check run's text as Markdown; keep code-like text from breaking the table or injecting HTML.
 function cell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ').replace(/</g, '&lt;');
+  return text
+    .replace(/\|/g, '\\|')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/</g, '&lt;');
 }
 
 export function checkTitle(results: Results): string {
@@ -436,47 +510,80 @@ export function checkSummary(results: Results): string {
     '',
     `${postedNote(results)} ${costLine(results, providerName)}, ${Math.round(results.durationMs / 1000)}s.${switchNote(results)}`,
   ];
-  const files = (list: string[]) => `${list.slice(0, 20).map((f) => `\`${cell(f)}\``).join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
+  const files = (list: string[]) =>
+    `${list
+      .slice(0, 20)
+      .map((f) => `\`${cell(f)}\``)
+      .join(', ')}${list.length > 20 ? ` and ${list.length - 20} more` : ''}`;
   if (results.depth === 'deep') {
-    lines.push('', `**${depthLabel.deep}**: ${files(results.sensitiveFiles ?? [])} ${(results.sensitiveFiles ?? []).length === 1 ? 'matches' : 'match'} \`sensitive:\` in \`.github/code-review/config.yml\`, so \`correctness\` and \`security\` reviewed the parts of the diff with them on Opus, unless \`CODE_REVIEW_TIERS\` names them, and verification, when it's on, checked the findings in them on Opus.`);
+    lines.push(
+      '',
+      `**${depthLabel.deep}**: ${files(results.sensitiveFiles ?? [])} ${(results.sensitiveFiles ?? []).length === 1 ? 'matches' : 'match'} \`sensitive:\` in \`.github/code-review/config.yml\`, so \`correctness\` and \`security\` reviewed the parts of the diff with them on Opus, unless \`CODE_REVIEW_TIERS\` names them, and verification, when it's on, checked the findings in them on Opus.`,
+    );
   } else if (results.depth === 'light') {
-    lines.push('', `**${depthLabel.light}**: every changed file is documentation, the changelog among it, or a template version file, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`);
+    lines.push(
+      '',
+      `**${depthLabel.light}**: every changed file is documentation, the changelog among it, or a template version file, so \`hygiene\` alone reviewed it, and its findings are posted with no context, selection or synthesis call.`,
+    );
   }
   const upstream = upstreamTotal(results);
   if (upstream) {
     const one = upstream === 1;
-    lines.push('', `${upstream} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`);
+    lines.push(
+      '',
+      `${upstream} finding${one ? '' : 's'} in the template's files belong${one ? 's' : ''} upstream, in ${cell(results.template ?? 'the project template')}, and ${one ? "isn't" : "aren't"} posted as threads.${results.upstreamOmitted ? ` The first ${results.upstream!.length} are listed.` : ''}`,
+    );
   }
   const trackedCount = results.tracked?.length ?? 0;
   if (trackedCount) {
-    lines.push('', trackedCount === 1
-      ? "1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict."
-      : `${trackedCount} findings already tracked in open issues are listed after the findings, and aren't posted as threads or counted in the verdict.`);
+    lines.push(
+      '',
+      trackedCount === 1
+        ? "1 finding already tracked in an open issue is listed after the findings, and isn't posted as a thread or counted in the verdict."
+        : `${trackedCount} findings already tracked in open issues are listed after the findings, and aren't posted as threads or counted in the verdict.`,
+    );
   }
   const raisedCount = results.alreadyRaised?.length ?? 0;
   if (raisedCount) {
-    lines.push('', raisedCount === 1
-      ? "1 finding repeats a thread already on this pull request: it's listed after the findings, and isn't posted again or counted in the finding counts."
-      : `${raisedCount} findings repeat threads already on this pull request: they're listed after the findings, and aren't posted again or counted in the finding counts.`);
+    lines.push(
+      '',
+      raisedCount === 1
+        ? "1 finding repeats a thread already on this pull request: it's listed after the findings, and isn't posted again or counted in the finding counts."
+        : `${raisedCount} findings repeat threads already on this pull request: they're listed after the findings, and aren't posted again or counted in the finding counts.`,
+    );
   }
   const withheld = results.suggestionsWithheld ?? 0;
   if (withheld) {
-    lines.push('', withheld === 1
-      ? "1 finding's code change is in prose only: the pull request's author can't write to this repository, so no one-click suggestion is posted."
-      : `${withheld} findings' code changes are in prose only: the pull request's author can't write to this repository, so no one-click suggestions are posted.`);
+    lines.push(
+      '',
+      withheld === 1
+        ? "1 finding's code change is in prose only: the pull request's author can't write to this repository, so no one-click suggestion is posted."
+        : `${withheld} findings' code changes are in prose only: the pull request's author can't write to this repository, so no one-click suggestions are posted.`,
+    );
   }
   if (results.notShown.length) {
     lines.push('', `Not reviewed (over the size budget): ${files(results.notShown)}.`);
   }
   if (results.skippedByConfig?.length) {
-    lines.push('', `Skipped by config (\`skip:\` in \`.github/code-review/config.yml\`): ${files(results.skippedByConfig)}.`);
+    lines.push(
+      '',
+      `Skipped by config (\`skip:\` in \`.github/code-review/config.yml\`): ${files(results.skippedByConfig)}.`,
+    );
   }
   if (results.warnings?.length) {
-    lines.push('', '**Settings warnings** (the review ran without what each one names):', '', ...results.warnings.slice(0, 20).map((w) => `- ⚠️ ${cell(w)}`));
+    lines.push(
+      '',
+      '**Settings warnings** (the review ran without what each one names):',
+      '',
+      ...results.warnings.slice(0, 20).map((w) => `- ⚠️ ${cell(w)}`),
+    );
   }
   const dropped = results.dropped.length;
   if (dropped) {
-    lines.push('', `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`);
+    lines.push(
+      '',
+      `Dropped ${dropped} finding${dropped === 1 ? '' : 's'} that said a file this pull request changes isn't changed; they're listed at the end.`,
+    );
   }
   // GitHub holds a check run's summary to the same length as its text, and synthesis's summary is the one part with no
   // bound of its own, so it gives way, cut where it can't leave half an escaped character.
@@ -502,46 +609,113 @@ export function checkText(results: Results): string {
       '',
       // The check run escapes each place with cell(), as its own file:line spans do; a thread uses placesText and
       // text().
-      ...(f.places?.length ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), ''] : []),
+      ...(f.places?.length
+        ? ['*Also at:* ' + f.places.map((p) => '`' + cell(p.file) + ':' + p.line + '`').join(', '), '']
+        : []),
       `<sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
       '',
     ]),
-    more: (n, all) => [`*${n}${all ? '' : ' more'} finding${n === 1 ? " doesn't fit in this check run; it's" : "s don't fit in this check run; they're"} in the trace.*`, ''],
+    more: (n, all) => [
+      `*${n}${all ? '' : ' more'} finding${n === 1 ? " doesn't fit in this check run; it's" : "s don't fit in this check run; they're"} in the trace.*`,
+      '',
+    ],
     tail: [],
   };
   const list = (head: string[], lines: string[], tail: string[] = ['']): CheckPart | undefined =>
-    lines.length ? { head, items: lines.map((l) => [l]), more: (n, all) => [all ? `- ${n === 1 ? 'Its entry is' : `All ${n} entries are`} in the trace.` : `- ${n} more, in the trace.`], tail } : undefined;
-  const raised = list(['### Already raised', ''], (results.alreadyRaised ?? []).map((f) =>
-    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`));
-  const tracked = list(['### Tracked in open issues', ''], (results.tracked ?? []).map((f) =>
-    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — tracked in #${f.tracked}.`));
-  const upstream = list([`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, ''], (results.upstream ?? []).map((f) =>
-    `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`),
-  [...(results.upstreamOmitted ? [`- ${upstreamOmittedText(results.upstreamOmitted)}`] : []), '']);
-  const refuted = list(['### Refuted by verification', ''], (results.refuted ?? []).map(({ finding: f, path, reason }) =>
-    `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`));
-  const dropped = list(['', '### Dropped before posting', '', 'Each of these says a file isn\'t changed, but the pull request changes it.', ''], results.dropped.map(({ finding: f, file, claim }) =>
-    `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`), []);
+    lines.length
+      ? {
+          head,
+          items: lines.map((l) => [l]),
+          more: (n, all) => [
+            all ? `- ${n === 1 ? 'Its entry is' : `All ${n} entries are`} in the trace.` : `- ${n} more, in the trace.`,
+          ],
+          tail,
+        }
+      : undefined;
+  const raised = list(
+    ['### Already raised', ''],
+    (results.alreadyRaised ?? []).map(
+      (f) =>
+        `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — ${raisedAs(f.earlier)}.`,
+    ),
+  );
+  const tracked = list(
+    ['### Tracked in open issues', ''],
+    (results.tracked ?? []).map(
+      (f) =>
+        `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} — tracked in #${f.tracked}.`,
+    ),
+  );
+  const upstream = list(
+    [`### Belongs upstream, in ${cell(results.template ?? 'the project template')}`, ''],
+    (results.upstream ?? []).map(
+      (f) =>
+        `- **${f.id} ${severityLabel[f.severity]}** \`${cell(f.file)}:${f.line}\`: **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewers.join(', '))} · confidence ${f.confidence.toFixed(2)}</sub>`,
+    ),
+    [...(results.upstreamOmitted ? [`- ${upstreamOmittedText(results.upstreamOmitted)}`] : []), ''],
+  );
+  const refuted = list(
+    ['### Refuted by verification', ''],
+    (results.refuted ?? []).map(
+      ({ finding: f, path, reason }) =>
+        `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', '))}): ${cell(reason)}${path ? ` — \`${cell(path)}\`` : ''}`,
+    ),
+  );
+  const dropped = list(
+    [
+      '',
+      '### Dropped before posting',
+      '',
+      "Each of these says a file isn't changed, but the pull request changes it.",
+      '',
+    ],
+    results.dropped.map(
+      ({ finding: f, file, claim }) =>
+        `- ${severityLabel[f.severity]} \`${cell(f.file)}:${f.line}\` **${cell(f.title)}** (${cell(f.reviewers.join(', ') || 'synthesis')}): says \`${cell(file)}\` isn't changed: "${cell(claim)}"`,
+    ),
+    [],
+  );
 
   // A reviewer of a pull request reviewed in parts makes one call per part.
   const costs = new Map<string, number>();
   for (const c of results.calls) costs.set(c.role, (costs.get(c.role) ?? 0) + c.costUsd);
   const reviewers = ['### Reviewers', '', ...reviewerTable(results.reviewers, costs)];
   for (const role of ['selection', 'synthesis', 'verification']) {
-    if (costs.has(role)) reviewers.push(`| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`);
+    if (costs.has(role))
+      reviewers.push(
+        `| ${role} | ${shortModel(callModels(results.calls, role)) || '—'} | ran | | $${costs.get(role)!.toFixed(3)} |`,
+      );
   }
   const providers: string[] = [];
   if (results.switchedToBedrock) {
-    providers.push('', '### Cost by provider', '', `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`, '', '| Provider | Calls | Cost |', '|---|---|---|');
-    for (const e of costsByProvider(results.calls)) providers.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
+    providers.push(
+      '',
+      '### Cost by provider',
+      '',
+      `Switched to Bedrock partway: ${cell(results.switchedToBedrock)}.`,
+      '',
+      '| Provider | Calls | Cost |',
+      '|---|---|---|',
+    );
+    for (const e of costsByProvider(results.calls))
+      providers.push(`| ${providerLabel[e.provider]} | ${e.calls} | $${e.costUsd.toFixed(3)} |`);
   }
 
   const parts = [findings, raised, tracked, upstream, refuted, dropped];
-  const shown = fitParts(parts.filter((p) => p !== undefined), lineSize(reviewers) + lineSize(providers));
+  const shown = fitParts(
+    parts.filter((p) => p !== undefined),
+    lineSize(reviewers) + lineSize(providers),
+  );
   const render = (p: CheckPart | undefined) => (p ? renderPart(p, shown.get(p) ?? 0) : []);
   const out = [
-    ...render(findings), ...render(raised), ...render(tracked), ...render(upstream), ...render(refuted),
-    ...reviewers, ...render(dropped), ...providers,
+    ...render(findings),
+    ...render(raised),
+    ...render(tracked),
+    ...render(upstream),
+    ...render(refuted),
+    ...reviewers,
+    ...render(dropped),
+    ...providers,
   ];
   return [...out, ...shadowSection(results, costs, maxCheckText - out.join('\n').length - 1)].join('\n');
 }
@@ -562,7 +736,12 @@ function lineSize(lines: string[]): number {
 
 function renderPart(part: CheckPart, shown: number): string[] {
   const rest = part.items.length - shown;
-  return [...part.head, ...part.items.slice(0, shown).flat(), ...(rest ? part.more(rest, rest === part.items.length) : []), ...part.tail];
+  return [
+    ...part.head,
+    ...part.items.slice(0, shown).flat(),
+    ...(rest ? part.more(rest, rest === part.items.length) : []),
+    ...part.tail,
+  ];
 }
 
 // How many items of each part fit in the text GitHub accepts beside the fixed lines. Each part first keeps its heading,
@@ -572,7 +751,8 @@ function renderPart(part: CheckPart, shown: number): string[] {
 // The room kept for a note is the longer of its two wordings for all the part's items, and a note's count only shrinks
 // as items are shown, so that room is never short.
 function fitParts(parts: CheckPart[], fixed: number): Map<CheckPart, number> {
-  const note = (p: CheckPart) => Math.max(lineSize(p.more(p.items.length, true)), lineSize(p.more(p.items.length, false)));
+  const note = (p: CheckPart) =>
+    Math.max(lineSize(p.more(p.items.length, true)), lineSize(p.more(p.items.length, false)));
   let room = maxCheckText - fixed - parts.reduce((sum, p) => sum + lineSize([...p.head, ...p.tail]) + note(p), 0);
   const shown = new Map<CheckPart, number>();
   for (const part of parts) {
@@ -611,21 +791,43 @@ function shadowSection(results: Results, costs: Map<string, number>, room: numbe
   const tail: string[] = [];
   if (shadow.prompts.length) {
     const cost = [...costs].filter(([role]) => role.startsWith('shadow-prompt:')).reduce((sum, [, c]) => sum + c, 0);
-    tail.push(`Shadow prompts ran on this review beside the live ones: ${shadow.prompts.map((p) => `\`prompts/${p}.shadow.md\``).join(', ')}, $${cost.toFixed(3)}. Their outputs are only in the trace.`, '');
+    tail.push(
+      `Shadow prompts ran on this review beside the live ones: ${shadow.prompts.map((p) => `\`prompts/${p}.shadow.md\``).join(', ')}, $${cost.toFixed(3)}. Their outputs are only in the trace.`,
+      '',
+    );
   }
   tail.push('</details>');
   const findings = [...shadow.findings]
     .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.confidence - a.confidence)
-    .map((f) => `- ${severityDot[f.severity]} ${severityLabel[f.severity]} · \`${cell(f.file)}:${f.line}\` · **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewer)} · confidence ${f.confidence.toFixed(2)}</sub>`);
+    .map(
+      (f) =>
+        `- ${severityDot[f.severity]} ${severityLabel[f.severity]} · \`${cell(f.file)}:${f.line}\` · **${cell(f.title)}** ${cell(f.problem)} *Fix:* ${cell(f.fix)} <sub>${cell(f.reviewer)} · confidence ${f.confidence.toFixed(2)}</sub>`,
+    );
   const more = (n: number) => (n ? [`- ${n} more shadow finding${n === 1 ? '' : 's'}, in the trace.`] : []);
   const size = (lines: string[]) => lines.join('\n').length;
   let shown = findings.length;
-  while (shown >= 0 && size([...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail]) > room) shown--;
+  while (
+    shown >= 0 &&
+    size([
+      ...head,
+      ...findings.slice(0, shown),
+      ...more(findings.length - shown),
+      ...(findings.length ? [''] : []),
+      ...tail,
+    ]) > room
+  )
+    shown--;
   if (shown < 0) {
     const note = ['', "*Shadow findings (not posted) didn't fit in this check run; they are in the trace.*"];
     return size(note) <= room ? note : [];
   }
-  return [...head, ...findings.slice(0, shown), ...more(findings.length - shown), ...(findings.length ? [''] : []), ...tail];
+  return [
+    ...head,
+    ...findings.slice(0, shown),
+    ...more(findings.length - shown),
+    ...(findings.length ? [''] : []),
+    ...tail,
+  ];
 }
 
 // The live and the shadow reviewers' tables share one row format.
@@ -633,7 +835,10 @@ function reviewerTable(reviewers: ReviewerResult[], costs: Map<string, number>):
   return [
     '| Reviewer | Model | Status | Findings | Cost |',
     '|---|---|---|---|---|',
-    ...reviewers.map((r) => `| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`),
+    ...reviewers.map(
+      (r) =>
+        `| ${cell(r.name)} | ${shortModel(r.model) || '—'} | ${r.status}${r.error ? `: ${cell(r.error).slice(0, 80)}` : ''} | ${r.findingCount} | $${(costs.get(`reviewer:${r.name}`) ?? 0).toFixed(3)} |`,
+    ),
   ];
 }
 

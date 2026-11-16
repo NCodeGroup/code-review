@@ -133,7 +133,10 @@ const gitOptions = () => ({
 const templateOrder = Number.MAX_SAFE_INTEGER;
 
 export function git(repository: string, args: string[]): string {
-  return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], { ...gitOptions(), encoding: 'utf8' });
+  return execFileSync('git', ['-C', repository, '-c', 'core.quotePath=false', ...args], {
+    ...gitOptions(),
+    encoding: 'utf8',
+  });
 }
 
 // Reads files at a commit as text, with one git process for all of them. A file git can't read is left out.
@@ -185,13 +188,22 @@ export function changedLines(diff: string): Map<string, Set<number>> {
   let line = 0;
   for (const text of diff.split('\n')) {
     const header = /^\+\+\+ b\/(.+)$/.exec(text);
-    if (header) { file = header[1]!.trim(); lines.set(file, new Set()); continue; }
+    if (header) {
+      file = header[1]!.trim();
+      lines.set(file, new Set());
+      continue;
+    }
     if (text.startsWith('--- ')) continue;
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
-    if (hunk) { line = Number(hunk[1]); continue; }
+    if (hunk) {
+      line = Number(hunk[1]);
+      continue;
+    }
     if (!file) continue;
-    if (text.startsWith('+')) { lines.get(file)!.add(line); line++; }
-    else if (text.startsWith(' ')) line++;
+    if (text.startsWith('+')) {
+      lines.get(file)!.add(line);
+      line++;
+    } else if (text.startsWith(' ')) line++;
   }
   return lines;
 }
@@ -199,7 +211,12 @@ export function changedLines(diff: string): Map<string, Set<number>> {
 // Packs the per-file sections into parts of at most chunkChars, in review order so neighbouring files share a part, with
 // the template's files last. Generated files get a one-line stub in the first part. A file too big for any part, or past
 // the last part, is left out.
-export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, chunkChars: number, maxChunks: number): string[] {
+export function chunkDiff(
+  files: ChangedFile[],
+  sections: Map<string, string>,
+  chunkChars: number,
+  maxChunks: number,
+): string[] {
   const chunks: string[][] = [[]];
   const used = [0];
   const order = (file: ChangedFile) => (file.templateOwned ? templateOrder : reviewOrder(file.path));
@@ -207,7 +224,9 @@ export function chunkDiff(files: ChangedFile[], sections: Map<string, string>, c
   for (const file of ordered) {
     const section = sections.get(file.path);
     if (file.generated) {
-      chunks[0]!.push(`diff --git a/${file.path} b/${file.path}\n[generated file: ${file.additions + file.deletions} changed lines not shown]\n`);
+      chunks[0]!.push(
+        `diff --git a/${file.path} b/${file.path}\n[generated file: ${file.additions + file.deletions} changed lines not shown]\n`,
+      );
       file.shown = true;
       continue;
     }
@@ -235,7 +254,10 @@ function parseNumstat(numstat: string): ChangedFile[] {
     if (!match) continue;
     let file = match[3]!;
     // A rename shows as "dir/{old => new}/file" or "old => new".
-    file = file.replace(/\{[^{}]* => ([^{}]*)\}/, '$1').replace(/^.* => /, '').replace(/\/\//g, '/');
+    file = file
+      .replace(/\{[^{}]* => ([^{}]*)\}/, '$1')
+      .replace(/^.* => /, '')
+      .replace(/\/\//g, '/');
     const binary = match[1] === '-';
     files.push({
       path: file,
@@ -255,11 +277,14 @@ export function readConventions(basePath: string): string {
   if (existsSync(agents)) {
     const text = readFileSync(agents, 'utf8');
     for (const section of text.split(/^(?=## )/m)) {
-      if (/^## (Layout|Coding conventions|Known pending work)\b/.test(section)) parts.push(`From AGENTS.md:\n${section.trim()}`);
+      if (/^## (Layout|Coding conventions|Known pending work)\b/.test(section))
+        parts.push(`From AGENTS.md:\n${section.trim()}`);
     }
   }
   const joined = parts.join('\n\n');
-  return joined.length > maxConventionChars ? `${joined.slice(0, maxConventionChars)}\n[conventions truncated]` : joined;
+  return joined.length > maxConventionChars
+    ? `${joined.slice(0, maxConventionChars)}\n[conventions truncated]`
+    : joined;
 }
 
 // A glob as Copilot's applyTo and Claude Code's paths use them: ** spans folders, * and ? stay within one.
@@ -294,7 +319,10 @@ const broadProbes = ['README.md', 'src/Program.cs', 'src/App/Service.cs', 'lib/i
 export function broadSkipWarnings(globs: string[]): string[] {
   return globs
     .filter((glob) => broadProbes.every((file) => globToRegExp(glob).test(file)))
-    .map((glob) => `"skip" in ${settingsFolder}/config.yml has ${JSON.stringify(glob)}, which matches nearly every file; the review leaves out every changed file it matches.`);
+    .map(
+      (glob) =>
+        `"skip" in ${settingsFolder}/config.yml has ${JSON.stringify(glob)}, which matches nearly every file; the review leaves out every changed file it matches.`,
+    );
 }
 
 // The instruction files' frontmatter, read leniently line by line: they come from the template and other tools, in
@@ -357,21 +385,35 @@ export interface RuleFile {
 // .github/instructions/*.instructions.md whose applyTo matches a changed file, without its tool-enforced rules. The
 // most specific files come first; ones that apply to everything (**) come last.
 export function readReviewRules(basePath: string, changed: string[]): RuleFile[] {
-  return readRuleFolder(path.join(basePath, '.github', 'instructions'), '.instructions.md', changed, '.github/instructions');
+  return readRuleFolder(
+    path.join(basePath, '.github', 'instructions'),
+    '.instructions.md',
+    changed,
+    '.github/instructions',
+  );
 }
 
 // NCodeGroup-wide rules the training learned (guidance/*.md in the engine), for the files this pull request changes:
 // a topic file whose applyTo matches a changed file, without the bullets tagged for files the pull request doesn't
 // change, so a rule learned from C# conventions never reaches a review of TypeScript.
 export function readGuidance(guidanceDir: string, changed: string[]): RuleFile[] {
-  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance', (body) => keepBulletsFor(body, changed))
-    .filter((file) => file.text.split('\n').some((line) => line.startsWith('- **')));
+  return readRuleFolder(guidanceDir, '.md', changed, 'NCodeGroup guidance', (body) =>
+    keepBulletsFor(body, changed),
+  ).filter((file) => file.text.split('\n').some((line) => line.startsWith('- **')));
 }
 
-function readRuleFolder(folder: string, suffix: string, changed: string[], label: string, filter = (body: string) => body): RuleFile[] {
+function readRuleFolder(
+  folder: string,
+  suffix: string,
+  changed: string[],
+  label: string,
+  filter = (body: string) => body,
+): RuleFile[] {
   if (!existsSync(folder)) return [];
   const files: RuleFile[] = [];
-  for (const name of readdirSync(folder).filter((n) => n.endsWith(suffix)).sort()) {
+  for (const name of readdirSync(folder)
+    .filter((n) => n.endsWith(suffix))
+    .sort()) {
     const file = ruleFile(name, label, readFileSync(path.join(folder, name), 'utf8'), changed, [], filter);
     if (file) files.push(file);
   }
@@ -380,12 +422,23 @@ function readRuleFolder(folder: string, suffix: string, changed: string[], label
 }
 
 // A rule file when its applyTo (or, without one, defaultGlobs) matches a changed file.
-function ruleFile(name: string, label: string, text: string, changed: string[], defaultGlobs: string[] = [], filter = (body: string) => body): RuleFile | undefined {
+function ruleFile(
+  name: string,
+  label: string,
+  text: string,
+  changed: string[],
+  defaultGlobs: string[] = [],
+  filter = (body: string) => body,
+): RuleFile | undefined {
   const { body } = frontmatter(text);
   const applyTo = applyToGlobs(text);
   const globs = applyTo.length ? applyTo : defaultGlobs;
   if (!matchesAnyFile(globs, changed)) return undefined;
-  return { name, globs, text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}` };
+  return {
+    name,
+    globs,
+    text: `From ${label}/${name} (applies to ${globs.join(', ')}):\n${filter(dropToolEnforced(body)).trim()}`,
+  };
 }
 
 // The project's rules in .github/code-review/guidance.md, which join the catalog like the instruction files. Without
@@ -397,12 +450,19 @@ export function projectGuidanceRules(text: string | undefined, changed: string[]
 
 // The conventions with the policies config.yml names after them, each with its path.
 export function withPolicies(conventions: string, policies: { path: string; text: string }[]): string {
-  return [conventions, ...policies.map((p) => `From ${p.path} (a policy named in ${settingsFolder}/config.yml):\n${p.text}`)].filter(Boolean).join('\n\n');
+  return [
+    conventions,
+    ...policies.map((p) => `From ${p.path} (a policy named in ${settingsFolder}/config.yml):\n${p.text}`),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 // The issue numbers a description closes ("Closes #12", "fixes #3", "Resolves #7").
 export function closedIssues(body: string | undefined): number[] {
-  const numbers = [...(body ?? '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => Number(m[1]));
+  const numbers = [...(body ?? '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) =>
+    Number(m[1]),
+  );
   return [...new Set(numbers)].slice(0, 5);
 }
 
@@ -433,7 +493,12 @@ export function readPullRequest(event: any, repository: string, canWrite: boolea
 // none, and the head's answers count. An update changes _commit, and the default branch's answers count. Any other edit
 // to the answers file, such as one to project_owned_files, leaves the template's files to the project's review, so
 // editing the answers file can't hide findings; anywhere else a change to one of the template's files is an edit by hand.
-export function templateOf(pullRequest: PullRequest, files: ChangedFile[], prPath: string, basePath: string): Template | undefined {
+export function templateOf(
+  pullRequest: PullRequest,
+  files: ChangedFile[],
+  prPath: string,
+  basePath: string,
+): Template | undefined {
   if (!pullRequest.authorCanWrite || !files.some((f) => f.path === answersFile)) return undefined;
   const head = readTemplate(prPath);
   // Deleting the answers file leaves the template, so the pull request's changes are the project's own.
@@ -457,10 +522,19 @@ export interface Changes {
 export function readChanges(pullRequest: PullRequest, prPath: string, basePath: string): Changes {
   const headSha = git(prPath, ['rev-parse', 'HEAD']).trim();
   const mergeBase = git(prPath, ['merge-base', pullRequest.baseSha, headSha]).trim();
-  const changed = parseNumstat(git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, headSha]));
+  const changed = parseNumstat(
+    git(prPath, ['diff', '--numstat', '-M', '--no-ext-diff', '--no-textconv', mergeBase, headSha]),
+  );
   const template = templateOf(pullRequest, changed, prPath, basePath);
   const commit = readTemplate(prPath)?.commit;
-  const candidate = template && commit ? { template, commit, files: changed.map((f) => f.path).filter((p) => p !== answersFile && !template.projectOwned.includes(p)) } : undefined;
+  const candidate =
+    template && commit
+      ? {
+          template,
+          commit,
+          files: changed.map((f) => f.path).filter((p) => p !== answersFile && !template.projectOwned.includes(p)),
+        }
+      : undefined;
   return { headSha, mergeBase, changed, ...(template ? { template } : {}), ...(candidate ? { candidate } : {}) };
 }
 
@@ -495,7 +569,13 @@ export function gather(
     const heads = readBlobs(prPath, pullRequest.headSha, paths);
     const unread = paths.filter((p) => !heads.has(p));
     // JSON quoting keeps a path with a line break from starting a workflow command of its own.
-    if (unread.length) writeLog(`::warning::Couldn't read ${unread.length} changed C# file(s) at the head (${unread.slice(0, 5).map((p) => JSON.stringify(p)).join(', ')}), so they count as public API changes.`);
+    if (unread.length)
+      writeLog(
+        `::warning::Couldn't read ${unread.length} changed C# file(s) at the head (${unread
+          .slice(0, 5)
+          .map((p) => JSON.stringify(p))
+          .join(', ')}), so they count as public API changes.`,
+      );
     return heads;
   });
   const chunks = chunkDiff(files, sections, maxChunkChars, maxChunks);
@@ -506,7 +586,9 @@ export function gather(
   const proposed = readProposedDecisions(prPath, reviewed);
   const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
   const commits = pullRequest.authorCanWrite
-    ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`]).split('\n').filter(Boolean)
+    ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`])
+        .split('\n')
+        .filter(Boolean)
     : [];
   return {
     pullRequest,

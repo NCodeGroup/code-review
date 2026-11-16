@@ -44,7 +44,14 @@ test('readTraces finds trace.json files in nested folders and skips a trace with
     writeFileSync(
       path.join(dir, '1', 'a', 'trace.json'),
       JSON.stringify({
-        results: { durationMs: 5000, costUsd: 1.5, calls: [call('context', 1000, { startedAt: 5 }), { role: 'bad', model: 'm', durationMs: 'x', turns: 1, costUsd: 0 }] },
+        results: {
+          durationMs: 5000,
+          costUsd: 1.5,
+          calls: [
+            call('context', 1000, { startedAt: 5 }),
+            { role: 'bad', model: 'm', durationMs: 'x', turns: 1, costUsd: 0 },
+          ],
+        },
         timings: { startedAt: 1, prepare: 200 },
       }),
     );

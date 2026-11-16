@@ -55,13 +55,14 @@ function changedLinesFor(diff: string, files: string[]): Record<string, number[]
 // and the annotations are made from.
 export function buildResults(outcome: Review, context: ReviewContext): Results {
   const shadowPrompts = [...new Set(outcome.shadowPrompts.flatMap((p) => p.prompts))];
-  const shadow: ShadowResults | undefined = outcome.shadow.length || shadowPrompts.length
-    ? {
-        reviewers: reviewerResults(outcome.shadow, outcome.calls),
-        findings: outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewer: o.name }))),
-        prompts: shadowPrompts,
-      }
-    : undefined;
+  const shadow: ShadowResults | undefined =
+    outcome.shadow.length || shadowPrompts.length
+      ? {
+          reviewers: reviewerResults(outcome.shadow, outcome.calls),
+          findings: outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewer: o.name }))),
+          prompts: shadowPrompts,
+        }
+      : undefined;
   // A suggestion can be applied with one click, so a model-written change prompted by an outsider's code never gets one.
   const trusted = context.authorCanWrite === true;
   const withheld = trusted ? 0 : outcome.findings.filter((f) => f.suggestion).length;
@@ -76,7 +77,9 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     summary: outcome.summary,
     verdict: outcome.verdict,
     findings,
-    ...(outcome.upstream.length && context.template ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: context.template } : {}),
+    ...(outcome.upstream.length && context.template
+      ? { upstream: outcome.upstream, upstreamOmitted: outcome.upstreamOmitted, template: context.template }
+      : {}),
     ...(outcome.tracked?.length ? { tracked: outcome.tracked } : {}),
     dropped: outcome.dropped,
     ...(outcome.verification.length ? { refuted: outcome.refuted } : {}),
@@ -91,7 +94,10 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     ...(context.skippedByConfig ? { skippedByConfig: context.skippedByConfig } : {}),
     warnings: [...(context.warnings ?? []), ...outcome.warnings],
     ...(withheld ? { suggestionsWithheld: withheld } : {}),
-    changedLines: changedLinesFor(context.diff, findings.map((f) => f.file)),
+    changedLines: changedLinesFor(
+      context.diff,
+      findings.map((f) => f.file),
+    ),
     depth: outcome.depth,
     sensitiveFiles: outcome.sensitiveFiles,
     ...(context.recordedHead !== undefined ? { recordedHead: context.recordedHead } : {}),

@@ -5,7 +5,17 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import type { ListedComment } from '../src/comments.ts';
 import { githubApi } from '../src/github.ts';
-import { checkPause, isMaintainerComment, maxUnansweredReviews, pauseDecision, pausedMarker, pausedNotice, pausedStatus, postPausedNotice, unansweredReviews } from '../src/pause.ts';
+import {
+  checkPause,
+  isMaintainerComment,
+  maxUnansweredReviews,
+  pauseDecision,
+  pausedMarker,
+  pausedNotice,
+  pausedStatus,
+  postPausedNotice,
+  unansweredReviews,
+} from '../src/pause.ts';
 import { headMarker, summaryMarker, supersededComment } from '../src/results.ts';
 import { writerCheck } from '../src/writers.ts';
 import { useGitHubDotCom } from './github-env.ts';
@@ -32,11 +42,18 @@ const reviewed = 'a'.repeat(40);
 let ids = 0;
 
 function summary(minute: number, collapsed = false, head = reviewed): ListedComment {
-  const body = collapsed ? supersededComment(head, 'https://github.com/o/r/pull/1#issuecomment-1') : `${summaryMarker}\n${headMarker(head)}\n### 🤖 Review complete`;
+  const body = collapsed
+    ? supersededComment(head, 'https://github.com/o/r/pull/1#issuecomment-1')
+    : `${summaryMarker}\n${headMarker(head)}\n### 🤖 Review complete`;
   return { id: ++ids, user: bot, author_association: 'NONE', created_at: at(minute), body };
 }
 
-function said(minute: number, body: string, association = 'MEMBER', user: ListedComment['user'] = maintainer): ListedComment {
+function said(
+  minute: number,
+  body: string,
+  association = 'MEMBER',
+  user: ListedComment['user'] = maintainer,
+): ListedComment {
   return { id: ++ids, user, author_association: association, created_at: at(minute), body };
 }
 
@@ -54,10 +71,13 @@ const threeReviews = (head = reviewed): ListedComment[] => [
 
 test('unansweredReviews counts the summaries, collapsed or not, since the last comment from someone with write access', async () => {
   assert.deepEqual(await unansweredReviews(threeReviews(), byAssociation), { reviews: 3, noticePosted: false });
-  assert.deepEqual(await unansweredReviews([summary(0), summary(1)], byAssociation), { reviews: 2, noticePosted: false });
+  assert.deepEqual(await unansweredReviews([summary(0), summary(1)], byAssociation), {
+    reviews: 2,
+    noticePosted: false,
+  });
 });
 
-test('comments from the autopilot, a bot or someone without write access are not the maintainer\'s', async () => {
+test("comments from the autopilot, a bot or someone without write access are not the maintainer's", async () => {
   const comments = [
     ...threeReviews(),
     said(7, '  Autopilot: replied in the thread.'),
@@ -72,7 +92,10 @@ test('comments from the autopilot, a bot or someone without write access are not
 
 test('a maintainer comment in a review thread, or a /review, starts the count again', async () => {
   assert.equal((await unansweredReviews([...threeReviews(), said(7, 'This one can stay.')], byAssociation)).reviews, 0);
-  assert.equal((await unansweredReviews([...threeReviews(), said(7, '/review', 'OWNER'), summary(8)], byAssociation)).reviews, 1);
+  assert.equal(
+    (await unansweredReviews([...threeReviews(), said(7, '/review', 'OWNER'), summary(8)], byAssociation)).reviews,
+    1,
+  );
 });
 
 test('the fourth review without a maintainer comment pauses, once', async () => {
@@ -82,11 +105,22 @@ test('the fourth review without a maintainer comment pauses, once', async () => 
   const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
   assert.equal(pauseDecision(await unansweredReviews([...threeReviews(), notice], byAssociation)), 'paused');
   // A notice from before the maintainer last spoke is from an earlier pause.
-  assert.equal(pauseDecision(await unansweredReviews([summary(0), notice, said(8, 'Carry on.'), summary(9), summary(10), summary(11)], byAssociation)), 'pause');
+  assert.equal(
+    pauseDecision(
+      await unansweredReviews(
+        [summary(0), notice, said(8, 'Carry on.'), summary(9), summary(10), summary(11)],
+        byAssociation,
+      ),
+    ),
+    'pause',
+  );
 });
 
 test("a private organization member's comment counts as the maintainer's when the permission lookup says write, and not when it fails", async () => {
-  const comments = [...threeReviews(), said(7, 'Looks fine.', 'CONTRIBUTOR', { login: 'private-member', type: 'User' })];
+  const comments = [
+    ...threeReviews(),
+    said(7, 'Looks fine.', 'CONTRIBUTOR', { login: 'private-member', type: 'User' }),
+  ];
   const urls: string[] = [];
   const writes = (async (url: string | URL | Request) => {
     urls.push(String(url));
@@ -97,7 +131,15 @@ test("a private organization member's comment counts as the maintainer's when th
   assert.deepEqual(urls, ['https://api.github.com/repos/o/r/collaborators/private-member/permission']);
   const lines: string[] = [];
   const outage = (async () => new Response('', { status: 502 })) as unknown as typeof fetch;
-  assert.equal((await unansweredReviews(comments, writerCheck('o/r', githubApi('t', outage), (line) => lines.push(line)))).reviews, 3);
+  assert.equal(
+    (
+      await unansweredReviews(
+        comments,
+        writerCheck('o/r', githubApi('t', outage), (line) => lines.push(line)),
+      )
+    ).reviews,
+    3,
+  );
   assert.equal(lines.length, 1);
 });
 
@@ -114,15 +156,67 @@ test('checkPause reads the review comments too, and reviews when it cannot read 
     return Response.json([said(7, 'Fine as is.')]);
   }) as typeof fetch;
   const logs: string[] = [];
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage, log: (l) => logs.push(l) }), 'review');
+  assert.equal(
+    await checkPause({
+      repository: 'o/r',
+      number: 1,
+      token: 't',
+      issueComments: threeReviews(),
+      isWriter: byAssociation,
+      fetchPage,
+      log: (l) => logs.push(l),
+    }),
+    'review',
+  );
   assert.deepEqual(urls, ['https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1']);
   const empty = (async () => Response.json([])) as unknown as typeof fetch;
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage: empty, log: (l) => logs.push(l) }), 'pause');
+  assert.equal(
+    await checkPause({
+      repository: 'o/r',
+      number: 1,
+      token: 't',
+      issueComments: threeReviews(),
+      isWriter: byAssociation,
+      fetchPage: empty,
+      log: (l) => logs.push(l),
+    }),
+    'pause',
+  );
   const refused = (async () => new Response('', { status: 500 })) as unknown as typeof fetch;
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: threeReviews(), isWriter: byAssociation, fetchPage: refused, log: (l) => logs.push(l) }), 'review');
-  assert.equal(await checkPause({ repository: 'o/r', number: 1, token: 't', issueComments: undefined, isWriter: byAssociation, fetchPage: empty, log: (l) => logs.push(l) }), 'review');
-  assert.equal(logs.filter((l) => l === "::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.").length, 2);
-  assert.ok(logs.includes("::warning::Couldn't read /repos/o/r/pulls/1/comments (HTTP 500); the run goes on without those comments."));
+  assert.equal(
+    await checkPause({
+      repository: 'o/r',
+      number: 1,
+      token: 't',
+      issueComments: threeReviews(),
+      isWriter: byAssociation,
+      fetchPage: refused,
+      log: (l) => logs.push(l),
+    }),
+    'review',
+  );
+  assert.equal(
+    await checkPause({
+      repository: 'o/r',
+      number: 1,
+      token: 't',
+      issueComments: undefined,
+      isWriter: byAssociation,
+      fetchPage: empty,
+      log: (l) => logs.push(l),
+    }),
+    'review',
+  );
+  assert.equal(
+    logs.filter((l) => l === "::warning::Couldn't read the pull request's comments, so the loop limit isn't checked.")
+      .length,
+    2,
+  );
+  assert.ok(
+    logs.includes(
+      "::warning::Couldn't read /repos/o/r/pulls/1/comments (HTTP 500); the run goes on without those comments.",
+    ),
+  );
 });
 
 test('postPausedNotice posts the notice as a comment on the pull request', async () => {
@@ -143,14 +237,22 @@ function automaticRun(issueComments: ListedComment[]) {
   const output = path.join(dir, 'output');
   const event = path.join(dir, 'event.json');
   writeFileSync(output, '');
-  writeFileSync(event, JSON.stringify({ action: 'ready_for_review', pull_request: { number: 1, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } } }));
+  writeFileSync(
+    event,
+    JSON.stringify({
+      action: 'ready_for_review',
+      pull_request: { number: 1, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } },
+    }),
+  );
   const { requests } = runStep(
     'main.ts',
     dir,
     {
       rest: {
         'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': issueComments,
-        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [said(5, 'Autopilot: fixed in def456.')],
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [
+          said(5, 'Autopilot: fixed in def456.'),
+        ],
       },
       graphql: [],
     },
@@ -170,23 +272,41 @@ function automaticRun(issueComments: ListedComment[]) {
 test('the fourth automatic review without a maintainer comment posts the pause notice and costs nothing', () => {
   const { out, output, requests } = automaticRun(threeReviews());
   // The review step read the comments with its read-only token, made no other request, and so no model call.
-  assert.deepEqual(requests.map((r) => `${r.method} ${r.url} ${r.authorization}`), [
-    'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1 Bearer read-token',
-    'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1 Bearer read-token',
-  ]);
+  assert.deepEqual(
+    requests.map((r) => `${r.method} ${r.url} ${r.authorization}`),
+    [
+      'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1 Bearer read-token',
+      'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1 Bearer read-token',
+    ],
+  );
   assert.equal(output, 'paused=true\n');
   assert.ok(!existsSync(path.join(out, 'results.json')));
-  assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'paused.json'), 'utf8')), { repository: 'o/r', pullRequest: 1 });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'paused.json'), 'utf8')), {
+    repository: 'o/r',
+    pullRequest: 1,
+  });
   assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')), pausedStatus());
 
   const { requests: posted } = runStep(
     'publish.ts',
     temp('pause-publish-'),
-    { rest: { 'POST https://api.github.com/repos/o/r/issues/1/comments': { html_url: 'https://github.com/o/r/pull/1#issuecomment-9' } }, graphql: [] },
+    {
+      rest: {
+        'POST https://api.github.com/repos/o/r/issues/1/comments': {
+          html_url: 'https://github.com/o/r/pull/1#issuecomment-9',
+        },
+      },
+      graphql: [],
+    },
     { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
   );
   assert.deepEqual(posted, [
-    { method: 'POST', url: 'https://api.github.com/repos/o/r/issues/1/comments', authorization: 'Bearer app-token', body: { body: pausedNotice() } },
+    {
+      method: 'POST',
+      url: 'https://api.github.com/repos/o/r/issues/1/comments',
+      authorization: 'Bearer app-token',
+      body: { body: pausedNotice() },
+    },
   ]);
   // The publish step leaves the check run the acknowledgement started to the finish step, which completes it as paused.
   const sha = 'f'.repeat(40);
@@ -194,12 +314,27 @@ test('the fourth automatic review without a maintainer comment posts the pause n
     'finish.ts',
     temp('pause-finish-'),
     { rest: { 'PATCH https://api.github.com/repos/o/r/check-runs/5': { id: 5 } }, graphql: [] },
-    { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token', GITHUB_REPOSITORY: 'o/r', CODE_REVIEW_CHECK_RUN_ID: '5', CODE_REVIEW_CHECK_RUN_SHA: sha },
+    {
+      CODE_REVIEW_OUT: out,
+      CODE_REVIEW_APP_TOKEN: 'app-token',
+      GITHUB_REPOSITORY: 'o/r',
+      CODE_REVIEW_CHECK_RUN_ID: '5',
+      CODE_REVIEW_CHECK_RUN_SHA: sha,
+    },
   );
   assert.match(stdout, /Completed the check run: Review paused/);
-  assert.deepEqual(finished.map((r) => [r.method, r.url, r.body?.status, r.body?.conclusion, r.body?.output]), [
-    ['PATCH', 'https://api.github.com/repos/o/r/check-runs/5', 'completed', 'neutral', { title: pausedStatus().title, summary: pausedStatus().summary }],
-  ]);
+  assert.deepEqual(
+    finished.map((r) => [r.method, r.url, r.body?.status, r.body?.conclusion, r.body?.output]),
+    [
+      [
+        'PATCH',
+        'https://api.github.com/repos/o/r/check-runs/5',
+        'completed',
+        'neutral',
+        { title: pausedStatus().title, summary: pausedStatus().summary },
+      ],
+    ],
+  );
 });
 
 test('an automatic review after the pause notice posts nothing more', () => {
@@ -218,15 +353,36 @@ test('closing a pull request after three unanswered reviews records the outcomes
   const outputFile = path.join(dir, 'output');
   const eventFile = path.join(dir, 'event.json');
   writeFileSync(outputFile, '');
-  writeFileSync(eventFile, JSON.stringify({ action: 'closed', pull_request: { number: 1, merged: true, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } } }));
+  writeFileSync(
+    eventFile,
+    JSON.stringify({
+      action: 'closed',
+      pull_request: { number: 1, merged: true, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } },
+    }),
+  );
   const comments = threeReviews();
   const newest = comments.at(-1)!;
-  const noThreads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } } };
+  const noThreads = {
+    data: {
+      repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } },
+    },
+  };
   const { requests } = runStep(
     'main.ts',
     dir,
-    { rest: { 'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': comments }, graphql: [['reviewThreads', noThreads]] },
-    { CODE_REVIEW_OUT: out, CODE_REVIEW_PR_PATH: path.join(dir, 'pr'), CODE_REVIEW_BASE_PATH: path.join(dir, 'base'), CODE_REVIEW_GITHUB_TOKEN: 'read-token', GITHUB_REPOSITORY: 'o/r', GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile },
+    {
+      rest: { 'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': comments },
+      graphql: [['reviewThreads', noThreads]],
+    },
+    {
+      CODE_REVIEW_OUT: out,
+      CODE_REVIEW_PR_PATH: path.join(dir, 'pr'),
+      CODE_REVIEW_BASE_PATH: path.join(dir, 'base'),
+      CODE_REVIEW_GITHUB_TOKEN: 'read-token',
+      GITHUB_REPOSITORY: 'o/r',
+      GITHUB_EVENT_PATH: eventFile,
+      GITHUB_OUTPUT: outputFile,
+    },
   );
   assert.equal(readFileSync(outputFile, 'utf8'), 'outcomes=true\n');
   assert.ok(existsSync(path.join(out, 'outcomes.json')));
@@ -237,10 +393,16 @@ test('closing a pull request after three unanswered reviews records the outcomes
   const { requests: posted } = runStep(
     'publish.ts',
     temp('pause-closed-publish-'),
-    { rest: { [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`]: { id: newest.id } }, graphql: [] },
+    {
+      rest: { [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`]: { id: newest.id } },
+      graphql: [],
+    },
     { CODE_REVIEW_OUT: out, CODE_REVIEW_APP_TOKEN: 'app-token' },
   );
-  assert.deepEqual(posted.map((r) => `${r.method} ${r.url}`), [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`]);
+  assert.deepEqual(
+    posted.map((r) => `${r.method} ${r.url}`),
+    [`PATCH https://api.github.com/repos/o/r/issues/comments/${newest.id}`],
+  );
   assert.ok(!String(posted[0]?.body?.body).includes(pausedMarker));
 });
 
@@ -249,13 +411,22 @@ test('a /review from a writer on a paused pull request reviews it', () => {
   const checkout = pullRequestCheckout(dir);
   const notice = { id: ++ids, user: bot, author_association: 'NONE', created_at: at(7), body: pausedNotice() };
   const event = { issue: { number: 1, pull_request: {} }, comment: { body: '/review', author_association: 'OWNER' } };
-  const pullRequest = { number: 1, user: { login: 'polewskm' }, author_association: 'OWNER', base: { ref: 'main', sha: checkout.base }, head: { sha: checkout.head, repo: { full_name: 'o/r' } } };
+  const pullRequest = {
+    number: 1,
+    user: { login: 'polewskm' },
+    author_association: 'OWNER',
+    base: { ref: 'main', sha: checkout.base },
+    head: { sha: checkout.head, repo: { full_name: 'o/r' } },
+  };
   const { out, output, requests, stdout } = reviewStep(
     dir,
     event,
     {
       'GET https://api.github.com/repos/o/r/pulls/1': pullRequest,
-      'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [...threeReviews(checkout.reviewed), notice],
+      'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [
+        ...threeReviews(checkout.reviewed),
+        notice,
+      ],
     },
     false,
   );

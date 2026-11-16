@@ -31,7 +31,9 @@ export async function decideAcknowledgement(
   const { event, repository, token } = input;
   const ignored = ignoredCommentId(event);
   if (ignored !== undefined) {
-    log("No review: the comment starts with /review but isn't a command (/review, /review explain <finding> or /review teach <rule>); reacting 😕 to it.");
+    log(
+      "No review: the comment starts with /review but isn't a command (/review, /review explain <finding> or /review teach <rule>); reacting 😕 to it.",
+    );
     return ignoredOutputs(ignored);
   }
   const decision = await decideReview(
@@ -86,8 +88,11 @@ export async function reactToIgnoredComment(
 ): Promise<void> {
   try {
     const commentId = Number(env['CODE_REVIEW_COMMENT_ID'] || NaN);
-    if (!Number.isSafeInteger(commentId) || commentId <= 0) throw new Error('CODE_REVIEW_COMMENT_ID is not a comment id.');
-    await api('POST', `/repos/${required('GITHUB_REPOSITORY', env)}/issues/comments/${commentId}/reactions`, { content: 'confused' });
+    if (!Number.isSafeInteger(commentId) || commentId <= 0)
+      throw new Error('CODE_REVIEW_COMMENT_ID is not a comment id.');
+    await api('POST', `/repos/${required('GITHUB_REPOSITORY', env)}/issues/comments/${commentId}/reactions`, {
+      content: 'confused',
+    });
   } finally {
     await revokeAcknowledgementToken(api, log);
   }

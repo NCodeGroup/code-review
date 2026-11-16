@@ -20,7 +20,9 @@ export const stillOpenMarker = '<!-- ncode-review:still-open -->';
 export function postedFinding(thread: ThreadNode): PostedThread | undefined {
   const first = thread.first.nodes[0];
   if (!first || first.author?.login !== botAuthor) return undefined;
-  return parsePosted([{ body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine, html_url: first.url }])[0];
+  return parsePosted([
+    { body: first.body, path: thread.path, line: thread.line, original_line: thread.originalLine, html_url: first.url },
+  ])[0];
 }
 
 // The bot's threads the maintainer dismissed: resolved by someone with write access while still on the code they were
@@ -28,18 +30,31 @@ export function postedFinding(thread: ThreadNode): PostedThread | undefined {
 // too, so a resolution by anyone else doesn't count. A thread an app resolved, the bot included, has no resolver, since
 // GraphQL's `resolvedBy` is a user; the bot's own login is ruled out too, so it is never looked up as a person.
 // `isWriter` looks up a login's access; one it can't look up doesn't count.
-export async function dismissedThreads(threads: ThreadNode[], isWriter: (login: string) => Promise<boolean>): Promise<{ thread: ThreadNode; posted: PostedThread }[]> {
+export async function dismissedThreads(
+  threads: ThreadNode[],
+  isWriter: (login: string) => Promise<boolean>,
+): Promise<{ thread: ThreadNode; posted: PostedThread }[]> {
   const dismissed: { thread: ThreadNode; posted: PostedThread }[] = [];
   const access = new Map<string, Promise<boolean>>();
   const writer = (login: string) => {
-    if (!access.has(login)) access.set(login, isWriter(login).catch(() => false));
+    if (!access.has(login))
+      access.set(
+        login,
+        isWriter(login).catch(() => false),
+      );
     return access.get(login)!;
   };
   for (const thread of threads) {
     const posted = postedFinding(thread);
     if (!posted) continue;
     const resolver = thread.resolvedBy?.login;
-    const resolvedAsIs = thread.isResolved && !thread.isOutdated && !!resolver && resolver !== botAuthor && resolver !== `${botAuthor}[bot]` && (await writer(resolver));
+    const resolvedAsIs =
+      thread.isResolved &&
+      !thread.isOutdated &&
+      !!resolver &&
+      resolver !== botAuthor &&
+      resolver !== `${botAuthor}[bot]` &&
+      (await writer(resolver));
     let thumbsDown = false;
     if (!resolvedAsIs) {
       for (const reaction of thread.first.nodes[0]!.reactions.nodes) {
@@ -55,7 +70,9 @@ export async function dismissedThreads(threads: ThreadNode[], isWriter: (login: 
   return dismissed;
 }
 
-export type FollowUp = { kind: 'resolve'; thread: ThreadNode; id: string } | { kind: 'reply'; thread: ThreadNode; id: string; body: string };
+export type FollowUp =
+  | { kind: 'resolve'; thread: ThreadNode; id: string }
+  | { kind: 'reply'; thread: ThreadNode; id: string; body: string };
 
 // A thread's line, while it isn't outdated, is on or next to a line changed since the last review.
 function linesChanged(thread: ThreadNode, changed: Record<string, number[]>): boolean {
@@ -66,7 +83,12 @@ function linesChanged(thread: ThreadNode, changed: Record<string, number[]>): bo
 // Whether the bot has said in this thread why the finding stays open. When the thread has more comments than were read
 // and none of them is that reply, it can't tell, and counts it as said, so it never says it twice.
 function alreadyAnswered(thread: ThreadNode): boolean {
-  if ([...thread.first.nodes, ...thread.comments.nodes].some((c) => c.author?.login === botAuthor && c.body.includes(stillOpenMarker))) return true;
+  if (
+    [...thread.first.nodes, ...thread.comments.nodes].some(
+      (c) => c.author?.login === botAuthor && c.body.includes(stillOpenMarker),
+    )
+  )
+    return true;
   const firstInLast = thread.comments.nodes.some((c) => c.url === thread.first.nodes[0]?.url);
   return thread.comments.totalCount > thread.comments.nodes.length + (firstInLast ? 0 : 1);
 }
@@ -74,9 +96,16 @@ function alreadyAnswered(thread: ThreadNode): boolean {
 const maxNoteChars = 1_000;
 
 export function stillOpenReply(headSha: string, note: string, maintainer: string): string {
-  const reason = neutralizeProse(note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;')) || 'The re-review still finds the problem in the code now.';
+  const reason =
+    neutralizeProse(note.replace(/\s+/g, ' ').trim().slice(0, maxNoteChars).replace(/</g, '&lt;')) ||
+    'The re-review still finds the problem in the code now.';
   const who = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(maintainer) ? `@${maintainer}` : 'Maintainer';
-  return [stillOpenMarker, `This stays open: the re-review at ${headSha.slice(0, 7)} still finds it. ${reason}`, '', `${who}: needs you.`].join('\n');
+  return [
+    stillOpenMarker,
+    `This stays open: the re-review at ${headSha.slice(0, 7)} still finds it. ${reason}`,
+    '',
+    `${who}: needs you.`,
+  ].join('\n');
 }
 
 // What to do with each of the bot's unresolved threads after a re-review, from the status it gave each one. A full
@@ -111,8 +140,10 @@ export async function planFollowUps(
   return actions;
 }
 
-const resolveMutation = 'mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }';
-const replyMutation = 'mutation($id: ID!, $body: String!) { addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $id, body: $body }) { comment { url } } }';
+const resolveMutation =
+  'mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }';
+const replyMutation =
+  'mutation($id: ID!, $body: String!) { addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $id, body: $body }) { comment { url } } }';
 
 // Carries out the follow-ups through `graphql`, which throws on a refusal. A failed one only warns.
 export async function followUpThreads(
@@ -132,7 +163,9 @@ export async function followUpThreads(
         log(`Replied in the thread of ${action.id} that it stays open.`);
       }
     } catch (error) {
-      log(`::warning::Couldn't ${action.kind === 'resolve' ? 'resolve' : 'reply in'} the thread of ${action.id} (${errorText(error)}).`);
+      log(
+        `::warning::Couldn't ${action.kind === 'resolve' ? 'resolve' : 'reply in'} the thread of ${action.id} (${errorText(error)}).`,
+      );
     }
   }
 }

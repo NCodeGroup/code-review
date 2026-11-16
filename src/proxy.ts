@@ -11,8 +11,16 @@ import type { Credentials } from './credentials.ts';
 export const placeholderKey = 'placeholder-the-proxy-adds-the-real-credential';
 
 const hopByHop = new Set([
-  'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
-  'host', 'content-length',
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'host',
+  'content-length',
 ]);
 
 interface Upstream {

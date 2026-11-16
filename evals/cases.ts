@@ -3,7 +3,12 @@
 import type { EarlierFinding } from '../src/rereview.ts';
 import type { Severity } from '../src/review.ts';
 
-export interface Concern { file?: string; line?: number; minSeverity?: Severity; concern: string }
+export interface Concern {
+  file?: string;
+  line?: number;
+  minSeverity?: Severity;
+  concern: string;
+}
 
 export interface EvalCase {
   id: string;
@@ -41,6 +46,16 @@ export interface EvalCase {
 // re-review: every case with a reviewed head, to compare re-reviews and read each one's cost (costUsd, reviewCostUsd in
 // the output).
 export const subsets: Record<string, readonly string[]> = {
-  smoke: ['accepted-no-backfill', 'heap-allocation-key-export', 'secret-buffer-length', 'test-gap-newest-summary-selection'],
-  're-review': ['re-review-declined-trigger', 're-review-merge-of-main', 're-review-security-floor', 're-review-sensitive-path'],
+  smoke: [
+    'accepted-no-backfill',
+    'heap-allocation-key-export',
+    'secret-buffer-length',
+    'test-gap-newest-summary-selection',
+  ],
+  're-review': [
+    're-review-declined-trigger',
+    're-review-merge-of-main',
+    're-review-security-floor',
+    're-review-sensitive-path',
+  ],
 };

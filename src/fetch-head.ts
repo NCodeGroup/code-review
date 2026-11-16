@@ -30,8 +30,15 @@ const heldCodes = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY', 'EMFILE', 'ENFILE']);
 
 // Removes the folder a failed fetch made, retrying an error from a held folder until `windowMs` has passed, then throwing
 // the last one. A test passes its own `remove` to stand in for a folder that is held.
-export function removeFolder(folder: string, options: { windowMs?: number; delayMs?: number; remove?: (folder: string) => void } = {}): void {
-  const { windowMs = cleanupWindowMs, delayMs = cleanupRetryDelayMs, remove = (f) => rmSync(f, { recursive: true, force: true }) } = options;
+export function removeFolder(
+  folder: string,
+  options: { windowMs?: number; delayMs?: number; remove?: (folder: string) => void } = {},
+): void {
+  const {
+    windowMs = cleanupWindowMs,
+    delayMs = cleanupRetryDelayMs,
+    remove = (f) => rmSync(f, { recursive: true, force: true }),
+  } = options;
   const deadline = Date.now() + windowMs;
   for (;;) {
     try {
@@ -62,7 +69,14 @@ export interface FetchHead {
 }
 
 // The fetch's inputs from the parsed pull request: the commit is the one the event or the API named.
-export function fetchHeadFor(options: { path: string; repository: string; serverUrl?: string | undefined; number: number; headSha: string; token?: string | undefined }): FetchHead {
+export function fetchHeadFor(options: {
+  path: string;
+  repository: string;
+  serverUrl?: string | undefined;
+  number: number;
+  headSha: string;
+  token?: string | undefined;
+}): FetchHead {
   if (!options.headSha) throw new Error(`Pull request #${options.number} has no head commit to fetch.`);
   const server = (options.serverUrl || 'https://github.com').replace(/\/+$/, '');
   return {
@@ -90,26 +104,46 @@ export function authEnvironment(remoteUrl: string, token: string | undefined): R
 // `run.env` adds to git's environment (the token's header), and `run.timeout` is a limit in milliseconds. A limit also
 // bounds git's transport child, which killing git at the limit leaves running: it gives up on its own once the remote has
 // sent nothing for the limit, rounded up to a whole second, so it exits about when git is killed (issue #165).
-function git(where: { cwd: string; empty: string }, args: string[], run: { env?: Record<string, string>; timeout?: number } = {}): string {
+function git(
+  where: { cwd: string; empty: string },
+  args: string[],
+  run: { env?: Record<string, string>; timeout?: number } = {},
+): string {
   const { cwd, empty } = where;
   const { env: extra = {}, timeout } = run;
-  const stall = timeout === undefined ? [] : ['-c', 'http.lowSpeedLimit=1', '-c', `http.lowSpeedTime=${Math.ceil(timeout / 1000)}`];
-  return execFileSync('git', ['-C', cwd, '-c', `core.hooksPath=${empty}`, '-c', 'core.fsmonitor=false', '-c', 'advice.detachedHead=false', ...stall, ...args], {
-    encoding: 'utf8',
-    ...(timeout === undefined ? {} : { timeout, killSignal: 'SIGKILL' as const }),
-    stdio: ['ignore', 'pipe', 'inherit'],
-    env: {
-      PATH: process.env['PATH'] ?? '',
-      ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}),
-      HOME: empty,
-      USERPROFILE: empty,
-      XDG_CONFIG_HOME: empty,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_TERMINAL_PROMPT: '0',
-      GIT_ASKPASS: '',
-      ...extra,
+  const stall =
+    timeout === undefined ? [] : ['-c', 'http.lowSpeedLimit=1', '-c', `http.lowSpeedTime=${Math.ceil(timeout / 1000)}`];
+  return execFileSync(
+    'git',
+    [
+      '-C',
+      cwd,
+      '-c',
+      `core.hooksPath=${empty}`,
+      '-c',
+      'core.fsmonitor=false',
+      '-c',
+      'advice.detachedHead=false',
+      ...stall,
+      ...args,
+    ],
+    {
+      encoding: 'utf8',
+      ...(timeout === undefined ? {} : { timeout, killSignal: 'SIGKILL' as const }),
+      stdio: ['ignore', 'pipe', 'inherit'],
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}),
+        HOME: empty,
+        USERPROFILE: empty,
+        XDG_CONFIG_HOME: empty,
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: '',
+        ...extra,
+      },
     },
-  }).trim();
+  ).trim();
 }
 
 // Any failure counts as "not there": the fetch by name that follows reports a broken repository with git's own message.
@@ -130,7 +164,10 @@ export function fetchCommit(options: Pick<FetchHead, 'path' | 'remoteUrl' | 'sha
   const where = { cwd: options.path, empty };
   try {
     if (has(where, options.sha)) return true;
-    git(where, ['fetch', '-q', '--no-tags', options.remoteUrl, options.sha], { env: authEnvironment(options.remoteUrl, options.token), timeout: options.timeoutMs ?? fetchTimeoutMs });
+    git(where, ['fetch', '-q', '--no-tags', options.remoteUrl, options.sha], {
+      env: authEnvironment(options.remoteUrl, options.token),
+      timeout: options.timeoutMs ?? fetchTimeoutMs,
+    });
     return has(where, options.sha);
   } catch {
     return false;
@@ -141,10 +178,12 @@ export function fetchCommit(options: Pick<FetchHead, 'path' | 'remoteUrl' | 'sha
 
 export function fetchPullRequestHead(options: FetchHead): void {
   if (!/^[0-9a-f]{40}$/i.test(options.sha)) throw new Error(`"${options.sha}" isn't a full commit SHA.`);
-  if (!Number.isInteger(options.number) || options.number < 1) throw new Error(`"${options.number}" isn't a pull request number.`);
+  if (!Number.isInteger(options.number) || options.number < 1)
+    throw new Error(`"${options.number}" isn't a pull request number.`);
   const limit = options.timeoutMs ?? fetchTimeoutMs;
   // Node takes a timeout only as a whole number of milliseconds that fits a 32-bit signed integer.
-  if (!Number.isInteger(limit) || limit < 1 || limit > 2 ** 31 - 1) throw new Error(`The fetch's time limit must be a positive whole number of milliseconds, not ${limit}.`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 2 ** 31 - 1)
+    throw new Error(`The fetch's time limit must be a positive whole number of milliseconds, not ${limit}.`);
   const empty = mkdtempSync(path.join(os.tmpdir(), 'code-review-git-'));
   const where = { cwd: options.path, empty };
   try {
@@ -153,10 +192,14 @@ export function fetchPullRequestHead(options: FetchHead): void {
       try {
         head = git(where, ['rev-parse', 'HEAD']);
       } catch (error) {
-        throw new Error(`${options.path} is a repository without a commit checked out. (${error instanceof Error ? error.message : String(error)})`);
+        throw new Error(
+          `${options.path} is a repository without a commit checked out. (${error instanceof Error ? error.message : String(error)})`,
+        );
       }
       if (head.toLowerCase() !== options.sha.toLowerCase()) {
-        throw new Error(`${options.path} is checked out at ${head.slice(0, 7)}, not at the pull request's head ${options.sha.slice(0, 7)}; the head moved or the checkout is stale. Comment /review to review the latest commit.`);
+        throw new Error(
+          `${options.path} is checked out at ${head.slice(0, 7)}, not at the pull request's head ${options.sha.slice(0, 7)}; the head moved or the checkout is stale. Comment /review to review the latest commit.`,
+        );
       }
       return;
     }
@@ -168,9 +211,22 @@ export function fetchPullRequestHead(options: FetchHead): void {
       git(where, ['remote', 'add', 'origin', options.remoteUrl]);
       // The branches give the merge base its history; the pull request's own ref carries the head, which a pull request
       // may not have on any branch yet.
-      git(where, ['fetch', '-q', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*', `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`], { env: auth, timeout: limit });
+      git(
+        where,
+        [
+          'fetch',
+          '-q',
+          '--no-tags',
+          '--prune',
+          'origin',
+          '+refs/heads/*:refs/remotes/origin/*',
+          `+refs/pull/${options.number}/head:refs/remotes/pull/${options.number}`,
+        ],
+        { env: auth, timeout: limit },
+      );
       // A push after the event leaves the event's commit off both, so ask for it by name.
-      if (!has(where, options.sha)) git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], { env: auth, timeout: limit });
+      if (!has(where, options.sha))
+        git(where, ['fetch', '-q', '--no-tags', 'origin', options.sha], { env: auth, timeout: limit });
       git(where, ['checkout', '-q', '--force', '--detach', options.sha]);
     } catch (error) {
       // A half-made repository would be taken for a checkout by the next attempt, which refuses one with no commit. A
@@ -180,10 +236,14 @@ export function fetchPullRequestHead(options: FetchHead): void {
         (options.remove ?? removeFolder)(options.path);
       } catch (cleanupError) {
         // The fetch's error below stays the one thrown; this says why the next attempt will find the folder.
-        writeErrorLog(`Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        writeErrorLog(
+          `Couldn't remove ${options.path} after the failed fetch: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
       }
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Couldn't fetch commit ${options.sha.slice(0, 7)} of pull request #${options.number}; if it was pushed over since, comment /review to review the latest one. (${detail})`);
+      throw new Error(
+        `Couldn't fetch commit ${options.sha.slice(0, 7)} of pull request #${options.number}; if it was pushed over since, comment /review to review the latest one. (${detail})`,
+      );
     }
   } finally {
     rmSync(empty, { recursive: true, force: true });

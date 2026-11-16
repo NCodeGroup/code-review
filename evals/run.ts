@@ -35,9 +35,25 @@ import { gatherChecked } from '../src/template-check.ts';
 import { readWritersIssues, type ClosedIssue } from '../src/writers.ts';
 import { subsets, type Concern, type EvalCase } from './cases.ts';
 import type { EvalOutput } from './output.ts';
-import { judgePosted, loadVerdicts, percent, realityJudge, saveVerdicts, spread, totalPrecision, type CasePrecision } from './precision.ts';
+import {
+  judgePosted,
+  loadVerdicts,
+  percent,
+  realityJudge,
+  saveVerdicts,
+  spread,
+  totalPrecision,
+  type CasePrecision,
+} from './precision.ts';
 
-interface Verdict { concern: string; caught: boolean; caughtRaw: boolean; by: string[]; caughtShadow?: boolean; byShadow?: string[] }
+interface Verdict {
+  concern: string;
+  caught: boolean;
+  caughtRaw: boolean;
+  by: string[];
+  caughtShadow?: boolean;
+  byShadow?: string[];
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const work = path.join(root, 'evals', '.work');
@@ -48,7 +64,11 @@ function arg(name: string): string | undefined {
 }
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 // A blobless clone per repository, with every pull request's head fetched so reviewed commits are reachable.
@@ -56,7 +76,11 @@ function clone(repository: string): string {
   const dir = path.join(work, repository.replace('/', '-'));
   if (!existsSync(dir)) {
     mkdirSync(work, { recursive: true });
-    execFileSync('git', ['clone', '-q', '--filter=blob:none', '--no-checkout', `https://github.com/${repository}.git`, dir], { stdio: 'inherit' });
+    execFileSync(
+      'git',
+      ['clone', '-q', '--filter=blob:none', '--no-checkout', `https://github.com/${repository}.git`, dir],
+      { stdio: 'inherit' },
+    );
     git(dir, 'fetch', '-q', 'origin', '+refs/pull/*/head:refs/remotes/origin/pr/*');
   }
   return dir;
@@ -85,15 +109,41 @@ function mergeCommit(repo: string, head: string, base: string): string {
   ensureCommit(repo, head);
   ensureCommit(repo, base);
   const tree = git(repo, 'merge-tree', '--write-tree', head, base).split('\n')[0]!.trim();
-  const who = { GIT_AUTHOR_NAME: 'eval', GIT_AUTHOR_EMAIL: 'eval@example.com', GIT_COMMITTER_NAME: 'eval', GIT_COMMITTER_EMAIL: 'eval@example.com', GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' };
-  return execFileSync('git', ['-C', repo, 'commit-tree', tree, '-p', head, '-p', base, '-m', `Merge ${base.slice(0, 7)} into ${head.slice(0, 7)}`], { encoding: 'utf8', env: { ...process.env, ...who } }).trim();
+  const who = {
+    GIT_AUTHOR_NAME: 'eval',
+    GIT_AUTHOR_EMAIL: 'eval@example.com',
+    GIT_COMMITTER_NAME: 'eval',
+    GIT_COMMITTER_EMAIL: 'eval@example.com',
+    GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+    GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+  };
+  return execFileSync(
+    'git',
+    [
+      '-C',
+      repo,
+      'commit-tree',
+      tree,
+      '-p',
+      head,
+      '-p',
+      base,
+      '-m',
+      `Merge ${base.slice(0, 7)} into ${head.slice(0, 7)}`,
+    ],
+    { encoding: 'utf8', env: { ...process.env, ...who } },
+  ).trim();
 }
 
-const sameFile = (a: string, b: string) => a.replace(/\\/g, '/').endsWith(b.replace(/\\/g, '/')) || b.replace(/\\/g, '/').endsWith(a.replace(/\\/g, '/'));
+const sameFile = (a: string, b: string) =>
+  a.replace(/\\/g, '/').endsWith(b.replace(/\\/g, '/')) || b.replace(/\\/g, '/').endsWith(a.replace(/\\/g, '/'));
 
 // Whether the judge should compare a finding with a concern: it is in the concern's file and at its severity or above.
 export function candidate(concern: Concern, finding: Pick<Finding, 'file' | 'severity'>): boolean {
-  return (!concern.file || sameFile(finding.file, concern.file)) && (!concern.minSeverity || severityRank[finding.severity] <= severityRank[concern.minSeverity]);
+  return (
+    (!concern.file || sameFile(finding.file, concern.file)) &&
+    (!concern.minSeverity || severityRank[finding.severity] <= severityRank[concern.minSeverity])
+  );
 }
 
 const judgeSchema = {
@@ -120,7 +170,12 @@ async function judge(run: AgentRun, concern: Concern, finding: Finding, calls: C
 }
 
 // The findings that raise the concern, the same objects it was given, so precision can tell them apart by identity.
-async function raised<F extends Finding>(run: AgentRun, concern: Concern, findings: F[], calls: CallRecord[]): Promise<F[]> {
+async function raised<F extends Finding>(
+  run: AgentRun,
+  concern: Concern,
+  findings: F[],
+  calls: CallRecord[],
+): Promise<F[]> {
   const by: F[] = [];
   for (const finding of findings.filter((f) => candidate(concern, f))) {
     if (await judge(run, concern, finding, calls)) by.push(finding);
@@ -133,7 +188,10 @@ async function raised<F extends Finding>(run: AgentRun, concern: Concern, findin
 export function parseMaxCost(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const text = value.trim();
-  if (!/^\d+(\.\d+)?$/.test(text) || Number(text) <= 0) throw new Error(`--max-cost takes a positive number of dollars, such as 8, not ${JSON.stringify(value.slice(0, 40))}.`);
+  if (!/^\d+(\.\d+)?$/.test(text) || Number(text) <= 0)
+    throw new Error(
+      `--max-cost takes a positive number of dollars, such as 8, not ${JSON.stringify(value.slice(0, 40))}.`,
+    );
   return Number(text);
 }
 
@@ -165,12 +223,16 @@ export function capOutcome(
 // Whether the precision judge runs: --precision on, the default, or off.
 export function parsePrecision(value: string | undefined): boolean {
   const setting = value ?? 'on';
-  if (setting !== 'on' && setting !== 'off') throw new Error(`--precision takes on or off, not ${JSON.stringify(setting.slice(0, 40))}.`);
+  if (setting !== 'on' && setting !== 'off')
+    throw new Error(`--precision takes on or off, not ${JSON.stringify(setting.slice(0, 40))}.`);
   return setting === 'on';
 }
 
 // One case's precision, or undefined with --precision off, when the judge isn't asked about any finding.
-export function casePrecision(precisionOn: boolean, input: Parameters<typeof judgePosted>[0]): Promise<CasePrecision | undefined> {
+export function casePrecision(
+  precisionOn: boolean,
+  input: Parameters<typeof judgePosted>[0],
+): Promise<CasePrecision | undefined> {
   return precisionOn ? judgePosted(input) : Promise.resolve(undefined);
 }
 
@@ -178,11 +240,17 @@ export function casePrecision(precisionOn: boolean, input: Parameters<typeof jud
 // that names none, so a typo, a renamed case or an unset shell variable can't quietly shrink the run.
 export function selectCases(all: EvalCase[], only: string | undefined, subset: string | undefined): EvalCase[] {
   if (only !== undefined && subset !== undefined) throw new Error('Use --only or --subset, not both.');
-  let ids: readonly string[] | undefined = only?.split(',').map((id) => id.trim()).filter(Boolean);
+  let ids: readonly string[] | undefined = only
+    ?.split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
   if (ids?.length === 0) throw new Error('--only names no case; give it case ids separated by commas.');
   if (subset !== undefined) {
     ids = Object.hasOwn(subsets, subset) ? subsets[subset] : undefined;
-    if (!ids) throw new Error(`No subset named ${JSON.stringify(subset)}; evals/cases.ts has ${Object.keys(subsets).join(', ')}.`);
+    if (!ids)
+      throw new Error(
+        `No subset named ${JSON.stringify(subset)}; evals/cases.ts has ${Object.keys(subsets).join(', ')}.`,
+      );
   }
   if (!ids) return all;
   const missing = ids.filter((id) => !all.some((c) => c.id === id));
@@ -197,7 +265,8 @@ export async function runCapped<T>(
   runOne: (item: T) => Promise<number>,
   maxCostUsd?: number,
 ): Promise<{ costUsd: number; ran: number; exceeded: boolean }> {
-  let costUsd = 0, ran = 0;
+  let costUsd = 0,
+    ran = 0;
   for (const item of items) {
     costUsd += await runOne(item);
     ran++;
@@ -218,20 +287,35 @@ export function caseIssues(
 ): Promise<ClosedIssue[]> {
   return readWritersIssues(
     closedIssues(body),
-    async (number) => ({ ...(readIssue(number) as object), author_association: c.issueAssociations?.[String(number)] ?? 'MEMBER' }),
+    async (number) => ({
+      ...(readIssue(number) as object),
+      author_association: c.issueAssociations?.[String(number)] ?? 'MEMBER',
+    }),
     async (_login, association) => writerAssociations.has(association ?? ''),
-    (number, reason) => log(`::warning::Couldn't read issue #${number} of ${c.repository} (${reason}); the case runs without it.`),
+    (number, reason) =>
+      log(`::warning::Couldn't read issue #${number} of ${c.repository} (${reason}); the case runs without it.`),
   );
 }
 
 // The pull request a case reviews, built as the review step builds it: the description, and so the issues it closes,
 // only from an author with write access, which the case's association decides.
-export async function casePullRequest(c: EvalCase, headSha: string, readIssue: (number: number) => unknown, log: (line: string) => void): Promise<PullRequest> {
+export async function casePullRequest(
+  c: EvalCase,
+  headSha: string,
+  readIssue: (number: number) => unknown,
+  log: (line: string) => void,
+): Promise<PullRequest> {
   const association = c.authorAssociation ?? 'MEMBER';
   const event = {
     pull_request: {
-      number: c.pullRequest ?? 0, title: c.title, body: c.body, user: { login: c.author ?? 'polewskm' }, author_association: association,
-      draft: false, base: { ref: 'main', sha: c.base }, head: { sha: headSha },
+      number: c.pullRequest ?? 0,
+      title: c.title,
+      body: c.body,
+      user: { login: c.author ?? 'polewskm' },
+      author_association: association,
+      draft: false,
+      base: { ref: 'main', sha: c.base },
+      head: { sha: headSha },
     },
   };
   const pullRequest = readPullRequest(event, c.repository, writerAssociations.has(association));
@@ -263,7 +347,8 @@ export function tallyCase(
 }
 
 // How the output names a finding that raised a concern.
-const raisedLabel = (finding: Finding & { reviewers?: string[] }) => `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
+const raisedLabel = (finding: Finding & { reviewers?: string[] }) =>
+  `${finding.file}:${finding.line} (${(finding.reviewers ?? []).join(', ')})`;
 
 // Writes the run's output to <dir>/<label>.json, then fails a run that passed --max-cost, so the smoke eval still checks
 // and uploads the cases that ran.
@@ -282,19 +367,33 @@ async function main(): Promise<void> {
   if (!key) throw new Error('Set AWS_BEARER_TOKEN_BEDROCK to run the evals on Bedrock.');
   if (arg('tiers')) process.env['CODE_REVIEW_TIERS'] = arg('tiers');
   if (arg('shadow')) process.env['CODE_REVIEW_SHADOW'] = arg('shadow');
-  const cases = selectCases(JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as EvalCase[], arg('only'), arg('subset'));
+  const cases = selectCases(
+    JSON.parse(readFileSync(path.join(root, 'evals', 'cases.json'), 'utf8')) as EvalCase[],
+    arg('only'),
+    arg('subset'),
+  );
   const label = arg('label') ?? new Date().toISOString().replace(/[:.]/g, '-');
   const charters = loadCharters(root);
   // The held-out guidance was trained without the eval cases' own pull requests and decision records, so a catch
   // measures what the bot learned in general. --guidance full uses the production guidance instead.
   const guidance = path.join(root, arg('guidance') === 'full' ? 'guidance' : 'guidance-holdout');
-  if (!existsSync(guidance)) throw new Error(`${path.basename(guidance)}/ is missing; run npm run train -- --generalize-only first.`);
+  if (!existsSync(guidance))
+    throw new Error(`${path.basename(guidance)}/ is missing; run npm run train -- --generalize-only first.`);
   console.log(`Guidance: ${path.basename(guidance)}/`);
   const proxy = await startProxy({ bedrockKey: key });
   const run: AgentRun = { provider: 'bedrock', proxyUrl: proxy.url };
   const report: EvalOutput['cases'] = [];
-  let expected = 0, caught = 0, caughtRaw = 0, violations = 0, findingCount = 0, seriousCount = 0, refutedCount = 0, cost = 0;
-  let caughtShadow = 0, shadowViolations = 0, shadowFindingCount = 0;
+  let expected = 0,
+    caught = 0,
+    caughtRaw = 0,
+    violations = 0,
+    findingCount = 0,
+    seriousCount = 0,
+    refutedCount = 0,
+    cost = 0;
+  let caughtShadow = 0,
+    shadowViolations = 0,
+    shadowFindingCount = 0;
   const shadowNames = new Set<string>();
   const verdictFile = path.join(root, 'evals', 'verdicts.json');
   const verdictCache = loadVerdicts(verdictFile);
@@ -302,120 +401,181 @@ async function main(): Promise<void> {
 
   let capped: Awaited<ReturnType<typeof runCapped>>;
   try {
-    capped = await runCapped(cases, async (c) => {
-      const repo = clone(c.repository);
-      const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
-      const head = worktree(repo, `${c.id}-head`, headSha);
-      const base = worktree(repo, `${c.id}-base`, c.base);
-      const pullRequest = await casePullRequest(
-        c,
-        headSha,
-        (number) => JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' })),
-        (line) => console.log(`  ${line}`),
-      );
-      const log = (line: string) => console.log(`  ${line}`);
-      // As the review step does: a template file counts as the template's only when it is the template's own copy.
-      const gathered = await gatherChecked(pullRequest, head, base, guidance, githubReader(process.env['GITHUB_TOKEN']), log);
-      let reReviewed: ReReview | undefined;
-      let offChanged: string[] = [];
-      // A case's sensitive: stands in for the one gather read from the base branch.
-      if (c.sensitive) gathered.sensitive = c.sensitive;
-      if (c.reviewed) {
-        const plan = await planReReview({
-          gathered,
-          checkout: head,
-          lastHead: c.reviewed,
-          fetchCommit: (sha) => {
-            ensureCommit(repo, sha);
-            return true;
-          },
-          readEarlier: async () => c.earlier ?? [],
-          log,
-        });
-        if (!plan) throw new Error(`${c.id}: no re-review plan since ${c.reviewed.slice(0, 7)}; see the log above.`);
-        const { changed } = plan;
-        reReviewed = await reReview({ ...run, checkout: head }, gathered, charters, plan, log);
-        // A re-review posts nothing below should-fix, and nothing away from what the author changed since the last
-        // review. That is worked out here apart from the engine: the lines the diff from the reviewed head adds, less
-        // the ones a merge of the base branch brought in, which also must not count as changed.
-        const fromBase = c.mergeIntoHead ? changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.head, headSha)) : new Map<string, Set<number>>();
-        const byAuthor = Object.fromEntries(
-          [...changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.reviewed, headSha))].map(([file, lines]) => [file, [...lines].filter((l) => !fromBase.get(file)?.has(l))]),
+    capped = await runCapped(
+      cases,
+      async (c) => {
+        const repo = clone(c.repository);
+        const headSha = c.mergeIntoHead ? mergeCommit(repo, c.head, c.mergeIntoHead) : c.head;
+        const head = worktree(repo, `${c.id}-head`, headSha);
+        const base = worktree(repo, `${c.id}-base`, c.base);
+        const pullRequest = await casePullRequest(
+          c,
+          headSha,
+          (number) =>
+            JSON.parse(execFileSync('gh', ['api', `repos/${c.repository}/issues/${number}`], { encoding: 'utf8' })),
+          (line) => console.log(`  ${line}`),
         );
-        const { kept } = postable(reReviewed.findings, byAuthor);
-        offChanged = [
-          ...reReviewed.findings.filter((f) => !kept.includes(f)).map((f) => `posted ${f.file}:${f.line} (${f.severity})`),
-          ...Object.entries(changed.lines).flatMap(([file, lines]) => lines.filter((l) => fromBase.get(file)?.has(l)).map((l) => `reviewed ${file}:${l} from the base branch`)),
-        ];
-      }
-      const outcome = reReviewed ?? (await review({ run: { ...run, checkout: head }, gathered, charters, log }));
-      const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
-      const shadow = outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
-      for (const o of outcome.shadow) shadowNames.add(o.name);
-      const calls = [...outcome.calls];
-      const verdicts: Verdict[] = [];
-      // The posted findings that raised an expected concern, and those that raised a must-not-flag one.
-      const matched = new Set<Finding>();
-      const mustNot = new Set<Finding>();
-      for (const concern of c.expect) {
-        const by = await raised(run, concern, outcome.findings, calls);
-        for (const finding of by) matched.add(finding);
-        const byRaw: (Finding & { reviewers?: string[] })[] = by.length ? by : await raised(run, concern, raw, calls);
-        const byShadow = shadow.length ? await raised(run, concern, shadow, calls) : [];
-        verdicts.push({
-          concern: concern.concern, caught: by.length > 0, caughtRaw: byRaw.length > 0, by: byRaw.map(raisedLabel),
-          ...(outcome.shadow.length ? { caughtShadow: byShadow.length > 0, byShadow: byShadow.map(raisedLabel) } : {}),
-        });
-      }
-      const forbidden = [];
-      for (const concern of c.mustNotFlag) {
-        const by = await raised(run, concern, outcome.findings, calls);
-        for (const finding of by) mustNot.add(finding);
-        forbidden.push({
-          concern: concern.concern,
-          raisedBy: by.map(raisedLabel),
-          ...(shadow.length ? { raisedByShadow: (await raised(run, concern, shadow, calls)).map(raisedLabel) } : {}),
-        });
-      }
+        const log = (line: string) => console.log(`  ${line}`);
+        // As the review step does: a template file counts as the template's only when it is the template's own copy.
+        const gathered = await gatherChecked(
+          pullRequest,
+          head,
+          base,
+          guidance,
+          githubReader(process.env['GITHUB_TOKEN']),
+          log,
+        );
+        let reReviewed: ReReview | undefined;
+        let offChanged: string[] = [];
+        // A case's sensitive: stands in for the one gather read from the base branch.
+        if (c.sensitive) gathered.sensitive = c.sensitive;
+        if (c.reviewed) {
+          const plan = await planReReview({
+            gathered,
+            checkout: head,
+            lastHead: c.reviewed,
+            fetchCommit: (sha) => {
+              ensureCommit(repo, sha);
+              return true;
+            },
+            readEarlier: async () => c.earlier ?? [],
+            log,
+          });
+          if (!plan) throw new Error(`${c.id}: no re-review plan since ${c.reviewed.slice(0, 7)}; see the log above.`);
+          const { changed } = plan;
+          reReviewed = await reReview({ ...run, checkout: head }, gathered, charters, plan, log);
+          // A re-review posts nothing below should-fix, and nothing away from what the author changed since the last
+          // review. That is worked out here apart from the engine: the lines the diff from the reviewed head adds, less
+          // the ones a merge of the base branch brought in, which also must not count as changed.
+          const fromBase = c.mergeIntoHead
+            ? changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.head, headSha))
+            : new Map<string, Set<number>>();
+          const byAuthor = Object.fromEntries(
+            [...changedLines(git(head, 'diff', '--unified=0', '--no-color', '--no-ext-diff', c.reviewed, headSha))].map(
+              ([file, lines]) => [file, [...lines].filter((l) => !fromBase.get(file)?.has(l))],
+            ),
+          );
+          const { kept } = postable(reReviewed.findings, byAuthor);
+          offChanged = [
+            ...reReviewed.findings
+              .filter((f) => !kept.includes(f))
+              .map((f) => `posted ${f.file}:${f.line} (${f.severity})`),
+            ...Object.entries(changed.lines).flatMap(([file, lines]) =>
+              lines.filter((l) => fromBase.get(file)?.has(l)).map((l) => `reviewed ${file}:${l} from the base branch`),
+            ),
+          ];
+        }
+        const outcome = reReviewed ?? (await review({ run: { ...run, checkout: head }, gathered, charters, log }));
+        const raw = outcome.reviewers.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
+        const shadow = outcome.shadow.flatMap((o) => o.findings.map((f) => ({ ...f, reviewers: [o.name] })));
+        for (const o of outcome.shadow) shadowNames.add(o.name);
+        const calls = [...outcome.calls];
+        const verdicts: Verdict[] = [];
+        // The posted findings that raised an expected concern, and those that raised a must-not-flag one.
+        const matched = new Set<Finding>();
+        const mustNot = new Set<Finding>();
+        for (const concern of c.expect) {
+          const by = await raised(run, concern, outcome.findings, calls);
+          for (const finding of by) matched.add(finding);
+          const byRaw: (Finding & { reviewers?: string[] })[] = by.length ? by : await raised(run, concern, raw, calls);
+          const byShadow = shadow.length ? await raised(run, concern, shadow, calls) : [];
+          verdicts.push({
+            concern: concern.concern,
+            caught: by.length > 0,
+            caughtRaw: byRaw.length > 0,
+            by: byRaw.map(raisedLabel),
+            ...(outcome.shadow.length
+              ? { caughtShadow: byShadow.length > 0, byShadow: byShadow.map(raisedLabel) }
+              : {}),
+          });
+        }
+        const forbidden = [];
+        for (const concern of c.mustNotFlag) {
+          const by = await raised(run, concern, outcome.findings, calls);
+          for (const finding of by) mustNot.add(finding);
+          forbidden.push({
+            concern: concern.concern,
+            raisedBy: by.map(raisedLabel),
+            ...(shadow.length ? { raisedByShadow: (await raised(run, concern, shadow, calls)).map(raisedLabel) } : {}),
+          });
+        }
 
-      const diffs = splitDiff(gathered.diff);
-      const precision = await casePrecision(precisionOn, {
-        caseId: c.id,
-        findings: outcome.findings,
-        matched,
-        mustNot,
-        cache: verdictCache,
-        judge: realityJudge({ ...run, checkout: head }, { title: c.title, diffFor: (file) => diffs.get(file) }, calls),
-      });
-      if (precision) saveVerdicts(verdictFile, verdictCache);
-      const { reviewCost, caseCost } = tallyCase(tally, outcome, calls, precision);
-      expected += verdicts.length;
-      caught += verdicts.filter((v) => v.caught).length;
-      caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
-      violations += forbidden.filter((f) => f.raisedBy.length).length + offChanged.length;
-      findingCount += outcome.findings.length;
-      seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
-      refutedCount += outcome.refuted.length;
-      caughtShadow += verdicts.filter((v) => v.caughtShadow).length;
-      shadowViolations += forbidden.filter((f) => f.raisedByShadow?.length).length;
-      shadowFindingCount += shadow.length;
-      cost += caseCost;
-      const status = [
-        ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
-        ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
-        ...(reReviewed ? [offChanged.length ? `OFF THE CHANGED LINES: ${offChanged.join(', ')}` : 'stayed on the changed lines'] : []),
-      ].join(', ');
-      const precisionText = precision ? `, precision ${percent(precision.precision)} (${precision.unsure} unsure)` : '';
-      const shadowStatus = outcome.shadow.length
-        ? `; shadow (${outcome.shadow.map((o) => o.name).join(', ')}): ${verdicts.filter((v) => v.caughtShadow).length} caught, ${forbidden.filter((f) => f.raisedByShadow?.length).length} must-not, ${shadow.length} findings`
-        : '';
-      console.log(`${c.id}: ${status}; ${outcome.findings.length} findings${precisionText}${shadowStatus}, $${caseCost.toFixed(2)}`);
-      const reReviewReport = reReviewed
-        ? { reReview: { summary: reReviewed.summary, offChanged, earlier: reReviewed.earlier.map(({ finding, status, note }) => ({ id: finding.id, url: finding.url, status, note })) } }
-        : {};
-      report.push({ id: c.id, verdicts, forbidden, precision, findings: outcome.findings, upstream: outcome.upstream, refuted: outcome.refuted, raw, shadow, shadowPrompts: outcome.shadowPrompts, calls, reviewCostUsd: reviewCost, costUsd: caseCost, ...reReviewReport });
-      return caseCost;
-    }, maxCost);
+        const diffs = splitDiff(gathered.diff);
+        const precision = await casePrecision(precisionOn, {
+          caseId: c.id,
+          findings: outcome.findings,
+          matched,
+          mustNot,
+          cache: verdictCache,
+          judge: realityJudge(
+            { ...run, checkout: head },
+            { title: c.title, diffFor: (file) => diffs.get(file) },
+            calls,
+          ),
+        });
+        if (precision) saveVerdicts(verdictFile, verdictCache);
+        const { reviewCost, caseCost } = tallyCase(tally, outcome, calls, precision);
+        expected += verdicts.length;
+        caught += verdicts.filter((v) => v.caught).length;
+        caughtRaw += verdicts.filter((v) => v.caughtRaw).length;
+        violations += forbidden.filter((f) => f.raisedBy.length).length + offChanged.length;
+        findingCount += outcome.findings.length;
+        seriousCount += outcome.findings.filter((f) => f.severity !== 'nit').length;
+        refutedCount += outcome.refuted.length;
+        caughtShadow += verdicts.filter((v) => v.caughtShadow).length;
+        shadowViolations += forbidden.filter((f) => f.raisedByShadow?.length).length;
+        shadowFindingCount += shadow.length;
+        cost += caseCost;
+        const status = [
+          ...verdicts.map((v) => (v.caught ? 'caught' : v.caughtRaw ? 'dropped by synthesis' : 'missed')),
+          ...forbidden.map((f) => (f.raisedBy.length ? 'FLAGGED (must not)' : 'stayed quiet')),
+          ...(reReviewed
+            ? [offChanged.length ? `OFF THE CHANGED LINES: ${offChanged.join(', ')}` : 'stayed on the changed lines']
+            : []),
+        ].join(', ');
+        const precisionText = precision
+          ? `, precision ${percent(precision.precision)} (${precision.unsure} unsure)`
+          : '';
+        const shadowStatus = outcome.shadow.length
+          ? `; shadow (${outcome.shadow.map((o) => o.name).join(', ')}): ${verdicts.filter((v) => v.caughtShadow).length} caught, ${forbidden.filter((f) => f.raisedByShadow?.length).length} must-not, ${shadow.length} findings`
+          : '';
+        console.log(
+          `${c.id}: ${status}; ${outcome.findings.length} findings${precisionText}${shadowStatus}, $${caseCost.toFixed(2)}`,
+        );
+        const reReviewReport = reReviewed
+          ? {
+              reReview: {
+                summary: reReviewed.summary,
+                offChanged,
+                earlier: reReviewed.earlier.map(({ finding, status, note }) => ({
+                  id: finding.id,
+                  url: finding.url,
+                  status,
+                  note,
+                })),
+              },
+            }
+          : {};
+        report.push({
+          id: c.id,
+          verdicts,
+          forbidden,
+          precision,
+          findings: outcome.findings,
+          upstream: outcome.upstream,
+          refuted: outcome.refuted,
+          raw,
+          shadow,
+          shadowPrompts: outcome.shadowPrompts,
+          calls,
+          reviewCostUsd: reviewCost,
+          costUsd: caseCost,
+          ...reReviewReport,
+        });
+        return caseCost;
+      },
+      maxCost,
+    );
   } finally {
     await proxy.close();
   }
@@ -423,17 +583,43 @@ async function main(): Promise<void> {
   const precision = precisionOn ? totalPrecision(tally.precisions) : undefined;
   const cap = capOutcome(maxCost, capped, cases.length, label);
   const summary = {
-    label, tiers: process.env['CODE_REVIEW_TIERS'] ?? '', verification: verificationOn() ? 'on' : 'off', expected, caught, caughtRaw, violations,
-    findings: findingCount, blockersAndShouldFixes: seriousCount, refuted: refutedCount,
-    precision, findingsPerCase: spread(tally.findingsPerCase), reviewCostUsd: tally.reviewCosts.reduce((a, b) => a + b, 0),
-    reviewCostPerCase: spread(tally.reviewCosts), costUsd: cost,
-    shadow: { reviewers: [...shadowNames], caught: caughtShadow, violations: shadowViolations, findings: shadowFindingCount },
+    label,
+    tiers: process.env['CODE_REVIEW_TIERS'] ?? '',
+    verification: verificationOn() ? 'on' : 'off',
+    expected,
+    caught,
+    caughtRaw,
+    violations,
+    findings: findingCount,
+    blockersAndShouldFixes: seriousCount,
+    refuted: refutedCount,
+    precision,
+    findingsPerCase: spread(tally.findingsPerCase),
+    reviewCostUsd: tally.reviewCosts.reduce((a, b) => a + b, 0),
+    reviewCostPerCase: spread(tally.reviewCosts),
+    costUsd: cost,
+    shadow: {
+      reviewers: [...shadowNames],
+      caught: caughtShadow,
+      violations: shadowViolations,
+      findings: shadowFindingCount,
+    },
     ...cap.record,
   };
-  console.log(`\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`);
-  if (precision) console.log(`Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`);
-  console.log(`Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`);
-  if (shadowNames.size) console.log(`Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`);
+  console.log(
+    `\nCaught ${caught}/${expected} (reviewers found ${caughtRaw}/${expected}); must-not violations ${violations}; ${findingCount} findings in all, ${seriousCount} blockers and should-fixes, ${refutedCount} refuted by verification; $${cost.toFixed(2)}`,
+  );
+  if (precision)
+    console.log(
+      `Precision ${percent(precision.precision)}: ${precision.matched} matched + ${precision.real} real of ${precision.posted} blockers and should-fixes; ${precision.unsure} unsure, ${precision.notReal} not real, ${precision.mustNot} must-not`,
+    );
+  console.log(
+    `Findings per case: mean ${summary.findingsPerCase.mean.toFixed(1)}, max ${summary.findingsPerCase.max}; review cost per case: mean $${summary.reviewCostPerCase.mean.toFixed(2)}, max $${summary.reviewCostPerCase.max.toFixed(2)}`,
+  );
+  if (shadowNames.size)
+    console.log(
+      `Shadow reviewers (${[...shadowNames].join(', ')}), not posted: caught ${caughtShadow}/${expected}; must-not violations ${shadowViolations}; ${shadowFindingCount} findings`,
+    );
   writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);
 }
 

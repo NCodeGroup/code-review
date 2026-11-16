@@ -6,7 +6,19 @@ import type { ThreadNode } from '../src/rereview.ts';
 import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
 
-const finding = { id: 'F1', file: 'src/A.cs', line: 3, severity: 'should-fix' as const, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.8, reviewers: ['correctness'] };
+const finding = {
+  id: 'F1',
+  file: 'src/A.cs',
+  line: 3,
+  severity: 'should-fix' as const,
+  title: 'T',
+  problem: 'p',
+  consequence: 'c',
+  fix: 'f',
+  evidence: 'e',
+  confidence: 0.8,
+  reviewers: ['correctness'],
+};
 
 function thread(id: string, severity: 'blocker' | 'should-fix' | 'nit', isResolved = false): ThreadNode {
   return {
@@ -17,7 +29,17 @@ function thread(id: string, severity: 'blocker' | 'should-fix' | 'nit', isResolv
     path: 'src/A.cs',
     line: 3,
     originalLine: 3,
-    first: { nodes: [{ author: { login: 'ncode-review' }, authorAssociation: 'NONE', body: threadBody({ ...finding, severity }), url: `https://x/${id}`, reactions: { nodes: [] } }] },
+    first: {
+      nodes: [
+        {
+          author: { login: 'ncode-review' },
+          authorAssociation: 'NONE',
+          body: threadBody({ ...finding, severity }),
+          url: `https://x/${id}`,
+          reactions: { nodes: [] },
+        },
+      ],
+    },
     comments: { totalCount: 1, nodes: [] },
   };
 }
@@ -55,7 +77,10 @@ test('a re-review with verdict approve approves even with an unresolved thread',
 });
 
 test('a verdict of comment with a should-fix finding never approves', () => {
-  assert.equal(approvalFor({ ...clean, verdict: 'comment', findings: [finding] }, { threads: [], dismissed: new Set() }).approve, false);
+  assert.equal(
+    approvalFor({ ...clean, verdict: 'comment', findings: [finding] }, { threads: [], dismissed: new Set() }).approve,
+    false,
+  );
 });
 
 const nit = { ...finding, severity: 'nit' as const };
@@ -96,7 +121,9 @@ test('a full review with no thread list and no posted list does not approve', ()
 
 test('a full review with only a posted list approves when it is empty and not otherwise', () => {
   assert.equal(approvalFor(clean, { dismissed: new Set(), posted: [] }).approve, true);
-  const posted = [{ id: 'F1', path: 'src/A.cs', line: 3, severity: 'should-fix' as const, fingerprint: 'x', reviewers: [] }];
+  const posted = [
+    { id: 'F1', path: 'src/A.cs', line: 3, severity: 'should-fix' as const, fingerprint: 'x', reviewers: [] },
+  ];
   assert.equal(approvalFor(clean, { dismissed: new Set(), posted }).approve, false);
 });
 
@@ -106,7 +133,10 @@ test('a full review with a posted list of only nits approves', () => {
 });
 
 test('an unresolved should-fix already raised blocks a comment review, and a dismissed one does not', () => {
-  const raised = (dismissed: boolean) => ({ ...nitsOnly, alreadyRaised: [{ ...finding, earlier: { dismissed } }] }) as unknown as Parameters<typeof approvalFor>[0];
+  const raised = (dismissed: boolean) =>
+    ({ ...nitsOnly, alreadyRaised: [{ ...finding, earlier: { dismissed } }] }) as unknown as Parameters<
+      typeof approvalFor
+    >[0];
   assert.equal(approvalFor(raised(false), none).approve, false);
   assert.equal(approvalFor(raised(true), none).approve, true);
 });
@@ -117,7 +147,11 @@ test('a re-review floor of request-changes does not approve', () => {
 });
 
 test('a blocker finding does not approve', () => {
-  assert.equal(approvalFor({ ...clean, verdict: 'request-changes', findings: [{ ...finding, severity: 'blocker' }] }, none).approve, false);
+  assert.equal(
+    approvalFor({ ...clean, verdict: 'request-changes', findings: [{ ...finding, severity: 'blocker' }] }, none)
+      .approve,
+    false,
+  );
 });
 
 test('an approve verdict with a reviewer error does not approve', () => {
@@ -129,9 +163,18 @@ test('approvalLine words each state', () => {
   const none = { approve: false, blockers: 0, shouldFix: 0, earlierOpen: 0 };
   assert.equal(approvalLine(none, 'approved'), '**Approval: Approved** — no blocker or should-fix finding remains.');
   assert.equal(approvalLine(none, 'refused'), "**Approval: Not approved** — the approval couldn't be submitted.");
-  assert.equal(approvalLine(none, 'not-approved'), '**Approval: Not approved** — the review is incomplete or still has findings waiting.');
-  assert.equal(approvalLine({ approve: false, blockers: 1, shouldFix: 2, earlierOpen: 1 }, 'not-approved'), '**Approval: Not approved** — 1 blocker, 2 should-fix, 1 earlier finding still open.');
-  assert.equal(approvalLine({ approve: false, blockers: 2, shouldFix: 0, earlierOpen: 3 }, 'not-approved'), '**Approval: Not approved** — 2 blockers, 3 earlier findings still open.');
+  assert.equal(
+    approvalLine(none, 'not-approved'),
+    '**Approval: Not approved** — the review is incomplete or still has findings waiting.',
+  );
+  assert.equal(
+    approvalLine({ approve: false, blockers: 1, shouldFix: 2, earlierOpen: 1 }, 'not-approved'),
+    '**Approval: Not approved** — 1 blocker, 2 should-fix, 1 earlier finding still open.',
+  );
+  assert.equal(
+    approvalLine({ approve: false, blockers: 2, shouldFix: 0, earlierOpen: 3 }, 'not-approved'),
+    '**Approval: Not approved** — 2 blockers, 3 earlier findings still open.',
+  );
 });
 
 const target = { repository: 'o/r', pullRequest: 7, headSha: 'abcdef1234567' };
@@ -197,7 +240,9 @@ test('dismissApprovals warns and returns when the listing throws', async () => {
 
 test('dismissApprovals warns and dismisses nothing when the listing is past the page cap', async () => {
   const logs: string[] = [];
-  const fake = fakeApi(() => Array.from({ length: 100 }, (_, i) => ({ id: i, state: 'APPROVED', user: { login: 'ncode-review[bot]' } })));
+  const fake = fakeApi(() =>
+    Array.from({ length: 100 }, (_, i) => ({ id: i, state: 'APPROVED', user: { login: 'ncode-review[bot]' } })),
+  );
   await dismissApprovals(fake.api, target, (line) => logs.push(line));
   assert.match(logs.at(-1) ?? '', /::warning::Couldn't list the earlier reviews \(more than 10000\)/);
   assert.equal(fake.calls.filter((c) => c.startsWith('PUT')).length, 0);
@@ -216,7 +261,10 @@ test('dismissApprovals goes on to the next approval after a refused dismissal', 
     return {};
   });
   await dismissApprovals(fake.api, target, (line) => logs.push(line));
-  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals', 'PUT /repos/o/r/pulls/7/reviews/2/dismissals']);
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals', 'PUT /repos/o/r/pulls/7/reviews/2/dismissals'],
+  );
   assert.ok(logs.some((l) => /::warning::Couldn't dismiss the earlier approval 1 \(HTTP 403\)/.test(l)));
 });
 
@@ -225,7 +273,10 @@ const botApproval = [{ id: 1, state: 'APPROVED', user: { login: 'ncode-review[bo
 test('applyApproval dismisses and says not-approved when approve is false', async () => {
   const fake = fakeApi((call) => (call.startsWith('GET') ? botApproval : {}));
   assert.equal(await applyApproval(fake.api, target, false, [], () => {}), 'not-approved');
-  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
 });
 
 test('applyApproval approves without dismissing when the head matches', async () => {
@@ -241,7 +292,10 @@ test('applyApproval dismisses and says refused when the POST fails', async () =>
     return call.startsWith('GET') ? botApproval : {};
   });
   assert.equal(await applyApproval(fake.api, target, true, [], () => {}), 'refused');
-  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
 });
 
 test('dismissApprovals dismisses only the bot approvals', async () => {
@@ -256,7 +310,10 @@ test('dismissApprovals dismisses only the bot approvals', async () => {
     return {};
   });
   await dismissApprovals(fake.api, target, () => {});
-  assert.deepEqual(fake.calls.filter((c) => c.startsWith('PUT')), ['PUT /repos/o/r/pulls/7/reviews/1/dismissals']);
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
 });
 
 const summaryInput: Results = {
@@ -280,7 +337,10 @@ const summaryInput: Results = {
 };
 
 test('summaryComment is unchanged without an approval line', () => {
-  assert.equal(summaryComment(summaryInput, 'https://check', 'https://help'), summaryComment(summaryInput, 'https://check', 'https://help', undefined));
+  assert.equal(
+    summaryComment(summaryInput, 'https://check', 'https://help'),
+    summaryComment(summaryInput, 'https://check', 'https://help', undefined),
+  );
 });
 
 test('summaryComment puts the approval line right after the verdict line', () => {

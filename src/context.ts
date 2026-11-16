@@ -38,7 +38,14 @@ export interface Context {
 export const guidanceTopics: Record<string, string[]> = {
   security: ['security-and-crypto', 'protocols'],
   correctness: ['errors-and-validation', 'async-and-concurrency'],
-  conventions: ['allocations-and-buffers', 'text-and-encoding', 'performance', 'code-organization', 'documentation', 'logging-and-telemetry'],
+  conventions: [
+    'allocations-and-buffers',
+    'text-and-encoding',
+    'performance',
+    'code-organization',
+    'documentation',
+    'logging-and-telemetry',
+  ],
   architecture: ['dependency-injection', 'configuration-and-options'],
   'api-compat': ['public-api'],
   'data-model': ['persistence'],
@@ -50,11 +57,16 @@ const maxDecisionChars = 3_000;
 const maxDecisions = 12;
 
 function reviewersOfTopic(topic: string): string[] {
-  return Object.entries(guidanceTopics).filter(([, topics]) => topics.includes(topic)).map(([reviewer]) => reviewer);
+  return Object.entries(guidanceTopics)
+    .filter(([, topics]) => topics.includes(topic))
+    .map(([reviewer]) => reviewer);
 }
 
 function summarize(text: string): string {
-  const plain = text.replace(/\s+/g, ' ').replace(/^\s*-\s*(?:👁|⏳)?\s*/, '').trim();
+  const plain = text
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*-\s*(?:👁|⏳)?\s*/, '')
+    .trim();
   const bold = /^\*\*(.+?)\*\*/.exec(plain)?.[1];
   const summary = bold ?? plain;
   return summary.length > maxRuleSummary ? `${summary.slice(0, maxRuleSummary - 1)}…` : summary;
@@ -66,10 +78,19 @@ export function guidanceRules(files: RuleFile[]): IndexedRule[] {
   for (const file of files) {
     const topic = file.name.replace(/\.md$/, '');
     const reviewers = reviewersOfTopic(topic);
-    file.text.split('\n').filter((line) => line.startsWith('- **')).forEach((line, i) => {
-      const globs = bulletGlobs(line);
-      rules.push({ id: `G-${topic}-${i + 1}`, reviewers, summary: summarize(line), text: line, ...(globs.length ? { globs } : {}) });
-    });
+    file.text
+      .split('\n')
+      .filter((line) => line.startsWith('- **'))
+      .forEach((line, i) => {
+        const globs = bulletGlobs(line);
+        rules.push({
+          id: `G-${topic}-${i + 1}`,
+          reviewers,
+          summary: summarize(line),
+          text: line,
+          ...(globs.length ? { globs } : {}),
+        });
+      });
   }
   return rules;
 }
@@ -87,7 +108,13 @@ export function repositoryRules(files: RuleFile[]): IndexedRule[] {
     const name = file.name.replace(/(\.instructions)?\.md$/, '');
     let current: string[] | undefined;
     const flush = () => {
-      if (current) rules.push({ id: `R-${name}-${rules.filter((r) => r.id.startsWith(`R-${name}-`)).length + 1}`, reviewers: ['conventions'], summary: summarize(current.join(' ')), text: `${current.join('\n')} (${file.name})` });
+      if (current)
+        rules.push({
+          id: `R-${name}-${rules.filter((r) => r.id.startsWith(`R-${name}-`)).length + 1}`,
+          reviewers: ['conventions'],
+          summary: summarize(current.join(' ')),
+          text: `${current.join('\n')} (${file.name})`,
+        });
       current = undefined;
     };
     // A file that uses the legend marks its review-only bullets. One that doesn't (a repository that never adopted the
@@ -98,7 +125,7 @@ export function repositoryRules(files: RuleFile[]): IndexedRule[] {
       if (ruleStart.test(line)) {
         flush();
         current = [line];
-      } else if (current && (/^\s+\S/.test(line))) {
+      } else if (current && /^\s+\S/.test(line)) {
         current.push(line);
       } else {
         flush();
@@ -120,7 +147,11 @@ function parseDecision(name: string, text: string): Decision & { status: string 
   const status = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(text)?.[1] ?? 'Accepted';
   const title = /^#\s+(.+)$/m.exec(text)?.[1]?.trim() ?? name;
   const sections = text.split(/^(?=## )/m);
-  const section = (heading: string) => sections.find((s) => s.startsWith(`## ${heading}`))?.replace(new RegExp(`^## ${heading}\\s*`), '').trim() ?? '';
+  const section = (heading: string) =>
+    sections
+      .find((s) => s.startsWith(`## ${heading}`))
+      ?.replace(new RegExp(`^## ${heading}\\s*`), '')
+      .trim() ?? '';
   const consequences = section('Consequences');
   const decision = consequences ? `${section('Decision')}\n\nConsequences:\n${consequences}` : section('Decision');
   return { id: `ADR-${name.slice(0, 4)}`, title, decision: decision.slice(0, maxDecisionChars), status };
@@ -143,7 +174,9 @@ export function readDecisions(basePath: string): Decision[] {
 // The decision records among the changed files, read from the pull request's head: accepted or still proposed.
 export function readProposedDecisions(prPath: string, changed: string[]): Decision[] {
   const decisions: Decision[] = [];
-  for (const file of changed.filter((f) => decisionFolders.includes(path.posix.dirname(f)) && isDecisionName(path.posix.basename(f))).sort()) {
+  for (const file of changed
+    .filter((f) => decisionFolders.includes(path.posix.dirname(f)) && isDecisionName(path.posix.basename(f)))
+    .sort()) {
     const full = path.join(prPath, file);
     if (!existsSync(full)) continue;
     const { status, ...decision } = parseDecision(path.posix.basename(file), readFileSync(full, 'utf8'));
@@ -183,24 +216,20 @@ export async function selectContext(
   const accepted = decisions.filter((d) => !d.proposed);
   const empty: Context = { rulesFor: new Map(), decisions: proposed };
   if (!rules.length && !accepted.length) return { context: empty, result: undefined };
-  const catalog = [
-    ...rules.map((r) => `${r.id}: ${r.summary}`),
-    ...accepted.map((d) => `${d.id}: ${d.title}`),
-  ].join('\n');
-  const result = await agent<{ rules: string[]; decisions: string[] }>(
-    withoutTools(run),
-    {
-      role: 'context',
-      tier: 'sonnet',
-      systemPrompt: pickPrompt,
-      prompt: `${describe(gathered)}\n\n<catalog>\n${catalog}\n</catalog>`,
-      schema: pickSchema,
-      maxTurns: 3,
-      budgetUsd: 0.75,
-      // One request, whose prompt nothing else reuses: caching would pay to write it and never read it (issue #133).
-      cache: false,
-    },
+  const catalog = [...rules.map((r) => `${r.id}: ${r.summary}`), ...accepted.map((d) => `${d.id}: ${d.title}`)].join(
+    '\n',
   );
+  const result = await agent<{ rules: string[]; decisions: string[] }>(withoutTools(run), {
+    role: 'context',
+    tier: 'sonnet',
+    systemPrompt: pickPrompt,
+    prompt: `${describe(gathered)}\n\n<catalog>\n${catalog}\n</catalog>`,
+    schema: pickSchema,
+    maxTurns: 3,
+    budgetUsd: 0.75,
+    // One request, whose prompt nothing else reuses: caching would pay to write it and never read it (issue #133).
+    cache: false,
+  });
   if (!result.output) return { context: empty, result };
   const picked = new Set(result.output.rules);
   const rulesFor = new Map<string, IndexedRule[]>();
@@ -208,6 +237,9 @@ export async function selectContext(
     for (const reviewer of rule.reviewers) rulesFor.set(reviewer, [...(rulesFor.get(reviewer) ?? []), rule]);
   }
   const wanted = result.output.decisions;
-  const chosen = accepted.filter((d) => wanted.includes(d.id)).sort((a, b) => wanted.indexOf(a.id) - wanted.indexOf(b.id)).slice(0, maxDecisions);
+  const chosen = accepted
+    .filter((d) => wanted.includes(d.id))
+    .sort((a, b) => wanted.indexOf(a.id) - wanted.indexOf(b.id))
+    .slice(0, maxDecisions);
   return { context: { rulesFor, decisions: [...proposed, ...chosen] }, result };
 }

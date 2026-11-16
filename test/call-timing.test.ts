@@ -33,7 +33,16 @@ function apiErrorMessage(error: string, text: string): SDKMessage {
 }
 
 function request(fields: Partial<AgentRequest> = {}): AgentRequest {
-  return { role: 'reviewer:tests', tier: 'haiku', systemPrompt: '', prompt: 'review this', schema: { properties: {} }, maxTurns: 1, budgetUsd: 0.1, ...fields };
+  return {
+    role: 'reviewer:tests',
+    tier: 'haiku',
+    systemPrompt: '',
+    prompt: 'review this',
+    schema: { properties: {} },
+    maxTurns: 1,
+    budgetUsd: 0.1,
+    ...fields,
+  };
 }
 
 function runWith(query: QueryFunction): AgentRun {

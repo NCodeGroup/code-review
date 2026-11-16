@@ -43,18 +43,24 @@ export function acknowledgedFrom(id: string | undefined, headSha: string | undef
 // The decide step's outputs for a run that will review, which the acknowledgement reads: only a commit SHA and a
 // comment id, each checked for shape, so nothing from the event can add a line of its own. None when the head is
 // missing or malformed.
-export function decisionOutputs(decision: { pullRequest: { head?: { sha?: string } }; commentId?: number }): string | undefined {
+export function decisionOutputs(decision: {
+  pullRequest: { head?: { sha?: string } };
+  commentId?: number;
+}): string | undefined {
   const headSha = decision.pullRequest.head?.sha;
   if (!isSha(headSha)) return undefined;
   const lines = ['acknowledge=true', `head-sha=${headSha}`];
-  if (Number.isSafeInteger(decision.commentId) && (decision.commentId ?? 0) > 0) lines.push(`comment-id=${decision.commentId}`);
+  if (Number.isSafeInteger(decision.commentId) && (decision.commentId ?? 0) > 0)
+    lines.push(`comment-id=${decision.commentId}`);
   return `${lines.join('\n')}\n`;
 }
 
 // The decide step's outputs for a /review comment that is not a command, which the reaction step reads: only the comment
 // id, checked for shape. None when the id is malformed.
 export function ignoredOutputs(commentId: number): string | undefined {
-  return Number.isSafeInteger(commentId) && commentId > 0 ? `acknowledge=ignored\ncomment-id=${commentId}\n` : undefined;
+  return Number.isSafeInteger(commentId) && commentId > 0
+    ? `acknowledge=ignored\ncomment-id=${commentId}\n`
+    : undefined;
 }
 
 export function inProgressCheck(headSha: string, detailsUrl?: string) {
@@ -64,7 +70,10 @@ export function inProgressCheck(headSha: string, detailsUrl?: string) {
     status: 'in_progress',
     started_at: new Date().toISOString(),
     ...(detailsUrl ? { details_url: detailsUrl } : {}),
-    output: { title: 'Review in progress', summary: `Review started at ${short(headSha)}; it usually takes a few minutes.` },
+    output: {
+      title: 'Review in progress',
+      summary: `Review started at ${short(headSha)}; it usually takes a few minutes.`,
+    },
   };
 }
 
@@ -82,7 +91,11 @@ export function budgetStatus(reason: string): RunStatus {
 // The status for an error that stopped the review step: a failure with the error's text. The review step reports no
 // provider as budgetStatus instead.
 export function failureStatus(error: unknown, url?: string): RunStatus {
-  return { conclusion: 'failure', title: 'Review failed', summary: `The review failed: ${errorText(error).replace(/\.$/, '')}.${logLine(url)}` };
+  return {
+    conclusion: 'failure',
+    title: 'Review failed',
+    summary: `The review failed: ${errorText(error).replace(/\.$/, '')}.${logLine(url)}`,
+  };
 }
 
 // How the review step stops on an error. No provider means the budget is used up, not that the review broke: the check
@@ -105,15 +118,25 @@ export function parseStatus(json: string): RunStatus | undefined {
   } catch {
     return undefined;
   }
-  if (!value || typeof value !== 'object' || typeof value.title !== 'string' || typeof value.summary !== 'string') return undefined;
+  if (!value || typeof value !== 'object' || typeof value.title !== 'string' || typeof value.summary !== 'string')
+    return undefined;
   const conclusion = (['neutral', 'failure', 'cancelled'] as const).find((c) => c === value.conclusion) ?? 'failure';
-  return { conclusion, title: value.title, summary: value.summary, ...(isSha(value.headSha) ? { headSha: value.headSha } : {}) };
+  return {
+    conclusion,
+    title: value.title,
+    summary: value.summary,
+    ...(isSha(value.headSha) ? { headSha: value.headSha } : {}),
+  };
 }
 
 // What the review step records when it stops without a review: status.json for the finish step, with the commit the
 // run decided to review and no secret, and, once there is such a commit, the step output that tells the later steps
 // there's a check run to complete even without an acknowledgement.
-export function stoppedRecord(status: RunStatus, headSha: string | undefined, secrets: string[]): { json: string; output: string } {
+export function stoppedRecord(
+  status: RunStatus,
+  headSha: string | undefined,
+  secrets: string[],
+): { json: string; output: string } {
   let safe: RunStatus = { ...status, ...(headSha ? { headSha } : {}) };
   try {
     assertNoSecrets(JSON.stringify(safe), secrets, 'The reason');
@@ -149,10 +172,14 @@ export function stoppedStatus(outcomes: StepOutcomes, url?: string): RunStatus {
     return {
       conclusion: 'cancelled',
       title: 'Review cancelled',
-      summary: 'The run was cancelled before the review was posted, usually because a newer run for this pull request started.',
+      summary:
+        'The run was cancelled before the review was posted, usually because a newer run for this pull request started.',
     };
   }
-  const summary = outcomes.review === 'success' ? "The review finished, but its results couldn't be posted." : 'The run stopped before the review finished.';
+  const summary =
+    outcomes.review === 'success'
+      ? "The review finished, but its results couldn't be posted."
+      : 'The run stopped before the review finished.';
   return { conclusion: 'failure', title: 'Review failed', summary: `${summary}${logLine(url)}` };
 }
 
@@ -164,7 +191,8 @@ export function finishStatus(
   outcomes: StepOutcomes,
   context: { token: string; url?: string | undefined; log?: (line: string) => void },
 ): RunStatus {
-  const status = (statusJson === undefined ? undefined : parseStatus(statusJson)) ?? stoppedStatus(outcomes, context.url);
+  const status =
+    (statusJson === undefined ? undefined : parseStatus(statusJson)) ?? stoppedStatus(outcomes, context.url);
   try {
     assertNoSecrets(JSON.stringify(status), [context.token], 'The check run');
     return status;
@@ -190,12 +218,18 @@ export async function acknowledge(
 ): Promise<number> {
   if (target.commentId !== undefined) {
     try {
-      await api('POST', `/repos/${target.repository}/issues/comments/${target.commentId}/reactions`, { content: 'eyes' });
+      await api('POST', `/repos/${target.repository}/issues/comments/${target.commentId}/reactions`, {
+        content: 'eyes',
+      });
     } catch (error) {
       log(`::warning::Couldn't react to the /review comment (${errorText(error)}).`);
     }
   }
-  const created = (await api('POST', `/repos/${target.repository}/check-runs`, inProgressCheck(target.headSha, target.detailsUrl))) as { id: number; html_url?: string };
+  const created = (await api(
+    'POST',
+    `/repos/${target.repository}/check-runs`,
+    inProgressCheck(target.headSha, target.detailsUrl),
+  )) as { id: number; html_url?: string };
   log(`Acknowledged with ${created.html_url ?? `check run ${created.id}`}`);
   return created.id;
 }
@@ -214,21 +248,37 @@ export async function publishCheck(
   acknowledged: Acknowledged | undefined,
 ): Promise<{ html_url: string }> {
   if (acknowledged?.headSha === check.head_sha) {
-    return (await api('PATCH', `/repos/${repository}/check-runs/${acknowledged.id}`, completion(check.conclusion, check.output))) as { html_url: string };
+    return (await api(
+      'PATCH',
+      `/repos/${repository}/check-runs/${acknowledged.id}`,
+      completion(check.conclusion, check.output),
+    )) as { html_url: string };
   }
-  const created = (await api('POST', `/repos/${repository}/check-runs`, { ...completion(check.conclusion, check.output), head_sha: check.head_sha })) as { html_url: string };
+  const created = (await api('POST', `/repos/${repository}/check-runs`, {
+    ...completion(check.conclusion, check.output),
+    head_sha: check.head_sha,
+  })) as { html_url: string };
   if (acknowledged) {
-    await api('PATCH', `/repos/${repository}/check-runs/${acknowledged.id}`, completion('neutral', {
-      title: `Reviewed ${short(check.head_sha)} instead`,
-      summary: `The pull request moved to ${short(check.head_sha)} before the review began; [its check run](${created.html_url}) has the review.`,
-    }));
+    await api(
+      'PATCH',
+      `/repos/${repository}/check-runs/${acknowledged.id}`,
+      completion('neutral', {
+        title: `Reviewed ${short(check.head_sha)} instead`,
+        summary: `The pull request moved to ${short(check.head_sha)} before the review began; [its check run](${created.html_url}) has the review.`,
+      }),
+    );
   }
   return created;
 }
 
 // Completes the check run for a run that posted no review, with why: the acknowledged one when there is one, otherwise
 // a new one on the commit the run decided to review. Returns false when there's neither.
-export async function finishCheck(api: Api, repository: string, acknowledged: Acknowledged | undefined, status: RunStatus): Promise<boolean> {
+export async function finishCheck(
+  api: Api,
+  repository: string,
+  acknowledged: Acknowledged | undefined,
+  status: RunStatus,
+): Promise<boolean> {
   const done = completion(status.conclusion, { title: status.title, summary: status.summary });
   if (acknowledged) {
     await api('PATCH', `/repos/${repository}/check-runs/${acknowledged.id}`, done);

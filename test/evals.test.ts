@@ -7,18 +7,43 @@ import type { CallRecord } from '../src/agent.ts';
 import { compare, isNoise, outputPath } from '../evals/compare.ts';
 import type { EvalOutput } from '../evals/output.ts';
 import { confirm, sample, unconfirmed, type CaseConcerns } from '../evals/confirm.ts';
-import { judgeMaxDiffChars, judgePosted, loadVerdicts, realityJudge, saveVerdicts, spread, totalPrecision, type RealityJudge, type RealityVerdict, type VerdictCache } from '../evals/precision.ts';
+import {
+  judgeMaxDiffChars,
+  judgePosted,
+  loadVerdicts,
+  realityJudge,
+  saveVerdicts,
+  spread,
+  totalPrecision,
+  type RealityJudge,
+  type RealityVerdict,
+  type VerdictCache,
+} from '../evals/precision.ts';
 import type { Finding, Severity } from '../src/review.ts';
 import { fingerprint } from '../src/threads.ts';
 
 const finding = (title: string, severity: Severity = 'should-fix', file = 'src/a.cs'): Finding => ({
-  severity, file, line: 10, title, problem: `${title} problem`, consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9,
+  severity,
+  file,
+  line: 10,
+  title,
+  problem: `${title} problem`,
+  consequence: 'c',
+  fix: 'f',
+  evidence: 'e',
+  confidence: 0.9,
 });
 
 // A judge that answers from a table by title and records what it was asked.
 function fakeJudge(answers: Record<string, RealityVerdict | undefined>): { asked: string[]; judge: RealityJudge } {
   const asked: string[] = [];
-  return { asked, judge: async (f) => { asked.push(f.title); return answers[f.title]; } };
+  return {
+    asked,
+    judge: async (f) => {
+      asked.push(f.title);
+      return answers[f.title];
+    },
+  };
 }
 
 test('judgePosted counts matched and real findings as precise, and unsure apart', async () => {
@@ -31,8 +56,18 @@ test('judgePosted counts matched and real findings as precise, and unsure apart'
     'Not real one': { verdict: 'not-real', reason: 'n' },
     'Unsure one': { verdict: 'unsure', reason: 'u' },
   });
-  const result = await judgePosted({ caseId: 'case', findings: [matched, real, notReal, unsure], matched: new Set([matched]), mustNot: new Set(), cache: {}, judge });
-  assert.deepEqual({ ...result, judged: undefined }, { posted: 4, matched: 1, mustNot: 0, real: 1, notReal: 1, unsure: 1, precision: 0.5, judged: undefined });
+  const result = await judgePosted({
+    caseId: 'case',
+    findings: [matched, real, notReal, unsure],
+    matched: new Set([matched]),
+    mustNot: new Set(),
+    cache: {},
+    judge,
+  });
+  assert.deepEqual(
+    { ...result, judged: undefined },
+    { posted: 4, matched: 1, mustNot: 0, real: 1, notReal: 1, unsure: 1, precision: 0.5, judged: undefined },
+  );
 });
 
 test('judgePosted leaves nits out and never judges a matched or must-not finding', async () => {
@@ -40,7 +75,12 @@ test('judgePosted leaves nits out and never judges a matched or must-not finding
   const forbidden = finding('Forbidden one');
   const { asked, judge } = fakeJudge({});
   const result = await judgePosted({
-    caseId: 'case', findings: [matched, forbidden, finding('A nit', 'nit')], matched: new Set([matched]), mustNot: new Set([forbidden]), cache: {}, judge,
+    caseId: 'case',
+    findings: [matched, forbidden, finding('A nit', 'nit')],
+    matched: new Set([matched]),
+    mustNot: new Set([forbidden]),
+    cache: {},
+    judge,
   });
   assert.deepEqual(asked, []);
   assert.equal(result.posted, 2);
@@ -52,25 +92,53 @@ test('judgePosted caches verdicts by case and fingerprint, so a rerun does not j
   const cache: VerdictCache = {};
   const real = finding('Real one');
   const first = fakeJudge({ 'Real one': { verdict: 'real', reason: 'because' } });
-  await judgePosted({ caseId: 'case', findings: [real], matched: new Set(), mustNot: new Set(), cache, judge: first.judge });
+  await judgePosted({
+    caseId: 'case',
+    findings: [real],
+    matched: new Set(),
+    mustNot: new Set(),
+    cache,
+    judge: first.judge,
+  });
   assert.equal(cache['case']?.[fingerprint(real)]?.verdict, 'real');
 
   const second = fakeJudge({});
   // The same defect reworded only in punctuation and case keeps its fingerprint.
-  const rerun = await judgePosted({ caseId: 'case', findings: [{ ...real, title: 'real ONE!', line: 12 }], matched: new Set(), mustNot: new Set(), cache, judge: second.judge });
+  const rerun = await judgePosted({
+    caseId: 'case',
+    findings: [{ ...real, title: 'real ONE!', line: 12 }],
+    matched: new Set(),
+    mustNot: new Set(),
+    cache,
+    judge: second.judge,
+  });
   assert.deepEqual(second.asked, []);
   assert.equal(rerun.real, 1);
   assert.equal(rerun.judged[0]?.cached, true);
 
   const otherCase = fakeJudge({ 'Real one': { verdict: 'not-real', reason: 'there' } });
-  await judgePosted({ caseId: 'other', findings: [real], matched: new Set(), mustNot: new Set(), cache, judge: otherCase.judge });
+  await judgePosted({
+    caseId: 'other',
+    findings: [real],
+    matched: new Set(),
+    mustNot: new Set(),
+    cache,
+    judge: otherCase.judge,
+  });
   assert.deepEqual(otherCase.asked, ['Real one']);
 });
 
 test('judgePosted counts a finding the judge gave no verdict for as unsure, and does not cache it', async () => {
   const cache: VerdictCache = {};
   const { judge } = fakeJudge({ 'No answer': undefined });
-  const result = await judgePosted({ caseId: 'case', findings: [finding('No answer')], matched: new Set(), mustNot: new Set(), cache, judge });
+  const result = await judgePosted({
+    caseId: 'case',
+    findings: [finding('No answer')],
+    matched: new Set(),
+    mustNot: new Set(),
+    cache,
+    judge,
+  });
   assert.equal(result.unsure, 1);
   assert.equal(result.precision, 0);
   assert.deepEqual(cache, {});
@@ -82,20 +150,45 @@ test('judgePosted tells matched findings apart by identity, not by file and line
   const both = finding('Raises an expected and a must-not concern');
   const { asked, judge } = fakeJudge({ 'Different defect on the same line': { verdict: 'not-real', reason: 'n' } });
   const result = await judgePosted({
-    caseId: 'case', findings: [matched, sameSpot, both], matched: new Set([matched, both]), mustNot: new Set([both]), cache: {}, judge,
+    caseId: 'case',
+    findings: [matched, sameSpot, both],
+    matched: new Set([matched, both]),
+    mustNot: new Set([both]),
+    cache: {},
+    judge,
   });
   assert.deepEqual(asked, ['Different defect on the same line']);
-  assert.deepEqual(result.judged.map((j) => j.status), ['matched', 'not-real', 'matched']);
+  assert.deepEqual(
+    result.judged.map((j) => j.status),
+    ['matched', 'not-real', 'matched'],
+  );
 });
 
 // A stand-in for runAgent that records each request and answers with `reply`.
 function fakeAgent(reply: RealityVerdict | undefined) {
-  const requests: { checkout: string | undefined; tier: string; prompt: string | string[]; cache: boolean | undefined }[] = [];
-  const agent = async <T>(run: { checkout?: string }, request: { tier: string; prompt: string | string[]; cache?: boolean }) => {
+  const requests: {
+    checkout: string | undefined;
+    tier: string;
+    prompt: string | string[];
+    cache: boolean | undefined;
+  }[] = [];
+  const agent = async <T>(
+    run: { checkout?: string },
+    request: { tier: string; prompt: string | string[]; cache?: boolean },
+  ) => {
     requests.push({ checkout: run.checkout, tier: request.tier, prompt: request.prompt, cache: request.cache });
     const record: CallRecord = {
-      role: 'precision-judge', provider: 'bedrock', model: 'opus', costUsd: 0.25, inputTokens: 0, outputTokens: 0,
-      cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success',
+      role: 'precision-judge',
+      provider: 'bedrock',
+      model: 'opus',
+      costUsd: 0.25,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      turns: 1,
+      durationMs: 0,
+      outcome: 'success',
     };
     return { output: reply as T | undefined, records: [record] };
   };
@@ -104,15 +197,23 @@ function fakeAgent(reply: RealityVerdict | undefined) {
 
 const judgeRun = { provider: 'bedrock' as const, proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout' };
 
-test('realityJudge asks Opus in the checkout, with the file\'s diff cut to its limit, and records each call', async () => {
+test("realityJudge asks Opus in the checkout, with the file's diff cut to its limit, and records each call", async () => {
   const { requests, agent } = fakeAgent({ verdict: 'real', reason: 'r' });
   const calls: CallRecord[] = [];
   const diff = `${'a'.repeat(judgeMaxDiffChars)}CUT`;
-  const judge = realityJudge(judgeRun, { title: 'The title', diffFor: (file) => (file === 'src/a.cs' ? diff : undefined) }, calls, agent);
+  const judge = realityJudge(
+    judgeRun,
+    { title: 'The title', diffFor: (file) => (file === 'src/a.cs' ? diff : undefined) },
+    calls,
+    agent,
+  );
   assert.deepEqual(await judge(finding('Real one')), { verdict: 'real', reason: 'r' });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.role, 'precision-judge');
-  assert.deepEqual({ ...requests[0], prompt: undefined }, { checkout: '/checkout', tier: 'opus', prompt: undefined, cache: false });
+  assert.deepEqual(
+    { ...requests[0], prompt: undefined },
+    { checkout: '/checkout', tier: 'opus', prompt: undefined, cache: false },
+  );
   const prompt = String(requests[0]?.prompt);
   assert.match(prompt, /The title/);
   assert.match(prompt, new RegExp(`a{${judgeMaxDiffChars}}\\n</diff>`));
@@ -147,7 +248,11 @@ test('loadVerdicts reads what saveVerdicts wrote, and an empty cache when there 
   try {
     const file = path.join(dir, 'verdicts.json');
     assert.deepEqual(loadVerdicts(file), {});
-    const cache: VerdictCache = { case: { abc: { verdict: 'real', reason: 'r', file: 'a', line: 1, severity: 'blocker', title: 't', problem: 'p' } } };
+    const cache: VerdictCache = {
+      case: {
+        abc: { verdict: 'real', reason: 'r', file: 'a', line: 1, severity: 'blocker', title: 't', problem: 'p' },
+      },
+    };
     saveVerdicts(file, cache);
     assert.deepEqual(loadVerdicts(file), cache);
   } finally {
@@ -155,12 +260,31 @@ test('loadVerdicts reads what saveVerdicts wrote, and an empty cache when there 
   }
 });
 
-const caseOutput = (id: string, caught: number, expected: number, findings: number, cost: number, precision?: number) => ({
+const caseOutput = (
+  id: string,
+  caught: number,
+  expected: number,
+  findings: number,
+  cost: number,
+  precision?: number,
+) => ({
   id,
   verdicts: Array.from({ length: expected }, (_, i) => ({ caught: i < caught, caughtRaw: i < caught })),
   forbidden: [],
   findings: Array.from({ length: findings }, () => ({})),
-  ...(precision === undefined ? {} : { precision: { posted: 10, matched: 0, mustNot: 0, real: Math.round(10 * precision), notReal: Math.round(10 - 10 * precision), unsure: 0, precision } }),
+  ...(precision === undefined
+    ? {}
+    : {
+        precision: {
+          posted: 10,
+          matched: 0,
+          mustNot: 0,
+          real: Math.round(10 * precision),
+          notReal: Math.round(10 - 10 * precision),
+          unsure: 0,
+          precision,
+        },
+      }),
   reviewCostUsd: cost,
   costUsd: cost + 1,
 });
@@ -171,7 +295,12 @@ function output(cases: EvalOutput['cases'], withPrecision: boolean): EvalOutput 
   const reviewCostUsd = cases.reduce((n, c) => n + (c.reviewCostUsd ?? 0), 0);
   return {
     summary: {
-      expected, caught, caughtRaw: caught, violations: 0, costUsd: reviewCostUsd + cases.length, reviewCostUsd,
+      expected,
+      caught,
+      caughtRaw: caught,
+      violations: 0,
+      costUsd: reviewCostUsd + cases.length,
+      reviewCostUsd,
       ...(withPrecision ? { precision: totalPrecision(cases.flatMap((c) => (c.precision ? [c.precision] : []))) } : {}),
     },
     cases,
@@ -247,9 +376,33 @@ test('outputPath takes a file path as given and a bare label from evals/out', ()
 
 const verdictCache = (): VerdictCache => ({
   case: {
-    r1: { verdict: 'real', reason: 'r', file: 'src/a.cs', line: 3, severity: 'should-fix', title: 'Leaks the stream.', problem: 'The stream is never disposed.' },
-    n1: { verdict: 'not-real', reason: 'n', file: 'src/b.cs', line: 5, severity: 'blocker', title: 'Null check missing', problem: 'x may be null.' },
-    u1: { verdict: 'unsure', reason: 'u', file: 'src/c.cs', line: 7, severity: 'should-fix', title: 'Maybe slow', problem: 'It may be slow.' },
+    r1: {
+      verdict: 'real',
+      reason: 'r',
+      file: 'src/a.cs',
+      line: 3,
+      severity: 'should-fix',
+      title: 'Leaks the stream.',
+      problem: 'The stream is never disposed.',
+    },
+    n1: {
+      verdict: 'not-real',
+      reason: 'n',
+      file: 'src/b.cs',
+      line: 5,
+      severity: 'blocker',
+      title: 'Null check missing',
+      problem: 'x may be null.',
+    },
+    u1: {
+      verdict: 'unsure',
+      reason: 'u',
+      file: 'src/c.cs',
+      line: 7,
+      severity: 'should-fix',
+      title: 'Maybe slow',
+      problem: 'It may be slow.',
+    },
   },
 });
 const cases = (): CaseConcerns[] => [{ id: 'case', expect: [], mustNotFlag: [] }];
@@ -259,15 +412,20 @@ test('confirm adds a real verdict as an expected concern and a not-real one as m
   const set = cases();
   confirm(set, cache, 'case', 'r1');
   confirm(set, cache, 'case', 'n1');
-  assert.deepEqual(set[0]?.expect, [{ file: 'src/a.cs', line: 3, concern: 'Leaks the stream. The stream is never disposed.' }]);
+  assert.deepEqual(set[0]?.expect, [
+    { file: 'src/a.cs', line: 3, concern: 'Leaks the stream. The stream is never disposed.' },
+  ]);
   assert.deepEqual(set[0]?.mustNotFlag, [{ file: 'src/b.cs', line: 5, concern: 'Null check missing. x may be null.' }]);
   assert.equal(cache['case']?.['r1']?.confirmed, 'expect');
   assert.equal(cache['case']?.['n1']?.confirmed, 'mustNotFlag');
-  assert.deepEqual(unconfirmed(cache).map((p) => p.fingerprint), []);
+  assert.deepEqual(
+    unconfirmed(cache).map((p) => p.fingerprint),
+    [],
+  );
   assert.throws(() => confirm(set, cache, 'case', 'r1'), /already confirmed/);
 });
 
-test('confirm --as overrides the judge and records the maintainer\'s verdict', () => {
+test("confirm --as overrides the judge and records the maintainer's verdict", () => {
   const cache = verdictCache();
   const set = cases();
   confirm(set, cache, 'case', 'r1', 'must-not');
@@ -277,14 +435,34 @@ test('confirm --as overrides the judge and records the maintainer\'s verdict', (
   confirm(set, cache, 'case', 'u1', 'expect');
   assert.equal(cache['case']?.['u1']?.verdict, 'real');
   assert.throws(() => confirm(set, cache, 'case', 'missing'), /No verdict/);
-  assert.throws(() => confirm(cases().map((c) => ({ ...c, id: 'other' })), verdictCache(), 'case', 'r1'), /No case case/);
+  assert.throws(
+    () =>
+      confirm(
+        cases().map((c) => ({ ...c, id: 'other' })),
+        verdictCache(),
+        'case',
+        'r1',
+      ),
+    /No case case/,
+  );
 });
 
 test('unconfirmed lists real and not-real verdicts by default, and sample picks up to n of each verdict', () => {
   const cache = verdictCache();
   cache['case2'] = { r2: { ...cache['case']!['r1']!, title: 'Another' } };
-  assert.deepEqual(unconfirmed(cache).map((p) => p.fingerprint).sort(), ['n1', 'r1', 'r2']);
-  assert.deepEqual(unconfirmed(cache, 'unsure').map((p) => p.fingerprint), ['u1']);
+  assert.deepEqual(
+    unconfirmed(cache)
+      .map((p) => p.fingerprint)
+      .sort(),
+    ['n1', 'r1', 'r2'],
+  );
+  assert.deepEqual(
+    unconfirmed(cache, 'unsure').map((p) => p.fingerprint),
+    ['u1'],
+  );
   const picked = sample(unconfirmed(cache), 1, () => 0);
-  assert.deepEqual(picked.map((p) => p.verdict), ['real', 'not-real']);
+  assert.deepEqual(
+    picked.map((p) => p.verdict),
+    ['real', 'not-real'],
+  );
 });

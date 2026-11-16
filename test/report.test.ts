@@ -39,7 +39,12 @@ function finding(id: string, outcome: FindingOutcome['outcome'], reviewers: stri
   return { id, reviewedAt: sha('a'), reviewers, severity: 'should-fix', outcome };
 }
 
-function summary(head: string, provider: 'anthropic' | 'bedrock', costUsd: number, findings?: FindingOutcome[]): string {
+function summary(
+  head: string,
+  provider: 'anthropic' | 'bedrock',
+  costUsd: number,
+  findings?: FindingOutcome[],
+): string {
   const lines = [summaryMarker, headMarker(head), review(head, provider, costUsd), '### 🤖 Review complete'];
   if (findings) lines.push('', outcomesMarker({ state: 'merged', head, findings }), '### 📋 Outcomes');
   return lines.join('\n');
@@ -77,12 +82,15 @@ class FakeGitHub {
     const page = Number(url.searchParams.get('page') ?? '1');
     const perPage = Number(url.searchParams.get('per_page') ?? '30');
     const paged = <T>(items: T[]) => json(items.slice((page - 1) * perPage, page * perPage));
-    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+    const json = (value: unknown, status = 200) =>
+      new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
     let match: RegExpExecArray | null;
     if ((match = /^\/orgs\/([^/]+)\/repos$/.exec(url.pathname))) return paged(this.orgRepos);
     if ((match = /^\/repos\/([^/]+\/[^/]+)\/contents\/(.+)$/.exec(url.pathname))) {
       if (this.failingContents.has(match[1]!)) return json({ message: 'boom' }, 500);
-      return this.callers.has(match[1]!) && match[2] === '.github/workflows/code-review.yml' ? json({ name: 'code-review.yml' }) : json({ message: 'Not Found' }, 404);
+      return this.callers.has(match[1]!) && match[2] === '.github/workflows/code-review.yml'
+        ? json({ name: 'code-review.yml' })
+        : json({ message: 'Not Found' }, 404);
     }
     if ((match = /^\/repos\/([^/]+\/[^/]+)\/pulls$/.exec(url.pathname))) {
       if (this.failingPulls.has(match[1]!)) return json({ message: 'boom' }, 500);
@@ -96,7 +104,14 @@ class FakeGitHub {
       if (method === 'POST') {
         const sent = JSON.parse(String(init?.body)) as { title: string; body: string; labels: string[] };
         const number = 1000 + this.issues.length;
-        const issue = { number, title: sent.title, body: sent.body, labels: sent.labels, user: { login: this.login }, html_url: `https://github.com/${match[1]}/issues/${number}` };
+        const issue = {
+          number,
+          title: sent.title,
+          body: sent.body,
+          labels: sent.labels,
+          user: { login: this.login },
+          html_url: `https://github.com/${match[1]}/issues/${number}`,
+        };
         this.issues.push(issue);
         return json(issue, 201);
       }
@@ -119,7 +134,10 @@ test('the month defaults to the one before now, in UTC, and runs from its first 
   assert.equal(october.start.toISOString(), '2026-10-01T00:00:00.000Z');
   assert.equal(october.end.toISOString(), '2026-11-01T00:00:00.000Z');
   assert.equal(monthWindow(undefined, new Date('2027-01-01T06:00:00Z')).name, '2026-12');
-  assert.equal(monthWindow(' 2026-02 ', new Date('2026-11-01T00:00:00Z')).end.toISOString(), '2026-03-01T00:00:00.000Z');
+  assert.equal(
+    monthWindow(' 2026-02 ', new Date('2026-11-01T00:00:00Z')).end.toISOString(),
+    '2026-03-01T00:00:00.000Z',
+  );
 });
 
 test('the current month can be reported, but not a later one or a malformed one', () => {
@@ -168,13 +186,16 @@ test("discovery keeps the owner's public repositories that have the caller workf
 test('discovery skips private repositories and notes when there are more repositories than it reads', async () => {
   const github = new FakeGitHub();
   github.orgRepos = [{ full_name: 'NCodeGroup/secret', private: true }, { full_name: 'NCodeGroup/a' }];
-  for (let n = github.orgRepos.length; n < maxRepositoryPages * pageSize; n++) github.orgRepos.push({ full_name: `NCodeGroup/fork-${n}`, fork: true });
+  for (let n = github.orgRepos.length; n < maxRepositoryPages * pageSize; n++)
+    github.orgRepos.push({ full_name: `NCodeGroup/fork-${n}`, fork: true });
   github.orgRepos.push({ full_name: 'NCodeGroup/late' });
   github.callers = new Set(['NCodeGroup/a', 'NCodeGroup/secret', 'NCodeGroup/late']);
   const notes: string[] = [];
   const found = await discoverRepositories(githubApi('t', github.fetch), 'NCodeGroup', notes, () => {});
   assert.deepEqual(found, ['NCodeGroup/a']);
-  assert.deepEqual(notes, [`Only the first ${maxRepositoryPages * pageSize} of NCodeGroup's repositories were checked.`]);
+  assert.deepEqual(notes, [
+    `Only the first ${maxRepositoryPages * pageSize} of NCodeGroup's repositories were checked.`,
+  ]);
   assert.equal(github.calls.filter((c) => c.includes('/orgs/')).length, maxRepositoryPages);
 });
 
@@ -189,10 +210,18 @@ test('only pull requests closed inside the month count, and the listing stops on
     { number: 5, closed_at: null, updated_at: '2026-10-10T00:00:00Z' },
   ];
   // A full page of older pull requests after them: the first page ends before the month, so the second isn't read.
-  for (let n = 100; n < 300; n++) pulls.push({ number: n, closed_at: '2026-08-01T00:00:00Z', updated_at: `2026-08-${String(1 + (n % 28)).padStart(2, '0')}T00:00:00Z` });
+  for (let n = 100; n < 300; n++)
+    pulls.push({
+      number: n,
+      closed_at: '2026-08-01T00:00:00Z',
+      updated_at: `2026-08-${String(1 + (n % 28)).padStart(2, '0')}T00:00:00Z`,
+    });
   github.pulls.set('NCodeGroup/a', pulls);
   const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', month, []);
-  assert.deepEqual(closed.map((p) => p.number).sort((a, b) => a - b), [1, 2]);
+  assert.deepEqual(
+    closed.map((p) => p.number).sort((a, b) => a - b),
+    [1, 2],
+  );
   assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 1);
 });
 
@@ -207,7 +236,12 @@ test('the listing goes on to the next page while updates are still inside the mo
   const github = new FakeGitHub();
   github.pulls.set('NCodeGroup/a', inMonthPulls(150));
   const notes: string[] = [];
-  const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  const closed = await listClosedPulls(
+    githubApi('t', github.fetch),
+    'NCodeGroup/a',
+    monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')),
+    notes,
+  );
   assert.equal(closed.length, 150);
   assert.equal(github.calls.filter((c) => c.includes('/pulls?')).length, 2);
   assert.deepEqual(notes, []);
@@ -217,9 +251,16 @@ test('the listing stops at its page cap and says the rest are left out', async (
   const github = new FakeGitHub();
   github.pulls.set('NCodeGroup/a', inMonthPulls(maxPullPages * pageSize + 1));
   const notes: string[] = [];
-  const closed = await listClosedPulls(githubApi('t', github.fetch), 'NCodeGroup/a', monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')), notes);
+  const closed = await listClosedPulls(
+    githubApi('t', github.fetch),
+    'NCodeGroup/a',
+    monthWindow('2026-10', new Date('2026-11-01T06:00:00Z')),
+    notes,
+  );
   assert.equal(closed.length, maxPullPages * pageSize);
-  assert.deepEqual(notes, [`NCodeGroup/a has more closed pull requests updated since 2026-10 began than the ${maxPullPages * pageSize} read; the rest are left out.`]);
+  assert.deepEqual(notes, [
+    `NCodeGroup/a has more closed pull requests updated since 2026-10 began than the ${maxPullPages * pageSize} read; the rest are left out.`,
+  ]);
 });
 
 test("a pull request's findings come from the newest outcomes marker, and its cost from every review marker, in the bot's comments only", async () => {
@@ -232,8 +273,16 @@ test("a pull request's findings come from the newest outcomes marker, and its co
         outcomesMarker({ state: 'closed', head: sha('a'), findings: [finding('F1', 'ignored', ['correctness'])] }),
       ]),
     ),
-    { body: `${first}\n${outcomesMarker({ state: 'merged', head: sha('a'), findings: [finding('F1', 'fixed', ['x'])] })}`, user: { login: 'mallory' } },
-    bot(summary(sha('b'), 'bedrock', 2.25, [finding('F1', 'fixed', ['correctness']), finding('F2', 'dismissed', ['security', 'correctness'])])),
+    {
+      body: `${first}\n${outcomesMarker({ state: 'merged', head: sha('a'), findings: [finding('F1', 'fixed', ['x'])] })}`,
+      user: { login: 'mallory' },
+    },
+    bot(
+      summary(sha('b'), 'bedrock', 2.25, [
+        finding('F1', 'fixed', ['correctness']),
+        finding('F2', 'dismissed', ['security', 'correctness']),
+      ]),
+    ),
   ]);
   const record = await readPull(githubApi('t', github.fetch), 'NCodeGroup/a', 7);
   assert.deepEqual(record, {
@@ -276,7 +325,9 @@ test('a pull request the bot never commented on is not a reviewed one, and a dam
   const api = githubApi('t', github.fetch);
   assert.equal(await readPull(api, 'NCodeGroup/a', 9), undefined);
   github.comments.set('NCodeGroup/a#10', [
-    bot(`${summaryMarker}\n<!-- ncode-review:review {"head":"x","provider":"openai","costUsd":3} -->\n<!-- ncode-review:outcomes {"findings":[{"outcome":"great","reviewers":[]},{"outcome":"ignored","reviewers":[1,"r"]}]} -->`),
+    bot(
+      `${summaryMarker}\n<!-- ncode-review:review {"head":"x","provider":"openai","costUsd":3} -->\n<!-- ncode-review:outcomes {"findings":[{"outcome":"great","reviewers":[]},{"outcome":"ignored","reviewers":[1,"r"]}]} -->`,
+    ),
   ]);
   const record = await readPull(api, 'NCodeGroup/a', 10);
   assert.deepEqual(record?.findings, [{ reviewers: ['r'], outcome: 'ignored' }]);
@@ -286,7 +337,10 @@ test('a pull request the bot never commented on is not a reviewed one, and a dam
 
 test("a pull request with more comments than are read can't be recorded", async () => {
   const github = new FakeGitHub();
-  github.comments.set('NCodeGroup/a#11', Array.from({ length: maxCommentPages * commentPageSize }, () => bot(summary(sha('a'), 'anthropic', 1))));
+  github.comments.set(
+    'NCodeGroup/a#11',
+    Array.from({ length: maxCommentPages * commentPageSize }, () => bot(summary(sha('a'), 'anthropic', 1))),
+  );
   await assert.rejects(readPull(githubApi('t', github.fetch), 'NCodeGroup/a', 11), /more comments than are read/);
 });
 
@@ -316,7 +370,12 @@ const pullB: PullRecord = {
   unknownCost: 0,
 };
 // Reviewed, but its outcomes were never recorded: its cost counts in the total, not in cost per fixed finding.
-const pullC: PullRecord = { repository: 'NCodeGroup/b', number: 3, reviews: [{ provider: 'anthropic', costUsd: 3 }], unknownCost: 1 };
+const pullC: PullRecord = {
+  repository: 'NCodeGroup/b',
+  number: 3,
+  reviews: [{ provider: 'anthropic', costUsd: 3 }],
+  unknownCost: 1,
+};
 
 test('aggregation counts outcomes per repository and per reviewer, with precision as fixed over fixed and dismissed', () => {
   const data = aggregate('2026-10', ['NCodeGroup/a', 'NCodeGroup/b'], [pullA, pullB, pullC]);
@@ -326,10 +385,29 @@ test('aggregation counts outcomes per repository and per reviewer, with precisio
     security: { fixed: 1, dismissed: 1, acknowledged: 0, ignored: 0 },
     tests: { fixed: 0, dismissed: 1, acknowledged: 0, ignored: 1 },
   });
-  assert.deepEqual(data.byRepository['NCodeGroup/a'], { fixed: 2, dismissed: 1, acknowledged: 1, ignored: 0, pulls: 1, withOutcomes: 1, costUsd: 2 });
-  assert.deepEqual(data.byRepository['NCodeGroup/b'], { fixed: 0, dismissed: 1, acknowledged: 0, ignored: 1, pulls: 2, withOutcomes: 1, costUsd: 4 });
+  assert.deepEqual(data.byRepository['NCodeGroup/a'], {
+    fixed: 2,
+    dismissed: 1,
+    acknowledged: 1,
+    ignored: 0,
+    pulls: 1,
+    withOutcomes: 1,
+    costUsd: 2,
+  });
+  assert.deepEqual(data.byRepository['NCodeGroup/b'], {
+    fixed: 0,
+    dismissed: 1,
+    acknowledged: 0,
+    ignored: 1,
+    pulls: 2,
+    withOutcomes: 1,
+    costUsd: 4,
+  });
   const t = data.totals;
-  assert.deepEqual([t.fixed, t.dismissed, t.acknowledged, t.ignored, t.pulls, t.withOutcomes, t.unknownCost], [2, 2, 1, 1, 3, 2, 1]);
+  assert.deepEqual(
+    [t.fixed, t.dismissed, t.acknowledged, t.ignored, t.pulls, t.withOutcomes, t.unknownCost],
+    [2, 2, 1, 1, 3, 2, 1],
+  );
   assert.equal(precision(t), 0.5);
   assert.equal(precision(data.reviewers['tests']!), 0);
   assert.equal(precision(data.reviewers[unattributed]!), undefined);
@@ -342,7 +420,19 @@ test('aggregation counts outcomes per repository and per reviewer, with precisio
 });
 
 test("the issue body has the totals with the previous month's change, a table per reviewer and per repository, and the marker", () => {
-  const before = aggregate('2026-09', ['NCodeGroup/a'], [{ ...pullA, findings: [{ reviewers: ['correctness'], outcome: 'dismissed' }, { reviewers: ['correctness'], outcome: 'fixed' }] }]);
+  const before = aggregate(
+    '2026-09',
+    ['NCodeGroup/a'],
+    [
+      {
+        ...pullA,
+        findings: [
+          { reviewers: ['correctness'], outcome: 'dismissed' },
+          { reviewers: ['correctness'], outcome: 'fixed' },
+        ],
+      },
+    ],
+  );
   const data = aggregate('2026-10', ['NCodeGroup/a', 'NCodeGroup/b'], [pullA, pullB, pullC]);
   const body = reportBody(data, before, ['NCodeGroup/c#4 is left out: boom.']);
   assert.ok(body.startsWith(reportMarker(data)));
@@ -365,7 +455,11 @@ test("the issue body has the totals with the previous month's change, a table pe
 });
 
 test('without a previous report the change column is empty, and names are escaped in the tables', () => {
-  const data = aggregate('2026-10', ['NCodeGroup/a'], [{ ...pullA, findings: [{ reviewers: ['a|b<script>\n@team'], outcome: 'fixed' }] }]);
+  const data = aggregate(
+    '2026-10',
+    ['NCodeGroup/a'],
+    [{ ...pullA, findings: [{ reviewers: ['a|b<script>\n@team'], outcome: 'fixed' }] }],
+  );
   const body = reportBody(data, undefined);
   assert.match(body, /^\| Precision \| 100% \| — \| — \|$/m);
   assert.match(body, /^\| a\\\|b&lt;script> @\u200bteam \| 1 \|/m);
@@ -376,8 +470,13 @@ test('without a previous report the change column is empty, and names are escape
 test('a report marker that is damaged or holds the wrong types is read as nothing or as zeros', () => {
   assert.equal(parseReportMarker('no marker'), undefined);
   assert.equal(parseReportMarker('<!-- ncode-review:report {not json} -->'), undefined);
-  assert.equal(parseReportMarker('<!-- ncode-review:report {"version":2,"month":"2026-09","totals":{}} -->'), undefined);
-  const read = parseReportMarker('<!-- ncode-review:report {"version":1,"month":"2026-09","totals":{"fixed":"9","dismissed":-1,"pulls":2.5,"costUsd":1e999,"cost":{"bedrock":2}},"reviewers":{"r":{"fixed":3}}} -->');
+  assert.equal(
+    parseReportMarker('<!-- ncode-review:report {"version":2,"month":"2026-09","totals":{}} -->'),
+    undefined,
+  );
+  const read = parseReportMarker(
+    '<!-- ncode-review:report {"version":1,"month":"2026-09","totals":{"fixed":"9","dismissed":-1,"pulls":2.5,"costUsd":1e999,"cost":{"bedrock":2}},"reviewers":{"r":{"fixed":3}}} -->',
+  );
   assert.equal(read?.totals.fixed, 0);
   assert.equal(read?.totals.dismissed, 0);
   assert.equal(read?.totals.pulls, 0);
@@ -396,9 +495,20 @@ function octoberGitHub(): FakeGitHub {
     { number: 2, closed_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
     { number: 3, closed_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T10:00:00Z' },
   ]);
-  github.comments.set('NCodeGroup/a#1', [bot(summary(sha('a'), 'anthropic', 1.25, [finding('F1', 'fixed', ['correctness']), finding('F2', 'ignored', ['tests'])]))]);
-  github.comments.set('NCodeGroup/a#2', [bot(summary(sha('c'), 'bedrock', 0.75, [finding('F1', 'dismissed', ['correctness'])]))]);
-  github.comments.set('NCodeGroup/a#3', [bot(summary(sha('d'), 'bedrock', 9, [finding('F1', 'fixed', ['correctness'])]))]);
+  github.comments.set('NCodeGroup/a#1', [
+    bot(
+      summary(sha('a'), 'anthropic', 1.25, [
+        finding('F1', 'fixed', ['correctness']),
+        finding('F2', 'ignored', ['tests']),
+      ]),
+    ),
+  ]);
+  github.comments.set('NCodeGroup/a#2', [
+    bot(summary(sha('c'), 'bedrock', 0.75, [finding('F1', 'dismissed', ['correctness'])])),
+  ]);
+  github.comments.set('NCodeGroup/a#3', [
+    bot(summary(sha('d'), 'bedrock', 9, [finding('F1', 'fixed', ['correctness'])])),
+  ]);
   return github;
 }
 
@@ -419,7 +529,10 @@ test('a run opens one labelled issue for the month, and a re-run updates it inst
   assert.equal(issue.title, 'Review report 2026-10');
   assert.deepEqual(issue.labels, ['review-report']);
   const data = parseReportMarker(issue.body)!;
-  assert.deepEqual([data.totals.pulls, data.totals.fixed, data.totals.dismissed, data.totals.ignored, data.totals.costUsd], [2, 1, 1, 1, 2]);
+  assert.deepEqual(
+    [data.totals.pulls, data.totals.fixed, data.totals.dismissed, data.totals.ignored, data.totals.costUsd],
+    [2, 1, 1, 1, 2],
+  );
   assert.deepEqual(data.totals.cost, { anthropic: 1.25, bedrock: 0.75 });
   assert.equal(data.repositories, 1);
 
@@ -430,7 +543,9 @@ test('a run opens one labelled issue for the month, and a re-run updates it inst
   assert.ok(!github.calls.some((c) => c.startsWith('PATCH')));
 
   // A pull request's outcomes change between runs: the same issue is rewritten.
-  github.comments.set('NCodeGroup/a#2', [bot(summary(sha('c'), 'bedrock', 0.75, [finding('F1', 'fixed', ['correctness'])]))]);
+  github.comments.set('NCodeGroup/a#2', [
+    bot(summary(sha('c'), 'bedrock', 0.75, [finding('F1', 'fixed', ['correctness'])])),
+  ]);
   const third = await runReport(reportOptions(github));
   assert.equal(third.issue?.action, 'updated');
   assert.equal(third.issue?.number, issue.number);
@@ -440,12 +555,45 @@ test('a run opens one labelled issue for the month, and a re-run updates it inst
 
 test("the change comes from the previous month's report by the workflow, never from an issue someone else opened", async () => {
   const github = octoberGitHub();
-  const september = aggregate('2026-09', ['NCodeGroup/a'], [{ repository: 'NCodeGroup/a', number: 3, findings: [{ reviewers: ['correctness'], outcome: 'fixed' }], reviews: [{ provider: 'bedrock', costUsd: 9 }], unknownCost: 0 }]);
+  const september = aggregate(
+    '2026-09',
+    ['NCodeGroup/a'],
+    [
+      {
+        repository: 'NCodeGroup/a',
+        number: 3,
+        findings: [{ reviewers: ['correctness'], outcome: 'fixed' }],
+        reviews: [{ provider: 'bedrock', costUsd: 9 }],
+        unknownCost: 0,
+      },
+    ],
+  );
   const forged = { ...september, totals: { ...september.totals, pulls: 500 } };
   github.issues.push(
-    { number: 5, title: 'Review report 2026-09', body: reportBody(forged, undefined), labels: ['review-report'], user: { login: 'mallory' }, html_url: 'https://example.test/5' },
-    { number: 6, title: 'Review report 2026-09', body: reportBody(september, undefined), labels: ['review-report'], user: { login: 'github-actions[bot]' }, html_url: 'https://example.test/6' },
-    { number: 7, title: 'Review report 2026-10', body: 'squatted', labels: ['review-report'], user: { login: 'mallory' }, html_url: 'https://example.test/7' },
+    {
+      number: 5,
+      title: 'Review report 2026-09',
+      body: reportBody(forged, undefined),
+      labels: ['review-report'],
+      user: { login: 'mallory' },
+      html_url: 'https://example.test/5',
+    },
+    {
+      number: 6,
+      title: 'Review report 2026-09',
+      body: reportBody(september, undefined),
+      labels: ['review-report'],
+      user: { login: 'github-actions[bot]' },
+      html_url: 'https://example.test/6',
+    },
+    {
+      number: 7,
+      title: 'Review report 2026-10',
+      body: 'squatted',
+      labels: ['review-report'],
+      user: { login: 'mallory' },
+      html_url: 'https://example.test/7',
+    },
   );
   const result = await runReport(reportOptions(github));
   assert.equal(result.issue?.action, 'created');
@@ -454,11 +602,25 @@ test("the change comes from the previous month's report by the workflow, never f
   assert.equal(github.issues.find((i) => i.number === 7)?.body, 'squatted');
 });
 
-test("when the workflow opened two issues for the month, the older one is the one updated", async () => {
+test('when the workflow opened two issues for the month, the older one is the one updated', async () => {
   const github = octoberGitHub();
   github.issues.push(
-    { number: 8, title: 'Review report 2026-10', body: 'older', labels: ['review-report'], user: { login: 'github-actions[bot]' }, html_url: 'https://example.test/8' },
-    { number: 9, title: 'Review report 2026-10', body: 'newer', labels: ['review-report'], user: { login: 'github-actions[bot]' }, html_url: 'https://example.test/9' },
+    {
+      number: 8,
+      title: 'Review report 2026-10',
+      body: 'older',
+      labels: ['review-report'],
+      user: { login: 'github-actions[bot]' },
+      html_url: 'https://example.test/8',
+    },
+    {
+      number: 9,
+      title: 'Review report 2026-10',
+      body: 'newer',
+      labels: ['review-report'],
+      user: { login: 'github-actions[bot]' },
+      html_url: 'https://example.test/9',
+    },
   );
   const result = await runReport(reportOptions(github));
   assert.equal(result.issue?.action, 'updated');
@@ -479,9 +641,13 @@ test('a configured repository list replaces the scan, and a dry run publishes no
 test("a pull request whose comments can't be read is left out and named in the notes", async () => {
   const github = octoberGitHub();
   const original = github.fetch;
-  github.fetch = async (input, init) => (String(input).includes('/issues/2/comments') ? new Response('{}', { status: 502 }) : original(input, init));
+  github.fetch = async (input, init) =>
+    String(input).includes('/issues/2/comments') ? new Response('{}', { status: 502 }) : original(input, init);
   const result = await runReport({ ...reportOptions(github), dryRun: true });
-  assert.match(result.body, /^- NCodeGroup\/a#2 is left out: couldn't read its comments \(GitHub refused GET .*HTTP 502\)\.$/m);
+  assert.match(
+    result.body,
+    /^- NCodeGroup\/a#2 is left out: couldn't read its comments \(GitHub refused GET .*HTTP 502\)\.$/m,
+  );
   assert.equal(parseReportMarker(result.body)?.totals.pulls, 1);
 });
 
@@ -489,8 +655,16 @@ test("a repository whose closed pull requests can't be listed is left out and na
   const github = octoberGitHub();
   github.failingPulls.add('NCodeGroup/down');
   const logged: string[] = [];
-  const result = await runReport({ ...reportOptions(github), repositories: ['NCodeGroup/a', 'NCodeGroup/down'], dryRun: true, log: (l: string) => logged.push(l) });
-  assert.match(result.body, /^- Couldn't list NCodeGroup\/down's closed pull requests \(GitHub refused GET .*HTTP 500\); it's left out\.$/m);
+  const result = await runReport({
+    ...reportOptions(github),
+    repositories: ['NCodeGroup/a', 'NCodeGroup/down'],
+    dryRun: true,
+    log: (l: string) => logged.push(l),
+  });
+  assert.match(
+    result.body,
+    /^- Couldn't list NCodeGroup\/down's closed pull requests \(GitHub refused GET .*HTTP 500\); it's left out\.$/m,
+  );
   assert.ok(logged.some((l) => l.startsWith("::warning::Couldn't list NCodeGroup/down's")));
   const data = parseReportMarker(result.body)!;
   assert.equal(data.totals.pulls, 2);

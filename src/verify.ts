@@ -6,9 +6,24 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isInside, runAgent, totalCost, type AgentRequest, type AgentResult, type AgentRun, type CallRecord } from './agent.ts';
+import {
+  isInside,
+  runAgent,
+  totalCost,
+  type AgentRequest,
+  type AgentResult,
+  type AgentRun,
+  type CallRecord,
+} from './agent.ts';
 import { mapWithConcurrency } from './concurrency.ts';
-import { budgets, findingsPerVerification, maxTurns, modelIds, verificationConcurrency, type ModelTier } from './config.ts';
+import {
+  budgets,
+  findingsPerVerification,
+  maxTurns,
+  modelIds,
+  verificationConcurrency,
+  type ModelTier,
+} from './config.ts';
 import { changedLines, splitDiff } from './gather.ts';
 import type { ReviewedFinding, Verdict } from './review.ts';
 import { severityRank, type Severity } from './severity.ts';
@@ -61,7 +76,10 @@ export interface VerificationOutcome {
   trace: VerificationCall[];
 }
 
-export type VerificationAgent = (run: AgentRun, request: AgentRequest) => Promise<AgentResult<{ verifications: Verification[] }>>;
+export type VerificationAgent = (
+  run: AgentRun,
+  request: AgentRequest,
+) => Promise<AgentResult<{ verifications: Verification[] }>>;
 
 export interface VerificationInput {
   // Must name the checkout: the calls read the code through it, behind the same path guard as the reviewers.
@@ -178,7 +196,11 @@ export function verificationBatches(findings: ReviewedFinding[], size = findings
 // doesn't change or on a line of a changed file the diff doesn't add. A refutation that rests only on the change's own
 // lines may have been misled by them, and a cite the checkout can't confirm, such as a file it doesn't have, may have been
 // planted by them. A path ending in a changed file's path, such as the checkout's absolute path, is that file.
-export function citesUnchangedCode(path: string, added: ReadonlyMap<string, ReadonlySet<number>>, lines: CheckoutLines): boolean {
+export function citesUnchangedCode(
+  path: string,
+  added: ReadonlyMap<string, ReadonlySet<number>>,
+  lines: CheckoutLines,
+): boolean {
   for (const match of path.matchAll(/([\w./@-]*\w):(\d+)/g)) {
     const file = match[1]!;
     const line = Number(match[2]);
@@ -203,7 +225,14 @@ export function applyVerifications(
   verifications: Map<string, Verification>,
   added: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
   lines: CheckoutLines = () => undefined,
-): { findings: ReviewedFinding[]; refuted: RefutedFinding[]; questioned: number; demoted: number; demotedBlockers: number; postedAs: Map<string, string> } {
+): {
+  findings: ReviewedFinding[];
+  refuted: RefutedFinding[];
+  questioned: number;
+  demoted: number;
+  demotedBlockers: number;
+  postedAs: Map<string, string>;
+} {
   const kept: ReviewedFinding[] = [];
   const refuted: RefutedFinding[] = [];
   let questioned = 0;
@@ -242,13 +271,25 @@ export function applyVerifications(
         ...f,
         severity: lowered[f.severity],
         problem: v.question.trim() || `Is this intended? ${f.problem}`,
-        evidence: appendEvidence(f.evidence, `Verification couldn't settle it: ${v.reason.trim() || 'no reason given'}`),
+        evidence: appendEvidence(
+          f.evidence,
+          `Verification couldn't settle it: ${v.reason.trim() || 'no reason given'}`,
+        ),
       });
     }
   }
-  const ranked = kept.map((f, i) => ({ f, i })).sort((a, b) => severityRank[a.f.severity] - severityRank[b.f.severity] || a.i - b.i);
+  const ranked = kept
+    .map((f, i) => ({ f, i }))
+    .sort((a, b) => severityRank[a.f.severity] - severityRank[b.f.severity] || a.i - b.i);
   const postedAs = new Map(ranked.map(({ f }, i) => [f.id, `F${i + 1}`]));
-  return { findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })), refuted, questioned, demoted, demotedBlockers, postedAs };
+  return {
+    findings: ranked.map(({ f }) => ({ ...f, id: postedAs.get(f.id)! })),
+    refuted,
+    questioned,
+    demoted,
+    demotedBlockers,
+    postedAs,
+  };
 }
 
 function appendEvidence(evidence: string, line: string): string {
@@ -261,7 +302,10 @@ function findingBlock(f: ReviewedFinding, sections: Map<string, string>): string
 }
 
 function chartersBlock(names: string[], charters: Map<string, string>): string {
-  const text = names.filter((n) => charters.has(n)).map((n) => `<charter reviewer="${n}">\n${charters.get(n)!.trim()}\n</charter>`).join('\n\n');
+  const text = names
+    .filter((n) => charters.has(n))
+    .map((n) => `<charter reviewer="${n}">\n${charters.get(n)!.trim()}\n</charter>`)
+    .join('\n\n');
   return `The charters of the reviewers who reported these findings:\n<charters>\n${text || '(none)'}\n</charters>`;
 }
 
@@ -286,9 +330,20 @@ function thrownRecord(run: AgentRun, tier: ModelTier, started: number): CallReco
 
 export async function verifyFindings(input: VerificationInput): Promise<VerificationOutcome> {
   const batches = input.enabled ? verificationBatches(input.findings) : [];
-  if (!batches.length) return { findings: input.findings, refuted: [], questioned: 0, demoted: 0, demotedBlockers: 0, skipped: 0, calls: [], trace: [] };
+  if (!batches.length)
+    return {
+      findings: input.findings,
+      refuted: [],
+      questioned: 0,
+      demoted: 0,
+      demotedBlockers: 0,
+      skipped: 0,
+      calls: [],
+      trace: [],
+    };
 
-  const agent: VerificationAgent = input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
+  const agent: VerificationAgent =
+    input.agent ?? ((run, request) => runAgent<{ verifications: Verification[] }>(run, request));
   const sections = splitDiff(input.diff);
   // Every call shares the first block, so the first call caches it and the rest read it.
   const reviewers = [...new Set(batches.flat().flatMap((f) => f.reviewers))].sort();
@@ -312,14 +367,21 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
         role: 'verification',
         tier,
         systemPrompt: input.systemPrompt,
-        prompt: [shared, `Findings to verify, all in ${batch[0]!.file}:\n<findings>\n${batch.map((f) => findingBlock(f, sections)).join('\n\n')}\n</findings>`],
+        prompt: [
+          shared,
+          `Findings to verify, all in ${batch[0]!.file}:\n<findings>\n${batch.map((f) => findingBlock(f, sections)).join('\n\n')}\n</findings>`,
+        ],
         schema: verificationSchema,
         maxTurns: maxTurns.verification,
         budgetUsd: deep ? budgets.deepVerification : budgets.verification,
       });
     } catch (e) {
       // A call that throws fails like one that returns an error: its findings stay as they were.
-      result = { output: undefined, records: [thrownRecord(input.run, tier, started)], error: e instanceof Error ? e.message : String(e) };
+      result = {
+        output: undefined,
+        records: [thrownRecord(input.run, tier, started)],
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
     spentHere += totalCost(result.records);
     const verifications = (result.output?.verifications ?? []).filter((v) => ids.has(v.id));
@@ -351,7 +413,9 @@ export async function verifyFindings(input: VerificationInput): Promise<Verifica
   const failed = done.filter((d) => d.call.error).length;
   const skipped = done.filter((d) => d.call.skipped).length;
   const cost = done.reduce((sum, d) => sum + d.call.costUsd, 0);
-  input.log(`Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''}${skipped ? ` (${skipped} calls skipped at the run's cost ceiling)` : ''} $${cost.toFixed(3)}`);
+  input.log(
+    `Verification: ${checked} findings in ${batches.length} calls; ${count('confirmed')} confirmed, ${applied.refuted.length} refuted, ${checked - count('confirmed') - applied.refuted.length} kept as questions or unverified${failed ? ` (${failed} calls failed)` : ''}${skipped ? ` (${skipped} calls skipped at the run's cost ceiling)` : ''} $${cost.toFixed(3)}`,
+  );
   const trace = done.map(({ call }) => ({
     ...call,
     findings: call.findings.map((f) => (postedAs.has(f.id) ? { ...f, postedAs: postedAs.get(f.id)! } : f)),
@@ -375,14 +439,21 @@ export function verificationNote(refuted: RefutedFinding[], questioned: number, 
   const changes: string[] = [];
   if (refuted.length) {
     const titles = refuted.map((r) => `"${r.finding.title}"`).join('; ');
-    changes.push(`refuted ${findings(refuted.length)}, which the check run lists with ${refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}`);
+    changes.push(
+      `refuted ${findings(refuted.length)}, which the check run lists with ${refuted.length === 1 ? 'its reason' : 'their reasons'}: ${titles}`,
+    );
   }
   const unsettled = questioned - demoted;
-  if (unsettled) changes.push(`couldn't settle ${findings(unsettled)}, now ${unsettled === 1 ? 'a question' : 'questions'} one severity lower`);
+  if (unsettled)
+    changes.push(
+      `couldn't settle ${findings(unsettled)}, now ${unsettled === 1 ? 'a question' : 'questions'} one severity lower`,
+    );
   if (demoted) {
-    changes.push(demoted === 1
-      ? 'kept one refuted finding as a question one severity lower'
-      : `kept ${demoted} refuted findings as questions one severity lower`);
+    changes.push(
+      demoted === 1
+        ? 'kept one refuted finding as a question one severity lower'
+        : `kept ${demoted} refuted findings as questions one severity lower`,
+    );
   }
   return changes.length ? ` After this summary was written, verification ${changes.join(', and ')}.` : '';
 }
@@ -400,13 +471,18 @@ export async function verifyReview(
   review: SynthesizedReview,
   input: Omit<VerificationInput, 'findings'>,
 ): Promise<SynthesizedReview & Omit<VerificationOutcome, 'findings' | 'questioned' | 'demotedBlockers' | 'skipped'>> {
-  const { findings, refuted, questioned, demoted, skipped, calls, trace } = await verifyFindings({ ...input, findings: review.findings });
+  const { findings, refuted, questioned, demoted, skipped, calls, trace } = await verifyFindings({
+    ...input,
+    findings: review.findings,
+  });
   let verdict = review.verdict;
   if (trace.length && verdict) verdict = verdictAfterVerification(verdict, findings);
   // Without synthesis's verdict, review() derives one from the findings, and approve when none is left; verification
   // refuted those, so it's a comment instead.
   else if (trace.length && !findings.length) verdict = 'comment';
-  const cut = skipped ? ` Verification reached the run's cost ceiling and skipped ${skipped} of ${trace.length} calls, so their findings weren't verified.` : '';
+  const cut = skipped
+    ? ` Verification reached the run's cost ceiling and skipped ${skipped} of ${trace.length} calls, so their findings weren't verified.`
+    : '';
   return {
     summary: review.summary + verificationNote(refuted, questioned, demoted) + cut,
     verdict,
@@ -417,4 +493,3 @@ export async function verifyReview(
     trace,
   };
 }
-

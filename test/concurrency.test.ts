@@ -38,7 +38,16 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("runLeadersFirst starts a group's rest when its leader calls started, before the leader finishes and whatever the other groups' leaders do", async () => {
   const h = harness();
-  const done = runLeadersFirst([['a1', 'a2'], ['b1', 'b2']], [], 4, () => 1, h.fn);
+  const done = runLeadersFirst(
+    [
+      ['a1', 'a2'],
+      ['b1', 'b2'],
+    ],
+    [],
+    4,
+    () => 1,
+    h.fn,
+  );
   await settle();
   assert.deepEqual(h.started, ['a1', 'b1']);
   h.signal('a1');
@@ -66,7 +75,17 @@ test("runLeadersFirst starts a group's rest when its leader finishes without cal
 
 test('runLeadersFirst never runs more than limit items at once, and starts waiting leaders before released items', async () => {
   const h = harness();
-  const done = runLeadersFirst([['a1', 'a2'], ['b1', 'b2'], ['c1', 'c2']], [], 2, () => 1, h.fn);
+  const done = runLeadersFirst(
+    [
+      ['a1', 'a2'],
+      ['b1', 'b2'],
+      ['c1', 'c2'],
+    ],
+    [],
+    2,
+    () => 1,
+    h.fn,
+  );
   await settle();
   assert.deepEqual(h.started, ['a1', 'b1']);
   h.finish('a1');
@@ -89,7 +108,16 @@ test('runLeadersFirst never runs more than limit items at once, and starts waiti
 test('runLeadersFirst starts released items longest-expected first, and the after items only once every group is released', async () => {
   const h = harness();
   const seconds: Record<string, number> = { a1: 1, b1: 1, a2: 5, b2: 9, z: 100 };
-  const done = runLeadersFirst([['a1', 'a2'], ['b1', 'b2']], ['z'], 1, (item) => seconds[item]!, h.fn);
+  const done = runLeadersFirst(
+    [
+      ['a1', 'a2'],
+      ['b1', 'b2'],
+    ],
+    ['z'],
+    1,
+    (item) => seconds[item]!,
+    h.fn,
+  );
   await settle();
   for (const item of ['a1', 'b1', 'b2', 'a2']) {
     h.finish(item);
@@ -102,7 +130,16 @@ test('runLeadersFirst starts released items longest-expected first, and the afte
 
 test('runLeadersFirst keeps the after items waiting while a group is unreleased, even with a free slot', async () => {
   const h = harness();
-  const done = runLeadersFirst([['a1', 'a2'], ['b1', 'b2']], ['z'], 4, () => 1, h.fn);
+  const done = runLeadersFirst(
+    [
+      ['a1', 'a2'],
+      ['b1', 'b2'],
+    ],
+    ['z'],
+    4,
+    () => 1,
+    h.fn,
+  );
   await settle();
   h.signal('a1');
   await settle();

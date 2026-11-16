@@ -30,7 +30,14 @@ const reviewCost = (c: { reviewCostUsd?: number; costUsd: number }) => c.reviewC
 
 export function table(rows: string[][]): string {
   const widths = rows[0]?.map((_, i) => Math.max(...rows.map((row) => (row[i] ?? '').length))) ?? [];
-  return rows.map((row) => row.map((cell, i) => (i === 0 ? cell.padEnd(widths[i] ?? 0) : cell.padStart(widths[i] ?? 0))).join('  ').trimEnd()).join('\n');
+  return rows
+    .map((row) =>
+      row
+        .map((cell, i) => (i === 0 ? cell.padEnd(widths[i] ?? 0) : cell.padStart(widths[i] ?? 0)))
+        .join('  ')
+        .trimEnd(),
+    )
+    .join('\n');
 }
 
 function totals(output: EvalOutput) {
@@ -55,52 +62,99 @@ function totals(output: EvalOutput) {
   };
 }
 
-const optionalDiff = (a: number | undefined, b: number | undefined) => (a === undefined || b === undefined ? '—' : signed(b - a));
+const optionalDiff = (a: number | undefined, b: number | undefined) =>
+  a === undefined || b === undefined ? '—' : signed(b - a);
 const optional = (n: number | undefined) => (n === undefined ? '—' : String(n));
 
 export function compare(a: EvalOutput, b: EvalOutput, names: [string, string]): string {
-  const ta = totals(a), tb = totals(b);
+  const ta = totals(a),
+    tb = totals(b);
   const recall = (t: typeof ta) => `${t.caught}/${t.expected} (${percent(t.expected ? t.caught / t.expected : null)})`;
   const overall = table([
     ['', names[0], names[1], 'difference'],
     ['Recall (caught)', recall(ta), recall(tb), recallDiff(tb.caught - ta.caught)],
     ['Caught before synthesis', String(ta.caughtRaw), String(tb.caughtRaw), recallDiff(tb.caughtRaw - ta.caughtRaw)],
     ['Precision', percent(ta.precision), percent(tb.precision), points(ta.precision, tb.precision)],
-    ['Matched + real', optional(ta.truePositives), optional(tb.truePositives), optionalDiff(ta.truePositives, tb.truePositives)],
+    [
+      'Matched + real',
+      optional(ta.truePositives),
+      optional(tb.truePositives),
+      optionalDiff(ta.truePositives, tb.truePositives),
+    ],
     ['Blockers and should-fixes', optional(ta.posted), optional(tb.posted), optionalDiff(ta.posted, tb.posted)],
     ['Unsure', optional(ta.unsure), optional(tb.unsure), optionalDiff(ta.unsure, tb.unsure)],
-    ['Must-not violations', String(ta.violations),     String(tb.violations), signed(tb.violations - ta.violations)],
-        ['Findings per PR (mean)', ta.findingsMean.toFixed(1), tb.findingsMean.toFixed(1), signed(tb.findingsMean - ta.findingsMean, 1)],
-        ['Findings per PR (max)', String(ta.findingsMax), String(tb.findingsMax), signed(tb.findingsMax - ta.findingsMax)],
+    ['Must-not violations', String(ta.violations), String(tb.violations), signed(tb.violations - ta.violations)],
+    [
+      'Findings per PR (mean)',
+      ta.findingsMean.toFixed(1),
+      tb.findingsMean.toFixed(1),
+      signed(tb.findingsMean - ta.findingsMean, 1),
+    ],
+    ['Findings per PR (max)', String(ta.findingsMax), String(tb.findingsMax), signed(tb.findingsMax - ta.findingsMax)],
     ['Review cost', money(ta.reviewCost), money(tb.reviewCost), signedMoney(tb.reviewCost - ta.reviewCost)],
-    ['Review cost per PR', money(ta.reviewCostPerCase), money(tb.reviewCostPerCase), signedMoney(tb.reviewCostPerCase - ta.reviewCostPerCase)],
+    [
+      'Review cost per PR',
+      money(ta.reviewCostPerCase),
+      money(tb.reviewCostPerCase),
+      signedMoney(tb.reviewCostPerCase - ta.reviewCostPerCase),
+    ],
     ['Total cost with judges', money(ta.totalCost), money(tb.totalCost), signedMoney(tb.totalCost - ta.totalCost)],
   ]);
 
   const byId = (output: EvalOutput) => new Map(output.cases.map((c) => [c.id, c]));
-  const ca = byId(a), cb = byId(b);
+  const ca = byId(a),
+    cb = byId(b);
   const ids = [...new Set([...ca.keys(), ...cb.keys()])];
-  const caught = (c: EvalOutput['cases'][number] | undefined) => (c ? c.verdicts.filter((v) => v.caught).length : undefined);
-  const header = ['Case', `caught ${names[0]}`, `caught ${names[1]}`, 'difference', `findings ${names[0]}`, `findings ${names[1]}`, 'difference', `precision ${names[0]}`, `precision ${names[1]}`, `cost ${names[0]}`, `cost ${names[1]}`];
+  const caught = (c: EvalOutput['cases'][number] | undefined) =>
+    c ? c.verdicts.filter((v) => v.caught).length : undefined;
+  const header = [
+    'Case',
+    `caught ${names[0]}`,
+    `caught ${names[1]}`,
+    'difference',
+    `findings ${names[0]}`,
+    `findings ${names[1]}`,
+    'difference',
+    `precision ${names[0]}`,
+    `precision ${names[1]}`,
+    `cost ${names[0]}`,
+    `cost ${names[1]}`,
+  ];
   const perCase = table([
     header,
     ...ids.map((id) => {
-      const x = ca.get(id), y = cb.get(id);
+      const x = ca.get(id),
+        y = cb.get(id);
       const of = (c: typeof x) => (c ? `${caught(c)}/${c.verdicts.length}` : '—');
       return [
-        id, of(x), of(y), optionalDiff(caught(x), caught(y)),
-        optional(x?.findings.length), optional(y?.findings.length), optionalDiff(x?.findings.length, y?.findings.length),
-        percent(x?.precision?.precision), percent(y?.precision?.precision),
-        x ? money(reviewCost(x)) : '—', y ? money(reviewCost(y)) : '—',
+        id,
+        of(x),
+        of(y),
+        optionalDiff(caught(x), caught(y)),
+        optional(x?.findings.length),
+        optional(y?.findings.length),
+        optionalDiff(x?.findings.length, y?.findings.length),
+        percent(x?.precision?.precision),
+        percent(y?.precision?.precision),
+        x ? money(reviewCost(x)) : '—',
+        y ? money(reviewCost(y)) : '—',
       ];
     }),
   ]);
 
-  const notes = [`A recall difference of ${noiseLimit} or less is within one run's variance: (noise). Other differences aren't flagged; their variance hasn't been measured.`];
-  const onlyIn = (from: Map<string, unknown>, other: Map<string, unknown>) => [...from.keys()].filter((id) => !other.has(id));
-  if (onlyIn(ca, cb).length || onlyIn(cb, ca).length) notes.push(`The runs cover different cases; totals aren't comparable. Only in ${names[0]}: ${onlyIn(ca, cb).join(', ') || 'none'}. Only in ${names[1]}: ${onlyIn(cb, ca).join(', ') || 'none'}.`);
-  if (ta.precision === undefined || tb.precision === undefined) notes.push('— marks the precision a run lacks: it predates the precision judge or ran with --precision off.');
-  if (a.summary.reviewCostUsd === undefined || b.summary.reviewCostUsd === undefined) notes.push('A run without reviewCostUsd predates it: its review cost includes the eval\'s judges.');
+  const notes = [
+    `A recall difference of ${noiseLimit} or less is within one run's variance: (noise). Other differences aren't flagged; their variance hasn't been measured.`,
+  ];
+  const onlyIn = (from: Map<string, unknown>, other: Map<string, unknown>) =>
+    [...from.keys()].filter((id) => !other.has(id));
+  if (onlyIn(ca, cb).length || onlyIn(cb, ca).length)
+    notes.push(
+      `The runs cover different cases; totals aren't comparable. Only in ${names[0]}: ${onlyIn(ca, cb).join(', ') || 'none'}. Only in ${names[1]}: ${onlyIn(cb, ca).join(', ') || 'none'}.`,
+    );
+  if (ta.precision === undefined || tb.precision === undefined)
+    notes.push('— marks the precision a run lacks: it predates the precision judge or ran with --precision off.');
+  if (a.summary.reviewCostUsd === undefined || b.summary.reviewCostUsd === undefined)
+    notes.push("A run without reviewCostUsd predates it: its review cost includes the eval's judges.");
   return `${overall}\n\n${perCase}\n\n${notes.join('\n')}\n`;
 }
 

@@ -61,11 +61,29 @@ const diff = [
 ].join('\n');
 
 function record(costUsd: number): CallRecord {
-  return { role: 'verification', provider: 'bedrock', model: 'global.anthropic.claude-sonnet-5-5', costUsd, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' };
+  return {
+    role: 'verification',
+    provider: 'bedrock',
+    model: 'global.anthropic.claude-sonnet-5-5',
+    costUsd,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    turns: 1,
+    durationMs: 1,
+    outcome: 'success',
+  };
 }
 
-const verdict = (id: string, v: Verification['verdict'], extra: Partial<Verification> = {}): Verification =>
-  ({ id, verdict: v, path: `src/a.ts:3 → src/c.ts:9`, reason: `reason ${id}`, question: '', ...extra });
+const verdict = (id: string, v: Verification['verdict'], extra: Partial<Verification> = {}): Verification => ({
+  id,
+  verdict: v,
+  path: `src/a.ts:3 → src/c.ts:9`,
+  reason: `reason ${id}`,
+  question: '',
+  ...extra,
+});
 
 // A verification agent that answers from a table and records every request it gets.
 function fakeAgent(answers: Map<string, Verification>, cost = 0.1) {
@@ -74,13 +92,17 @@ function fakeAgent(answers: Map<string, Verification>, cost = 0.1) {
     requests.push({ run, request });
     const text = Array.isArray(request.prompt) ? request.prompt.join('\n') : request.prompt;
     const ids = [...text.matchAll(/<finding id="(F\d+)"/g)].map((m) => m[1]!);
-    return { output: { verifications: ids.flatMap((id) => (answers.has(id) ? [answers.get(id)!] : [])) }, records: [record(cost)] };
+    return {
+      output: { verifications: ids.flatMap((id) => (answers.has(id) ? [answers.get(id)!] : [])) },
+      records: [record(cost)],
+    };
   };
   return { agent, requests };
 }
 
 // The checkout's files and how many lines each has, so a refutation's cites are confirmed without a real checkout.
-const lines: CheckoutLines = (file) => ({ 'src/a.ts': 30, 'src/b.ts': 2, 'src/c.ts': 20 } as Record<string, number>)[file];
+const lines: CheckoutLines = (file) =>
+  (({ 'src/a.ts': 30, 'src/b.ts': 2, 'src/c.ts': 20 }) as Record<string, number>)[file];
 
 function input(findings: ReviewedFinding[], agent: VerificationAgent, enabled = true): VerificationInput {
   return {
@@ -89,7 +111,10 @@ function input(findings: ReviewedFinding[], agent: VerificationAgent, enabled = 
     diff,
     pullRequest: '<pull_request>\n#1: t\n</pull_request>',
     systemPrompt: 'verify',
-    charters: new Map([['correctness', 'Correctness charter.'], ['security', 'Security charter.']]),
+    charters: new Map([
+      ['correctness', 'Correctness charter.'],
+      ['security', 'Security charter.'],
+    ]),
     log: () => {},
     enabled,
     agent,
@@ -107,7 +132,10 @@ test('verificationOn is on unless CODE_REVIEW_VERIFICATION is off', () => {
 
 test('an unknown CODE_REVIEW_VERIFICATION keeps verification on and warns', () => {
   const warnings: string[] = [];
-  assert.equal(verificationOn('false', (m) => warnings.push(m)), true);
+  assert.equal(
+    verificationOn('false', (m) => warnings.push(m)),
+    true,
+  );
   assert.equal(warnings.length, 1);
   assert.match(warnings[0] ?? '', /"false"/);
 });
@@ -117,15 +145,32 @@ test('verifyFindings makes no call and changes nothing when verification is off'
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent, false));
   assert.equal(requests.length, 0);
-  assert.deepEqual(out, { findings, refuted: [], questioned: 0, demoted: 0, demotedBlockers: 0, skipped: 0, calls: [], trace: [] });
+  assert.deepEqual(out, {
+    findings,
+    refuted: [],
+    questioned: 0,
+    demoted: 0,
+    demotedBlockers: 0,
+    skipped: 0,
+    calls: [],
+    trace: [],
+  });
 });
 
 test('verifyFindings leaves nits unverified and makes no call when only nits remain', async () => {
-  const { agent, requests } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')], ['F2', verdict('F2', 'refuted')]]));
+  const { agent, requests } = fakeAgent(
+    new Map([
+      ['F1', verdict('F1', 'refuted')],
+      ['F2', verdict('F2', 'refuted')],
+    ]),
+  );
   const out = await verifyFindings(input([finding('F1', 'nit'), finding('F2', 'should-fix')], agent));
   assert.equal(requests.length, 1);
   assert.doesNotMatch(String(requests[0]!.request.prompt), /id="F1"/);
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title, f.severity]), [['F1', 'title F1', 'nit']]);
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title, f.severity]),
+    [['F1', 'title F1', 'nit']],
+  );
 
   const none = fakeAgent(new Map());
   assert.equal((await verifyFindings(input([finding('F1', 'nit')], none.agent))).calls.length, 0);
@@ -133,14 +178,32 @@ test('verifyFindings leaves nits unverified and makes no call when only nits rem
 });
 
 test('verificationBatches groups blockers and should-fixes by file, up to the batch size', () => {
-  const findings = [finding('F1', 'blocker', 'a'), finding('F2', 'nit', 'a'), finding('F3', 'should-fix', 'b'), finding('F4', 'should-fix', 'a'), finding('F5', 'blocker', 'a')];
-  assert.deepEqual(verificationBatches(findings, 2).map((b) => b.map((f) => f.id)), [['F1', 'F4'], ['F5'], ['F3']]);
+  const findings = [
+    finding('F1', 'blocker', 'a'),
+    finding('F2', 'nit', 'a'),
+    finding('F3', 'should-fix', 'b'),
+    finding('F4', 'should-fix', 'a'),
+    finding('F5', 'blocker', 'a'),
+  ];
+  assert.deepEqual(
+    verificationBatches(findings, 2).map((b) => b.map((f) => f.id)),
+    [['F1', 'F4'], ['F5'], ['F3']],
+  );
   assert.ok(findingsPerVerification > 1);
 });
 
-test('verifyFindings makes one call per file, each on Sonnet with the checkout, its budget and only that file\'s findings', async () => {
+test("verifyFindings makes one call per file, each on Sonnet with the checkout, its budget and only that file's findings", async () => {
   const { agent, requests } = fakeAgent(new Map());
-  await verifyFindings(input([finding('F1', 'blocker', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2), finding('F3', 'should-fix', 'src/a.ts', 22)], agent));
+  await verifyFindings(
+    input(
+      [
+        finding('F1', 'blocker', 'src/a.ts'),
+        finding('F2', 'should-fix', 'src/b.ts', 2),
+        finding('F3', 'should-fix', 'src/a.ts', 22),
+      ],
+      agent,
+    ),
+  );
   assert.equal(requests.length, 2);
   for (const { run, request } of requests) {
     assert.equal(run.checkout, '/checkout');
@@ -171,8 +234,13 @@ test('a confirmed finding stays, with the code path added to its evidence', asyn
 
 test('a refuted finding is dropped and recorded with its reason, in the outcome and the trace', async () => {
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
-  const out = await verifyFindings(input([finding('F1', 'should-fix'), finding('F2', 'should-fix', 'src/b.ts')], agent));
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F2']]);
+  const out = await verifyFindings(
+    input([finding('F1', 'should-fix'), finding('F2', 'should-fix', 'src/b.ts')], agent),
+  );
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title]),
+    [['F1', 'title F2']],
+  );
   assert.equal(out.refuted.length, 1);
   assert.equal(out.refuted[0]!.finding.title, 'title F1');
   assert.equal(out.refuted[0]!.reason, 'reason F1');
@@ -182,16 +250,33 @@ test('a refuted finding is dropped and recorded with its reason, in the outcome 
 });
 
 test('a refutation without a reason drops nothing and makes the finding a question', () => {
-  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'refuted', { reason: ' ' })]]));
+  const out = applyVerifications(
+    [finding('F1', 'blocker')],
+    new Map([['F1', verdict('F1', 'refuted', { reason: ' ' })]]),
+  );
   assert.deepEqual(out.refuted, []);
-  assert.deepEqual(out.findings.map((f) => [f.severity, f.problem]), [['should-fix', 'Is this intended? problem F1']]);
+  assert.deepEqual(
+    out.findings.map((f) => [f.severity, f.problem]),
+    [['should-fix', 'Is this intended? problem F1']],
+  );
 });
 
 test('a refuted blocker is kept as a question one severity lower, with the refutation in its evidence', () => {
-  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'refuted', { path: 'src/c.ts:9' })]]), new Map(), lines);
+  const out = applyVerifications(
+    [finding('F1', 'blocker')],
+    new Map([['F1', verdict('F1', 'refuted', { path: 'src/c.ts:9' })]]),
+    new Map(),
+    lines,
+  );
   assert.deepEqual(out.refuted, []);
-  assert.deepEqual(out.findings.map((f) => [f.severity, f.problem]), [['should-fix', 'Is this intended? problem F1']]);
-  assert.match(out.findings[0]!.evidence, /Verification refuted it, but a refuted blocker stays as a question: reason F1 \(src\/c\.ts:9\)$/);
+  assert.deepEqual(
+    out.findings.map((f) => [f.severity, f.problem]),
+    [['should-fix', 'Is this intended? problem F1']],
+  );
+  assert.match(
+    out.findings[0]!.evidence,
+    /Verification refuted it, but a refuted blocker stays as a question: reason F1 \(src\/c\.ts:9\)$/,
+  );
   assert.equal(out.questioned, 1);
   assert.equal(out.demoted, 1);
   assert.equal(out.demotedBlockers, 1);
@@ -212,21 +297,32 @@ test('a refutation citing only the lines the pull request adds keeps the finding
   const out = await verifyFindings(input([finding('F1', 'should-fix', 'src/a.ts', 2)], agent));
   assert.deepEqual(out.refuted, []);
   assert.equal(out.findings[0]!.severity, 'nit');
-  assert.match(out.findings[0]!.evidence, /Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: reason F1$/);
+  assert.match(
+    out.findings[0]!.evidence,
+    /Verification refuted it without citing code in the checkout outside the lines this pull request adds, so it stays as a question: reason F1$/,
+  );
   assert.equal(out.questioned, 1);
   assert.equal(out.demoted, 1);
 
-  const pathless = applyVerifications([finding('F1', 'should-fix')], new Map([['F1', verdict('F1', 'refuted', { path: '' })]]), new Map(), lines);
+  const pathless = applyVerifications(
+    [finding('F1', 'should-fix')],
+    new Map([['F1', verdict('F1', 'refuted', { path: '' })]]),
+    new Map(),
+    lines,
+  );
   assert.deepEqual(pathless.refuted, []);
   assert.equal(pathless.findings[0]!.severity, 'nit');
 });
 
-test('a refutation citing a file the checkout doesn\'t have keeps the finding as a question', async () => {
+test("a refutation citing a file the checkout doesn't have keeps the finding as a question", async () => {
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { path: 'x.ts:1' })]]));
   const out = await verifyFindings(input([finding('F1', 'should-fix')], agent));
   assert.deepEqual(out.refuted, []);
   assert.equal(out.findings[0]!.severity, 'nit');
-  assert.match(out.findings[0]!.evidence, /without citing code in the checkout outside the lines this pull request adds/);
+  assert.match(
+    out.findings[0]!.evidence,
+    /without citing code in the checkout outside the lines this pull request adds/,
+  );
   assert.equal(out.questioned, 1);
   assert.equal(out.demoted, 1);
 });
@@ -246,9 +342,12 @@ test('citesUnchangedCode needs a file:line of the checkout outside the lines the
   assert.equal(citesUnchangedCode('src/a.ts:2 → x.ts:1', added, lines), false);
 });
 
-test('lineCounter counts a checkout file\'s lines and has none for a file outside it, missing or a directory', () => {
+test("lineCounter counts a checkout file's lines and has none for a file outside it, missing or a directory", () => {
   const count = lineCounter(root);
-  assert.equal(count('package.json'), readFileSync(path.join(root, 'package.json'), 'utf8').trimEnd().split('\n').length);
+  assert.equal(
+    count('package.json'),
+    readFileSync(path.join(root, 'package.json'), 'utf8').trimEnd().split('\n').length,
+  );
   assert.equal(count(path.join(root, 'package.json')), count('package.json'));
   assert.equal(count('no-such-file.ts'), undefined);
   assert.equal(count('src'), undefined);
@@ -256,21 +355,32 @@ test('lineCounter counts a checkout file\'s lines and has none for a file outsid
 });
 
 test('an uncertain finding becomes a question one severity lower', async () => {
-  const { agent } = fakeAgent(new Map([
-    ['F1', verdict('F1', 'uncertain', { question: 'Is the cache meant to be shared? If not, scope it per tenant.' })],
-    ['F2', verdict('F2', 'uncertain')],
-  ]));
-  const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'should-fix'), finding('F3', 'blocker')], agent));
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title, f.severity, f.problem]), [
-    ['F1', 'title F3', 'blocker', 'problem F3'],
-    ['F2', 'title F1', 'should-fix', 'Is the cache meant to be shared? If not, scope it per tenant.'],
-    ['F3', 'title F2', 'nit', 'Is this intended? problem F2'],
-  ]);
+  const { agent } = fakeAgent(
+    new Map([
+      ['F1', verdict('F1', 'uncertain', { question: 'Is the cache meant to be shared? If not, scope it per tenant.' })],
+      ['F2', verdict('F2', 'uncertain')],
+    ]),
+  );
+  const out = await verifyFindings(
+    input([finding('F1', 'blocker'), finding('F2', 'should-fix'), finding('F3', 'blocker')], agent),
+  );
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title, f.severity, f.problem]),
+    [
+      ['F1', 'title F3', 'blocker', 'problem F3'],
+      ['F2', 'title F1', 'should-fix', 'Is the cache meant to be shared? If not, scope it per tenant.'],
+      ['F3', 'title F2', 'nit', 'Is this intended? problem F2'],
+    ],
+  );
   assert.match(out.findings[1]!.evidence, /Verification couldn't settle it: reason F1$/);
 });
 
 test('a failed verification call leaves its findings as they were and records the error', async () => {
-  const agent: VerificationAgent = async () => ({ output: undefined, records: [{ ...record(0.02), outcome: 'error' }], error: 'budget' });
+  const agent: VerificationAgent = async () => ({
+    output: undefined,
+    records: [{ ...record(0.02), outcome: 'error' }],
+    error: 'budget',
+  });
   const findings = [finding('F1', 'blocker')];
   const out = await verifyFindings(input(findings, agent));
   assert.deepEqual(out.findings, findings);
@@ -279,11 +389,31 @@ test('a failed verification call leaves its findings as they were and records th
 });
 
 test('verification calls are recorded as the verification role and costed in the check run, with the refuted findings', async () => {
-  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { reason: 'The <caller> checks it | always.' })]]), 0.125);
-  const out = await verifyFindings(input([finding('F1', 'should-fix'), finding('F2', 'should-fix', 'src/b.ts')], agent));
-  assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd]), [['verification', 0.125], ['verification', 0.125]]);
-  const text = checkText({ findings: out.findings, refuted: out.refuted, dropped: [], reviewers: [], calls: out.calls } as unknown as Results);
-  assert.match(text, /### Refuted by verification\n\n- Should fix `src\/a\.ts:3` \*\*title F1\*\* \(correctness\): The &lt;caller> checks it \\\| always\. — `src\/a\.ts:3 → src\/c\.ts:9`/);
+  const { agent } = fakeAgent(
+    new Map([['F1', verdict('F1', 'refuted', { reason: 'The <caller> checks it | always.' })]]),
+    0.125,
+  );
+  const out = await verifyFindings(
+    input([finding('F1', 'should-fix'), finding('F2', 'should-fix', 'src/b.ts')], agent),
+  );
+  assert.deepEqual(
+    out.calls.map((c) => [c.role, c.costUsd]),
+    [
+      ['verification', 0.125],
+      ['verification', 0.125],
+    ],
+  );
+  const text = checkText({
+    findings: out.findings,
+    refuted: out.refuted,
+    dropped: [],
+    reviewers: [],
+    calls: out.calls,
+  } as unknown as Results);
+  assert.match(
+    text,
+    /### Refuted by verification\n\n- Should fix `src\/a\.ts:3` \*\*title F1\*\* \(correctness\): The &lt;caller> checks it \\\| always\. — `src\/a\.ts:3 → src\/c\.ts:9`/,
+  );
   assert.match(text, /\| verification \| sonnet-5-5 \| ran \| \| \$0\.250 \|/);
   const off = checkText({ findings: [], dropped: [], reviewers: [], calls: [] } as unknown as Results);
   assert.doesNotMatch(off, /Refuted by verification|\| verification/);
@@ -313,8 +443,17 @@ test('a verification agent that throws leaves its findings as they were and reco
   const out = await verifyFindings(input(findings, agent));
   assert.deepEqual(out.findings, findings);
   assert.deepEqual(out.refuted, []);
-  assert.deepEqual(out.trace.map((c) => c.error), ['socket hang up', 'socket hang up']);
-  assert.deepEqual(out.calls.map((c) => [c.role, c.costUsd, c.outcome]), [['verification', 0, 'error'], ['verification', 0, 'error']]);
+  assert.deepEqual(
+    out.trace.map((c) => c.error),
+    ['socket hang up', 'socket hang up'],
+  );
+  assert.deepEqual(
+    out.calls.map((c) => [c.role, c.costUsd, c.outcome]),
+    [
+      ['verification', 0, 'error'],
+      ['verification', 0, 'error'],
+    ],
+  );
 });
 
 test('a deep verification call that throws records Opus as its model and leaves its findings as they were', async () => {
@@ -328,10 +467,24 @@ test('a deep verification call that throws records Opus as its model and leaves 
 });
 
 test('a verification call rerun on Bedrock records both calls and costs them together', async () => {
-  const refused: CallRecord = { ...record(0.01), provider: 'anthropic', model: 'claude-sonnet-5-5', outcome: 'credits ran out' };
-  const agent: VerificationAgent = async () => ({ output: { verifications: [verdict('F1', 'confirmed')] }, records: [refused, record(0.1)] });
+  const refused: CallRecord = {
+    ...record(0.01),
+    provider: 'anthropic',
+    model: 'claude-sonnet-5-5',
+    outcome: 'credits ran out',
+  };
+  const agent: VerificationAgent = async () => ({
+    output: { verifications: [verdict('F1', 'confirmed')] },
+    records: [refused, record(0.1)],
+  });
   const out = await verifyFindings(input([finding('F1', 'blocker')], agent));
-  assert.deepEqual(out.calls.map((c) => [c.provider, c.costUsd]), [['anthropic', 0.01], ['bedrock', 0.1]]);
+  assert.deepEqual(
+    out.calls.map((c) => [c.provider, c.costUsd]),
+    [
+      ['anthropic', 0.01],
+      ['bedrock', 0.1],
+    ],
+  );
   assert.equal(out.trace[0]!.costUsd, 0.11);
   assert.match(out.findings[0]!.evidence, /Verified:/);
 });
@@ -340,12 +493,21 @@ test('a verification agent that throws after the run switched to Bedrock records
   const agent: VerificationAgent = async () => {
     throw new Error('socket hang up');
   };
-  const run: AgentRun = { provider: 'anthropic', proxyUrl: 'http://127.0.0.1:1', checkout: '/checkout', workdir: '/work', fallback: { switched: true } };
+  const run: AgentRun = {
+    provider: 'anthropic',
+    proxyUrl: 'http://127.0.0.1:1',
+    checkout: '/checkout',
+    workdir: '/work',
+    fallback: { switched: true },
+  };
   const out = await verifyFindings({ ...input([finding('F1', 'blocker')], agent), run });
-  assert.deepEqual(out.calls.map((c) => [c.provider, c.outcome]), [['bedrock', 'error']]);
+  assert.deepEqual(
+    out.calls.map((c) => [c.provider, c.outcome]),
+    [['bedrock', 'error']],
+  );
 });
 
-test('a verdict for a finding outside the call\'s batch is ignored', async () => {
+test("a verdict for a finding outside the call's batch is ignored", async () => {
   const agent: VerificationAgent = async (_run, request) => {
     const text = (request.prompt as string[]).join('\n');
     // Every call claims to refute F2, but only the call on src/b.ts was given it, and that one confirms it.
@@ -354,7 +516,13 @@ test('a verdict for a finding outside the call\'s batch is ignored', async () =>
   };
   const out = await verifyFindings(input([finding('F1', 'blocker'), finding('F2', 'should-fix', 'src/b.ts')], agent));
   assert.deepEqual(out.refuted, []);
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F1'], ['F2', 'title F2']]);
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title]),
+    [
+      ['F1', 'title F1'],
+      ['F2', 'title F2'],
+    ],
+  );
   assert.match(out.findings[1]!.evidence, /Verified:/);
   assert.deepEqual(out.trace.find((c) => c.file === 'src/a.ts')!.verifications, []);
 });
@@ -371,15 +539,39 @@ test('when a call names a finding twice, its first verdict holds', async () => {
 });
 
 test('the trace maps each verified finding to the id it was posted with', async () => {
-  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')], ['F2', verdict('F2', 'uncertain')], ['F3', verdict('F3', 'confirmed')]]));
-  const out = await verifyFindings(input([finding('F1', 'should-fix'), finding('F2', 'blocker'), finding('F3', 'should-fix')], agent));
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F2'], ['F2', 'title F3']]);
-  assert.deepEqual(out.trace[0]!.findings.map((f) => [f.id, f.postedAs]), [['F1', undefined], ['F2', 'F1'], ['F3', 'F2']]);
+  const { agent } = fakeAgent(
+    new Map([
+      ['F1', verdict('F1', 'refuted')],
+      ['F2', verdict('F2', 'uncertain')],
+      ['F3', verdict('F3', 'confirmed')],
+    ]),
+  );
+  const out = await verifyFindings(
+    input([finding('F1', 'should-fix'), finding('F2', 'blocker'), finding('F3', 'should-fix')], agent),
+  );
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title]),
+    [
+      ['F1', 'title F2'],
+      ['F2', 'title F3'],
+    ],
+  );
+  assert.deepEqual(
+    out.trace[0]!.findings.map((f) => [f.id, f.postedAs]),
+    [
+      ['F1', undefined],
+      ['F2', 'F1'],
+      ['F3', 'F2'],
+    ],
+  );
   assert.equal(out.questioned, 1);
 });
 
 test('a confirmed verdict without a path puts its reason in the evidence', () => {
-  const out = applyVerifications([finding('F1', 'blocker')], new Map([['F1', verdict('F1', 'confirmed', { path: ' ' })]]));
+  const out = applyVerifications(
+    [finding('F1', 'blocker')],
+    new Map([['F1', verdict('F1', 'confirmed', { path: ' ' })]]),
+  );
   assert.equal(out.findings[0]!.evidence, 'e\n\nVerified: reason F1');
 });
 
@@ -400,12 +592,18 @@ test('verificationNote names the refuted findings and counts the ones verificati
     verificationNote([refuted('A'), refuted('B')], 2),
     ' After this summary was written, verification refuted 2 findings, which the check run lists with their reasons: "A"; "B", and couldn\'t settle 2 findings, now questions one severity lower.',
   );
-  assert.equal(verificationNote([], 1), ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower.');
+  assert.equal(
+    verificationNote([], 1),
+    " After this summary was written, verification couldn't settle one finding, now a question one severity lower.",
+  );
   assert.equal(
     verificationNote([], 2, 1),
-    ' After this summary was written, verification couldn\'t settle one finding, now a question one severity lower, and kept one refuted finding as a question one severity lower.',
+    " After this summary was written, verification couldn't settle one finding, now a question one severity lower, and kept one refuted finding as a question one severity lower.",
   );
-  assert.equal(verificationNote([], 2, 2), ' After this summary was written, verification kept 2 refuted findings as questions one severity lower.');
+  assert.equal(
+    verificationNote([], 2, 2),
+    ' After this summary was written, verification kept 2 refuted findings as questions one severity lower.',
+  );
 });
 
 // What review() hands verification after synthesis, and what it takes back.
@@ -414,7 +612,7 @@ function reviewInput(agent: VerificationAgent, enabled = true): Omit<Verificatio
   return rest;
 }
 
-test('verifyReview with verification off returns synthesis\'s review unchanged', async () => {
+test("verifyReview with verification off returns synthesis's review unchanged", async () => {
   const { agent, requests } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
   const synthesized = { summary: 'Risky.', verdict: 'request-changes' as const, findings: [finding('F1', 'blocker')] };
   const out = await verifyReview(synthesized, reviewInput(agent, false));
@@ -424,58 +622,104 @@ test('verifyReview with verification off returns synthesis\'s review unchanged',
 
 test('verifyReview drops a refuted should-fix, names it in the summary and eases request-changes to comment, not approve', async () => {
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
-  const out = await verifyReview({ summary: 'Risky.', verdict: 'request-changes', findings: [finding('F1', 'should-fix')] }, reviewInput(agent));
+  const out = await verifyReview(
+    { summary: 'Risky.', verdict: 'request-changes', findings: [finding('F1', 'should-fix')] },
+    reviewInput(agent),
+  );
   assert.deepEqual(out.findings, []);
-  assert.deepEqual(out.refuted.map((r) => r.finding.title), ['title F1']);
-  assert.equal(out.summary, 'Risky. After this summary was written, verification refuted one finding, which the check run lists with its reason: "title F1".');
+  assert.deepEqual(
+    out.refuted.map((r) => r.finding.title),
+    ['title F1'],
+  );
+  assert.equal(
+    out.summary,
+    'Risky. After this summary was written, verification refuted one finding, which the check run lists with its reason: "title F1".',
+  );
   assert.equal(out.verdict, 'comment');
   assert.equal(out.calls.length, 1);
   assert.equal(out.trace.length, 1);
 });
 
-test('verifyReview\'s summary says a finding refuted only on the change\'s own lines was refuted and kept, not unsettled', async () => {
+test("verifyReview's summary says a finding refuted only on the change's own lines was refuted and kept, not unsettled", async () => {
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted', { path: 'src/a.ts:2' })]]));
-  const out = await verifyReview({ summary: 'Risky.', verdict: 'comment', findings: [finding('F1', 'should-fix', 'src/a.ts', 2)] }, reviewInput(agent));
+  const out = await verifyReview(
+    { summary: 'Risky.', verdict: 'comment', findings: [finding('F1', 'should-fix', 'src/a.ts', 2)] },
+    reviewInput(agent),
+  );
   assert.match(out.summary, /kept one refuted finding as a question one severity lower\.$/);
   assert.doesNotMatch(out.summary, /couldn't settle/);
 });
 
 test('verifyReview keeps a request for changes while a blocker or should-fix is left', async () => {
-  const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')], ['F2', verdict('F2', 'confirmed')]]));
+  const { agent } = fakeAgent(
+    new Map([
+      ['F1', verdict('F1', 'refuted')],
+      ['F2', verdict('F2', 'confirmed')],
+    ]),
+  );
   const out = await verifyReview(
-    { summary: 'Risky.', verdict: 'request-changes', findings: [finding('F1', 'should-fix'), finding('F2', 'should-fix')] },
+    {
+      summary: 'Risky.',
+      verdict: 'request-changes',
+      findings: [finding('F1', 'should-fix'), finding('F2', 'should-fix')],
+    },
     reviewInput(agent),
   );
   assert.equal(out.verdict, 'request-changes');
-  assert.deepEqual(out.findings.map((f) => [f.id, f.title]), [['F1', 'title F2']]);
+  assert.deepEqual(
+    out.findings.map((f) => [f.id, f.title]),
+    [['F1', 'title F2']],
+  );
 });
 
-test('verifyReview without synthesis\'s verdict gives a comment, not an approval, when it refutes every finding', async () => {
+test("verifyReview without synthesis's verdict gives a comment, not an approval, when it refutes every finding", async () => {
   const { agent } = fakeAgent(new Map([['F1', verdict('F1', 'refuted')]]));
-  const out = await verifyReview({ summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'should-fix')] }, reviewInput(agent));
+  const out = await verifyReview(
+    { summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'should-fix')] },
+    reviewInput(agent),
+  );
   assert.equal(out.verdict, 'comment');
 
-  const kept = await verifyReview({ summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'blocker')] }, reviewInput(fakeAgent(new Map()).agent));
+  const kept = await verifyReview(
+    { summary: 'Synthesis failed.', verdict: undefined, findings: [finding('F1', 'blocker')] },
+    reviewInput(fakeAgent(new Map()).agent),
+  );
   assert.equal(kept.verdict, undefined);
   assert.equal(kept.summary, 'Synthesis failed.');
 });
 
-test('verification skips the calls not yet started once the run\'s cost ceiling is reached', async () => {
+test("verification skips the calls not yet started once the run's cost ceiling is reached", async () => {
   const { agent, requests } = fakeAgent(new Map([['F2', verdict('F2', 'refuted')]]), 0.1);
   const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2)];
   // The first call runs alone, so the second starts only after it finished and its cost counted.
   const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 0.15, spent: () => 0.1 } });
   assert.equal(requests.length, 1);
   assert.equal(out.skipped, 1);
-  assert.deepEqual(out.trace.map((c) => [c.file, c.skipped, c.costUsd]), [['src/a.ts', undefined, 0.1], ['src/b.ts', true, 0]]);
+  assert.deepEqual(
+    out.trace.map((c) => [c.file, c.skipped, c.costUsd]),
+    [
+      ['src/a.ts', undefined, 0.1],
+      ['src/b.ts', true, 0],
+    ],
+  );
   assert.deepEqual(out.refuted, []);
-  assert.deepEqual(out.findings.map((f) => [f.title, f.severity, f.evidence]), [['title F1', 'should-fix', 'e'], ['title F2', 'should-fix', 'e']]);
+  assert.deepEqual(
+    out.findings.map((f) => [f.title, f.severity, f.evidence]),
+    [
+      ['title F1', 'should-fix', 'e'],
+      ['title F2', 'should-fix', 'e'],
+    ],
+  );
   assert.equal(out.calls.length, 1);
 });
 
 test('verification calls that start together all run, even when together they pass the cost ceiling', async () => {
   const { agent, requests } = fakeAgent(new Map(), 0.1);
-  const findings = [finding('F1', 'should-fix', 'src/a.ts'), finding('F2', 'should-fix', 'src/b.ts', 2), finding('F3', 'should-fix', 'src/c.ts', 2)];
+  const findings = [
+    finding('F1', 'should-fix', 'src/a.ts'),
+    finding('F2', 'should-fix', 'src/b.ts', 2),
+    finding('F3', 'should-fix', 'src/c.ts', 2),
+  ];
   const out = await verifyFindings({ ...input(findings, agent), ceiling: { limit: 0.15, spent: () => 0 } });
   assert.equal(requests.length, 3);
   assert.equal(out.skipped, 0);
@@ -498,8 +742,14 @@ test('verifyReview says when the cost ceiling skipped verification calls', async
     { summary: 'Risky.', verdict: 'comment', findings: [finding('F1', 'should-fix')] },
     { ...reviewInput(agent), ceiling: { limit: 1, spent: () => 2 } },
   );
-  assert.equal(out.summary, 'Risky. Verification reached the run\'s cost ceiling and skipped 1 of 1 calls, so their findings weren\'t verified.');
-  assert.deepEqual(out.findings.map((f) => f.severity), ['should-fix']);
+  assert.equal(
+    out.summary,
+    "Risky. Verification reached the run's cost ceiling and skipped 1 of 1 calls, so their findings weren't verified.",
+  );
+  assert.deepEqual(
+    out.findings.map((f) => f.severity),
+    ['should-fix'],
+  );
 });
 
 test('the verification prompt is loaded and treats findings and code as data', () => {

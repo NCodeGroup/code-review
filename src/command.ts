@@ -46,8 +46,15 @@ export function parseFindingRef(token: string): FindingRef {
   }
   const where = commentUrlPath.exec(url.pathname);
   const comment = commentUrlHash.exec(url.hash);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || !where || !comment) return { kind: 'invalid', text };
-  return { kind: 'url', host: url.host.toLowerCase(), repository: where[1]!, number: Number(where[2]), commentId: Number(comment[1]) };
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || !where || !comment)
+    return { kind: 'invalid', text };
+  return {
+    kind: 'url',
+    host: url.host.toLowerCase(),
+    repository: where[1]!,
+    number: Number(where[2]),
+    commentId: Number(comment[1]),
+  };
 }
 
 // The longest rule `/review teach` accepts; a longer one gets a reply asking for a shorter one, not a cut-off rule.
@@ -116,7 +123,10 @@ export function ignoredCommentId(event: CommentEvent): number | undefined {
 
 // A pull request whose head is in another repository, or in none (a deleted fork), is not reviewed: its author has no
 // write access here, and the workflow's own condition is not the only guard.
-export function isFromFork(pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined, repository: string): boolean {
+export function isFromFork(
+  pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined,
+  repository: string,
+): boolean {
   return pullRequest?.head?.repo?.full_name !== repository;
 }
 
@@ -128,9 +138,11 @@ export async function skipReason(
   repository: string,
   reviewedHead?: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
-  if (isFromFork(pullRequest, repository)) return `#${pullRequest?.number} comes from a fork, and forks aren't reviewed.`;
+  if (isFromFork(pullRequest, repository))
+    return `#${pullRequest?.number} comes from a fork, and forks aren't reviewed.`;
   const head = pullRequest?.head?.sha;
-  if (head && reviewedHead && (await reviewedHead()) === head) return `${head.slice(0, 7)} was already reviewed; comment /review to review it again.`;
+  if (head && reviewedHead && (await reviewedHead()) === head)
+    return `${head.slice(0, 7)} was already reviewed; comment /review to review it again.`;
   return undefined;
 }
 
@@ -174,12 +186,22 @@ export async function decideRun<P extends PullRequestLike>(
     const reason = await skipReasonFor('comment', pullRequest, repository, () => reviewedHead(request.number));
     if (reason) return { run: false, reason };
     const commentId = event.comment.id;
-    return { run: true, command: request.command, number: request.number, pullRequest, ...(typeof commentId === 'number' ? { commentId } : {}) };
+    return {
+      run: true,
+      command: request.command,
+      number: request.number,
+      pullRequest,
+      ...(typeof commentId === 'number' ? { commentId } : {}),
+    };
   }
   const pullRequest = event.pull_request;
   if (!pullRequest) return { run: false, reason: 'The event has no pull request.' };
-  const reason = await skipReasonFor('automatic', pullRequest, repository, () => reviewedHead(Number(pullRequest.number)));
-  return reason ? { run: false, reason } : { run: true, command: { kind: 'review' }, number: Number(pullRequest.number), pullRequest };
+  const reason = await skipReasonFor('automatic', pullRequest, repository, () =>
+    reviewedHead(Number(pullRequest.number)),
+  );
+  return reason
+    ? { run: false, reason }
+    : { run: true, command: { kind: 'review' }, number: Number(pullRequest.number), pullRequest };
 }
 
 export type ReviewDecision<P extends PullRequestLike> =
@@ -198,7 +220,8 @@ export async function decideReview<P extends PullRequestLike>(
   reviewedHead: (number: number) => Promise<string | undefined>,
 ): Promise<ReviewDecision<P>> {
   const kind = event.comment ? commandFromEvent(event)?.command.kind : undefined;
-  if (kind && kind !== 'review') return { review: false, reason: `/review ${kind} isn't a review; it gets no acknowledgement.` };
+  if (kind && kind !== 'review')
+    return { review: false, reason: `/review ${kind} isn't a review; it gets no acknowledgement.` };
   const decision = await decideRun(event, repository, readPullRequest, reviewedHead);
   if (!decision.run) return { review: false, reason: decision.reason };
   const { pullRequest, commentId } = decision;

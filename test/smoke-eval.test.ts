@@ -9,8 +9,30 @@ import { parse } from 'yaml';
 import type { EvalCase } from '../evals/cases.ts';
 import type { EvalOutput } from '../evals/output.ts';
 import type { CasePrecision, RealityJudge } from '../evals/precision.ts';
-import { capOutcome, caseIssues, casePrecision, casePullRequest, maxCostFrom, parseMaxCost, parsePrecision, runCapped, selectCases, tallyCase, writeRunOutput, type CaseTally } from '../evals/run.ts';
-import { baselinePathFrom, checkFiles, commandData, lastBaselineCommit, proposedName, scanDir, smokeCheck, trimmed } from '../evals/smoke.ts';
+import {
+  capOutcome,
+  caseIssues,
+  casePrecision,
+  casePullRequest,
+  maxCostFrom,
+  parseMaxCost,
+  parsePrecision,
+  runCapped,
+  selectCases,
+  tallyCase,
+  writeRunOutput,
+  type CaseTally,
+} from '../evals/run.ts';
+import {
+  baselinePathFrom,
+  checkFiles,
+  commandData,
+  lastBaselineCommit,
+  proposedName,
+  scanDir,
+  smokeCheck,
+  trimmed,
+} from '../evals/smoke.ts';
 import type { CallRecord } from '../src/agent.ts';
 import type { Finding } from '../src/review.ts';
 import { SecretFoundError } from '../src/outputs.ts';
@@ -34,7 +56,10 @@ test('maxCostFrom reads --max-cost from argv, fails on a bare flag, and is absen
   assert.equal(maxCostFrom(['node', 'run.ts', '--subset', 'smoke', '--max-cost', '8']), 8);
   assert.equal(maxCostFrom(['node', 'run.ts', '--subset', 'smoke']), undefined);
   assert.throws(() => maxCostFrom(['node', 'run.ts', '--max-cost']), /--max-cost takes a positive number of dollars/);
-  assert.throws(() => maxCostFrom(['node', 'run.ts', '--max-cost', '--label', 'x']), /--max-cost takes a positive number of dollars/);
+  assert.throws(
+    () => maxCostFrom(['node', 'run.ts', '--max-cost', '--label', 'x']),
+    /--max-cost takes a positive number of dollars/,
+  );
 });
 
 test('parsePrecision is on by default and refuses anything but on or off', () => {
@@ -46,9 +71,29 @@ test('parsePrecision is on by default and refuses anything but on or off', () =>
 
 test('casePrecision with precision off asks the judge nothing and has no precision', async () => {
   const asked: string[] = [];
-  const judge: RealityJudge = async (f) => { asked.push(f.title); return { verdict: 'real', reason: 'r' }; };
-  const finding: Finding = { severity: 'should-fix', file: 'src/a.cs', line: 10, title: 'Unmatched', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
-  const input = { caseId: 'case', findings: [finding], matched: new Set<Finding>(), mustNot: new Set<Finding>(), cache: {}, judge };
+  const judge: RealityJudge = async (f) => {
+    asked.push(f.title);
+    return { verdict: 'real', reason: 'r' };
+  };
+  const finding: Finding = {
+    severity: 'should-fix',
+    file: 'src/a.cs',
+    line: 10,
+    title: 'Unmatched',
+    problem: 'p',
+    consequence: 'c',
+    fix: 'f',
+    evidence: 'e',
+    confidence: 0.9,
+  };
+  const input = {
+    caseId: 'case',
+    findings: [finding],
+    matched: new Set<Finding>(),
+    mustNot: new Set<Finding>(),
+    cache: {},
+    judge,
+  };
   assert.equal(await casePrecision(false, input), undefined);
   assert.deepEqual(asked, []);
   assert.equal((await casePrecision(true, input))?.real, 1);
@@ -57,20 +102,54 @@ test('casePrecision with precision off asks the judge nothing and has no precisi
 
 // A call record of one role and cost.
 function call(role: string, costUsd: number): CallRecord {
-  return { role, provider: 'bedrock', model: 'm', costUsd, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 1, durationMs: 1, outcome: 'success' };
+  return {
+    role,
+    provider: 'bedrock',
+    model: 'm',
+    costUsd,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    turns: 1,
+    durationMs: 1,
+    outcome: 'success',
+  };
 }
 
 test('tallyCase leaves the concern and precision judges out of the review cost and counts them in the case cost', () => {
   const review = [call('security', 1), call('synthesis', 0.5)];
   const calls = [...review, call('judge', 2), call('precision-judge', 4)];
   const tally: CaseTally = { precisions: [], findingsPerCase: [], reviewCosts: [] };
-  assert.deepEqual(tallyCase(tally, { findings: [], calls: review }, calls, undefined), { reviewCost: 1.5, caseCost: 7.5 });
+  assert.deepEqual(tallyCase(tally, { findings: [], calls: review }, calls, undefined), {
+    reviewCost: 1.5,
+    caseCost: 7.5,
+  });
   assert.deepEqual(tally.reviewCosts, [1.5]);
 });
 
-test('tallyCase adds each case\'s findings and its precision, when it has one, to the tallies', () => {
-  const finding: Finding = { severity: 'should-fix', file: 'src/a.cs', line: 10, title: 'T', problem: 'p', consequence: 'c', fix: 'f', evidence: 'e', confidence: 0.9 };
-  const precision: CasePrecision = { posted: 1, matched: 1, mustNot: 0, real: 0, notReal: 0, unsure: 0, precision: 1, judged: [] };
+test("tallyCase adds each case's findings and its precision, when it has one, to the tallies", () => {
+  const finding: Finding = {
+    severity: 'should-fix',
+    file: 'src/a.cs',
+    line: 10,
+    title: 'T',
+    problem: 'p',
+    consequence: 'c',
+    fix: 'f',
+    evidence: 'e',
+    confidence: 0.9,
+  };
+  const precision: CasePrecision = {
+    posted: 1,
+    matched: 1,
+    mustNot: 0,
+    real: 0,
+    notReal: 0,
+    unsure: 0,
+    precision: 1,
+    judged: [],
+  };
   const tally: CaseTally = { precisions: [], findingsPerCase: [], reviewCosts: [] };
   tallyCase(tally, { findings: [finding], calls: [] }, [], precision);
   tallyCase(tally, { findings: [], calls: [] }, [], undefined);
@@ -81,7 +160,13 @@ test('tallyCase adds each case\'s findings and its precision, when it has one, t
 // A runner whose cases cost what the table says, recording the ones it started.
 function fakeCases(costs: number[]): { started: number[]; runOne: (index: number) => Promise<number> } {
   const started: number[] = [];
-  return { started, runOne: async (index) => { started.push(index); return costs[index] ?? 0; } };
+  return {
+    started,
+    runOne: async (index) => {
+      started.push(index);
+      return costs[index] ?? 0;
+    },
+  };
 }
 
 test('runCapped stops after the case that passes the cap, and does not start the rest', async () => {
@@ -105,12 +190,15 @@ test('runCapped runs every case when the total stays at or under the cap, or wit
 test('capOutcome fails a run that passed the cap, and records the cap and the cases run', () => {
   assert.deepEqual(capOutcome(5, { costUsd: 6, ran: 2, exceeded: true }, 3, 'smoke'), {
     record: { maxCostUsd: 5, casesRun: 2, casesSelected: 3 },
-    error: 'Stopped over --max-cost: the run cost $6.00, more than $5.00, after 2 of 3 cases. evals/out/smoke.json has the cases that ran.',
+    error:
+      'Stopped over --max-cost: the run cost $6.00, more than $5.00, after 2 of 3 cases. evals/out/smoke.json has the cases that ran.',
   });
 });
 
 test('capOutcome passes a run within the cap, and records nothing without one', () => {
-  assert.deepEqual(capOutcome(8, { costUsd: 8, ran: 2, exceeded: false }, 2, 'smoke'), { record: { maxCostUsd: 8, casesRun: 2, casesSelected: 2 } });
+  assert.deepEqual(capOutcome(8, { costUsd: 8, ran: 2, exceeded: false }, 2, 'smoke'), {
+    record: { maxCostUsd: 8, casesRun: 2, casesSelected: 2 },
+  });
   assert.deepEqual(capOutcome(undefined, { costUsd: 80, ran: 2, exceeded: false }, 2, 'smoke'), {});
 });
 
@@ -118,7 +206,10 @@ test('writeRunOutput writes the output before it fails a run that passed the cap
   const dir = mkdtempSync(path.join(tmpdir(), 'run-output-'));
   try {
     const out = path.join(dir, 'out');
-    const output: EvalOutput = { summary: { expected: 1, caught: 1, caughtRaw: 1, violations: 0, costUsd: 0 }, cases: [{ id: 'large', verdicts: [], forbidden: [], findings: [], costUsd: 0 }] };
+    const output: EvalOutput = {
+      summary: { expected: 1, caught: 1, caughtRaw: 1, violations: 0, costUsd: 0 },
+      cases: [{ id: 'large', verdicts: [], forbidden: [], findings: [], costUsd: 0 }],
+    };
     assert.throws(() => writeRunOutput(out, 'smoke', output, 'Stopped over --max-cost'), /Stopped over --max-cost/);
     assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'smoke.json'), 'utf8')), output);
     assert.equal(writeRunOutput(out, 'full', output, undefined), path.join(out, 'full.json'));
@@ -131,29 +222,48 @@ test('writeRunOutput writes the output before it fails a run that passed the cap
 // main needs Bedrock, so its source is checked: a capped run fails only after writeRunOutput has written the output.
 test("evals/run.ts's main fails a capped run only through writeRunOutput", () => {
   const source = readFileSync(path.join(root, 'evals', 'run.ts'), 'utf8');
-  assert.ok(source.includes("writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);"));
+  assert.ok(
+    source.includes("writeRunOutput(path.join(root, 'evals', 'out'), label, { summary, cases: report }, cap.error);"),
+  );
   assert.doesNotMatch(source, /throw new Error\(cap\.error\)/);
 });
 
 test('the smoke subset is 4 existing cases, with the must-not case', () => {
   const smoke = selectCases(allCases, undefined, 'smoke');
   assert.equal(smoke.length, 4);
-  assert.ok(smoke.some((c) => c.mustNotFlag.length > 0 && c.expect.length === 0), 'a must-not case');
-  assert.ok(smoke.some((c) => c.id === 'heap-allocation-key-export'), 'the large-diff case');
+  assert.ok(
+    smoke.some((c) => c.mustNotFlag.length > 0 && c.expect.length === 0),
+    'a must-not case',
+  );
+  assert.ok(
+    smoke.some((c) => c.id === 'heap-allocation-key-export'),
+    'the large-diff case',
+  );
 });
 
 test('selectCases fails on a case or subset that does not exist, on an empty --only, and on --only with --subset', () => {
-  assert.throws(() => selectCases(allCases, 'accepted-no-backfill,no-such-case', undefined), /No eval case named no-such-case/);
+  assert.throws(
+    () => selectCases(allCases, 'accepted-no-backfill,no-such-case', undefined),
+    /No eval case named no-such-case/,
+  );
   assert.throws(() => selectCases(allCases, undefined, 'nightly'), /No subset named "nightly"/);
   assert.throws(() => selectCases(allCases, undefined, '__proto__'), /No subset named/);
   assert.throws(() => selectCases(allCases, 'accepted-no-backfill', 'smoke'), /--only or --subset, not both/);
   assert.throws(() => selectCases(allCases, '', undefined), /--only names no case/);
   assert.throws(() => selectCases(allCases, ' , ', undefined), /--only names no case/);
-  assert.deepEqual(selectCases(allCases, 'secret-buffer-length, accepted-no-backfill', undefined).map((c) => c.id), ['secret-buffer-length', 'accepted-no-backfill']);
+  assert.deepEqual(
+    selectCases(allCases, 'secret-buffer-length, accepted-no-backfill', undefined).map((c) => c.id),
+    ['secret-buffer-length', 'accepted-no-backfill'],
+  );
   assert.equal(selectCases(allCases, undefined, undefined).length, allCases.length);
 });
 
-const smokeCase = (id: string, caught: number, expected: number, raisedBy: string[] = []): EvalOutput['cases'][number] => ({
+const smokeCase = (
+  id: string,
+  caught: number,
+  expected: number,
+  raisedBy: string[] = [],
+): EvalOutput['cases'][number] => ({
   id,
   verdicts: Array.from({ length: expected }, (_, i) => ({ caught: i < caught, caughtRaw: i < caught })),
   forbidden: id === 'must-not' ? [{ concern: 'Do not ask for a backfill.', raisedBy }] : [],
@@ -178,8 +288,11 @@ function smokeOutput(cases: EvalOutput['cases']): EvalOutput {
 
 const baseline = smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4), smokeCase('small', 2, 2)]);
 
-test('smokeCheck passes a drop in caught of 2, within a run\'s variance, and shows the comparison', () => {
-  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 2, 4), smokeCase('small', 2, 2)]), baseline);
+test("smokeCheck passes a drop in caught of 2, within a run's variance, and shows the comparison", () => {
+  const verdict = smokeCheck(
+    smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 2, 4), smokeCase('small', 2, 2)]),
+    baseline,
+  );
   assert.deepEqual(verdict.failures, []);
   assert.deepEqual(verdict.notices, []);
   assert.match(verdict.markdown, /^## Smoke eval\n\n\*\*Passed\.\*\*/);
@@ -187,53 +300,95 @@ test('smokeCheck passes a drop in caught of 2, within a run\'s variance, and sho
 });
 
 test('smokeCheck fails when caught drops by more than 2', () => {
-  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 1, 4), smokeCase('small', 2, 2)]), baseline);
+  const verdict = smokeCheck(
+    smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 1, 4), smokeCase('small', 2, 2)]),
+    baseline,
+  );
   assert.deepEqual(verdict.failures, ['Caught dropped by 3, from 6/6 to 3/6: more than the 2 a run varies by.']);
   assert.match(verdict.markdown, /\*\*Failed\.\*\*/);
 });
 
 test('smokeCheck fails when the must-not case is flagged, with or without a baseline', () => {
-  const run = smokeOutput([smokeCase('must-not', 0, 0, ['src/A.cs:3 (architecture)']), smokeCase('large', 4, 4), smokeCase('small', 2, 2)]);
+  const run = smokeOutput([
+    smokeCase('must-not', 0, 0, ['src/A.cs:3 (architecture)']),
+    smokeCase('large', 4, 4),
+    smokeCase('small', 2, 2),
+  ]);
   for (const against of [baseline, undefined]) {
     const verdict = smokeCheck(run, against);
-    assert.deepEqual(verdict.failures, ['must-not raised a must-not-flag concern (by src/A.cs:3 (architecture)): Do not ask for a backfill.']);
+    assert.deepEqual(verdict.failures, [
+      'must-not raised a must-not-flag concern (by src/A.cs:3 (architecture)): Do not ask for a backfill.',
+    ]);
   }
 });
 
 test('smokeCheck fails when the run and the baseline cover different cases', () => {
-  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4), smokeCase('other', 2, 2)]), baseline);
+  const verdict = smokeCheck(
+    smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4), smokeCase('other', 2, 2)]),
+    baseline,
+  );
   assert.equal(verdict.failures.length, 1);
-  assert.match(verdict.failures[0] ?? '', /covers large, must-not, other but evals\/baseline-smoke\.json covers large, must-not, small/);
+  assert.match(
+    verdict.failures[0] ?? '',
+    /covers large, must-not, other but evals\/baseline-smoke\.json covers large, must-not, small/,
+  );
 });
 
 test('smokeCheck passes with a notice and the run alone when there is no baseline yet', () => {
   const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 1, 4)]), undefined);
   assert.deepEqual(verdict.failures, []);
   assert.equal(verdict.notices.length, 1);
-  assert.match(verdict.notices[0] ?? '', /no evals\/baseline-smoke\.json yet.*proposed-baseline-smoke\.json in the smoke-eval artifact/);
+  assert.match(
+    verdict.notices[0] ?? '',
+    /no evals\/baseline-smoke\.json yet.*proposed-baseline-smoke\.json in the smoke-eval artifact/,
+  );
   assert.match(verdict.markdown, /\*\*Passed\*\* with no baseline/);
   assert.match(verdict.markdown, /^large\s+1\/4\s+0\s+2\s+\$1\.00$/m);
   assert.match(verdict.markdown, /Caught 1\/4; must-not violations 0; review cost \$2\.00, with judges \$2\.50\./);
 });
 
 test('smokeCheck fails when the baseline was committed once and is missing now', () => {
-  const verdict = smokeCheck(smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4)]), undefined, 'abc1234');
-  assert.deepEqual(verdict.failures, ["evals/baseline-smoke.json is missing, but commit abc1234 deleted it: restore it, or adopt a new baseline from this run's proposed-baseline-smoke.json in a pull request."]);
+  const verdict = smokeCheck(
+    smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 4, 4)]),
+    undefined,
+    'abc1234',
+  );
+  assert.deepEqual(verdict.failures, [
+    "evals/baseline-smoke.json is missing, but commit abc1234 deleted it: restore it, or adopt a new baseline from this run's proposed-baseline-smoke.json in a pull request.",
+  ]);
   assert.deepEqual(verdict.notices, []);
   assert.match(verdict.markdown, /\*\*Failed\.\*\*/);
 });
 
 test('smokeCheck keeps model text inside its code block', () => {
-  const run = smokeOutput([smokeCase('must-not', 0, 0, ['```\n# Injected']), smokeCase('large', 4, 4), smokeCase('small', 2, 2)]);
+  const run = smokeOutput([
+    smokeCase('must-not', 0, 0, ['```\n# Injected']),
+    smokeCase('large', 4, 4),
+    smokeCase('small', 2, 2),
+  ]);
   const { markdown } = smokeCheck(run, baseline);
   assert.equal(markdown.match(/```/g)?.length, 4, 'two code blocks, each opened and closed once');
   assert.match(markdown, /'''/);
 });
 
 test('trimmed keeps what compare reads and drops the agent calls and raw findings', () => {
-  const full = smokeOutput([{ ...smokeCase('large', 1, 1), raw: [{ title: 'r' }], calls: [{ role: 'judge' }], refuted: [] } as EvalOutput['cases'][number]]);
+  const full = smokeOutput([
+    {
+      ...smokeCase('large', 1, 1),
+      raw: [{ title: 'r' }],
+      calls: [{ role: 'judge' }],
+      refuted: [],
+    } as EvalOutput['cases'][number],
+  ]);
   const [only] = trimmed(full).cases;
-  assert.deepEqual(Object.keys(only ?? {}).sort(), ['costUsd', 'findings', 'forbidden', 'id', 'reviewCostUsd', 'verdicts']);
+  assert.deepEqual(Object.keys(only ?? {}).sort(), [
+    'costUsd',
+    'findings',
+    'forbidden',
+    'id',
+    'reviewCostUsd',
+    'verdicts',
+  ]);
 });
 
 test('commandData keeps a message on one workflow command line', () => {
@@ -249,7 +404,13 @@ test('scanDir scans every file under the folder and fails on a secret, naming th
     assert.equal(scanDir(dir, ['known-secret-value']), 2);
 
     writeFileSync(path.join(dir, 'nested', 'b.json'), '{"leak":"known-secret-value"}');
-    assert.throws(() => scanDir(dir, ['known-secret-value']), (error: Error) => error instanceof SecretFoundError && error.message.includes(path.join('nested', 'b.json')) && !error.message.includes('known-secret-value'));
+    assert.throws(
+      () => scanDir(dir, ['known-secret-value']),
+      (error: Error) =>
+        error instanceof SecretFoundError &&
+        error.message.includes(path.join('nested', 'b.json')) &&
+        !error.message.includes('known-secret-value'),
+    );
 
     writeFileSync(path.join(dir, 'nested', 'b.json'), '{"leak":"ghs_0123456789abcdefghijABCDEFGHIJ"}');
     assert.throws(() => scanDir(dir, []), SecretFoundError);
@@ -295,9 +456,18 @@ test('scanDir refuses a link, so the upload cannot reach a file outside what was
 });
 
 test('baselinePathFrom honors --baseline and otherwise reads evals/baseline-smoke.json', () => {
-  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline', 'other.json'], '/repo'), path.resolve('other.json'));
-  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json'], '/repo'), path.join('/repo', 'evals', 'baseline-smoke.json'));
-  assert.equal(baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline'], '/repo'), path.join('/repo', 'evals', 'baseline-smoke.json'));
+  assert.equal(
+    baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline', 'other.json'], '/repo'),
+    path.resolve('other.json'),
+  );
+  assert.equal(
+    baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json'], '/repo'),
+    path.join('/repo', 'evals', 'baseline-smoke.json'),
+  );
+  assert.equal(
+    baselinePathFrom(['node', 'smoke.ts', 'check', 'run.json', '--baseline'], '/repo'),
+    path.join('/repo', 'evals', 'baseline-smoke.json'),
+  );
 });
 
 const regressed = smokeOutput([smokeCase('must-not', 0, 0), smokeCase('large', 1, 4), smokeCase('small', 2, 2)]);
@@ -334,10 +504,34 @@ test('checkFiles fails a run whose missing baseline a commit deleted, and still 
 test('lastBaselineCommit names the commit that deleted the baseline, none before one was committed, and fails on a shallow checkout', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'smoke-history-'));
   // Without the machine's own git configuration, so a default branch name, hooks or signing can't change the result.
-  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], {
-    encoding: 'utf8',
-    env: { PATH: process.env['PATH'] ?? '', ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}), HOME: dir, USERPROFILE: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_NOSYSTEM: '1' },
-  });
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync(
+      'git',
+      [
+        '-C',
+        cwd,
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        '-c',
+        'commit.gpgsign=false',
+        '-c',
+        'init.defaultBranch=main',
+        ...args,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          PATH: process.env['PATH'] ?? '',
+          ...(process.env['SystemRoot'] ? { SystemRoot: process.env['SystemRoot'] } : {}),
+          HOME: dir,
+          USERPROFILE: dir,
+          XDG_CONFIG_HOME: dir,
+          GIT_CONFIG_NOSYSTEM: '1',
+        },
+      },
+    );
   try {
     const repo = path.join(dir, 'repo');
     mkdirSync(path.join(repo, 'evals'), { recursive: true });
@@ -367,7 +561,9 @@ test('checkFiles records a failure for a run that regressed from the baseline fi
     const baselineFile = path.join(dir, 'baseline.json');
     writeFileSync(runFile, JSON.stringify(regressed));
     writeFileSync(baselineFile, JSON.stringify(baseline));
-    assert.deepEqual(checkFiles(runFile, baselineFile).failures, ['Caught dropped by 3, from 6/6 to 3/6: more than the 2 a run varies by.']);
+    assert.deepEqual(checkFiles(runFile, baselineFile).failures, [
+      'Caught dropped by 3, from 6/6 to 3/6: more than the 2 a run varies by.',
+    ]);
     assert.ok(existsSync(path.join(dir, proposedName)));
     assert.deepEqual(checkFiles(baselineFile, baselineFile).failures, []);
   } finally {
@@ -383,9 +579,11 @@ test('smoke.ts check exits 1 on a regression from --baseline and 0 without a bas
     const baselineFile = path.join(dir, 'baseline.json');
     writeFileSync(runFile, JSON.stringify(regressed));
     writeFileSync(baselineFile, JSON.stringify(baseline));
-    const check = (...extra: string[]) => spawnSync(process.execPath, [path.join(root, 'evals', 'smoke.ts'), 'check', runFile, ...extra], {
-      encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_STEP_SUMMARY: '' },
-    });
+    const check = (...extra: string[]) =>
+      spawnSync(process.execPath, [path.join(root, 'evals', 'smoke.ts'), 'check', runFile, ...extra], {
+        encoding: 'utf8',
+        env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_STEP_SUMMARY: '' },
+      });
     const failed = check('--baseline', baselineFile);
     assert.equal(failed.status, 1, failed.stderr);
     assert.match(failed.stdout, /error: Caught dropped by 3/);
@@ -398,12 +596,16 @@ test('smoke.ts check exits 1 on a regression from --baseline and 0 without a bas
 });
 
 test('the smoke eval workflow runs only on main and by hand, in the code-review environment, with pinned actions', () => {
-  const workflow = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8').replace(/\r\n/g, '\n');
+  const workflow = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8').replace(
+    /\r\n/g,
+    '\n',
+  );
   const triggers = workflow.slice(workflow.indexOf('\non:'), workflow.indexOf('\npermissions:'));
   assert.doesNotMatch(triggers, /pull_request|issue_comment|workflow_run/);
   assert.match(triggers, /push:\n\s+branches: \[main\]/);
   assert.match(triggers, /workflow_dispatch/);
-  for (const glob of ['prompts/**', 'reviewers/**', 'src/config.ts', 'guidance/**']) assert.ok(triggers.includes(`'${glob}'`), glob);
+  for (const glob of ['prompts/**', 'reviewers/**', 'src/config.ts', 'guidance/**'])
+    assert.ok(triggers.includes(`'${glob}'`), glob);
   assert.match(workflow, /^permissions: \{\}$/m);
   assert.match(workflow, /^\s+environment: code-review$/m);
   assert.match(workflow, /--subset smoke .*--max-cost 8/);
@@ -413,9 +615,18 @@ test('the smoke eval workflow runs only on main and by hand, in the code-review 
 });
 
 // The steps of the smoke eval workflow, read just far enough to see each step's name, id, if, uses and run.
-interface WorkflowStep { name: string; id: string; if: string; uses: string; run: string; text: string }
+interface WorkflowStep {
+  name: string;
+  id: string;
+  if: string;
+  uses: string;
+  run: string;
+  text: string;
+}
 function workflowSteps(): WorkflowStep[] {
-  const lines = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  const lines = readFileSync(path.join(root, '.github', 'workflows', 'smoke-eval.yml'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
   const steps: WorkflowStep[] = [];
   for (const line of lines.slice(lines.indexOf('    steps:') + 1)) {
     if (line.startsWith('      - ')) steps.push({ name: '', id: '', if: '', uses: '', run: '', text: '' });
@@ -438,7 +649,10 @@ test('the smoke eval workflow uploads the outputs only after the secret scan pas
   assert.ok(scan < upload, 'the scan runs before the upload');
   assert.equal(steps[scan]!.if, '${{ !cancelled() }}');
   assert.equal(steps[scan]!.run, 'node evals/smoke.ts scan evals/out');
-  assert.ok(steps[scan]!.text.includes('AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}'), 'the scan knows the Bedrock key');
+  assert.ok(
+    steps[scan]!.text.includes('AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}'),
+    'the scan knows the Bedrock key',
+  );
   assert.equal(steps[upload]!.if, "${{ !cancelled() && steps.scan.outcome == 'success' }}");
   assert.ok(steps[upload]!.text.includes('path: evals/out/'), 'the upload takes the folder the scan read');
   assert.equal(upload, steps.length - 1, 'nothing runs after the upload');
@@ -465,14 +679,16 @@ test('the eval workflow runs only by hand, in the code-review environment, with 
   const inputs = on.workflow_dispatch.inputs;
   assert.equal(inputs['max-cost'].type, 'choice');
   assert.ok(inputs['max-cost'].options.length > 0);
-  for (const option of inputs['max-cost'].options) assert.ok(Number.isFinite(Number(option)) && Number(option) <= 25, String(option));
+  for (const option of inputs['max-cost'].options)
+    assert.ok(Number.isFinite(Number(option)) && Number(option) <= 25, String(option));
   assert.deepEqual(inputs.subset.options, ['smoke', 're-review']);
   assert.deepEqual(inputs.runs.options.map(String), ['1', '2']);
   const job = Object.values<any>(doc['jobs'])[0];
   assert.equal(job.environment, 'code-review');
   const steps: { id?: string; if?: string; uses?: string; run?: string }[] = job.steps;
   for (const step of steps) assert.ok(!(step.run ?? '').includes('${{'), step.run ?? '');
-  for (const step of steps) if (step.uses) assert.match(`uses: ${step.uses}`, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, step.uses);
+  for (const step of steps)
+    if (step.uses) assert.match(`uses: ${step.uses}`, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, step.uses);
   const scan = steps.findIndex((s) => s.id === 'scan');
   const upload = steps.findIndex((s) => s.uses?.startsWith('actions/upload-artifact@'));
   assert.ok(scan >= 0 && upload > scan, 'the scan runs before the upload');
@@ -486,14 +702,27 @@ test('the eval workflow runs only by hand, in the code-review environment, with 
 });
 
 const evalCase: EvalCase = {
-  id: 'x', repository: 'o/r', pullRequest: 5, title: 'T', body: 'Closes #3 and fixes #4', base: 'b'.repeat(40), head: 'h'.repeat(40),
-  expect: [], mustNotFlag: [], source: '',
+  id: 'x',
+  repository: 'o/r',
+  pullRequest: 5,
+  title: 'T',
+  body: 'Closes #3 and fixes #4',
+  base: 'b'.repeat(40),
+  head: 'h'.repeat(40),
+  expect: [],
+  mustNotFlag: [],
+  source: '',
 };
 
-test('casePullRequest gives a member\'s description and the issues it closes, leaving out pull requests', async () => {
+test("casePullRequest gives a member's description and the issues it closes, leaving out pull requests", async () => {
   const lines: string[] = [];
   const issues: Record<number, object> = { 3: { title: 'Bug', body: 'Steps' }, 4: { pull_request: {}, title: 'PR' } };
-  const pullRequest = await casePullRequest(evalCase, 'c'.repeat(40), (number) => issues[number], (line) => lines.push(line));
+  const pullRequest = await casePullRequest(
+    evalCase,
+    'c'.repeat(40),
+    (number) => issues[number],
+    (line) => lines.push(line),
+  );
   assert.equal(pullRequest.body, evalCase.body);
   assert.equal(pullRequest.authorCanWrite, true);
   assert.equal(pullRequest.author, 'polewskm');
@@ -504,14 +733,19 @@ test('casePullRequest gives a member\'s description and the issues it closes, le
   assert.deepEqual(lines, []);
 });
 
-test('casePullRequest withholds a non-writer\'s description and reads none of its issues', async () => {
+test("casePullRequest withholds a non-writer's description and reads none of its issues", async () => {
   const stranger = { ...evalCase, author: 'stranger', authorAssociation: 'CONTRIBUTOR' };
   const read: number[] = [];
   const lines: string[] = [];
-  const pullRequest = await casePullRequest(stranger, 'c'.repeat(40), (number) => {
-    read.push(number);
-    return {};
-  }, (line) => lines.push(line));
+  const pullRequest = await casePullRequest(
+    stranger,
+    'c'.repeat(40),
+    (number) => {
+      read.push(number);
+      return {};
+    },
+    (line) => lines.push(line),
+  );
   assert.equal(pullRequest.body, undefined);
   assert.equal(pullRequest.bodyWithheld, true);
   assert.equal(pullRequest.authorCanWrite, false);
@@ -522,22 +756,39 @@ test('casePullRequest withholds a non-writer\'s description and reads none of it
 
 test('caseIssues warns with the reason when an issue cannot be read, and goes on', async () => {
   const lines: string[] = [];
-  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3, closes #4', (number) => {
-    if (number === 3) throw new Error('HTTP 404: Not Found');
-    return { title: 'Ok', body: 'b' };
-  }, (line) => lines.push(line));
+  const issues = await caseIssues(
+    { repository: 'o/r' },
+    'Closes #3, closes #4',
+    (number) => {
+      if (number === 3) throw new Error('HTTP 404: Not Found');
+      return { title: 'Ok', body: 'b' };
+    },
+    (line) => lines.push(line),
+  );
   assert.deepEqual(issues, [{ number: 4, title: 'Ok', body: 'b' }]);
-  assert.deepEqual(lines, ["::warning::Couldn't read issue #3 of o/r (HTTP 404: Not Found); the case runs without it."]);
+  assert.deepEqual(lines, [
+    "::warning::Couldn't read issue #3 of o/r (HTTP 404: Not Found); the case runs without it.",
+  ]);
 });
 
 test("caseIssues leaves out an issue the case records as a non-writer's", async () => {
   const lines: string[] = [];
-  const issues = await caseIssues({ repository: 'o/r', issueAssociations: { '4': 'CONTRIBUTOR' } }, 'Closes #3 and fixes #4', () => ({ title: 'T', body: 'b' }), (line) => lines.push(line));
+  const issues = await caseIssues(
+    { repository: 'o/r', issueAssociations: { '4': 'CONTRIBUTOR' } },
+    'Closes #3 and fixes #4',
+    () => ({ title: 'T', body: 'b' }),
+    (line) => lines.push(line),
+  );
   assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
   assert.deepEqual(lines, []);
 });
 
 test("caseIssues counts an issue the case doesn't record as a member's, whatever the API says", async () => {
-  const issues = await caseIssues({ repository: 'o/r' }, 'Closes #3', () => ({ title: 'T', body: 'b', author_association: 'NONE' }), () => {});
+  const issues = await caseIssues(
+    { repository: 'o/r' },
+    'Closes #3',
+    () => ({ title: 'T', body: 'b', author_association: 'NONE' }),
+    () => {},
+  );
   assert.deepEqual(issues, [{ number: 3, title: 'T', body: 'b' }]);
 });

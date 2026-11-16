@@ -98,14 +98,26 @@ async function teach(
     return;
   }
   const [owner, name] = plan.teaching.target.split('/') as [string, string];
-  writeLog(`Teaching a ${command.scope === 'org' ? 'NCodeGroup-wide' : 'project'} rule: a ${guidanceLabel} issue in ${plan.teaching.target}`);
-  writeForPublish(outDir, { [teachingFile]: plan.teaching }, secrets, 'taught', { 'guidance-owner': owner, 'guidance-repository': name });
+  writeLog(
+    `Teaching a ${command.scope === 'org' ? 'NCodeGroup-wide' : 'project'} rule: a ${guidanceLabel} issue in ${plan.teaching.target}`,
+  );
+  writeForPublish(outDir, { [teachingFile]: plan.teaching }, secrets, 'taught', {
+    'guidance-owner': owner,
+    'guidance-repository': name,
+  });
 }
 
 // `/review explain <ref>`: finds the finding with the read-only token, has one agent read the code again, and leaves the
 // answer for the publish step. An unknown ref gets the newest review's ids, without a model call.
 async function answer(
-  where: { outDir: string; prPath: string; repository: string; number: number; headSha: string; githubToken: string | undefined },
+  where: {
+    outDir: string;
+    prPath: string;
+    repository: string;
+    number: number;
+    headSha: string;
+    githubToken: string | undefined;
+  },
   command: Extract<Command, { kind: 'explain' }>,
 ): Promise<void> {
   const { outDir, prPath, repository, number, headSha, githubToken } = where;
@@ -113,18 +125,33 @@ async function answer(
   const secrets = [...secretValues(credentials), ...(githubToken ? [githubToken] : [])];
   const host = new URL(process.env['GITHUB_SERVER_URL'] || 'https://github.com').host;
   const resolution = await findFinding(command.ref, { repository, number, host }, githubReader(githubToken));
-  if ('validIds' in resolution) writeLog(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
+  if ('validIds' in resolution)
+    writeLog(`No such finding; the newest review's are ${resolution.validIds.join(', ') || 'none'}.`);
 
   const ask = async (found: FoundFinding) => {
     writeLog(`Explaining ${found.id} (${found.comment.html_url ?? found.comment.id}) at ${headSha.slice(0, 7)}`);
-    fetchPullRequestHead(fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number, headSha, token: githubToken }));
+    fetchPullRequestHead(
+      fetchHeadFor({
+        path: prPath,
+        repository,
+        serverUrl: process.env['GITHUB_SERVER_URL'],
+        number,
+        headSha,
+        token: githubToken,
+      }),
+    );
     const choice = await chooseProvider(credentials);
     writeLog(`Provider: ${choice.reason}`);
     const proxy = await startProxy(credentials);
     const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
     try {
       const systemPrompt = readFileSync(path.join(root, 'prompts', 'explain.md'), 'utf8');
-      const run = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
+      const run = {
+        provider: choice.provider,
+        proxyUrl: proxy.url,
+        checkout: prPath,
+        ...(fallback ? { fallback } : {}),
+      };
       const result = await explainFinding(run, systemPrompt, { found, question: command.question, headSha });
       if (fallback?.reason) writeLog(`Switched to Bedrock partway: ${fallback.reason}`);
       if (result.error) writeLog(`::warning::The explain call failed: ${errorText(result.error)}`);
@@ -151,13 +178,15 @@ async function main(): Promise<void> {
   const github = githubApi(githubToken, fetch, { terseErrors: true });
   // The pull request's comments, read once: the skip rule, the loop limit and the re-review all need them.
   let comments: Promise<ListedComment[] | undefined> | undefined;
-  const issueComments = (number: number) => (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
+  const issueComments = (number: number) =>
+    (comments ??= readIssueComments(repository, number, githubToken, fetch, log));
   const reviewedHead = async (number: number) => newestReviewedHead(await issueComments(number));
 
   // A closed pull request records what became of its findings, by rules alone: no provider, proxy or model call, and so
   // no credentials. It never reviews.
   if (isClosedEvent(event)) {
-    if (!githubToken) throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
+    if (!githubToken)
+      throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
     await recordOutcomes(github, event, repository, outDir);
     return;
   }
@@ -177,7 +206,10 @@ async function main(): Promise<void> {
   }
   const { command, number } = decision;
   if (command.kind === 'explain') {
-    await answer({ outDir, prPath, repository, number, headSha: decision.pullRequest.head?.sha ?? '', githubToken }, command);
+    await answer(
+      { outDir, prPath, repository, number, headSha: decision.pullRequest.head?.sha ?? '', githubToken },
+      command,
+    );
     return;
   }
   if (command.kind === 'teach') {
@@ -188,7 +220,14 @@ async function main(): Promise<void> {
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
   if (!event.comment) {
-    const pause = await checkPause({ repository, number, token: githubToken, issueComments: await issueComments(number), isWriter, log });
+    const pause = await checkPause({
+      repository,
+      number,
+      token: githubToken,
+      issueComments: await issueComments(number),
+      isWriter,
+      log,
+    });
     if (pause !== 'review') writeStatus(pausedStatus());
     if (pause === 'paused') {
       writeLog('Paused, and the notice is posted already; comment /review to resume.');
@@ -209,25 +248,45 @@ async function main(): Promise<void> {
   const started = Date.now();
   // When each stage of the review ended, in milliseconds after started, for the trace.
   const timings: Record<string, number> = {};
-  const mark = (stage: string) => { timings[stage] = Date.now() - started; };
+  const mark = (stage: string) => {
+    timings[stage] = Date.now() - started;
+  };
   const pullRequestEvent = event.pull_request ?? event.issue;
   const authorCanWrite = await isWriter(pullRequestEvent?.user?.login, pullRequestEvent?.author_association);
   const pullRequest = readPullRequest(event, repository, authorCanWrite);
   run.headSha = pullRequest.headSha || undefined;
   // The engine fetches the exact commit once it has decided to review, unless the workflow already checked the head out.
-  const headFetch = fetchHeadFor({ path: prPath, repository, serverUrl: process.env['GITHUB_SERVER_URL'], number: pullRequest.number, headSha: pullRequest.headSha, token: githubToken });
+  const headFetch = fetchHeadFor({
+    path: prPath,
+    repository,
+    serverUrl: process.env['GITHUB_SERVER_URL'],
+    number: pullRequest.number,
+    headSha: pullRequest.headSha,
+    token: githubToken,
+  });
   fetchPullRequestHead(headFetch);
   const closedNumbers = closedIssues(pullRequest.body);
   pullRequest.issues = await readClosedIssues(repository, closedNumbers, github, isWriter, log);
   // A template adoption or update leaves a file to the template only when it is the template's own copy.
-  const gathered = await gatherChecked(pullRequest, prPath, basePath, path.join(root, 'guidance'), githubReader(githubToken), log);
+  const gathered = await gatherChecked(
+    pullRequest,
+    prPath,
+    basePath,
+    path.join(root, 'guidance'),
+    githubReader(githubToken),
+    log,
+  );
   mark('gathered');
   run.headSha = pullRequest.headSha;
   log(`Reviewing ${repository}#${pullRequest.number} at ${pullRequest.headSha.slice(0, 7)}`);
-  log(`Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`);
+  log(
+    `Description: ${pullRequest.body ? 'shown' : pullRequest.bodyWithheld ? "left out, since its author can't write to the repository" : 'none'}; ${pullRequest.issues.length} closed issues shown`,
+  );
   for (const warning of gathered.warnings) log(`::warning::${warning}`);
   const shown = gathered.files.filter((f) => f.shown).length;
-  log(`${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`);
+  log(
+    `${gathered.files.length} changed files, ${shown} in the diff, ${gathered.diff.length} characters${gathered.skippedByConfig.length ? `, ${gathered.skippedByConfig.length} skipped by config` : ''}`,
+  );
   // A pull request the bot reviewed before gets a re-review of what changed since then.
   const last = await reviewedHead(pullRequest.number);
   const plan = await planReReview({
@@ -253,8 +312,17 @@ async function main(): Promise<void> {
   const fallback = bedrockFallbackFor(choice.provider, Boolean(credentials.bedrockKey));
   let results: Results;
   try {
-    const agentRun: AgentRun = { provider: choice.provider, proxyUrl: proxy.url, checkout: prPath, ...(fallback ? { fallback } : {}) };
-    const { outcome, recordedHead, trace: reReviewTrace } = await runReview({
+    const agentRun: AgentRun = {
+      provider: choice.provider,
+      proxyUrl: proxy.url,
+      checkout: prPath,
+      ...(fallback ? { fallback } : {}),
+    };
+    const {
+      outcome,
+      recordedHead,
+      trace: reReviewTrace,
+    } = await runReview({
       plan,
       headSha: pullRequest.headSha,
       lastHead: last,
@@ -280,7 +348,13 @@ async function main(): Promise<void> {
       diff: gathered.diff,
       recordedHead,
       ...(reReviewTrace.reReview
-        ? { reReview: { changedLines: reReviewTrace.reReview.changedLines, earlier: reReviewTrace.reReview.earlier.map(({ id, url, status, note }) => ({ id, url, status, note })), ...(reReviewTrace.reReview.verdictFloor ? { verdictFloor: reReviewTrace.reReview.verdictFloor } : {}) } }
+        ? {
+            reReview: {
+              changedLines: reReviewTrace.reReview.changedLines,
+              earlier: reReviewTrace.reReview.earlier.map(({ id, url, status, note }) => ({ id, url, status, note })),
+              ...(reReviewTrace.reReview.verdictFloor ? { verdictFloor: reReviewTrace.reReview.verdictFloor } : {}),
+            },
+          }
         : {}),
     });
     // The shadow reviewers' findings and the shadow prompts' outputs, beside the live ones they shadow.
@@ -294,7 +368,11 @@ async function main(): Promise<void> {
       timings: { startedAt: started, ...timings },
       settings: {
         policies: gathered.policies,
-        projectReviewers: gathered.projectReviewers.map((r) => ({ name: r.name, paths: r.paths, ...(r.shadow ? { shadow: true } : {}) })),
+        projectReviewers: gathered.projectReviewers.map((r) => ({
+          name: r.name,
+          paths: r.paths,
+          ...(r.shadow ? { shadow: true } : {}),
+        })),
         sensitive: gathered.sensitive,
         tiers: gathered.tiers,
       },
@@ -305,7 +383,9 @@ async function main(): Promise<void> {
     await proxy.close();
   }
   const upstream = upstreamTotal(results);
-  log(`${results.findings.length} findings${upstream ? ` (${upstream} more belong upstream)` : ''}, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`);
+  log(
+    `${results.findings.length} findings${upstream ? ` (${upstream} more belong upstream)` : ''}, $${results.costUsd.toFixed(2)}, ${Math.round(results.durationMs / 1000)}s`,
+  );
 }
 
 main().catch((error) => {

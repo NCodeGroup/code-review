@@ -21,10 +21,15 @@ async function main(): Promise<void> {
   const token = process.env['CODE_REVIEW_APP_TOKEN'];
   const outDir = process.env['CODE_REVIEW_OUT'];
   const repository = process.env['GITHUB_REPOSITORY'];
-  if (!token || !outDir || !repository) throw new Error('CODE_REVIEW_APP_TOKEN, CODE_REVIEW_OUT and GITHUB_REPOSITORY must be set.');
-  const acknowledged = acknowledgedFrom(process.env['CODE_REVIEW_CHECK_RUN_ID'], process.env['CODE_REVIEW_CHECK_RUN_SHA']);
+  if (!token || !outDir || !repository)
+    throw new Error('CODE_REVIEW_APP_TOKEN, CODE_REVIEW_OUT and GITHUB_REPOSITORY must be set.');
+  const acknowledged = acknowledgedFrom(
+    process.env['CODE_REVIEW_CHECK_RUN_ID'],
+    process.env['CODE_REVIEW_CHECK_RUN_SHA'],
+  );
   const status = finishStatus(readStatusFile(outDir), stepOutcomesFrom(process.env), { token, url: runUrl() });
-  if (await finishCheck(githubApi(token), repository, acknowledged, status)) writeLog(`Completed the check run: ${status.title}`);
+  if (await finishCheck(githubApi(token), repository, acknowledged, status))
+    writeLog(`Completed the check run: ${status.title}`);
   else writeLog('No check run to complete.');
 }
 
