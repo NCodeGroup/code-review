@@ -159,15 +159,15 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
       .sort()) {
       const file = readFileSync(path.join(instructions, name), 'utf8');
       const applyTo = applyToGlobs(file);
-      chunkByHeading(file).forEach((text, i) =>
+      chunkByHeading(file).forEach((text, i) => {
         sources.push({
           kind: 'instructions',
           id: `${name.replace('.instructions.md', '')}-${i + 1}`,
           label: `${repoName} ${name}`,
           text,
           ...(applyTo.length ? { applyTo } : {}),
-        }),
-      );
+        });
+      });
     }
   }
   const agents = path.join(checkout, 'AGENTS.md');
@@ -195,9 +195,9 @@ function conventionFiles(checkout: string, repoName: string): Source[] {
     for (const name of readdirSync(docs)
       .filter((n) => n.endsWith('.md') && n !== 'README.md')
       .sort()) {
-      chunkByHeading(readFileSync(path.join(docs, name), 'utf8')).forEach((text, i) =>
-        sources.push({ kind: 'doc', id: `${name.slice(0, -3)}-${i + 1}`, label: `${repoName} docs/${name}`, text }),
-      );
+      chunkByHeading(readFileSync(path.join(docs, name), 'utf8')).forEach((text, i) => {
+        sources.push({ kind: 'doc', id: `${name.slice(0, -3)}-${i + 1}`, label: `${repoName} docs/${name}`, text });
+      });
     }
   }
   return sources;
@@ -308,14 +308,14 @@ export function outcomeSources(comments: PullComment[], repoName: string, mainta
       current = current ? `${current}${threadSeparator}${thread}` : thread;
     }
     if (current) pieces.push(current);
-    pieces.forEach((piece, i) =>
+    pieces.forEach((piece, i) => {
       sources.push({
         kind: 'review-outcomes',
         id: pieces.length === 1 ? `outcomes-${pull}` : `outcomes-${pull}-${i + 1}`,
         label: `${repoName} outcomes of #${pull}`,
         text: `The review bot's findings on pull request #${pull} that the maintainer answered, with the replies:\n\n${piece}`,
-      }),
-    );
+      });
+    });
   }
   return sources;
 }

@@ -120,7 +120,8 @@ export async function judgePosted(input: {
       judged.push({ ...entry, status: 'unsure', reason: 'The judge gave no verdict.' });
       continue;
     }
-    (input.cache[input.caseId] ??= {})[fp] = {
+    input.cache[input.caseId] ??= {};
+    input.cache[input.caseId]![fp] = {
       verdict: verdict.verdict,
       reason: verdict.reason,
       file: finding.file,

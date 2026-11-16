@@ -11,7 +11,7 @@
 //     workflow uploads the folder: artifacts on a public repository are public.
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, type Dirent, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoSecrets } from '../src/outputs.ts';
@@ -111,7 +111,7 @@ export function trimmed(output: EvalOutput): EvalOutput {
 // Scans every file under dir and returns how many there were; a missing dir has none. Anything but a regular file or a
 // folder fails, so a link can't take the upload outside what was scanned.
 export function scanDir(dir: string, knownSecrets: string[]): number {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { recursive: true, withFileTypes: true });
   } catch (error) {
