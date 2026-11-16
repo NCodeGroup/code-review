@@ -33,7 +33,8 @@ The silver criteria that need a document point to these:
 | `documentation_architecture` | [architecture.md](architecture.md) |
 | `documentation_security`, `assurance_case`, `implement_secure_design` | [assurance-case.md](assurance-case.md) |
 | Vulnerability response and credit | [SECURITY.md](../SECURITY.md) |
-| `coding_standards`; `coding_standards_enforced` is unmet | [AGENTS.md](../AGENTS.md), `.editorconfig`, and `tsconfig.json`'s strict checks in CI |
+| `coding_standards` | [CONTRIBUTING.md](../CONTRIBUTING.md#conventions), [AGENTS.md](../AGENTS.md), `.editorconfig` |
+| `coding_standards_enforced` (unmet) | CI's `npm run typecheck` enforces `tsconfig.json`'s strict checks; nothing enforces the formatting `.editorconfig` sets |
 | Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3 |
 
 ## Needs a Person
