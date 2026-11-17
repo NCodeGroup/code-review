@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Reading the action's environment variables. Nothing here imports an npm package: the acknowledgement runs it with the
 // runner's own node, before npm ci.
 

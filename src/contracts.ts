@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // What the selection floor needs to know about each changed C# file: whether the default branch packs its project, and
 // whether its diff touches a public member or a serialized contract. It reads files and text; it never builds or runs
 // anything.

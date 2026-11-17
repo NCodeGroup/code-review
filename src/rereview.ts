@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Re-reviews. A review of a pull request the bot has reviewed before reads only what changed since then, checks the
 // earlier findings against the code now, and posts nothing below should-fix, so rounds of review converge and the
 // author can tell when they're done. The first review of a pull request is unchanged.

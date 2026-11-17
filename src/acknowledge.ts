@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The acknowledgement, the action's first steps: a sign on the pull request within seconds that the review has started,
 // before setup-node and npm ci, which are most of the wait. It runs with the runner's own node and imports no npm
 // package. src/acknowledgement.ts says what each step does; this file reads the action's environment for them.

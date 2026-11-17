@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Which files a repository's project template owns. A repository made from NCodeGroup/project-template records it in
 // .copier-answers.yml. A template update replaces the template's files and discards any edit, so a defect in one can
 // only be fixed in the template: findings on them belong upstream, not on the pull request.

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Whether the publish step approves the pull request. The engine's settled verdict decides; a full review also needs no
 // bot thread of should-fix or above still open, because it can't tell a finding it no longer raises from a fixed one.
 

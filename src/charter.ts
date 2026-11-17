@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // A reviewer's charter and its frontmatter: the "key: value" lines between a leading "---" line and the next one. The
 // engine's charters (reviewers/*.md) and a repository's own read it the same way, so a setting such as shadow: means
 // the same in both.

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The one GitHub client every step of the action shares: REST and GraphQL requests, each with a time limit, to the
 // GitHub the runner names. Nothing here imports an npm package: the acknowledgement runs it with the runner's own node,
 // before setup-node and npm ci.

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Inline review threads: one comment per finding on the line it's about, posted as one GitHub review by
 // ncode-review[bot]. A finding already posted on the pull request isn't posted again, and nor is one an open issue
 // tracks.

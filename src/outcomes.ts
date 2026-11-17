@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // What became of each finding, recorded when its pull request closes: fixed, dismissed, acknowledged or ignored. Rules
 // only, no model call, so a closed pull request needs no model credentials. The review step reads the bot's threads,
 // their replies and reactions, and the commits since each finding's review with the read-only token, and writes

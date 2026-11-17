@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Reads the closed `review-guidance` issues `/review teach org` opened in NCodeGroup/code-review into
 // training/feedback.md, so the next generalization follows the rules the maintainer accepted. Only an issue the bot
 // opened, for an NCodeGroup-wide rule, and closed as completed counts; one closed as not planned is dropped.

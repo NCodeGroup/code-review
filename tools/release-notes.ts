@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Prints a version's section of CHANGELOG.md, for the Release workflow to publish as the release's notes, and fails when
 // there is no `## [<version>] - <YYYY-MM-DD>` section with entries, so a tag never goes out before its changelog.
 //

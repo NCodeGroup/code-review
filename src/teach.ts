@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // `/review teach`: turns a writer's correction into a `review-guidance` issue, in this repository for a project rule or
 // in NCodeGroup/code-review for an NCodeGroup-wide one. The review step words the issue, with no model call; the
 // publish step opens it with an app token that can write issues, after everything else, and replies on the pull

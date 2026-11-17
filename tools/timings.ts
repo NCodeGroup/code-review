@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Where reviews spent their time: it summarizes the `code-review-trace` artifacts of review runs, with one line per trace
 // (its duration, calls, cost and the span of each phase) and a table of the median and p90 duration of each role's calls.
 //

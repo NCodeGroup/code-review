@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The monthly review report: for each repository that runs the review, the pull requests closed in a month, what became
 // of their findings (the outcomes marker the bot adds when a pull request closes) and what their reviews cost (the review
 // markers in the bot's summary comments). It opens one issue, "Review report YYYY-MM", in the repository it runs in, or

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Precision for the evals. Every posted blocker and should-fix that matches no expected concern goes to an Opus judge
 // that reads the checkout and says whether it is a real defect a maintainer would act on. Verdicts are cached by case
 // and finding fingerprint in evals/verdicts.json, so a rerun judges only findings it hasn't seen.

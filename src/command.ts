@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Pull request comment commands: `/review`, `/review explain <finding>` with an optional question, and
 // `/review teach [org | <finding>] <rule>`. Only a top-level comment from someone with write access counts: a reply
 // inside a review thread is a pull_request_review_comment event, which carries no issue, so it is never a command.

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // A scanner for C#, enough to tell which member a line belongs to without a C# parser: it masks the text that isn't
 // code, then follows the braces. It never compiles or runs anything; the api-compat floor uses it on the head's files.
 

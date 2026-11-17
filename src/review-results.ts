@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Turns a review into the results.json the publish step posts. Kept out of results.ts, which the publish step loads, so
 // that step never loads the review's code.
 

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The GitHub calls behind the summary comment and the review threads: reading a pull request's comments page by page,
 // posting the new threads and a new summary, and collapsing the earlier summaries.
 

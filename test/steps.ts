@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Runs a step of the action, src/main.ts, src/publish.ts or src/finish.ts, as a child process, as the action runs it, with
 // fake-github.ts answering every fetch, so a test sees what the step does end to end and nothing reaches the network.
 

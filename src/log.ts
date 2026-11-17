@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The engine's log. Every line it writes goes through writeLog or writeErrorLog, made one printable line first, so text
 // from a pull request in it, such as a file name, can't break the line, start a workflow command or forge another line.
 

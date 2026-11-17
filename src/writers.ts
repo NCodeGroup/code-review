@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Who counts as a writer. Only a writer's text (a pull request's description and commit subjects, and the issues it
 // closes) reaches the prompts: anyone else's could steer the review.
 //

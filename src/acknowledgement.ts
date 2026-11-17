@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The acknowledgement's two steps, as functions of what they read, so they can be tested without the action:
 // src/acknowledge.ts runs them. Nothing here imports an npm package: they run with the runner's own node, before npm ci.
 //

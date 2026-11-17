@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The "Code review" check run through a run's life: created in progress by the acknowledgement, within seconds of the
 // event, then completed by the publish step with the review, or by the finish step with why there's no review. Nothing
 // here imports an npm package: the acknowledgement runs it with the runner's own node, before npm ci.
