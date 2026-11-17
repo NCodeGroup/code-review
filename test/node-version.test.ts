@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The workflows read the Node version from .node-version. The action keeps its own copy, because it runs in other
 // repositories' workflows, where this repository's .node-version isn't checked out; it must name the same version.
 

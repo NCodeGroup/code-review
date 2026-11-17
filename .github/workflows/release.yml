@@ -68,6 +68,10 @@ jobs:
 
       # The same checks as CI, on the commit about to be tagged: a tag can't be undone.
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      # Each source file starts with the copyright line and the SPDX license line (ADR-0027).
+      - name: Check the file headers
+        shell: pwsh
+        run: ./.template/Test-FileHeaders.ps1
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

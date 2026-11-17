@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The review benchmark: runs the whole review (context, selection, the reviewers, the rule checks and synthesis) on a fake
 // agent that answers after a fixed delay per role, so the wall time measures how the review schedules its calls and
 // nothing else. The delays are the typical call times of a real review, scaled down by msPerSecond. It makes no model

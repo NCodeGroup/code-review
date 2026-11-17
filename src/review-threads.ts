@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // A pull request's review threads, read through GraphQL a page at a time. Re-reviews (rereview.ts) and outcomes
 // (outcomes.ts) both read them through this, each asking for its own fields of a thread.
 

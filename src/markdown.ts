@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The escaping the bot's comments share for text from a pull request or a model.
 
 // Stops @mentions in quoted text from notifying anyone: a zero-width space after the @, which the training reader

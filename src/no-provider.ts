@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Its own module, importing nothing, so checks.ts, which the acknowledgement and finish scripts load before npm ci, can
 // recognize the error without loading the provider and its configuration.
 

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The verdict a review's findings call for, and how synthesis's verdict gives way when findings leave it. It has its own
 // module, with type imports only, so the publish step's results code can settle a verdict without loading the review.
 

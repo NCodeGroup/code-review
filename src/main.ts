@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The review step: gather, choose a provider, review, and write results.json and trace.json for the publish step, or
 // status.json with why there's no review, for the finish step. For a `/review explain` comment it writes answer.json
 // instead, for `/review teach` teach.json, and for an automatic review the loop limit pauses, paused.json. On a closed

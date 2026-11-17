@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Verification, after synthesis: Sonnet calls with the checkout, Opus ones for a deep review's sensitive files, try to
 // prove or refute each blocker and should-fix with a concrete code path. A finding is dropped only when a call refutes it
 // with a reason and a path that cites a line of the checkout outside the lines the pull request adds, and it is neither a

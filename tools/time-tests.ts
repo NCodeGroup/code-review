@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Times each test file: it runs every test file in a node process of its own, one at a time, and prints how long each
 // took, slowest first, to find what sets `npm test`'s wall time.
 //

@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { AnthropicTokenSource, secretValues } from '../src/credentials.ts';

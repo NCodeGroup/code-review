@@ -230,8 +230,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `achieve_silver` | MUST | no | no | **Check**: the site sets it once the silver level is earned. |
 | `bus_factor` | MUST | no | yes | **Person**: two or more people who could carry the project on; Unmet with one maintainer, which keeps gold from being earned. |
 | `contributors_unassociated` | MUST | no | yes | **Person**: at least two significant contributors from different organizations. |
-| `copyright_per_file` | MUST | no | no | **Gap**: Unmet until each source file starts with a copyright line. `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check. |
-| `license_per_file` | MUST | no | no | **Gap**: Unmet until each source file has an `SPDX-License-Identifier` line. `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check. |
+| `copyright_per_file` | MUST | no | no | **Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without the copyright line; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)). |
+| `license_per_file` | MUST | no | no | **Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without `SPDX-License-Identifier: Apache-2.0`; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)). |
 
 ### Change Control
 

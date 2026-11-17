@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Compares two eval outputs: recall, precision, findings per pull request and cost, then the per-case differences.
 // Recall varies by about 2 caught concerns from run to run, so a recall difference of 2 or less is flagged as noise.
 //

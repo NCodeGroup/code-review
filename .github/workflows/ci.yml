@@ -41,6 +41,9 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check the decision index
         run: ./.template/Test-AdrIndex.ps1
+      # Each source file starts with the copyright line and the SPDX license line (ADR-0027).
+      - name: Check the file headers
+        run: ./.template/Test-FileHeaders.ps1
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

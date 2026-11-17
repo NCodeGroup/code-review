@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Replays the eval cases through the review pipeline and scores them: each expected concern must be raised, and no
 // must-not-flag concern may be. A re-review case, one with a last reviewed head, also may post nothing below should-fix
 // or off the lines changed since that head. Runs locally on Bedrock with AWS_BEARER_TOKEN_BEDROCK.

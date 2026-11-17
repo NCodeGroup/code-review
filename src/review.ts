@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Stages 2, 3 and 6 of the baseline: selection, specialists and synthesis, then verification when it's on.
 
 import { createHash } from 'node:crypto';

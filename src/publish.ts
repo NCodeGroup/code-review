@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The publish step: reads results.json, reads the bot's earlier threads first, so the check run and the summary list the
 // findings those threads already raise apart, completes the "Code review" check run the acknowledgement started (or
 // posts one, when there was no acknowledgement), posts the findings as review threads, resolves or answers the bot's

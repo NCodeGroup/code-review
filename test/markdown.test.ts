@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { neutralizeMentions, neutralizeProse, neutralizeProseKeeping, plainText } from '../src/markdown.ts';

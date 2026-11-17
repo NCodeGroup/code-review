@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // A finding that says a file isn't changed, when the pull request changes it, was written from a view of the diff that
 // left the file out (issue #32). It's dropped before posting, and the summary comment, the check run and the trace
 // record it. The guard is best-effort, behind synthesis seeing every changed file: its patterns catch the usual

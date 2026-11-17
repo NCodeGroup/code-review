@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // These tests listen on 127.0.0.1 because the proxy is an HTTP server, while https.request is mocked so nothing
 // leaves the machine.
 import assert from 'node:assert/strict';

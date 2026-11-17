@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Models, prices and limits for the baseline setup: Haiku specialists, Opus selection and synthesis.
 
 export type Provider = 'anthropic' | 'bedrock';

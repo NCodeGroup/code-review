@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // A localhost proxy that adds the run's credentials to the agents' model requests. The agents get its address and a
 // placeholder key, so a prompt-injected agent has no secret to leak. Responses stream back unchanged, including
 // Bedrock's binary event stream.

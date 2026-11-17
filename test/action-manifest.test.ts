@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // GitHub loads action.yml before a caller's job runs a step, and a manifest that isn't valid YAML fails every job that
 // uses the action in "Set up job". The other action.yml tests read it line by line, so they can't see such an error.
 

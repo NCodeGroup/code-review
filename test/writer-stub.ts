@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 import { writerAssociations } from '../src/command.ts';
 import type { WriterCheck } from '../src/writers.ts';
 

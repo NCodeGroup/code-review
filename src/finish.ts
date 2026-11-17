@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The finish step: completes the "Code review" check run when the publish step didn't, so it never stays in progress.
 // It runs after the review step, whatever happened to it: the review found no provider, failed, was cancelled, or
 // stopped before it began. The reason comes from the review step's status.json, or from the steps' outcomes when there
