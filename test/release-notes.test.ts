@@ -238,16 +238,16 @@ test("the script prints an error annotation and exits 1 when the changelog can't
   assert.match(result.stderr, /^::error::ENOENT/);
 });
 
+type Step = { name?: string; uses?: string; if?: string; run?: string; env?: Record<string, string> };
+type Workflow = {
+  jobs: Record<string, { needs?: string | string[]; permissions?: Record<string, string>; steps: Step[] }>;
+};
+const readWorkflow = (name: string) =>
+  parse(readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8')) as Workflow;
+
 test('release.yml signs the tag it makes with gitsign, as tag-release.yml does', () => {
-  type Step = { name?: string; uses?: string; if?: string; run?: string; env?: Record<string, string> };
-  type Workflow = {
-    jobs: Record<string, { needs?: string | string[]; permissions?: Record<string, string>; steps: Step[] }>;
-  };
-  const read = (name: string) =>
-    parse(readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8')) as Workflow;
-  const manualJobs = read('release.yml').jobs;
-  const manual = manualJobs['release']!;
-  const onMerge = read('tag-release.yml').jobs['release']!;
+  const manual = readWorkflow('release.yml').jobs['release']!;
+  const onMerge = readWorkflow('tag-release.yml').jobs['release']!;
   const isGitsign = (step: Step) => step.uses?.startsWith('chainguard-dev/actions/setup-gitsign@') ?? false;
 
   const o = onMerge.steps.find(isGitsign);
@@ -269,13 +269,17 @@ test('release.yml signs the tag it makes with gitsign, as tag-release.yml does',
   assert.match(script, /git push origin "refs\/tags\/\$tag"/);
   assert.match(script, /gh release create "\$tag"[\s\S]*--verify-tag/);
   assert.doesNotMatch(script, /--target/);
+});
 
-  const check = manualJobs['check'];
+test('release.yml runs npm only in a read-only job that the job that tags and signs waits for', () => {
+  const jobs = readWorkflow('release.yml').jobs;
+  const check = jobs['check'];
   assert.deepEqual(check?.permissions, { contents: 'read' }, 'the job that runs npm can neither write nor sign');
   assert.ok(check?.steps.some((step) => step.run === 'npm test') ?? false, 'the check job runs the tests');
-  assert.equal(manual.needs, 'check');
+  const release = jobs['release']!;
+  assert.equal(release.needs, 'check');
   assert.ok(
-    !manual.steps.some((step) => /\bnpm\b/.test(step.run ?? '')),
+    !release.steps.some((step) => /\bnpm\b/.test(step.run ?? '')),
     'the job that can write and sign runs no npm',
   );
 });
