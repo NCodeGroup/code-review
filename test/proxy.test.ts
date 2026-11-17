@@ -39,8 +39,9 @@ afterEach(() => {
   mock.restoreAll();
 });
 
+const anthropic = { token: async () => 'anthropic-token' } as unknown as AnthropicTokenSource;
 const credentials: Credentials = {
-  anthropic: { token: async () => 'anthropic-token' } as unknown as AnthropicTokenSource,
+  anthropic,
   bedrockKey: 'bedrock-key',
 };
 
@@ -128,7 +129,7 @@ test('an anthropic request without the Anthropic login gets 404 and no upstream 
 
 test('a bedrock request without the Bedrock key gets 404 and no upstream call', async () => {
   mockUpstream();
-  const proxy = await startProxy({ anthropic: credentials.anthropic });
+  const proxy = await startProxy({ anthropic });
   try {
     const response = await fetch(`${proxy.url}/bedrock/model/m/invoke`, { method: 'POST', body: '{}' });
     assert.equal(response.status, 404);
