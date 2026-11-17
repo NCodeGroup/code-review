@@ -4,6 +4,9 @@ code-review is registered at bestpractices.dev as
 [project 16752](https://www.bestpractices.dev/projects/16752), where the answers are kept: this page doesn't copy them.
 It maps the criteria that need a document to the evidence this repository holds.
 
+[best-practices-criteria.md](best-practices-criteria.md), which the template keeps current, maps every criterion of the
+three levels to the answer to expect and its evidence, and holds the prompt that updates the saved answers.
+
 ## The Badge
 
 ```html
@@ -19,8 +22,9 @@ OpenSSF Scorecard's CII-Best-Practices check scores the badge level: in progress
 Passing since 2026-11-16. Silver can't be claimed while the project has one developer: `access_continuity` needs a
 second owner. `coding_standards_enforced` is met: CI's `npm run lint` runs Biome, which fails on code that
 `biome.json`'s formatting or lint rules don't accept. Releases meet `signed_releases` through GitHub's release
-attestations, which [README.md](../README.md#versions) says how to verify; release tags aren't signed
-(`version_tags_signed`, SUGGESTED).
+attestations, which [README.md](../README.md#versions) says how to verify, and `version_tags_signed` through the gitsign
+signature `tag-release.yml` puts on each release tag it makes, which [SECURITY.md](../SECURITY.md#verify-a-release)
+says how to check.
 
 ## Toward Silver
 
@@ -40,11 +44,16 @@ The silver criteria that need a document point to these:
 
 ## Needs a Person
 
-- `access_continuity` (MUST): a second owner of the GitHub organization, as
+- `access_continuity` (silver MUST): a second owner of the GitHub organization, as
   [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. The project has one developer for now, so silver can't be claimed.
-- `bus_factor` (SHOULD): a bus factor of 2 or more, which the same second owner gives.
-- `two_person_review` (gold): a second maintainer.
-- `dco` (SHOULD): unmet. The project doesn't ask for `Signed-off-by`
+- `bus_factor` (silver SHOULD, gold MUST): a bus factor of 2 or more, which the same second owner gives.
+- `two_person_review` (gold MUST): a second maintainer.
+- `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the GitHub organization requires two-factor authentication, with
+  secure methods only, which only an owner can set and confirm.
+- `security_review` (gold MUST): a security review in the last five years, recorded in
+  [assurance-case.md](assurance-case.md#security-reviews).
+- `dco` (silver SHOULD): unmet. The project doesn't ask for `Signed-off-by`
   ([ADR-0023](decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)).
 
 ## Also Supported
