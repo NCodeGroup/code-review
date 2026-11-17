@@ -69,7 +69,12 @@ jobs:
       # The same checks as CI, on the commit about to be tagged: a tag can't be undone.
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
+      # Fails below 90% of the statements or 80% of the branches, from the reports the tests wrote (ADR-0026).
+      - name: Coverage
+        shell: pwsh
+        run: ./.template/Test-Coverage.ps1
 
   release:
     name: Tag and publish
