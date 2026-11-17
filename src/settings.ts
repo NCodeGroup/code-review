@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The repository's own review settings, from .github/code-review/ on the default branch's checkout only, so a pull
 // request can't soften its own review: config.yml, guidance.md and reviewers/*.md. Everything in them is data from the
 // repository. A setting that can't be used is left out with a warning for the check run; it never fails the review.

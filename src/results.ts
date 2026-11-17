@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // What the review step hands the publish step, and how it reads in the check run and the summary comment.
 
 import type { CallRecord } from './agent.ts';

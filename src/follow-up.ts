@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Closing the loop on the bot's own review threads, in the publish step with the app's token. A re-review that finds an
 // earlier finding fixed, where the thread is outdated or its lines changed, resolves the thread. One that finds it still
 // open after the autopilot replied, from an account with write access by the engine's writer check (its association, or

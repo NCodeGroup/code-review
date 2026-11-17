@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The loop limit. At most three reviews of a pull request with no comment from someone with write access in between:
 // after that, an automatic review is skipped before any model call, and the bot posts once that it has paused. The
 // autopilot posts as the maintainer's account, with comments that start with "Autopilot:", so those don't count as the

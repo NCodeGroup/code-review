@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Checks a template adoption or update against the template itself: a changed file the template would own is left to
 // it only when it is the template's own copy at the _commit the head's answers name, and that commit is on the template's
 // default branch or a tag. Otherwise a writer could change _commit and edit the template's files by hand in the same

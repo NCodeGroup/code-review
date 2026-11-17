@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Teaches the review bot NCodeGroup-wide rules from a repository's own decisions, conventions, standards, review
 // prompts and its maintainer's review comments.
 //

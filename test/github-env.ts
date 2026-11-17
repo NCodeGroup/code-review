@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 import { afterEach, beforeEach } from 'node:test';
 
 const names = ['GITHUB_API_URL', 'GITHUB_GRAPHQL_URL'];

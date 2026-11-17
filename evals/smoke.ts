@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The smoke eval's gate, run by .github/workflows/smoke-eval.yml after node evals/run.ts --subset smoke.
 //
 //   node evals/smoke.ts check <run.json> [--baseline <file>]

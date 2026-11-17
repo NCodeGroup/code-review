@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The shape of evals/cases.json, shared by the eval runner and npm run eval:confirm.
 
 import type { EarlierFinding } from '../src/rereview.ts';

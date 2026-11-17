@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Stage 0: everything the reviewers see, read from the checkouts without running anything from them.
 
 import { execFileSync } from 'node:child_process';

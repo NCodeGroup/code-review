@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The layout of one learned guidance bullet, in guidance/*.md: training writes it, and the engine reads its tag.
 //
 //   - **statement** why *Check:* check *Note:* note *Applies to:* `glob`, `glob` <sub>source; source</sub>

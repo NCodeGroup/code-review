@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The repository's open issues, for synthesis to mark a finding one of them already tracks. Only issues opened by
 // someone with write access are read, so a stranger can't file an issue whose title waves a finding away. Write access
 // is the engine's writer check (writers.ts), so a private organization member's issues count.

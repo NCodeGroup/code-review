@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The run's model credentials. They live only in this process: the proxy adds them to each request, and the agents
 // get a placeholder.
 

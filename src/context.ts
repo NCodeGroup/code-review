@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // The context stage: from every rule the bot knows (the learned NCodeGroup guidance and the repository's own
 // review-only conventions) and every decision record the repository has accepted, one Sonnet call picks what bears on
 // this pull request. Each reviewer then gets a short list of rules for its charter instead of whole rule files, and

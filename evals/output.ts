@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // evals/out/<label>.json: evals/run.ts writes it, and eval:compare and the smoke eval read it. A field an older output
 // may lack is optional.
 

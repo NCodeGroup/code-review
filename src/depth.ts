@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // How deep a review goes. It has its own module, imports nothing, so the results and comments code that the
 // acknowledgement and finish scripts load doesn't load the review and its npm packages.
 

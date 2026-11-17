@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // `/review explain <ref>`: finds the finding a comment asks about, has one agent read the code again, and words the
 // answer the publish step posts as a top-level comment on the pull request.
 

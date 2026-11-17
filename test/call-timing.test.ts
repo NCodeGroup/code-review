@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';

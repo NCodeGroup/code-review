@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Everything the run publishes is scanned for secrets first: comments, check run text and the trace artifact are public
 // on public repositories.
 

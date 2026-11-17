@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Lets the maintainer confirm the precision judge's verdicts, growing the eval set: a confirmed real finding becomes an
 // expected concern of its case in evals/cases.json, a confirmed not-real one a must-not-flag concern.
 //

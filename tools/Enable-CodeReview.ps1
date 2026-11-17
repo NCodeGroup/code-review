@@ -1,3 +1,6 @@
+# Copyright © NCode Group
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
     Opt repositories into NCode Review, and set or replace the review's two keys, which are stored once as organization

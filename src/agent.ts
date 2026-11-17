@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Runs one model call through the Agent SDK, locked down: no settings, hooks, MCP servers or CLAUDE.md from anywhere,
 // read-only tools confined to the checkout, and an environment that holds no secret.
 

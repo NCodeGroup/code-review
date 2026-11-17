@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Loaded with --import into src/main.ts, src/publish.ts or src/finish.ts run as a child process, so a test runs a step as the action
 // does while every fetch reaches only this fake GitHub, never the network. FAKE_GITHUB_ROUTES names a JSON file of
 // answers: `rest` by "METHOD URL", and `graphql` as [text in the query, answer] pairs, the first match winning. Each

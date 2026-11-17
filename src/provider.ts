@@ -1,3 +1,6 @@
+// Copyright © NCode Group
+// SPDX-License-Identifier: Apache-2.0
+
 // Picks the run's provider: Anthropic while the plan's API credits last, then Bedrock with the organization's key.
 
 import { bedrockRegion, modelIds, type Provider } from './config.ts';
