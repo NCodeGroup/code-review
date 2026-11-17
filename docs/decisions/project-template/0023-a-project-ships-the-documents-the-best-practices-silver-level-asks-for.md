@@ -1,6 +1,6 @@
 # 0023. A project ships the documents the OpenSSF Best Practices silver level asks for
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0025)
 - **Date:** 2026-11-15
 
 ## Context
@@ -28,8 +28,9 @@ controls is separated from what only the maintainers know.
    names it, such as an email address or a URL. Left blank, a report goes to GitHub's private vulnerability report form
    with a title that starts "Conduct:", or to a confidential issue on GitLab.
 4. The documents say what needs people: the criterion `access_continuity` needs a second owner of the repository's
-   organization or group, and gold's two-person review needs a second maintainer. The template can't supply either, so
-   a project is not claimed to meet the silver level before it has them.
+   organization or group, and gold's two-person review needs a second maintainer. Gold also needs two unassociated
+   contributors, the organization's two-factor settings and a recorded security review. The template can't supply
+   these, so a project is not claimed to meet the silver level before it has them.
 5. The template asks for no `dco`, the criterion that wants a `Signed-off-by` line on each commit.
 
 ## Options considered
@@ -49,7 +50,9 @@ controls is separated from what only the maintainers know.
 - A project that keeps one of these files elsewhere, such as `.github/CODE_OF_CONDUCT.md`, gets a copy at the root on
   its next update, to merge into its own or delete.
 - The silver level waits for a second owner, and the gold level for a second maintainer.
-- The documents map each criterion to its evidence, so registering at bestpractices.dev is answering, not researching.
+- The documents map the silver criteria that need one to their evidence, and `docs/best-practices-criteria.md` maps
+  every criterion ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)), so
+  registering at bestpractices.dev is answering, not researching.
 
 ## References
 
@@ -59,4 +62,6 @@ controls is separated from what only the maintainers know.
 - [OpenSSF Best Practices](https://www.bestpractices.dev)
 - [ADR-0018](0018-agent-attribution-is-avoided-not-enforced.md): agent attribution is avoided, not enforced.
 - [ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md): GitHub projects are scored by OpenSSF Scorecard.
+- [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion
+  is mapped in a template-owned page.
 - [NCodeGroup/project-template#383](https://github.com/NCodeGroup/project-template/issues/383)

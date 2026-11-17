@@ -46,6 +46,10 @@
     on any other value. .github/workflows/tag-release.yml runs it in a job that can only read, and runs the job that
     tags and publishes only for tag or tag+release.
 
+.PARAMETER Sign
+    Sign the tag, with git tag -s and the signing program Git is set up with, such as the gitsign that tag-release.yml
+    sets up in a public repository (the template's ADR-0028). Without it the tag is annotated and unsigned.
+
 .EXAMPLE
     ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA
 
@@ -60,7 +64,8 @@ param(
     [string]$Commit = 'HEAD',
     [string]$Remote = 'origin',
     [string]$Gh = 'gh',
-    [switch]$Policy
+    [switch]$Policy,
+    [switch]$Sign
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -187,8 +192,9 @@ if ($tags -ccontains $version) {
         if ($held -ne $number) { throw "version.json at $sha holds version '$held', but the release is ${number}: set its version to $number in a pull request, whose merge tags the release." }
     }
     if ($PSCmdlet.ShouldProcess("$sha on $Remote", "Tag $version")) {
-        & git tag -a $version -m $version $sha
-        if ($LASTEXITCODE) { throw "git tag -a $version exited $LASTEXITCODE." }
+        $tagFlag = if ($Sign) { '-s' } else { '-a' }
+        & git tag $tagFlag $version -m $version $sha
+        if ($LASTEXITCODE) { throw "git tag $tagFlag $version exited $LASTEXITCODE." }
         & git push $Remote "refs/tags/$version"
         if ($LASTEXITCODE) {
             & git tag -d $version | Out-Null
@@ -197,7 +203,7 @@ if ($tags -ccontains $version) {
             if (-not ((Get-RemoteTag $Remote) -ccontains $version)) { throw "Pushing the tag $version to $Remote failed." }
             "$Remote got the tag $version from another run meanwhile."
         } else {
-            "Tagged $sha as $version and pushed it to $Remote."
+            "Tagged $sha as $version$(if ($Sign) { ', signed,' }) and pushed it to $Remote."
         }
     }
 }

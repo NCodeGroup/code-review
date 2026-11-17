@@ -21,6 +21,9 @@ PLAN.md
 # The analysis in progress: a local working file, never committed
 ANALYSIS.md
 
+# The OpenSSF Best Practices prompt /best-practices writes: a local working file, never committed
+best-practices-prompt.txt
+
 # Secrets
 .env
 .env.*
@@ -31,6 +34,7 @@ ANALYSIS.md
 node_modules/
 dist/
 coverage/
+lcov.info
 
 # Kept from this repository's own .gitignore when it adopted the project template
 out/
