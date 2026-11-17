@@ -1,6 +1,6 @@
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022)
+- **Status:** Accepted (amended by 0022 and 0025)
 - **Date:** 2026-11-14
 
 ## Context
@@ -24,10 +24,10 @@ The table lists each check, what the template does for it and what needs a perso
 | Binary-Artifacts | Commits no binary files. | Nothing. |
 | Dangerous-Workflow | No workflow runs untrusted pull request code with a privileged token. | Nothing. |
 | Pinned-Dependencies | Workflow actions are pinned by commit SHA ([ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md)). | Nothing. |
-| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write` and `actions: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`. | Nothing. |
+| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write`, `actions: write` and `id-token: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`. | Nothing. |
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
-| License | `LICENSE` ships. | Nothing. |
+| License | `LICENSE.txt` ships, for the `Apache-2.0` license ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)). | Nothing. |
 | SAST | CodeQL runs through the ruleset. | Nothing. |
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
@@ -38,7 +38,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Code-Review | Any non-author approval counts, a bot's included: NCode Review approves a clean review ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)). | Approve each bot's pull request, which NCode Review skips; the score rises toward 10 over the last 30 commits. |
 | Contributors | None. | Contributors from other organizations. |
 | Fuzzing | A .NET project adds FsCheck property tests to its test project. | Write the property tests. |
-| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization; gold needs two-person review. |
+| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)) and `docs/best-practices-criteria.md`, which maps every criterion to the answer to expect and its evidence ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization; gold needs two-person review, two unassociated contributors, the organization's two-factor settings and a security review. |
 
 ## Options considered
 
@@ -64,5 +64,7 @@ The table lists each check, what the template does for it and what needs a perso
   approval.
 - [ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md): a project ships the
   documents the Best Practices silver level asks for.
+- [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion is
+  mapped in a template-owned page.
 - `.github/workflows/scorecard.yml`
 - Scorecard's `checks/evaluation/branch_protection.go` and `probes/codeApproved/impl.go`

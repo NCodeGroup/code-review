@@ -8,6 +8,9 @@ on:
   # A required check must also report in a merge queue.
   merge_group:
     types: [checks_requested]
+  # tag-release.yml runs this workflow before it tags a release (ADR-0026).
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -1,12 +1,16 @@
 # Written by Copier; never edit by hand. Change an answer with .template\Update-Project.ps1 -Data.
-_commit: v0.96.0
+_commit: v0.99.0
 _src_path: https://github.com/NCodeGroup/project-template.git
 author_name: NCode Group
+best_practices_project: '16752'
 build_command: npm run typecheck
 code_review: true
 conduct_contact: ''
+coverage_gate: false
+file_headers: false
 git_host: github
 license: Apache-2.0
+node_lint: false
 package_manager: npm
 project_description: 'AI pull request review for NCodeGroup repositories: a GitHub
     composite action on the Claude Agent SDK'
