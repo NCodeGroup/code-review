@@ -23,8 +23,8 @@ Passing since 2026-11-16. Silver can't be claimed while the project has one deve
 second owner. `coding_standards_enforced` is met: CI's `npm run lint` runs Biome, which fails on code that
 `biome.json`'s formatting or lint rules don't accept. Releases meet `signed_releases` through GitHub's release
 attestations, which [README.md](../README.md#versions) says how to verify, and `version_tags_signed` through the gitsign
-signature `tag-release.yml` puts on each release tag it makes, which [SECURITY.md](../SECURITY.md#verify-a-release)
-says how to check.
+signature `tag-release.yml` and `release.yml` put on each release tag they make, which
+[SECURITY.md](../SECURITY.md#verify-a-release) says how to check.
 
 ## Toward Silver
 
