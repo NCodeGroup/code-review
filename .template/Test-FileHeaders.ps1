@@ -5,11 +5,18 @@
 .DESCRIPTION
     From the project template; template updates replace this file (the template's ADR-0027). It reads author_name and
     license from .copier-answers.yml. Every tracked source file outside .template/, .claude/, .github/, .githooks/,
-    .vscode/ and any node_modules/ folder must hold a "Copyright <author_name>" comment line and, when license isn't
-    blank, a "SPDX-License-Identifier: <license>" comment line within its first 10 lines. The comment marker follows the
-    file's extension; files of other kinds, and names ending in .min.js or .d.ts, aren't checked.
-    Prints each miss and exits 1 when there is one, else 0. With -Fix, it adds the missing lines instead, keeping the
-    file's line endings and byte order mark, and exits 0. Without an author_name answer there is no header to check.
+    .vscode/ and any node_modules/ or vendor/ folder, which hold other authors' code, must hold a
+    "Copyright <author_name>" comment line and, when license isn't blank, a "SPDX-License-Identifier: <license>"
+    comment line within its first 10 lines. The comment follows the file's extension: "#" for scripts, "//" for the C
+    family and JavaScript, "/* ... */" on each line for .css, .scss and .less, and "//" inside the frontmatter for
+    .astro, whose lines must sit between its leading "---" lines so nothing reaches the built page. Files of other
+    kinds, and names ending in .min.js, aren't checked. A hand-written declaration file (.d.ts) is checked like any
+    TypeScript file; a generated one, like other build output, sits in a git-ignored folder, which git ls-files
+    leaves out.
+    Prints each miss and exits 1 when there is one, else 0. With -Fix, it adds the missing lines instead, after any #!
+    line or an .astro file's opening "---" line, giving an .astro file without frontmatter a "---" block that holds
+    them, keeping the file's line endings and byte order mark, and exits 0. Without an author_name answer there is no
+    header to check.
 
 .PARAMETER Root
     The repository root. Defaults to the folder above this script's.
@@ -50,7 +57,8 @@ $copyrightLine = "Copyright $([char]0x00A9) $author"
 $spdxLine = if ($license) { "SPDX-License-Identifier: $license" }
 
 $hashMarker = '.ps1', '.psm1', '.py', '.sh', '.bash', '.rb', '.tf'
-$slashMarker = '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.scala', '.dart', '.groovy'
+$slashMarker = '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.scala', '.dart', '.groovy', '.astro'
+$blockMarker = '.css', '.scss', '.less'
 
 $listed = git -C $Root ls-files -z
 if ($LASTEXITCODE) { throw "git ls-files exited with code $LASTEXITCODE." }
@@ -60,9 +68,9 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 $checked = 0
 $failing = 0
 foreach ($path in $paths) {
-    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)node_modules/' -or $path -match '\.(min\.js|d\.ts)$') { continue }
+    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)(node_modules|vendor)/' -or $path -match '\.min\.js$') { continue }
     $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
-    $marker = if ($hashMarker -contains $extension) { '#' } elseif ($slashMarker -contains $extension) { '//' } else { continue }
+    $open, $close = if ($hashMarker -contains $extension) { '#', '' } elseif ($slashMarker -contains $extension) { '//', '' } elseif ($blockMarker -contains $extension) { '/*', '*/' } else { continue }
     $file = Join-Path $Root $path
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { continue }
     $checked++
@@ -73,12 +81,28 @@ foreach ($path in $paths) {
     $eol = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
     $lines = @($text -split '\r?\n')
 
-    $escapedMarker = [regex]::Escape($marker)
-    $copyrightPattern = "^\s*$escapedMarker.*\bCopyright\b.*$([regex]::Escape($author))"
-    $spdxPattern = if ($license) { "^\s*$escapedMarker\s*SPDX-License-Identifier:\s*$([regex]::Escape($license))\s*$" }
+    # An Astro component's header belongs in its frontmatter, which the build drops: a comment outside it, even an
+    # HTML one, reaches the built page. So only the lines between its leading "---" lines count; a frontmatter that
+    # never closes, which Astro rejects, runs to the end of the file, so -Fix still puts the header after its "---".
+    $isAstro = $extension -eq '.astro'
+    $frontmatter = $isAstro -and $lines[0].Trim() -eq '---'
+    $first = 0
+    $last = [Math]::Min(10, $lines.Count)
+    if ($frontmatter) {
+        for ($end = 1; $end -lt $lines.Count -and $lines[$end].Trim() -ne '---'; $end++) {}
+        $first = 1
+        $last = [Math]::Min($last, $end)
+    } elseif ($isAstro) {
+        $last = 0
+    }
+
+    $escapedOpen = [regex]::Escape($open)
+    $closePattern = if ($close) { "\s*$([regex]::Escape($close))" } else { '' }
+    $copyrightPattern = "^\s*$escapedOpen.*\bCopyright\b.*$([regex]::Escape($author))"
+    $spdxPattern = if ($license) { "^\s*$escapedOpen\s*SPDX-License-Identifier:\s*$([regex]::Escape($license))$closePattern\s*$" }
     $copyrightAt = -1
     $spdxAt = -1
-    for ($i = 0; $i -lt [Math]::Min(10, $lines.Count); $i++) {
+    for ($i = $first; $i -lt $last; $i++) {
         if ($copyrightAt -lt 0 -and $lines[$i] -match $copyrightPattern) { $copyrightAt = $i }
         if ($spdxAt -lt 0 -and $spdxPattern -and $lines[$i] -match $spdxPattern) { $spdxAt = $i }
     }
@@ -93,11 +117,19 @@ foreach ($path in $paths) {
         continue
     }
 
-    $copyrightText = "$marker $copyrightLine"
-    $spdxText = if ($spdxLine) { "$marker $spdxLine" }
+    $suffix = if ($close) { " $close" } else { '' }
+    $copyrightText = "$open $copyrightLine$suffix"
+    $spdxText = if ($spdxLine) { "$open $spdxLine$suffix" }
     if ($missingCopyright -and $missingSpdx) {
-        $header = @($copyrightText) + @($spdxText | Where-Object { $_ }) + @('')
-        $at = if ($lines[0] -like '#!*') { 1 } else { 0 }
+        $header = @($copyrightText) + @($spdxText | Where-Object { $_ })
+        if ($isAstro -and -not $frontmatter) {
+            $header = @('---') + $header + @('---')
+            $at = 0
+        } else {
+            $at = if ($frontmatter -or $lines[0] -like '#!*') { 1 } else { 0 }
+            # A blank line sets the header apart from the code, but a frontmatter's closing line needs none.
+            if (-not ($frontmatter -and $at -lt $lines.Count -and $lines[$at].Trim() -eq '---')) { $header += '' }
+        }
     } elseif ($missingSpdx) {
         $header = @($spdxText)
         $at = $copyrightAt + 1

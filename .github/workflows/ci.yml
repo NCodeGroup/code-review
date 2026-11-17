@@ -8,7 +8,9 @@ on:
   # A required check must also report in a merge queue.
   merge_group:
     types: [checks_requested]
-  # tag-release.yml runs this workflow before it tags a release (ADR-0026).
+  # tag-release.yml runs this workflow before it tags a release and grants it only contents: read: GitHub fails that
+  # run as it starts when a job here asks for more, whatever its if: says, so such a job goes in a workflow of its own
+  # (ADR-0026).
   workflow_call:
   workflow_dispatch:
 

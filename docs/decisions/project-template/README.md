@@ -42,7 +42,7 @@ never brings a number the project already uses
 | [0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md) | Every OpenSSF Best Practices criterion of the passing, silver and gold levels is mapped to the answer to expect and its evidence in the template-owned `docs/best-practices-criteria.md`, which a test checks against the badge's own list (amends 0023 and 0020) |
 | [0026](0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md) | With `coverage_gate`, CI fails below 90% of the statements or 80% of the branches, and a GitHub release is tagged only after `tag-release.yml` runs CI again on its commit (amends 0016) |
 | [0027](0027-source-files-carry-a-copyright-and-spdx-license-header.md) | With `file_headers`, every source file starts with the copyright line and the SPDX license line, which `.template/Test-FileHeaders.ps1` checks in CI and `-Fix` adds |
-| [0028](0028-github-releases-are-immutable-and-their-tags-signed.md) | GitHub releases are immutable, outside a library with `release-provenance.yml`, and a public repository's release tags are signed with gitsign; `SECURITY.md` says how to verify both (amends 0016) |
+| [0028](0028-github-releases-are-immutable-and-their-tags-signed.md) | GitHub releases are immutable, outside a repository with a workflow that runs on a release event or uploads release assets, and a public repository's release tags are signed with gitsign; `SECURITY.md` says how to verify both (amends 0016) |
 
 ## Node.js
 
