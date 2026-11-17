@@ -83,6 +83,19 @@ test('token calls started together share one exchange', async () => {
   assert.deepEqual(tokens, ['access-1', 'access-1']);
 });
 
+test('token reuses the first until the two-minute renewal window', async () => {
+  mock.timers.enable({ apis: ['Date'], now: 0 });
+  const calls = mockFetch();
+  const source = newSource();
+
+  assert.equal(await source.token(), 'access-1');
+  mock.timers.tick(479_999);
+  const reused = await source.token();
+
+  assert.equal(reused, 'access-1');
+  assert.equal(calls.length, 2);
+});
+
 test('token exchanges again inside the two-minute renewal window', async () => {
   mock.timers.enable({ apis: ['Date'], now: 0 });
   const calls = mockFetch();
