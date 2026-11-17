@@ -42,7 +42,7 @@ Every change is reviewed in its pull request before it merges. A reviewer checks
 - the documents it affects, the changelog and, for a change consumers can observe, its decision record change in the same pull request;
 - it follows the conventions [AGENTS.md](AGENTS.md) indexes, and adds no secret, credential or unpinned dependency.
 
-A pull request is acceptable once CI passes, every discussion on it has been fixed or answered with why not and replied to ([the decision](docs/decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)), NCode Review has approved it, and a maintainer has reviewed it. A maintainer merges it.
+A pull request is acceptable once CI passes, NCode Review has reviewed it, every discussion on it, NCode Review's findings included, has been fixed or answered with why not and replied to ([the decision](docs/decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)), and a maintainer has reviewed it. A maintainer merges it.
 
 ## Commit Attribution
 
