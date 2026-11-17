@@ -1,6 +1,6 @@
 # Contributing to code-review
 
-Issues and pull requests are welcome. [README.md](README.md) explains the project, and [AGENTS.md](AGENTS.md) holds the rules every change follows, for people and coding agents alike. Report a vulnerability privately instead, as [SECURITY.md](SECURITY.md) says. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); [GOVERNANCE.md](GOVERNANCE.md) says who decides what, and [ROADMAP.md](ROADMAP.md) where the project is going.
+Issues and pull requests are welcome. [README.md](README.md) explains the project, and [AGENTS.md](AGENTS.md) holds the rules every change follows, for people and coding agents alike. Report a vulnerability privately instead, as [SECURITY.md](SECURITY.md) says. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); [GOVERNANCE.md](GOVERNANCE.md) says who decides what, and [ROADMAP.md](ROADMAP.md) where the project is going. Issues labeled `good first issue` are small, self-contained tasks for a first contribution.
 
 ## Prerequisites
 
@@ -33,6 +33,17 @@ The one-time Biome reformat is listed in `.git-blame-ignore-revs`, which GitHub'
 5. Before you push, run the commands above; they must pass.
 6. Open a pull request into the default branch whose description ends with a `Closes #<issue>` line. The default branch takes changes only through pull requests: a maintainer merges yours once CI passes.
 
+## Review Requirements
+
+Every change is reviewed in its pull request before it merges. A reviewer checks that:
+
+- the change does what its issue asks, and nothing the issue doesn't;
+- tests cover the behavior it adds or changes, and CI passes;
+- the documents it affects, the changelog and, for a change consumers can observe, its decision record change in the same pull request;
+- it follows the conventions [AGENTS.md](AGENTS.md) indexes, and adds no secret, credential or unpinned dependency.
+
+A pull request is acceptable once CI passes, every discussion on it has been fixed or answered with why not and replied to ([the decision](docs/decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)), NCode Review has approved it, and a maintainer has reviewed it. A maintainer merges it.
+
 ## Commit Attribution
 
 Commits record the people who wrote them, so avoid AI agent attribution: don't add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer or a "Generated with" line; say which tools helped in the pull request instead. Nothing checks for it or blocks a commit, push or pull request that has it, so one a tool adds anyway needs no fix. [The decision](docs/decisions/project-template/0018-agent-attribution-is-avoided-not-enforced.md) says why.
@@ -40,6 +51,8 @@ Commits record the people who wrote them, so avoid AI agent attribution: don't a
 ## Conventions
 
 [AGENTS.md](AGENTS.md) is the index of the conventions: the instruction files it lists, and the decisions in `docs/decisions/`. Read the ones your change touches. It also says which files the project template owns: template updates replace them, so never edit them.
+
+A reformat or a large move brings back the CodeQL alerts dismissed on the code it moves, since a dismissal follows the alert's location, not the code: dismiss each again, with its reason. When that reason isn't obvious from the code, put it in a comment beside the code, so the next dismissal takes a minute.
 
 ## AI-Assisted Work
 
