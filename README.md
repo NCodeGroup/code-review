@@ -240,8 +240,8 @@ releases were immutable, don't. The releases have no assets: the action is its s
 [Verifying the integrity of a release](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity)
 explains the attestation.
 
-Each release tag that `tag-release.yml` or `release.yml` makes is also signed with gitsign; [SECURITY.md](SECURITY.md#verify-a-release)
-gives the command that checks it.
+Each release tag that `tag-release.yml` or `release.yml` makes is also signed with gitsign;
+[SECURITY.md](SECURITY.md#verify-a-release) gives the command that checks it.
 
 A release is made by merging. A plan whose change reaches consumers carries a `Release:` line, such as `v1.2.0`, and its last step moves `## [Unreleased]` in `CHANGELOG.md` into that version's dated section, `## [1.2.0] - 2026-11-14`, with its entries. When its pull request merges, `tag-release.yml` runs CI on the merge commit, then tags it and publishes a GitHub release whose notes are that section, so nobody runs a workflow ([ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)). A plan that changes only CI, tests or docs has no `Release:` line and releases nothing. A tag can't be deleted afterwards, so a mistake is fixed by releasing the next version.
 
