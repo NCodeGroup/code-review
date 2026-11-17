@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 import { releaseNotes } from '../tools/release-notes.ts';
 
 const changelog = `# Changelog
@@ -235,4 +236,34 @@ test("the script prints an error annotation and exits 1 when the changelog can't
   assert.equal(result.status, 1);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /^::error::ENOENT/);
+});
+
+test('release.yml signs the tag it makes with gitsign, as tag-release.yml does', () => {
+  type Step = { name?: string; uses?: string; if?: string; run?: string; env?: Record<string, string> };
+  type Workflow = { jobs: Record<string, { permissions?: Record<string, string>; steps: Step[] }> };
+  const read = (name: string) =>
+    parse(readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8')) as Workflow;
+  const manual = read('release.yml').jobs['release']!;
+  const onMerge = read('tag-release.yml').jobs['release']!;
+  const isGitsign = (step: Step) => step.uses?.startsWith('chainguard-dev/actions/setup-gitsign@') ?? false;
+
+  const o = onMerge.steps.find(isGitsign);
+  assert.ok(o, 'tag-release.yml has a setup-gitsign step');
+  const gitsignIndex = manual.steps.findIndex(isGitsign);
+  const m = manual.steps[gitsignIndex];
+  assert.deepEqual({ uses: m?.uses, if: m?.if }, { uses: o.uses, if: o.if });
+  assert.equal(manual.permissions?.['id-token'], 'write');
+
+  const publishIndex = manual.steps.findIndex((step) => step.name === 'Tag and publish');
+  const publish = manual.steps[publishIndex]!;
+  assert.ok(publishIndex > gitsignIndex, 'the tag is made after gitsign is set up');
+  const onMergePublish = onMerge.steps.find((step) => step.name === 'Tag and publish the newest release');
+  assert.equal(publish.env?.['SIGN'], onMergePublish?.env?.['SIGN']);
+  const script = publish.run ?? '';
+  assert.match(script, /flag=-s/);
+  assert.match(script, /git tag "\$flag" "\$tag"/);
+  assert.match(script, /gh auth setup-git/);
+  assert.match(script, /git push origin "refs\/tags\/\$tag"/);
+  assert.match(script, /gh release create "\$tag"[\s\S]*--verify-tag/);
+  assert.doesNotMatch(script, /--target/);
 });
