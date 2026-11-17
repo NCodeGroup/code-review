@@ -3,7 +3,8 @@ name: Release (manual)
 # Tags the tip of main as an exact version, signed with gitsign in a public repository as tag-release.yml signs its
 # tags, and publishes its notes. Run it by hand, from main, with the version to release. The "Protect release tags"
 # ruleset forbids updating or deleting a v* tag, so a tag made here can never be moved or removed; this workflow
-# therefore checks everything before it creates one.
+# therefore checks everything before it creates one. The checks run in a job that can only read, and the tag is made
+# in a second job that runs no npm, so no installed package runs where a token can push or sign.
 on:
   workflow_dispatch:
     inputs:
@@ -20,17 +21,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  check:
+    name: Check the release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
-      # To sign the tag with gitsign through the job's OIDC token (the template's ADR-0028), as tag-release.yml does.
-      id-token: write
+      contents: read
     env:
       VERSION: ${{ inputs.version }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       # tools/release-notes.ts checks the same pattern; keep the two in step.
       - name: Check the version
@@ -71,6 +70,31 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+
+  release:
+    name: Tag and publish
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      # To sign the tag with gitsign through the job's OIDC token (the template's ADR-0028), as tag-release.yml does.
+      id-token: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # tools/release-notes.ts imports only Node's built-in modules, so this job installs and runs no package.
+      - name: Write the release notes
+        run: node tools/release-notes.ts "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
 
       # A public repository's tag is signed through Sigstore's keyless signing; a private one's stays unsigned, since
       # Sigstore's public transparency log would publish its name (the template's ADR-0028).
