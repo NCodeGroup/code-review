@@ -3,17 +3,29 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { runStep } from './steps.ts';
+import { pullRequestCheckout, runStep } from './steps.ts';
 
 const made: string[] = [];
 after(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
-// Runs src/main.ts on a `/review` comment from the owner, with no model credential, so no model call can happen.
-function commentStep(command: string, env: Record<string, string> = {}) {
+// The settings of a run that exchanges GitHub's OIDC token for an Anthropic one.
+const federation: Record<string, string> = {
+  ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/oidc?x=1',
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token',
+  CODE_REVIEW_FEDERATION_RULE_ID: 'r',
+  CODE_REVIEW_ORGANIZATION_ID: 'o',
+  CODE_REVIEW_SERVICE_ACCOUNT_ID: 's',
+  CODE_REVIEW_WORKSPACE_ID: 'w',
+};
+
+// Runs src/main.ts on a `/review` comment from the owner, with no model credential, so no model call can happen. With
+// `checkedOut`, the run has a pull request checkout, so a `/review` goes on to review and stops at choosing a provider.
+function commentStep(command: string, env: Record<string, string> = {}, checkedOut = false) {
   const dir = mkdtempSync(path.join(tmpdir(), 'review-commands-'));
   made.push(dir);
+  const checkout = checkedOut ? pullRequestCheckout(dir) : undefined;
   const out = path.join(dir, 'out');
   const output = path.join(dir, 'output');
   const eventFile = path.join(dir, 'event.json');
@@ -36,8 +48,8 @@ function commentStep(command: string, env: Record<string, string> = {}) {
     state: 'open',
     user: { login: 'polewskm' },
     author_association: 'OWNER',
-    base: { ref: 'main', sha: 'b'.repeat(40) },
-    head: { sha: 'a'.repeat(40), repo: { full_name: 'o/r' } },
+    base: { ref: 'main', sha: checkout?.base ?? 'b'.repeat(40) },
+    head: { sha: checkout?.head ?? 'a'.repeat(40), repo: { full_name: 'o/r' } },
   };
   const run = runStep(
     'main.ts',
@@ -46,6 +58,7 @@ function commentStep(command: string, env: Record<string, string> = {}) {
       rest: {
         'GET https://api.github.com/repos/o/r/pulls/1': pullRequest,
         'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+        ...(checkout ? { 'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [] } : {}),
       },
       graphql: [],
     },
@@ -92,15 +105,17 @@ test('/review explain of an unknown finding answers without a model call', () =>
   assert.ok(requests.every((r) => new URL(r.url).host === 'api.github.com'));
 });
 
-test('/review explain with federation set up asks for a token only when a model call needs one', () => {
-  const { read, requests } = commentStep('/review explain F9', {
-    ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/oidc?x=1',
-    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token',
-    CODE_REVIEW_FEDERATION_RULE_ID: 'r',
-    CODE_REVIEW_ORGANIZATION_ID: 'o',
-    CODE_REVIEW_SERVICE_ACCOUNT_ID: 's',
-    CODE_REVIEW_WORKSPACE_ID: 'w',
-  });
+test('/review explain with federation set up makes no token request when no model call is needed', () => {
+  const { read, requests } = commentStep('/review explain F9', federation);
   assert.match(read('answer.json').body, /F9/);
-  assert.ok(requests.every((r) => !r.url.includes('token.example') && !r.url.includes('api.anthropic.com')));
+  assert.ok(requests.every((r) => new URL(r.url).host === 'api.github.com'));
+});
+
+test('a review with federation set up asks GitHub for an OIDC token when it chooses a provider', () => {
+  const { requests, stdout } = commentStep('/review', federation, true);
+  assert.match(stdout, /No provider available/);
+  const tokenRequests = requests.filter((r) => new URL(r.url).host === 'token.example');
+  assert.equal(tokenRequests.length, 1);
+  assert.equal(tokenRequests[0]?.authorization, 'Bearer request-token');
+  assert.ok(requests.every((r) => new URL(r.url).host !== 'api.anthropic.com'));
 });
