@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - CI runs `npm run lint`, which fails on TypeScript that Biome's formatter or linter doesn't accept as `biome.json` sets them, and `npm run format` applies them; the code is reformatted once to match, and `AGENTS.md`, `CONTRIBUTING.md` and `docs/best-practices-badge.md` say so ([#210](https://github.com/NCodeGroup/code-review/issues/210), [ADR-1010](docs/decisions/1010-biome-formats-and-lints-the-typescript.md)).
 - The repository follows project-template v0.99.0 (from v0.96.0): it gains the `/best-practices` command, which checks the OpenSSF Best Practices answers against the repository, and `docs/best-practices-criteria.md`, which maps every criterion to its evidence; `tag-release.yml` runs CI on a release's commit before it tags it and signs the tag with gitsign, which `SECURITY.md` and `README.md` say how to check; `CONTRIBUTING.md` has a Review Requirements section, `SECURITY.md` promises an acknowledgement within 14 days, and `docs/assurance-case.md` has a Security Reviews section.
 
+### Fixed
+
+- The Release (manual) workflow, `release.yml`, signs the tag it makes with gitsign, as `tag-release.yml` does, so `gitsign verify-tag` checks a fallback release's tag too, and `SECURITY.md` gives one command that verifies a tag from either workflow ([#216](https://github.com/NCodeGroup/code-review/issues/216)).
+
 ## [1.4.1] - 2026-11-15
 
 ### Changed
