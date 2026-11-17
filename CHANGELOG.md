@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Each source file starts with a `Copyright © NCode Group` line and an `SPDX-License-Identifier: Apache-2.0` line, as the template's `file_headers` answer sets: CI, the Release (manual) workflow and the Landing `gate` in `AGENTS.md` run `./.template/Test-FileHeaders.ps1`, which fails on a source file without them, and `-Fix` adds them; `AGENTS.md`, `CONTRIBUTING.md`, `README.md` and `docs/best-practices-criteria.md` say so, which meets the OpenSSF Best Practices gold criteria `copyright_per_file` and `license_per_file` ([#218](https://github.com/NCodeGroup/code-review/issues/218)).
+
 ### Fixed
 
 - The Release (manual) workflow, `release.yml`, signs the tag it makes with gitsign, as `tag-release.yml` does, so `gitsign verify-tag` checks a fallback release's tag too, and `SECURITY.md` gives one command that verifies a tag from either workflow; its checks run in a job that can only read, and the job that tags, signs and publishes runs no npm ([#216](https://github.com/NCodeGroup/code-review/issues/216)).
