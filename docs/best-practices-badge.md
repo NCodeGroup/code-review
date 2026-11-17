@@ -49,8 +49,8 @@ The silver criteria that need a document point to these:
 - `bus_factor` (silver SHOULD, gold MUST): a bus factor of 2 or more, which the same second owner gives.
 - `two_person_review` (gold MUST): a second maintainer.
 - `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
-- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the GitHub organization requires two-factor authentication, with
-  secure methods only, which only an owner can set and confirm.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the GitHub organization requires two-factor authentication,
+  with secure methods only, which only an owner can set and confirm.
 - `security_review` (gold MUST): a security review in the last five years, recorded in
   [assurance-case.md](assurance-case.md#security-reviews).
 - `dco` (silver SHOULD): unmet. The project doesn't ask for `Signed-off-by`
