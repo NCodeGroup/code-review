@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The template's `node_lint` answer is on, matching the project's Biome lint: template updates render CI with its `npm run lint` step instead of treating it as the project's own, VS Code recommends the Biome extension, and `docs/best-practices-criteria.md` counts `coding_standards_enforced`, `warnings` and `warnings_fixed` as met ([#219](https://github.com/NCodeGroup/code-review/issues/219)).
 - CI fails when the tests cover less than 90% of the statements or 80% of the branches: `npm test` writes `lcov.info` with Node's test coverage, CI's Coverage step and the Landing `gate` in `AGENTS.md` check it with `./.template/Test-Coverage.ps1`, and `tag-release.yml`, which runs CI on a release's commit, and the Release (manual) workflow, which runs the lint and the coverage check too, tag a release only once it passes; `CONTRIBUTING.md`, `docs/assurance-case.md` and `docs/best-practices-criteria.md` say so ([#217](https://github.com/NCodeGroup/code-review/issues/217)).
 
 ### Fixed
