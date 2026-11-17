@@ -1,4 +1,5 @@
-// These tests listen on 127.0.0.1 because the proxy is an HTTP server, while https.request is mocked so nothing leaves the machine.
+// These tests listen on 127.0.0.1 because the proxy is an HTTP server, while https.request is mocked so nothing
+// leaves the machine.
 import assert from 'node:assert/strict';
 import type { IncomingMessage } from 'node:http';
 import https from 'node:https';
@@ -112,11 +113,24 @@ test('a bedrock request goes to the Bedrock runtime with the key', async () => {
   }
 });
 
-test('without a credential the path gets 404 and no upstream call', async () => {
+test('an anthropic request without the Anthropic login gets 404 and no upstream call', async () => {
   mockUpstream();
-  const proxy = await startProxy({});
+  const proxy = await startProxy({ bedrockKey: 'bedrock-key' });
   try {
     const response = await fetch(`${proxy.url}/anthropic/v1/messages`, { method: 'POST', body: '{}' });
+    assert.equal(response.status, 404);
+    await response.arrayBuffer();
+    assert.equal(calls.length, 0);
+  } finally {
+    await proxy.close();
+  }
+});
+
+test('a bedrock request without the Bedrock key gets 404 and no upstream call', async () => {
+  mockUpstream();
+  const proxy = await startProxy({ anthropic: credentials.anthropic });
+  try {
+    const response = await fetch(`${proxy.url}/bedrock/model/m/invoke`, { method: 'POST', body: '{}' });
     assert.equal(response.status, 404);
     await response.arrayBuffer();
     assert.equal(calls.length, 0);
