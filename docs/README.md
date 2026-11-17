@@ -9,6 +9,8 @@ offers. Every document in `docs/` has a line here.
   keeps, and why the design meets its security requirements.
 - [best-practices-badge.md](best-practices-badge.md): where the repository meets each OpenSSF Best Practices criterion,
   for registering at bestpractices.dev.
+- [best-practices-criteria.md](best-practices-criteria.md): every OpenSSF Best Practices criterion of the three levels,
+  with the answer to expect, its evidence and the prompt that registers the project; the template owns it.
 - [decisions/](decisions/README.md): architecture decision records, one short file per decision, with the project
   template's own decisions in [decisions/project-template/](decisions/project-template/README.md).
 - [designs/](designs/_template.md): design documents for work bigger than one plan, started from
