@@ -19,6 +19,7 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 | Build | `npm run typecheck` |
 | Lint | `npm run lint`; `npm run format` fixes what it can |
 | Test | `npm test` |
+| File headers | `./.template/Test-FileHeaders.ps1`; `-Fix` adds the missing lines |
 
 CI runs the same commands on every pull request.
 
