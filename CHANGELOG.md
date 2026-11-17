@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The Release (manual) workflow, `release.yml`, signs the tag it makes with gitsign, as `tag-release.yml` does, so `gitsign verify-tag` checks a fallback release's tag too, and `SECURITY.md` gives one command that verifies a tag from either workflow; its checks run in a job that can only read, and the job that tags, signs and publishes runs no npm ([#216](https://github.com/NCodeGroup/code-review/issues/216)).
+
 ## [1.4.2] - 2026-11-16
 
 ### Added

@@ -30,10 +30,10 @@ Fixes go into the default branch and the next release. Only the latest release i
 
 Releases from v0.3.1 on are immutable: once one is published, its tag and files can't change, and GitHub signs an attestation of them. `gh release verify <tag> --repo NCodeGroup/code-review` checks a release's attestation.
 
-The Tag and publish release workflow signs each release tag it makes with [gitsign](https://github.com/sigstore/gitsign), through Sigstore's keyless signing, so no signing key exists to leak. Tags made before it signed them, and tags the Release (manual) workflow makes, aren't signed. With gitsign installed, check a tag in a clone of the repository:
+The Tag and publish release workflow and the Release (manual) workflow sign each release tag they make with [gitsign](https://github.com/sigstore/gitsign), through Sigstore's keyless signing, so no signing key exists to leak. Tags made before they signed them aren't signed. With gitsign installed, check a tag in a clone of the repository:
 
 ```shell
-gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/code-review/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com <tag>
+gitsign verify-tag --certificate-identity-regexp '^https://github\.com/NCodeGroup/code-review/\.github/workflows/(tag-release|release)\.yml@refs/heads/main$' --certificate-oidc-issuer https://token.actions.githubusercontent.com <tag>
 ```
 
 ## Scope
