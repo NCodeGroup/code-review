@@ -87,7 +87,7 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `build_floss_tools` | SHOULD | yes | no | **Check**: Met when every build tool is FLOSS; N/A without a build. |
 | `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test, names its command, and `.github/workflows/ci.yml` runs it. |
 | `test_invocation` | SHOULD | no | no | **Met**: `npm test`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test. |
-| `test_most` | SUGGESTED | no | no | **Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it. |
+| `test_most` | SUGGESTED | no | no | **Met**: CI fails below 90% of the statements and 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figures. |
 | `test_continuous_integration` | SUGGESTED | no | no | **Met**: `.github/workflows/ci.yml` runs the build and the tests on every pull request. |
 | `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent pull requests that added a feature and its tests. |
@@ -125,10 +125,10 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `static_analysis_common_vulnerabilities` | SUGGESTED | yes | no | **Check**: CodeQL's security queries, while its default setup runs. |
 | `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings. Name any finding dismissed as won't fix. |
 | `static_analysis_often` | SUGGESTED | yes | no | **Check**: Met while CodeQL runs on every pull request; Scorecard also runs on every push to the default branch and weekly. |
-| `dynamic_analysis` | SUGGESTED | no | no | **Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes the tests `tag-release.yml` runs before each release one. |
+| `dynamic_analysis` | SUGGESTED | no | no | **Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). |
 | `dynamic_analysis_unsafe` | SUGGESTED | yes | no | **N/A**: it applies only to code in a memory-unsafe language, such as C or C++. |
-| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Gap**: Unmet without dynamic analysis. |
-| `dynamic_analysis_fixed` | MUST | yes | no | **N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed. |
+| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped. |
+| `dynamic_analysis_fixed` | MUST | yes | no | **Check**: Met while each release's tests pass before it is tagged, since a failure stops the release; name any finding left open. |
 
 ## Silver
 
@@ -189,7 +189,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists. |
 | `automated_integration_testing` | MUST | no | no | **Met**: `.github/workflows/ci.yml` runs the tests on every pull request and push to the default branch, and reports the result. |
 | `regression_tests_added50` | MUST | yes | no | **Check**: at least half of the bugs fixed in the last six months got a regression test ([Checks](#checks)). |
-| `test_statement_coverage80` | MUST | yes | no | **Check**: a measured statement coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage80` | MUST | yes | no | **Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure. |
 | `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
 | `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
 | `warnings_strict` | MUST | yes | no | **Check**: Met when the strictest practical settings are on. |
@@ -251,8 +251,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `build_reproducible` | MUST | yes | yes | **Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it. |
 | `test_invocation` | MUST | no | yes | **Met**: `npm test`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test. |
 | `test_continuous_integration` | MUST | no | yes | **Met**: `.github/workflows/ci.yml` runs the build and the tests on every pull request. |
-| `test_statement_coverage90` | MUST | yes | no | **Check**: a measured statement coverage of 90% or more ([Checks](#checks)). |
-| `test_branch_coverage80` | MUST | yes | no | **Check**: a measured branch coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage90` | MUST | yes | no | **Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure. |
+| `test_branch_coverage80` | MUST | yes | no | **Met**: CI fails below 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figure. |
 
 ### Security
 
@@ -268,8 +268,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `dynamic_analysis` | MUST | yes | no | **Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes the tests `tag-release.yml` runs before each release one. |
-| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Gap**: Unmet without dynamic analysis. |
+| `dynamic_analysis` | MUST | yes | no | **Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). |
+| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped. |
 
 ## Where a Level Stops
 
@@ -289,7 +289,7 @@ The Gap rows are the rest: each stays Unmet until the project, or a later templa
 
 The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
 
-- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): `node --test --experimental-test-coverage`, or the coverage option of the project's test runner. The criteria need a measured number, even when CI doesn't gate on it.
+- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): `node --test --experimental-test-coverage`, or the coverage option of the project's test runner. The criteria need a measured number, even when CI doesn't gate on it. CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.
 - **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit, and Security > Secret scanning shows GitHub's own findings.
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.

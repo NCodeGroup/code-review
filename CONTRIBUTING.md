@@ -22,6 +22,8 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 
 CI runs the same commands on every pull request.
 
+CI fails when the tests cover less than 90% of the statements or 80% of the branches, the OpenSSF Best Practices gold thresholds, as `./.template/Test-Coverage.ps1` reports from the coverage the tests write ([the decision](docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). The `test` script in `package.json` writes `lcov.info` with `node --test --experimental-test-coverage` and its `lcov` reporter. Run `./.template/Test-Coverage.ps1` after the tests to see the figures.
+
 The one-time Biome reformat is listed in `.git-blame-ignore-revs`, which GitHub's blame view reads on its own. Once in each clone, run `git config blame.ignoreRevsFile .git-blame-ignore-revs` so `git blame` skips it too.
 
 ## Make a Change

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- CI fails when the tests cover less than 90% of the statements or 80% of the branches: `npm test` writes `lcov.info` with Node's test coverage, CI's Coverage step and the Landing `gate` in `AGENTS.md` check it with `./.template/Test-Coverage.ps1`, and `tag-release.yml`, which runs CI on a release's commit, and the Release (manual) workflow, which runs the lint and the coverage check too, tag a release only once it passes; `CONTRIBUTING.md`, `docs/assurance-case.md` and `docs/best-practices-criteria.md` say so ([#217](https://github.com/NCodeGroup/code-review/issues/217)).
+
 ### Fixed
 
 - The Release (manual) workflow, `release.yml`, signs the tag it makes with gitsign, as `tag-release.yml` does, so `gitsign verify-tag` checks a fallback release's tag too, and `SECURITY.md` gives one command that verifies a tag from either workflow; its checks run in a job that can only read, and the job that tags, signs and publishes runs no npm ([#216](https://github.com/NCodeGroup/code-review/issues/216)).

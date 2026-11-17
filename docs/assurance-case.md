@@ -63,7 +63,8 @@ access acting against the project, and a vulnerability in a dependency itself ([
 
 - **Gate:** CI runs `npm run typecheck`, `npm run lint` (Biome's format and lint check) and `npm test`, the
   `node:test` suite in `test/`, on every pull request; `test/acknowledge.test.ts` checks that `action.yml` keeps every
-  app token out of the review step's environment. Test coverage isn't measured.
+  app token out of the review step's environment. `npm test` writes `lcov.info`, and CI's Coverage step fails below
+  90% of the statements or 80% of the branches; `tag-release.yml` runs CI again on a release's commit before it tags it.
 - **Evals:** the smoke eval runs on every push to `main` that changes the prompts, the reviewers, the guidance or the
   models, and fails when it catches more than two fewer expected findings than its baseline or flags its must-not case.
 - **Static analysis:** with CodeQL's default setup configured, the repository ruleset blocks a pull request that adds a

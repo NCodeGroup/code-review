@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome ci --error-on-warnings .",
     "format": "biome check --write .",
-    "test": "node --test test/*.test.ts",
+    "test": "node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov.info test/*.test.ts",
     "eval": "node evals/run.ts",
     "eval:compare": "node evals/compare.ts",
     "eval:confirm": "node evals/confirm.ts",
