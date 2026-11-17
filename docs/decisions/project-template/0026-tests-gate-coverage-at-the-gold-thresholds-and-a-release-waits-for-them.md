@@ -32,7 +32,13 @@ again on its commit.
 - `ci.yml` also starts on `workflow_call`, and `tag-release.yml` calls it as its `test` job, which its `release` job
   needs: a release is tagged only after its commit's build and tests, and with `coverage_gate` the coverage, pass again.
   With the gate, that is the dynamic analysis the badge asks for before a release.
-- `.template/Update-Project.ps1` warns when `tag-release.yml` calls `ci.yml` and `ci.yml` has no `workflow_call` trigger.
+- `tag-release.yml`'s `test` job grants `ci.yml` only `contents: read`. GitHub checks every job of a called workflow
+  against what its caller grants when the run starts, whatever the job's `if:` says, and fails the whole run when one
+  asks for more. So no job of `ci.yml`, and not its top-level `permissions:`, asks for more than `contents: read`: a job
+  that needs more, such as a coverage upload through OIDC with `id-token: write`, goes in a workflow of its own.
+- `.template/Update-Project.ps1` and the template's `Adopt-Project.ps1` warn when `tag-release.yml` calls `ci.yml`
+  and `ci.yml` has no `workflow_call` trigger, or when its top-level `permissions:` or a job's asks for more than
+  `contents: read`.
 - CI's concurrency group holds the commit SHA on the default branch, so the call waits for the push's own CI run and is
   never cancelled.
 
@@ -50,7 +56,8 @@ again on its commit.
 - A new project's CI fails below the thresholds from its first tested code.
 - An existing project is unchanged until it opts in.
 - A release takes as long as CI.
-- A project whose own `ci.yml` lacks `workflow_call` tags no release until it adds it, which the update says.
+- A project whose own `ci.yml` lacks `workflow_call`, or asks for more than `contents: read`, tags no release until it
+  fixes that, which the update and the adoption say.
 - GitLab has no `tag-release.yml`, so a GitLab release relies on its merge request's pipeline.
 
 ## References

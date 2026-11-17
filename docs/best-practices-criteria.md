@@ -289,7 +289,7 @@ The Gap rows are the rest: each stays Unmet until the project, or a later templa
 
 The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
 
-- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): `node --test --experimental-test-coverage`, or the coverage option of the project's test runner. The criteria need a measured number, even when CI doesn't gate on it. CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.
+- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): `node --test --experimental-test-coverage`, or the coverage option of the project's test runner. The criteria need a measured number. CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.
 - **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit, and Security > Secret scanning shows GitHub's own findings.
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
