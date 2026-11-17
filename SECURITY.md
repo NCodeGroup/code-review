@@ -17,7 +17,7 @@ Include:
 
 ## What to Expect
 
-- An acknowledgement of the report, then whether it is confirmed.
+- An acknowledgement of the report within 14 days, then whether it is confirmed.
 - A fix developed in private and released as soon as it is ready, with an entry under `### Security` in the changelog.
 - Disclosure coordinated with you: the security advisory is published once the fix is released. Keep the details private until then.
 - Credit for the report in the advisory, unless you'd rather not be named.
@@ -25,6 +25,16 @@ Include:
 ## Supported Versions
 
 Fixes go into the default branch and the next release. Only the latest release is supported: update to it to get a fix.
+
+## Verify a Release
+
+Releases from v0.3.1 on are immutable: once one is published, its tag and files can't change, and GitHub signs an attestation of them. `gh release verify <tag> --repo NCodeGroup/code-review` checks a release's attestation.
+
+The Tag and publish release workflow signs each release tag it makes with [gitsign](https://github.com/sigstore/gitsign), through Sigstore's keyless signing, so no signing key exists to leak. Tags made before it signed them, and tags the Release (manual) workflow makes, aren't signed. With gitsign installed, check a tag in a clone of the repository:
+
+```shell
+gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/code-review/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com <tag>
+```
 
 ## Scope
 
