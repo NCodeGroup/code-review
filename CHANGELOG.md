@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-11-16
+
 ### Added
 
 - The repository is licensed under the Apache License 2.0, as the other NCodeGroup repositories are: `LICENSE.txt` holds the license and `COPYRIGHT.txt` the copyright notice.
@@ -17,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `README.md` shows the OpenSSF Best Practices badge (project 16752, passing) and says how to verify a release with `gh release verify`, and `docs/best-practices-badge.md` records where the silver level stands.
 - CI runs `npm run lint`, which fails on TypeScript that Biome's formatter or linter doesn't accept as `biome.json` sets them, and `npm run format` applies them; the code is reformatted once to match, and `AGENTS.md`, `CONTRIBUTING.md` and `docs/best-practices-badge.md` say so ([#210](https://github.com/NCodeGroup/code-review/issues/210), [ADR-1010](docs/decisions/1010-biome-formats-and-lints-the-typescript.md)).
 - The repository follows project-template v0.99.0 (from v0.96.0): it gains the `/best-practices` command, which checks the OpenSSF Best Practices answers against the repository, and `docs/best-practices-criteria.md`, which maps every criterion to its evidence; `tag-release.yml` runs CI on a release's commit before it tags it and signs the tag with gitsign, which `SECURITY.md` and `README.md` say how to check; `CONTRIBUTING.md` has a Review Requirements section, `SECURITY.md` promises an acknowledgement within 14 days, and `docs/assurance-case.md` has a Security Reviews section.
+
+### Fixed
+
+- The action loads again: `action.yml`, from 1.4.0 on, wrote the `approve` input's description as a plain YAML scalar holding `: `, which GitHub's runner can't parse, so every job that used the action failed in "Set up job". A test parses `action.yml` as YAML ([#221](https://github.com/NCodeGroup/code-review/issues/221)).
 
 ## [1.4.1] - 2026-11-15
 
@@ -269,7 +275,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/NCodeGroup/code-review/compare/v1.3.0...v1.3.1

@@ -42,7 +42,10 @@ inputs:
     required: false
     default: wrkspc_019f5RLk5SG4XWE8XKwWFHZh
   approve:
-    description: Whether a review whose verdict is Approve, with no blocker or should-fix finding open on the pull request, is submitted as an approving review, so a ruleset can require one approval. Off by default: every review is a comment.
+    description: >-
+      Whether a review whose verdict is Approve, with no blocker or should-fix finding open on the pull request, is
+      submitted as an approving review, so a ruleset can require one approval. Off by default: every review is a
+      comment.
     required: false
     default: 'false'
 
