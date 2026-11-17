@@ -92,8 +92,8 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent pull requests that added a feature and its tests. |
 | `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
-| `warnings` | MUST | yes | no | **Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack. |
-| `warnings_fixed` | MUST | yes | no | **Check**: Met when CI fails on a warning. |
+| `warnings` | MUST | yes | no | **Met**: CI and the Landing gate run Biome's linter, `npm run lint`. |
+| `warnings_fixed` | MUST | yes | no | **Met**: `biome ci --error-on-warnings` fails CI on a warning. |
 | `warnings_strict` | SUGGESTED | yes | no | **Check**: Met when the strictest practical settings are on. |
 
 ### Security
@@ -175,7 +175,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `coding_standards` | MUST | yes | yes | **Met**: [AGENTS.md](../AGENTS.md) and the instruction files it lists, and `.editorconfig`. |
-| `coding_standards_enforced` | MUST | yes | no | **Gap**: Unmet until a linter or formatter runs in CI: `.\.template\Update-Project.ps1 -Data @{ node_lint = $true }` adds Biome. |
+| `coding_standards_enforced` | MUST | yes | no | **Met**: CI and the Landing gate run `npm run lint`, Biome's formatter and linter, with the rules in `biome.json` ([ADR-0201](decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md)). |
 | `build_standard_variables` | MUST | yes | no | **N/A**: it applies only to a build that makes native binaries. |
 | `build_preserve_debug` | SHOULD | yes | no | **Check**: N/A without a build or an installation step. |
 | `build_non_recursive` | MUST | yes | no | **Check**: N/A without a build system. |

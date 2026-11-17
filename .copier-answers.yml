@@ -10,7 +10,7 @@ coverage_gate: true
 file_headers: false
 git_host: github
 license: Apache-2.0
-node_lint: false
+node_lint: true
 package_manager: npm
 project_description: 'AI pull request review for NCodeGroup repositories: a GitHub
     composite action on the Claude Agent SDK'
