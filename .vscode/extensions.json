@@ -2,6 +2,7 @@
   "recommendations": [
     "anthropic.claude-code",
     "github.copilot-chat",
-    "editorconfig.editorconfig"
+    "editorconfig.editorconfig",
+    "biomejs.biome"
   ]
 }
