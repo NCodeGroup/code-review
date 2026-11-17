@@ -101,7 +101,7 @@ jobs:
       - uses: chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2
         if: ${{ !github.event.repository.private }}
 
-      # gh is git's credential helper for the push only, so the checkout kept no token while npm ran. If the push
+      # gh is git's credential helper for the push only, so no token sits in the checkout's git config. If the push
       # succeeds and the release fails, run Tag and publish release (tag-release.yml), which publishes it on the tag.
       - name: Tag and publish
         env:
