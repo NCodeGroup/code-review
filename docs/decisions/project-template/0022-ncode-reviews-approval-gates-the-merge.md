@@ -1,6 +1,6 @@
 # 0022. Where NCode Review approves, the ruleset requires an approval and pull requests open as drafts
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0031)
 - **Date:** 2026-11-15
 - **Amends:** 0005, 0006, 0019, 0020
 
