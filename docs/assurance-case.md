@@ -67,9 +67,10 @@ access acting against the project, and a vulnerability in a dependency itself ([
   90% of the statements or 80% of the branches; `tag-release.yml` runs CI again on a release's commit before it tags it.
 - **Evals:** the smoke eval runs on every push to `main` that changes the prompts, the reviewers, the guidance or the
   models, and fails when it catches more than two fewer expected findings than its baseline or flags its must-not case.
-- **Static analysis:** with CodeQL's default setup configured, the repository ruleset blocks a pull request that adds a
-  CodeQL alert at warning level or above, or a security alert of any severity
-  ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md)).
+- **Static analysis:** with CodeQL's default setup configured and analyzing at least one language, the repository
+  ruleset blocks a pull request that adds a CodeQL alert at warning level or above, or a security alert of any severity
+  ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
+  [ADR-0030](decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
 - **Review:** every change reaches the default branch through a pull request with passing CI and every conversation
   resolved, and the ruleset refuses force pushes and deletion
   ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
