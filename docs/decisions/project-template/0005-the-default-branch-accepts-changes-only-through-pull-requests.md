@@ -1,6 +1,6 @@
 # 0005. The default branch accepts changes only through pull requests that pass CI
 
-- **Status:** Accepted (amended by 0018 and 0022)
+- **Status:** Accepted (amended by 0018, 0022 and 0030)
 - **Date:** 2026-10-31
 
 ## Context
