@@ -16,6 +16,8 @@
                       restored; the script lists both. A template-owned file that an earlier version's
                       _skip_if_exists kept from updates, such as docs/decisions/project-template/README.md, is
                       reset first, discarding a local edit, and listed as refreshed.
+                      A file the update leaves as the project had it, such as an edit the new version also
+                      makes or a deleted file it also deletes, is listed under none of these.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
@@ -26,8 +28,8 @@
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
-                      The render takes pre_release from AGENTS.md's Landing section: untracked only
-                      with - pre-release: untracked, else tracked.
+                      The render takes pre_release from AGENTS.md's Landing section, untracked only
+                      with - pre-release: untracked, else tracked, and release_policy from its release line.
                       A merged or template-owned file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
                       = '.github/workflows/ci.yml', 'build/dod.ps1' }. The answer can name any file the version
@@ -77,6 +79,8 @@
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
+    It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0, on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores.
+    Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
@@ -91,6 +95,7 @@
     in .github/workflows runs on a release event or uploads release assets, whose releases the template's
     tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
     project is already up to date (the template's ADR-0028).
+    With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.4.0 or passes no approve: true, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -146,6 +151,23 @@ function Get-PreReleaseAnswer {
         if ($inLanding -and $line -match '^- pre-release:\s*(\S+)') { return $(if ($Matches[1] -eq 'untracked') { 'untracked' } else { 'tracked' }) }
     }
     'tracked'
+}
+
+# The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
+# AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
+# script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-ReleasePolicyAnswer {
+    $agents = 'AGENTS.md'
+    if (-not (Test-Path -LiteralPath $agents -PathType Leaf)) { return }
+    $value = 'none'
+    $inLanding = $false
+    foreach ($line in Get-Content -LiteralPath $agents) {
+        if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+        if ($inLanding -and $line -match '^## ') { break }
+        if ($inLanding -and $line -match '^- release:\s*(.*?)\s*$') { $value = $Matches[1] -replace '^"(.*)"$', '$1'; break }
+    }
+    if ($value -in 'none', 'tag', 'tag+release') { $value }
 }
 
 # The checks a new project starts with and an existing one keeps off until it opts in (the template's ADR-0148,
@@ -295,6 +317,93 @@ function Get-CiPermissionNote {
     if (-not $findings) { return }
     ''
     ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
+}
+
+# NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take,
+# and code-review.yml and AGENTS.md are project-owned, so the update can only say what they still lack (the template's ADR-0022).
+function Get-CodeReviewNote {
+    $workflow = '.github/workflows/code-review.yml'
+    if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) { return }
+    $text = Get-Content -LiteralPath $workflow -Raw
+    $versions = @(foreach ($m in [regex]::Matches($text, '(?im)^\s*(?:-\s+)?uses:\s*[''"]?NCodeGroup/code-review(?:/[\w./-]+)?@([^\s''"#]+)[''"]?[ \t]*(?:#[ \t]*(\S+))?')) {
+        if ($m.Groups[2].Success -and $m.Groups[2].Value -match '^v?(\d+\.\d+\.\d+)$') { [version]$Matches[1] }
+        elseif ($m.Groups[1].Value -match '^v?(\d+\.\d+\.\d+)$') { [version]$Matches[1] }
+    })
+    $findings = [Collections.Generic.List[string]]::new()
+    if ($versions.Count) {
+        $lowest = @($versions | Sort-Object)[0]
+        if ($lowest -lt [version]'1.4.0') { $findings.Add(".github/workflows/code-review.yml pins NCodeGroup/code-review v$lowest") }
+    }
+    if ($text -notmatch '(?m)^\s+approve:\s*[''"]?true[''"]?\s*(?:#.*)?$') { $findings.Add('.github/workflows/code-review.yml passes no approve: true') }
+    if (Test-Path -LiteralPath AGENTS.md) {
+        $draft = $null
+        $inLanding = $false
+        foreach ($line in Get-Content -LiteralPath AGENTS.md) {
+            if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+            if ($inLanding -and $line -match '^## ') { break }
+            if ($inLanding -and $line -match '^- draft:\s*`?([^`\s]+)`?\s*$') { $draft = $Matches[1] }
+        }
+        if ($draft -ne 'yes') { $findings.Add($(if ($null -eq $draft) { 'AGENTS.md''s Landing section has no draft line' } else { "AGENTS.md's Landing section says draft: $draft" })) }
+    }
+    if (-not $findings.Count) { return }
+    ''
+    "NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take, and the template's tools/Set-RepositoryBaseline.ps1 then requires that approval (the template's ADR-0022, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.4.0 or later and pass approve: true in .github/workflows/code-review.yml, as the template's code-review.yml does, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch requires one approval, dismisses stale approvals and requires approval of the last push."
+}
+
+# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-GitVersioningWorkflowNote {
+    if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $findings = [Collections.Generic.List[string]]::new()
+    foreach ($file in @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and $_.Name -ne 'publish.yml' } | Sort-Object Name)) {
+        # The lines of each job under the top-level jobs: key, by job name.
+        $jobs = [ordered]@{}
+        $inJobs = $false
+        $jobIndent = -1
+        $current = $null
+        foreach ($line in Get-Content -LiteralPath $file.FullName) {
+            if ($line -match '^\s*(#.*)?$') { continue }
+            $indent = $line.Length - $line.TrimStart().Length
+            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if (-not $inJobs) { continue }
+            if ($jobIndent -lt 0) { $jobIndent = $indent }
+            if ($indent -eq $jobIndent -and $line -match '^\s*([\w-]+):') {
+                $current = $Matches[1]
+                $jobs[$current] = [Collections.Generic.List[string]]::new()
+                continue
+            }
+            if ($current) { $jobs[$current].Add($line) }
+        }
+        foreach ($name in $jobs.Keys) {
+            $lines = @($jobs[$name])
+            $builds = @($lines | Where-Object { $_ -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($_ -match '(?i)\bdotnet\s+test\b' -and $_ -notmatch '--no-build') -or $_ -match '(?i)\bnuget(?:\.exe)?\s+push\b' })
+            if (-not $builds.Count) { continue }
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+                # The step starts at the nearest line at or above that starts a list item, and ends before the next one no deeper.
+                $start = $i
+                while ($start -ge 0 -and $lines[$start] -notmatch '^\s*-\s') { $start-- }
+                if ($start -lt 0) { $start = $i }
+                $startIndent = $lines[$start].Length - $lines[$start].TrimStart().Length
+                $end = $lines.Count
+                for ($j = $start + 1; $j -lt $lines.Count; $j++) {
+                    if ($lines[$j] -match '^\s*-\s' -and ($lines[$j].Length - $lines[$j].TrimStart().Length) -le $startIndent) { $end = $j; break }
+                }
+                $step = @($lines[$start..($end - 1)])
+                if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
+                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
+                }
+            }
+            foreach ($m in [regex]::Matches(($lines -join "`n"), '(?i)(?<![\w-])[-/]p(?:roperty)?:Version=\S+')) {
+                $findings.Add(".github/workflows/$($file.Name), job ${name}: $($m.Value)")
+            }
+        }
+    }
+    if (-not $findings.Count) { return }
+    ''
+    'These workflows build with Nerdbank.GitVersioning, which version.json turns on (the template''s ADR-0138, in docs/decisions/project-template/):'
+    foreach ($finding in $findings) { "  - $finding" }
+    'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
 }
 
 # Render the template at a version into a folder with the project's answers;
@@ -568,6 +677,13 @@ function Get-NuGetPublisher {
         if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'publish.yml' -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?i)\bnuget(?:\.exe)?\s+push\b') { ".github/workflows/$($file.Name)" }
     }
     @($found) | Sort-Object
+}
+
+# The nuget_publisher answer: the workflows other than publish.yml that run nuget push, joined with ", ", when the library has no publish.yml,
+# else blank. tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-NuGetPublisherAnswer {
+    if (Test-Path -LiteralPath .github/workflows/publish.yml) { return '' }
+    @(Get-NuGetPublisher) -join ', '
 }
 
 function Get-AssemblyVersionFloor {
@@ -888,6 +1004,11 @@ try {
     $ownable = @(Get-RenderedFile $TemplateClone $to | Where-Object { Test-OwnableName $_ })
     $notOwnable = @($ownedFiles | Where-Object { $_ -notin $ownable })
     if ($notOwnable) { throw "project_owned_files names $($notOwnable -join ', '), which template $to doesn't render or the update itself needs. It can name any file template $to renders except .copier-answers.yml, .template-version and the files in .template/." }
+    # The answers the template's documents and release workflows follow, in $Data so the update and every render take them; -Data wins.
+    # nuget_publisher names a library's own NuGet publishing workflows, which keeps publish.yml, release-provenance.yml and raise-baseline.yml out.
+    if ((Get-Answer 'nuget_package') -eq 'true' -and -not $Data.ContainsKey('nuget_publisher')) { $Data['nuget_publisher'] = Get-NuGetPublisherAnswer }
+    $releasePolicy = Get-ReleasePolicyAnswer
+    if ($releasePolicy -and -not $Data.ContainsKey('release_policy')) { $Data['release_policy'] = $releasePolicy }
     # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
     $rewritten = @()
     $fromRendered = $null
@@ -1045,11 +1166,14 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; Get-CodeReviewNote; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
-    $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
-    $restored = @($reset | Where-Object Kind -EQ 'added' | ForEach-Object File)
+    # A file the update leaves as the project had it lost nothing, such as a local edit the new version also makes or a deleted file it also deletes: list only the files that differ from the commit the update started from.
+    $differs = @((git -c core.quotePath=false diff --name-only --no-renames -z $head) -split "`0" | Where-Object { $_ })
+    $edited = @($reset | Where-Object { $_.Kind -ne 'added' -and $_.File -in $differs } | ForEach-Object File)
+    $restored = @($reset | Where-Object { $_.Kind -eq 'added' -and $_.File -in $differs } | ForEach-Object File)
+    $refreshed = @($refreshed | Where-Object { $_ -in $differs })
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
@@ -1135,7 +1259,7 @@ try {
     # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
     if ($publishLeftOut) {
         ''
-        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again."
+        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again. The update also leaves out release-provenance.yml and raise-baseline.yml, which only publish.yml calls, deleting them where an earlier update added them, and renders the documents it adds, and the template changes it shows, with $($publishers -join ', ') in place of publish.yml (the nuget_publisher answer)."
     }
     elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
         ''
@@ -1150,6 +1274,7 @@ try {
     Get-CiPermissionNote
     $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
     Get-ImmutableReleaseNote $offered
+    Get-CodeReviewNote
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
@@ -1209,6 +1334,7 @@ try {
                 ".gitlab-ci.yml packs or pushes packages without $($missing -join ' and '). Nerdbank.GitVersioning takes each package's version from version.json and ignores -p:Version, adds a -g<commit> suffix without PublicRelease, and fails on a shallow clone, which GitLab CI makes unless GIT_DEPTH is `"0`". Add -p:PublicRelease=true to its dotnet pack command and set GIT_DEPTH: `"0`" in its variables, as the publish.yml the project template gives a .NET library on GitHub does (the template's ADR-0138, in docs/decisions/project-template/)."
             }
         }
+        Get-GitVersioningWorkflowNote
         $gitVersioning = @(Get-GitVersioningReference)
         if ($gitVersioning.Count -gt 0) {
             ''
