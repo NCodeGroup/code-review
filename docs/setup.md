@@ -60,3 +60,33 @@ Do these once, in order.
   - Why it is safe: the action mints the approver's token after the agents exit, for the one repository, with Pull requests: write alone, so no token it holds can push, and its key is a secret of the `code-review` environment, which only the default branch can deploy to ([ADR-1011](decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
 - **Check:** the 1.2 command with `"ncode-review-approver"` shows `"repository_selection":"selected"`, `{"contents":"write","metadata":"read","pull_requests":"write"}` and `"events":[]`.
 - **Goes wrong:** installing it on all repositories widens what a leaked key reaches, since a leaked approver key can mint a Contents: write token for every repository it is installed on.
+
+### 1.4 Set Up Anthropic
+
+- **Who:** an admin of the Anthropic organization.
+- **Where:** the Claude Console's Workload identity page, `https://platform.claude.com/settings/workload-identity-federation` (Connect workload > GitHub Actions), with Anthropic's guide [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
+- **Do:** the review pays from a workspace and logs in with no secret, through workload identity federation.
+  - Register the issuer `https://token.actions.githubusercontent.com`.
+  - Create the workspace that pays for reviews and a service account.
+  - Create a federation rule that maps to that service account and workspace and matches only jobs in a NCodeGroup repository's `code-review` environment, whose GitHub token has the audience `https://api.anthropic.com` and the subject `repo:NCodeGroup/<name>:environment:code-review`. So match the audience, the subject prefix `repo:NCodeGroup/`, and the claims `repository_owner` `NCodeGroup` and `environment` `code-review`.
+  - NCodeGroup's are the action's defaults: rule `github-code-review` (`federation-rule-id` `fdrl_019dXaBRa2Zo1UazugiQwWZ3`), `organization-id` `e9301a37-092f-47c8-9b24-188808b1d576`, `service-account-id` `svac_012yav3w3rfhH5i9bAgoWLHe` and `workspace-id` `wrkspc_019f5RLk5SG4XWE8XKwWFHZh`. Other values need those inputs in every caller, or the defaults changed in a release.
+- **Check:** comment `/wif-test` on an issue in NCodeGroup/code-review, as an owner or member; the WIF smoke test's `with-environment` job gets a token and its `without-environment` job is refused.
+- **Goes wrong:**
+  - A rule that doesn't require the environment lets any branch's workflow get a token, and the `without-environment` job fails with "The rule accepted a job outside the code-review environment".
+  - A caller whose review job lacks `environment: code-review` gets no token, and the review pays on Bedrock or stops as "Review budget used up".
+
+### 1.5 Store the Organization Secrets
+
+- **Who:** an organization owner (`admin:org`), and an admin of the AWS account for the Bedrock key.
+- **Where:** the AWS account's Amazon Bedrock console, in `us-west-2`; then an up-to-date clone of NCodeGroup/code-review (run `git pull` first).
+- **Do:**
+  - Generate a long-term Bedrock API key (it starts with `ABSK`) that can call the global inference profiles `global.anthropic.claude-haiku-5-5`, `global.anthropic.claude-sonnet-5-5` and `global.anthropic.claude-opus-5-5` in `us-west-2`.
+  - Generate the NCode Review app's private key (3.1).
+  - Run `.\tools\Enable-CodeReview.ps1 -AppPrivateKeyPath <path to the NCode Review .pem> -WhatIf`, then without `-WhatIf`. It stores `NCODE_REVIEW_APP_PRIVATE_KEY` and, when the organization has none yet, `AWS_BEARER_TOKEN_BEDROCK`, read from the environment variable of that name or a hidden prompt, as organization secrets visible only to the repositories that opted in, passing each value on standard input.
+  - Then delete the `.pem` (3.1).
+- **Check:** `gh secret list --org NCodeGroup` lists both secrets; `/wif-test` (1.4) also makes a one-token Haiku call on Bedrock with the key and passes.
+- **Goes wrong:**
+  - "That doesn't look like a Bedrock API key (they start with ABSK)."
+  - "NCodeGroup has no NCODE_REVIEW_APP_PRIVATE_KEY yet. Pass -AppPrivateKeyPath with the app's .pem file."
+  - "The NCode Review app isn't installed on NCodeGroup. Install it from the app's settings page first."
+  - Scope errors, [5.3](#53-adminorg-errors).
