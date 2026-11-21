@@ -205,6 +205,8 @@ before 1.0.0 changed it in minor releases; their changelog sections say how.
 | `service-account-id` | no | `svac_012yav3w3rfhH5i9bAgoWLHe` | The Anthropic service account the federation rule maps to. |
 | `workspace-id` | no | `wrkspc_019f5RLk5SG4XWE8XKwWFHZh` | The Anthropic workspace that pays for the review. |
 | `approve` | no | `false` | Submits a review whose verdict is Approve as an approving review, so a ruleset can require one approval; every other review stays a comment and dismisses the bot's earlier approval. |
+| `approver-private-key` | no | | The NCode Review Approver app's private key, from the repository's code-review environment; with `approve` on, the approval is submitted as the approver, which meets a required approval. |
+| `approver-client-id` | no | `Iv23liDPFX1K6NjGIr9i` | The NCode Review Approver app's client ID. |
 
 The action has no outputs. A caller needs:
 
@@ -363,13 +365,24 @@ old approval standing. Drafts are approved like any pull request; fork pull requ
 The summary comment has an `Approval:` line that says "Approved" or "Not approved" with the reason. When GitHub refuses
 an approval, the run warns, dismisses the earlier approval too, and the summary says the approval couldn't be submitted.
 
+GitHub counts an approval toward a ruleset's required approval only from a reviewer that can write to the repository,
+whatever its `author_association`. The NCode Review app can't, so its approval counts for Scorecard's Code-Review check
+and meets no required approval. With `approver-private-key`, the NCode Review Approver submits the approval instead: an
+app with Contents: write and Pull requests: write, installed only on the repositories that approve, whose token is
+minted after the agents exit with Pull requests: write alone, so it can't push. The NCode Review app's own earlier
+approvals are dismissed, so the pull request carries one approval from NCode Review.
+`tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath` stores the key in each repository's `code-review` environment,
+which only the default branch can deploy to, so a pull request's workflow never reads it.
+
 A push removes the approval when the ruleset dismisses stale reviews and requires approval of the last push, and
 `/review` approves again. `/run-feedback` and `/run-issues` comment it after each push; after a hand push, comment
-`/review` yourself, because NCode Review doesn't review on `synchronize`. Require one approval in the ruleset.
+`/review` yourself, because NCode Review doesn't review on `synchronize`. With the approver, require one approval, of
+the last push, in the ruleset; without it, require none where one person can write.
 
-The trade-offs: Scorecard's Code-Review check describes human review, so the app's approval may not score as a
-person's does, and an NCode Review outage or budget stop blocks merges until it is fixed or the ruleset changes. See
-[ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md).
+The trade-offs: an NCode Review outage or budget stop blocks merges where the approval is required until it is fixed or
+the ruleset changes, and a leaked approver key can mint a Contents: write token for the repositories the approver is
+installed on. See [ADR-1009](docs/decisions/1009-a-clean-review-approves-the-pull-request.md) and
+[ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md).
 
 ### Outcomes
 
