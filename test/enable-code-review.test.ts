@@ -335,11 +335,30 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
       [refused, ...scenario()],
     );
     assert.equal(status, 0, output);
-    assert.match(output, /Couldn't list the repositories of the NCode Review Approver installation/);
+    assert.match(output, /Couldn't list the repositories of the NCode Review Approver installation \(.*HTTP 403\)/);
     assert.match(output, /settings\/installations\/6/);
     const lines = joined(calls);
     assert.ok(!lines.some((line) => line.startsWith('api -X PUT user/installations/6/')), lines.join('\n'));
     assert.ok(lines.includes(`secret set ${approverKey} --env code-review --repo ${org}/alpha`), lines.join('\n'));
+  });
+
+  test("Another failure to list an installation's repositories stops the run with gh's error, before setting a secret", {
+    skip,
+  }, async () => {
+    const pem = path.join(tempDir(), 'approver.pem');
+    writeFileSync(pem, fakeApproverKey);
+    const failed: Answer = {
+      match: '^api user/installations/6/repositories --paginate',
+      stderr: 'gh: Server Error (HTTP 502)',
+      exit: 1,
+    };
+    const { status, output, calls } = await run(
+      ['-Repo', 'alpha', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
+      [failed, ...scenario()],
+    );
+    assert.notEqual(status, 0, output);
+    assert.match(output, /Couldn't list the repositories of the NCode Review Approver installation: .*HTTP 502/);
+    assert.ok(!joined(calls).some((line) => line.startsWith('secret set')), joined(calls).join('\n'));
   });
 
   test('-ApproverPrivateKeyPath without -Repo stops before any change', { skip }, async () => {

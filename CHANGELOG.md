@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- `tools/Enable-CodeReview.ps1` warns and goes on when GitHub refuses to list the repositories of an app installed on selected repositories, which it does for the token `gh auth login` gives: it names the installation's settings page, where the repository is selected by hand, and still sets up the environment and its secrets.
+- `tools/Enable-CodeReview.ps1` warns and goes on when GitHub refuses to list the repositories of an app installed on selected repositories, which it does for the token `gh auth login` gives: it names the installation's settings page, where the repository is selected by hand, and still sets up the environment and its secrets; any other failure to list them stops the run with gh's error.
 
 ## [1.5.0] - 2026-11-21
 

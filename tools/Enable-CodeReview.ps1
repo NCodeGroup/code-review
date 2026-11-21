@@ -92,21 +92,27 @@ function Invoke-Gh {
 
 # Adds the repository to an app's installation when the app is installed on selected repositories only. GitHub lists
 # and changes an installation's repositories only for a GitHub App's user token or a personal access token, never for the
-# OAuth token gh auth login gives, so when it refuses the list, this warns, names the installation's settings page and
-# goes on, and the rest of the run still sets up the repository.
+# OAuth token gh auth login gives, so when it refuses the list with HTTP 403, this warns, names the installation's
+# settings page and goes on, and the rest of the run still sets up the repository. Any other failure stops the run with
+# gh's error.
 function Add-ToInstallation($Installation, $Info, [string]$AppName) {
     if (-not $Installation -or $Installation.repository_selection -eq 'all') { return }
     $full = $Info.full_name
-    # A refusal is a non-zero exit, or a terminating error where gh's stderr is one.
-    $installed = $null
-    try {
-        $installed = & gh api "user/installations/$($Installation.id)/repositories" --paginate --jq '.repositories[].full_name' 2>$null
-        $listed = -not $LASTEXITCODE
-    }
-    catch { $listed = $false }
-    if (-not $listed) {
-        Write-Warning "Couldn't list the repositories of the $AppName installation: GitHub lists them only for a GitHub App's user token or a personal access token. Make sure $full is selected at https://github.com/organizations/$Org/settings/installations/$($Installation.id)."
-        return
+    # Invoke-Gh throws on any failure, and this call must tell GitHub's refusal of gh's token apart from other failures,
+    # so it runs gh itself and keeps gh's error lines apart from the list.
+    $ErrorActionPreference = 'Continue'
+    $output = @(& gh api "user/installations/$($Installation.id)/repositories" --paginate --jq '.repositories[].full_name' 2>&1)
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    $errorLines = @($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $installed = @($output | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    if ($exitCode) {
+        $why = if ($errorLines.Count) { $errorLines[0] } else { "exit code $exitCode" }
+        if (($errorLines -join ' ') -match 'HTTP 403|authorized to a GitHub App') {
+            Write-Warning "Couldn't list the repositories of the $AppName installation ($why): GitHub lists them only for a GitHub App's user token or a personal access token. Make sure $full is selected at https://github.com/organizations/$Org/settings/installations/$($Installation.id)."
+            return
+        }
+        throw "Couldn't list the repositories of the $AppName installation: gh api user/installations/$($Installation.id)/repositories exited with code $exitCode ($why)."
     }
     if ($installed -notcontains $full -and $PSCmdlet.ShouldProcess($full, "Add the repository to the $AppName installation")) {
         Invoke-Gh api -X PUT "user/installations/$($Installation.id)/repositories/$($Info.id)" --silent
