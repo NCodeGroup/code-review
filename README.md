@@ -143,10 +143,15 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
+      - uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          # A review that leaves no blocker or should-fix finding open approves the pull request.
+          approve: true
+          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
+          # secret of the code-review environment, which only the default branch can deploy to.
+          approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
@@ -166,7 +171,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
+        uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
 ```
@@ -216,7 +221,8 @@ The action has no outputs. A caller needs:
   with the type `created`;
 - a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
   and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
-  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`;
+  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`, plus, to approve as the NCode Review
+  Approver, the `code-review` environment's secret `NCODE_REVIEW_APPROVER_PRIVATE_KEY`;
 - an `outcomes` job with no environment, the permissions `contents: read` and `pull-requests: read`, no checkout, and
   the secret `NCODE_REVIEW_APP_PRIVATE_KEY`;
 - a Linux runner for both, such as `ubuntu-latest`.
