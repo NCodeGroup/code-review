@@ -11,6 +11,8 @@ offers. Every document in `docs/` has a line here.
   for registering at bestpractices.dev.
 - [best-practices-criteria.md](best-practices-criteria.md): every OpenSSF Best Practices criterion of the three levels,
   with the answer to expect, its evidence and the prompt that registers the project; the template owns it.
+- [setup.md](setup.md): the runbook that sets NCode Review up for the organization and for each repository, top to
+  bottom, with its troubleshooting.
 - [decisions/](decisions/README.md): architecture decision records, one short file per decision, with the project
   template's own decisions in [decisions/project-template/](decisions/project-template/README.md).
 - [designs/](designs/_template.md): design documents for work bigger than one plan, started from

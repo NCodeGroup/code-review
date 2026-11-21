@@ -100,6 +100,8 @@ A [re-review](#re-reviews) runs only its own reviewers and prompt, so it runs no
 
 ## Using it
 
+To set NCode Review up for an organization or a repository, follow [docs/setup.md](docs/setup.md), the runbook that orders these steps; this README is their reference.
+
 ```yaml
 name: Code review
 on:
@@ -627,6 +629,8 @@ key). Anthropic needs no secret, because the workflow logs in through workload i
 setting and changing which repositories can read organization secrets needs gh's `admin:org` scope:
 `gh auth refresh -h github.com -s admin:org`.
 
+[docs/setup.md](docs/setup.md) gives every step in order, with what to check and what goes wrong; this section and [Approvals](#approvals) are their reference.
+
 From a clone of this repository:
 
 ```powershell
@@ -638,6 +642,9 @@ pwsh -File .\tools\Enable-CodeReview.ps1 -Repo identity-platform,Identity
 
 # Opt in without prompting for or setting the Bedrock key; the repositories still get access to the existing one.
 .\tools\Enable-CodeReview.ps1 -Repo identity-platform -SkipBedrock
+
+# Store the NCode Review Approver's key in each repository's code-review environment, and add it to the approver's installation.
+.\tools\Enable-CodeReview.ps1 -Repo identity-platform -ApproverPrivateKeyPath <path to the NCode Review Approver .pem>
 
 # Set or replace the app key, or the Bedrock key (from AWS_BEARER_TOKEN_BEDROCK, or a hidden prompt).
 .\tools\Enable-CodeReview.ps1 -AppPrivateKeyPath <path to the NCode Review .pem>
