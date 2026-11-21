@@ -320,6 +320,28 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
     assert.doesNotMatch(output, /not-a-real-key/);
   });
 
+  test("A refused installation list warns, names the installation's settings, and still sets the secret", {
+    skip,
+  }, async () => {
+    const pem = path.join(tempDir(), 'approver.pem');
+    writeFileSync(pem, fakeApproverKey);
+    const refused: Answer = {
+      match: '^api user/installations/6/repositories --paginate',
+      stderr: 'gh: You must authenticate with an access token authorized to a GitHub App (HTTP 403)',
+      exit: 1,
+    };
+    const { status, output, calls } = await run(
+      ['-Repo', 'alpha', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
+      [refused, ...scenario()],
+    );
+    assert.equal(status, 0, output);
+    assert.match(output, /Couldn't list the repositories of the NCode Review Approver installation/);
+    assert.match(output, /settings\/installations\/6/);
+    const lines = joined(calls);
+    assert.ok(!lines.some((line) => line.startsWith('api -X PUT user/installations/6/')), lines.join('\n'));
+    assert.ok(lines.includes(`secret set ${approverKey} --env code-review --repo ${org}/alpha`), lines.join('\n'));
+  });
+
   test('-ApproverPrivateKeyPath without -Repo stops before any change', { skip }, async () => {
     const pem = path.join(tempDir(), 'approver.pem');
     writeFileSync(pem, fakeApproverKey);
