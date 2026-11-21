@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- This repository's own review pins NCode Review v1.5.0 and passes `approver-private-key` from its `code-review` environment, so the NCode Review Approver submits the approval of a clean review ([#234](https://github.com/NCodeGroup/code-review/issues/234), [ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
+
 ## [1.5.0] - 2026-11-21
 
 ### Added
