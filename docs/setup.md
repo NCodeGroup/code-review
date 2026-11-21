@@ -214,3 +214,43 @@ What a maintainer sees and does once the repository is set up; [Commands](../REA
 - A later review can raise a problem's severity. A finding repeats an earlier thread only at the same severity unless a writer dismissed that thread (resolved it while still on its code, or a 👎), so an unanswered nit can come back as a should-fix in a new thread.
 - Everything a review publishes, its trace included, is checked for anything shaped like a credential, which a test fixture in the diff can trip, and the review then fails ([#233](https://github.com/NCodeGroup/code-review/pull/233), [5.5](#55-the-trace-contains-something-shaped-like-a-credential)).
 - [ADR-1009](decisions/1009-a-clean-review-approves-the-pull-request.md) records why a clean review approves.
+
+## 5. Troubleshooting
+
+### 5.1 A Missing ApproverPrivateKeyPath Parameter
+
+- **Symptom:** "A parameter cannot be found that matches parameter name 'ApproverPrivateKeyPath'."
+- **Cause:** the clone's `Enable-CodeReview.ps1` is older than v1.5.0.
+- **Fix:** `git pull` in the clone and run it again.
+
+### 5.2 A 403 Listing an Installation's Repositories
+
+- **Symptom:** a warning "Couldn't list the repositories of the NCode Review Approver installation (…): GitHub lists them only for a GitHub App's user token or a personal access token. Make sure <owner>/<name> is selected at https://github.com/organizations/NCodeGroup/settings/installations/<id>.", or, from a clone older than [#236](https://github.com/NCodeGroup/code-review/issues/236), the run stops on HTTP 403 from `user/installations/<id>/repositories`.
+- **Cause:** gh's token can't list an installation's repositories, whatever its scopes.
+- **Fix:** select the repository on the page the warning names ([2.1](#21-add-the-repository-to-both-apps-installations)), and `git pull` an older clone; adding scopes doesn't help.
+
+### 5.3 admin:org Errors
+
+- **Symptom:** "gh can't read NCodeGroup's organization secrets. Grant the scope with: gh auth refresh -h github.com -s admin:org", or an error ending "If it's a 403, the token needs the admin:org scope: gh auth refresh -h github.com -s admin:org".
+- **Cause:** the token lacks `admin:org`, or a `GH_TOKEN` or `GITHUB_TOKEN` variable replaces it.
+- **Fix:** run that command, or remove the variable, and check with `gh auth status`.
+
+### 5.4 A Review That Doesn't Start or Skips
+
+- **Symptom:** no 👀 and no "Code review" check run, or a check run that ends without findings.
+- **Cause:** one of these, each with its fix:
+  - a push starts nothing: comment `/review`.
+  - the commit was already reviewed: comment `/review`.
+  - the comment isn't top-level, doesn't have `/review` alone on its first line, or comes from someone without write access: see [4.1](#41-starting-a-review).
+  - a bot's pull request, a fork or the `skip-review` label: see [4.1](#41-starting-a-review).
+  - "Paused": comment `/review`.
+  - "Review budget used up", when the plan's API credits are used up or the Anthropic login failed and the Bedrock key is missing, refused or throttled: see [1.4](#14-set-up-anthropic) and [1.5](#15-store-the-organization-secrets).
+  - a public repository without the `pull_request_target` event policy from 2026-12-02: see [2.4](#24-require-the-approval).
+  - a `code-review.yml` that isn't on the default branch yet, since both triggers run it from there: merge it to the default branch.
+- **Fix:** the fix is the one listed with the cause.
+
+### 5.5 The Trace Contains Something Shaped Like a Credential
+
+- **Symptom:** the "Code review" check run is "Review failed" with "The trace contains something shaped like a credential (…)." (the same check names "The review", "The summary comment" or "The check run").
+- **Cause:** before it publishes anything, the review refuses text shaped like an Anthropic API key, a GitHub token, a Bedrock API key, a PEM private key's BEGIN line or a JWT (`src/outputs.ts`), and a test fixture in the diff is the usual source.
+- **Fix:** build the fixture from parts, as `test/enable-code-review.test.ts` builds its key from five repeated dashes and the words around them, push, and comment `/review` ([#233](https://github.com/NCodeGroup/code-review/pull/233)).
