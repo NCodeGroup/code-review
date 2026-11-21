@@ -123,11 +123,11 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | --- | --- | --- | --- | --- |
 | `static_analysis` | MUST | yes | no | **Check**: Met while CodeQL's default setup runs; the ruleset the template's `tools/Set-RepositoryBaseline.ps1` writes then blocks a pull request that adds an alert ([assurance-case.md](assurance-case.md), Evidence). |
 | `static_analysis_common_vulnerabilities` | SUGGESTED | yes | no | **Check**: CodeQL's security queries, while its default setup runs. |
-| `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings. Name any finding dismissed as won't fix. |
+| `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings. Name any finding dismissed as won't fix. List the closed alerts by reason (Security > Code scanning with `tool:CodeQL is:closed`) and name each one closed as won't fix with its rationale; write 'none dismissed' only when there is none. |
 | `static_analysis_often` | SUGGESTED | yes | no | **Check**: Met while CodeQL runs on every pull request; Scorecard also runs on every push to the default branch and weekly. |
 | `dynamic_analysis` | SUGGESTED | no | no | **Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). |
 | `dynamic_analysis_unsafe` | SUGGESTED | yes | no | **N/A**: it applies only to code in a memory-unsafe language, such as C or C++. |
-| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped. |
+| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Check**: Met when the tests that run before a release run with assertions on: the test framework's own (xUnit `Assert`, pytest `assert`, Pester `Should`) always are, and the code's own (`Debug.Assert`, Python `assert`) are while the tests run in a build that keeps them (.NET `Debug`, not `Release`; Python without `-O`). Unmet is the honest answer when no tests run before a release, or they run only on an optimized build that strips the code's assertions. Never leave it `?`: the site counts an unanswered SUGGESTED criterion as incomplete, which holds passing below 100%. |
 | `dynamic_analysis_fixed` | MUST | yes | no | **Check**: Met while each release's tests pass before it is tagged, since a failure stops the release; name any finding left open. |
 
 ## Silver
@@ -143,7 +143,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `dco` | SHOULD | no | yes | **Unmet**: the template asks for no `Signed-off-by` line ([ADR-0023](decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)). |
 | `governance` | MUST | no | yes | **Met**: [GOVERNANCE.md](../GOVERNANCE.md). |
 | `code_of_conduct` | MUST | no | yes | **Met**: [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), the Contributor Covenant 2.1. |
-| `roles_responsibilities` | MUST | no | yes | **Check**: [GOVERNANCE.md](../GOVERNANCE.md), Roles; Met once its Who column names the maintainers. |
+| `roles_responsibilities` | MUST | no | yes | **Check**: [GOVERNANCE.md](../GOVERNANCE.md), Roles; Met once its Who column names the maintainers; it ships as 'The repository's owners', so leave it `?` until the project fills the names in. |
 | `access_continuity` | MUST | no | yes | **Person**: a second owner of the GitHub organization, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. Unmet with one maintainer, which keeps silver from being earned. |
 | `bus_factor` | SHOULD | no | yes | **Person**: two or more people who could carry the project on; Unmet with one maintainer. |
 | `documentation_roadmap` | MUST | no | yes | **Check**: [ROADMAP.md](../ROADMAP.md); Met once its prompts are replaced with the project's plans. |
@@ -153,7 +153,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `documentation_current` | MUST | yes | no | **Met**: a document changes in the same pull request as the code it describes ([docs/README.md](README.md), Rules); cite a recent one. |
 | `documentation_achievements` | MUST | no | yes | **Check**: Met once [README.md](../README.md) shows the badge at the top of this page, linked to project 16752, within 48 hours of earning a level. `.\.template\Update-Project.ps1` says so while it doesn't. |
 | `accessibility_best_practices` | SHOULD | yes | no | **Check**: N/A for software without a user interface, such as a library; otherwise Met when the interface follows accessibility practice. |
-| `internationalization` | SHOULD | yes | no | **Check**: N/A only when the software shows people no text and sorts none; software that writes English messages for people is Unmet until they can be translated. |
+| `internationalization` | SHOULD | yes | no | **Check**: N/A only when the software shows people no text and sorts none; software that writes English messages for people is Unmet until they can be translated. A library whose text is exception and log messages for developers shows end users none: N/A. |
 | `sites_password_security` | MUST | yes | no | **N/A**: the project's sites are GitHub, and the project stores no password of its own. |
 
 ### Change Control
@@ -188,7 +188,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates that Dependabot proposes, with actions pinned to a full commit SHA. |
 | `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists. |
 | `automated_integration_testing` | MUST | no | no | **Met**: `.github/workflows/ci.yml` runs the tests on every pull request and push to the default branch, and reports the result. |
-| `regression_tests_added50` | MUST | yes | no | **Check**: at least half of the bugs fixed in the last six months got a regression test ([Checks](#checks)). |
+| `regression_tests_added50` | MUST | yes | no | **Check**: read the changelog's `### Fixed` entries and the pull request titles of the last six months and name each fix with its test ([Checks](#checks)); N/A only when none fixed a bug. |
 | `test_statement_coverage80` | MUST | yes | no | **Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure. |
 | `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
 | `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
@@ -208,8 +208,8 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `crypto_verification_private` | MUST | yes | no | **Check**: the same evidence. |
 | `signed_releases` | MUST | yes | no | **Check**: Met once the repository has immutable releases, which the template's `tools/Set-RepositoryBaseline.ps1` turns on: GitHub then signs an attestation of each release, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it with `gh release verify` ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)). N/A when the releases aren't meant for wide use. |
 | `version_tags_signed` | SUGGESTED | no | no | **Check**: Met while the repository is public and `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`: `.github/workflows/tag-release.yml` then signs each release tag with gitsign, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)); a private repository's tags stay unsigned. |
-| `input_validation` | MUST | yes | no | **Check**: list the entry points that take untrusted input and the checks each one makes. |
-| `hardening` | SHOULD | yes | no | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials. |
+| `input_validation` | MUST | yes | no | **Check**: list the entry points that take untrusted input and the checks each one makes. A library that parses or deserializes caller-supplied data is not N/A; N/A holds only for software that reads no input from outside its own process. |
+| `hardening` | SHOULD | yes | no | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials, e.g. every workflow sets `permissions: {}` and grants per job, actions are pinned to full commit SHAs. |
 | `assurance_case` | MUST | no | yes | **Check**: [assurance-case.md](assurance-case.md); Met once its threat model, trust boundary, principles and weaknesses are written. |
 
 ### Analysis
@@ -238,9 +238,9 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `repo_distributed` | MUST | no | no | **Met**: Git; autofill. |
-| `small_tasks` | MUST | no | yes | **Check**: Met while open issues carry the `good first issue` label that [CONTRIBUTING.md](../CONTRIBUTING.md) names. |
-| `require_2FA` | MUST | no | no | **Person**: the GitHub organization requires two-factor authentication; only an owner can set and confirm it. |
-| `secure_2FA` | SHOULD | no | no | **Person**: the organization allows only secure two-factor methods. |
+| `small_tasks` | MUST | no | yes | **Check**: Met while open issues carry the `good first issue` label that [CONTRIBUTING.md](../CONTRIBUTING.md) names. When no open issue carries the label (a healthy project may have none), file one real small task with it, or answer Unmet; never Met without one. |
+| `require_2FA` | MUST | no | no | **Person**: the GitHub organization requires two-factor authentication; only an owner can set and confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
+| `secure_2FA` | SHOULD | no | no | **Person**: the organization allows only secure two-factor methods. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
 
 ### Quality
 
@@ -260,16 +260,16 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | --- | --- | --- | --- | --- |
 | `crypto_used_network` | MUST | yes | no | **Check**: N/A without network calls; otherwise Met when every call uses HTTPS or another secure protocol ([Checks](#checks)). |
 | `crypto_tls12` | MUST | yes | no | **Check**: N/A without TLS; otherwise Met when nothing pins a protocol older than TLS 1.2. |
-| `hardened_site` | MUST | no | yes | **Check**: Met when the sites are GitHub, which send HSTS, a content security policy and `X-Content-Type-Options`; cite a header check ([Checks](#checks)). |
+| `hardened_site` | MUST | no | yes | **Check**: Met when the sites are GitHub, which send HSTS, a content security policy and `X-Content-Type-Options`; cite a header check ([Checks](#checks)). Autofill saves a bare 'Found all required security hardening headers.' with no URL: write 'Checked <date> with `curl -sI` on <the sites' addresses>: strict-transport-security, content-security-policy and x-content-type-options are present' and link the address. |
 | `security_review` | MUST | no | no | **Person**: a security review in the last 5 years that considered the security requirements and the trust boundary, recorded in [assurance-case.md](assurance-case.md#security-reviews); the assurance case alone isn't one. |
-| `hardening` | MUST | yes | yes | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials. |
+| `hardening` | MUST | yes | yes | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials, e.g. every workflow sets `permissions: {}` and grants per job, actions are pinned to full commit SHAs. |
 
 ### Analysis
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `dynamic_analysis` | MUST | yes | no | **Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). |
-| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped. |
+| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Check**: Met when the tests that run before a release run with assertions on: the test framework's own (xUnit `Assert`, pytest `assert`, Pester `Should`) always are, and the code's own (`Debug.Assert`, Python `assert`) are while the tests run in a build that keeps them (.NET `Debug`, not `Release`; Python without `-O`). Unmet is the honest answer when no tests run before a release, or they run only on an optimized build that strips the code's assertions. Never leave it `?`: the site counts an unanswered SUGGESTED criterion as incomplete, which holds passing below 100%. |
 
 ## Where a Level Stops
 
@@ -279,7 +279,7 @@ level to expect is known up front:
 - `access_continuity` (silver MUST): a second owner of the GitHub organization, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. With one maintainer, silver stops below 100% here, whatever else is met.
 - `bus_factor` (silver SHOULD, gold MUST) and `two_person_review` (gold MUST): a second maintainer; NCode Review's approval is a bot's, not a person's.
 - `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
-- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the GitHub organization requires two-factor authentication, with secure methods only; only an owner can confirm it.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the GitHub organization requires two-factor authentication, with secure methods only; only an owner can confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then.
 - `security_review` (gold MUST): a security review in the last five years, recorded in [assurance-case.md](assurance-case.md#security-reviews).
 - `dco` (silver SHOULD): unmet by choice: the template asks for no `Signed-off-by` line.
 
@@ -294,9 +294,9 @@ The Check rows depend on these. Run them at the commit you answer for, and cite 
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
 - **A build** (`build` and the silver `build_*` criteria): a build makes the files users run, such as a compile or a bundle; a typecheck or a lint isn't one.
-- **Regression tests** (`regression_tests_added50`, `tests_are_added`): of the last six merged pull requests that fix a bug, at least half add or change a test.
+- **Regression tests** (`regression_tests_added50`, `tests_are_added`): read the changelog's `### Fixed` entries and the pull request titles of the last six months and name each fix with its test; N/A only when none fixed a bug.
 - **Responses** (`report_responses`, `enhancement_responses`, `maintained`): the bug reports and enhancement requests of the last 2 to 12 months were answered, and the latest release and merges are recent.
-- **The Security tab**, read in a browser by someone with access: private vulnerability reporting enabled (`vulnerability_report_private`); advisories in every state, where none makes `vulnerability_report_response`, `release_notes_vulns` and `vulnerability_report_credit` N/A; open CodeQL alerts under Code scanning with `tool:CodeQL`, where Scorecard's alerts are posture checks, not code findings (`static_analysis_fixed`); and open Dependabot and secret scanning alerts (`vulnerabilities_fixed_60_days`).
+- **The Security tab**, read in a browser by someone with access: private vulnerability reporting enabled (`vulnerability_report_private`); advisories in every state, where none makes `vulnerability_report_response`, `release_notes_vulns` and `vulnerability_report_credit` N/A; open CodeQL alerts under Code scanning with `tool:CodeQL`, where Scorecard's alerts are posture checks, not code findings (`static_analysis_fixed`), plus the closed alerts by reason (`tool:CodeQL is:closed`), naming each one closed as won't fix with its rationale; and open Dependabot and secret scanning alerts (`vulnerabilities_fixed_60_days`).
 - **Site headers** (`hardened_site`): `curl -sI https://github.com/OWNER/REPO` shows `strict-transport-security`, `content-security-policy` and `x-content-type-options`.
 - **Saved answers**, once registered: https://www.bestpractices.dev/projects/16752.json holds each `<id>_status` and `<id>_justification`, the `badge_level`, and each level's percentage as `badge_percentage_0`, `_1` and `_2`. A saved answer stays as it was until someone answers again, so compare them after each change that closes a gap.
 
@@ -327,12 +327,14 @@ RULES
 - Use N/A only where the form offers it and the criterion's own N/A condition is true.
 - Answer Unmet for each criterion the map marks Gap, with the map's reason.
 - Only a person can meet these, so mark them Unmet unless I say otherwise: access_continuity, bus_factor, contributors_unassociated, two_person_review, dco (unless the repository requires Signed-off-by), security_review, and require_2FA and secure_2FA (unless I confirm the organization's settings).
-- Before saving each level, show me a table of criterion, answer and evidence, grouped into: from ANSWERS, from the map that you verified, and left open. List the MUST criteria that keep that level from being earned. Save only after I say "go". Never claim a level: report what the site shows.
+- Ask me once to confirm the organization's two-factor setting. Autofill's saved `require_2FA` Met ('GitHub requires 2FA as of March 2023') is not evidence of it: set Unmet unless I confirm.
+- Read the criterion map with `get_page_text` on the blob page; the browser JavaScript tool can't read raw.githubusercontent.com.
+- Before saving each level, show me a table of criterion, answer and evidence, grouped into: from ANSWERS, from the map that you verified, and left open, and the SUGGESTED criteria still left '?': they keep the level below 100% although they aren't MUST. List the MUST criteria that keep that level from being earned. Save only after I say "go". Never claim a level: report what the site shows.
 
 STEPS
-1. Find an existing entry: open https://www.bestpractices.dev/en/projects?q=code-review. Text search matches names and descriptions, not repository URLs. If the project is there, note its number and go to step 3.
+1. Find an existing entry: open https://www.bestpractices.dev/projects.json?url=https%3A%2F%2Fgithub.com%2FOWNER%2FREPO (the project's address, URL-encoded, without /en/), which lists a registered project's id. If it lists one, note its number and go to step 3. Otherwise open https://www.bestpractices.dev/en/projects?q=code-review; text search matches names and descriptions, not repository URLs. If the project is there, note its number and go to step 3.
 2. Register: open https://www.bestpractices.dev/en/projects/new, choose OWNER/REPO under "Select a GitHub repository", set the home page to the repository URL unless I give another, keep the Metal series, and submit. Wait for the redirect to /en/projects/<number>/passing/edit; autofill takes about 10 seconds.
-3. For each level (passing, silver, gold), open /en/projects/<number>/<level>/edit, click "Expand all panels" and read the form with JavaScript:
+3. For each level (passing, silver, gold), open /en/projects/<number>/<level>/edit, click "Expand all panels", wait until `input[type=radio][name$=_status]` exists on the page (on the first load it has none until the page finishes loading), then read the form with JavaScript:
    - each criterion's radios are project[<id>_status], with values Met, Unmet, N/A and ?;
    - its justification is project[<id>_justification];
    - N/A exists only where the form offers it.
@@ -345,15 +347,16 @@ STEPS
    - /releases and /tags.
    - Issues labelled bug and enhancement: were they answered?
    - The last 6 bug-fix pull requests: did each add a test?
-5. Build the level's answers: ANSWERS first, then each map default whose evidence you confirmed. Show me the table (see RULES) and wait for "go".
+5. Build the level's answers: ANSWERS first, then each map default whose evidence you confirmed. Compare ANSWERS with what step 4 showed (closed CodeQL alerts against static_analysis_fixed, the bug-fix pull requests against regression_tests_added50, the releases against the release criteria); correct each answer the evidence contradicts and say so in the table. Show me the table (see RULES) and wait for "go".
 6. After "go", set every answer in one JavaScript pass: click the radio, set the textarea with the native value setter, and dispatch input and change events. Read the form back and check that no criterion you meant to answer is still "?" and that no Met or N/A has an empty justification. Then click the last "Submit (and exit)" and confirm the saved page: its banner, and the badge's alt text "Badge level for project <number> is ...".
 7. Go on to the next level whether or not this one was earned. Its answers count toward the percentage, and I decide what to fix.
 
 REPORT AT THE END
-1. The project number and URL.
-2. The level the site shows, and each level's percentage.
-3. Every criterion left "?" or Unmet, with why, MUST blockers first.
-4. The repository changes that would raise the level, such as adding the badge to README.md within 48 hours of earning a level (documentation_achievements) or closing a Gap row of the map.
+1. Any SUGGESTED criterion left '?' that holds passing below 100% (it blocks achieve_passing, which blocks silver and gold).
+2. The project number and URL.
+3. The level the site shows, and each level's percentage.
+4. Every criterion left "?" or Unmet, with why, MUST blockers first.
+5. The repository changes that would raise the level: after registering, record the number with `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }` and add the badge to README.md within 48 hours (documentation_achievements); also closing a Gap row of the map.
 ```
 
 ### Update the Answers

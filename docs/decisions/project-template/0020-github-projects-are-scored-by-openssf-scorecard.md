@@ -1,6 +1,6 @@
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022 and 0025)
+- **Status:** Accepted (amended by 0022, 0025, 0034, 0035 and 0153)
 - **Date:** 2026-11-14
 
 ## Context
@@ -32,13 +32,13 @@ The table lists each check, what the template does for it and what needs a perso
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |
-| Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. |
+| Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. Never attest packages downloaded from a registry, which claims a build the workflow never ran. |
 | Packaging | Nothing: the template publishes no packages for this project. | A workflow that publishes its packages, if it ships any. |
-| Branch-Protection | The ruleset blocks deletion and force pushes, requires a pull request, up-to-date checks and resolved conversations, and allows no bypass, so it applies to administrators. As this project's `code-review.yml` passes `approve: true`, it also requires one approval, dismisses stale approvals and requires approval of the last push ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)), which passes tier 2, and tier 2 gates every later tier: the score is about 8. It never requires approval of the last push without an approval. | Tier 4 needs two approvals and code owners. |
+| Branch-Protection | The ruleset blocks deletion and force pushes, requires a pull request, up-to-date checks and resolved conversations, and allows no bypass, so it applies to administrators. As this project's `code-review.yml` passes `approve: true`, it also requires one approval, dismisses stale approvals and requires approval of the last push once a second person has write access ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md), [ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md)), which passes tier 2, and tier 2 gates every later tier: the score is about 8. With one writer it requires neither, since GitHub counts no approval from the author or from NCode Review, and the score stays at 4. It never requires approval of the last push without an approval. | A second person with write access, for tier 2; tier 4 then needs two approvals and code owners. With one writer, dismiss the alert ([ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md)). |
 | Code-Review | Any non-author approval counts, a bot's included: NCode Review approves a clean review ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)). | Approve each bot's pull request, which NCode Review skips; the score rises toward 10 over the last 30 commits. |
-| Contributors | None. | Contributors from other organizations. |
-| Fuzzing | A .NET project adds FsCheck property tests to its test project. | Write the property tests. |
-| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)) and `docs/best-practices-criteria.md`, which maps every criterion to the answer to expect and its evidence ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization; gold needs two-person review, two unassociated contributors, the organization's two-factor settings and a security review. |
+| Contributors | None. | Recent contributors from at least 3 companies, each with 5 of the last 30 commits. With one writer, dismiss the alert ([ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md)). |
+| Fuzzing | Nothing: the template adds no property tests or package. | Write property tests with the stack's property-test library, for .NET `FsCheck.Xunit` with `[Property(Replay = Seed)]`, which Scorecard detects. |
+| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)) and `docs/best-practices-criteria.md`, which maps every criterion to the answer to expect and its evidence ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization; gold needs two-person review, two unassociated contributors, the organization's two-factor settings and a security review. With one writer, passing (5) is the most; dismiss the alert ([ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md)). |
 
 ## Options considered
 
@@ -51,7 +51,9 @@ The table lists each check, what the template does for it and what needs a perso
 
 - A solo project's score tops out below 10, for the reasons in the table's last column: Contributors,
   Branch-Protection's tier 4 and silver's second owner need other people. With NCode Review, Code-Review rises toward 10
-  and Branch-Protection reaches about 8.
+  and Branch-Protection reaches about 8 once a second person has write access
+  ([ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md)); with one writer, the alerts ADR-0035 lists
+  are dismissed.
 - A private repository lists the workflow in `project_owned_files` and deletes it; until it does, the workflow
   fails to publish its score.
 
@@ -62,6 +64,10 @@ The table lists each check, what the template does for it and what needs a perso
 - [ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md): external inputs are pinned and kept current.
 - [ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md): where NCode Review approves, the ruleset requires an
   approval.
+- [ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md): with one writer, the baseline requires no
+  approval.
+- [ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md): a sole maintainer
+  dismisses the Scorecard alerts one person can't clear.
 - [ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md): a project ships the
   documents the Best Practices silver level asks for.
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion is

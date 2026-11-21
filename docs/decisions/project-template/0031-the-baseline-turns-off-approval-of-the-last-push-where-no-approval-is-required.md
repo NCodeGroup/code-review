@@ -1,6 +1,6 @@
 # 0031. The baseline turns off approval of the last push where no approval is required
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0034)
 - **Date:** 2026-11-16
 - **Amends:** 0022
 

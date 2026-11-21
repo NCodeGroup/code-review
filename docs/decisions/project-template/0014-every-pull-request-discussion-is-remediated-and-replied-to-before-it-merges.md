@@ -58,6 +58,8 @@ it.
   started gets at most two.
 - A bot's finding on a protected path is fixed only when the maintainer approves its change in the run's start question;
   otherwise it is left for the maintainer with the change it proposes.
+- `/run-issues-all-in` lifts the two-reply limit and fixes a bot's finding on a protected path when it holds, on the
+  maintainer's word ([ADR-0033](0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md)).
 - `tools/Set-RepositoryBaseline.ps1` turns on conversation resolution in a ruleset that an owner shaped, and changes
   nothing else in it.
 - A project that wants otherwise writes a record that supersedes this one.

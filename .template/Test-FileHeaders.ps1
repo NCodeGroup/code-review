@@ -10,7 +10,9 @@
     comment line within its first 10 lines. The comment follows the file's extension: "#" for scripts, "//" for the C
     family and JavaScript, "/* ... */" on each line for .css, .scss and .less, and "//" inside the frontmatter for
     .astro, whose lines must sit between its leading "---" lines so nothing reaches the built page. Files of other
-    kinds, and names ending in .min.js, aren't checked. A hand-written declaration file (.d.ts) is checked like any
+    kinds, and names ending in .min.js, aren't checked. Nor does it check the five build scripts the template owns
+    (build/dod.ps1, Update-PublicApi.ps1, Get-TestRuntimes.ps1, Install-Dotnet.ps1 and Update-Baseline.ps1), which
+    updates replace. A hand-written declaration file (.d.ts) is checked like any
     TypeScript file; a generated one, like other build output, sits in a git-ignored folder, which git ls-files
     leaves out.
     Prints each miss and exits 1 when there is one, else 0. With -Fix, it adds the missing lines instead, after any #!
@@ -59,6 +61,8 @@ $spdxLine = if ($license) { "SPDX-License-Identifier: $license" }
 $hashMarker = '.ps1', '.psm1', '.py', '.sh', '.bash', '.rb', '.tf'
 $slashMarker = '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.scala', '.dart', '.groovy', '.astro'
 $blockMarker = '.css', '.scss', '.less'
+# Scripts the template owns and updates replace, so a header added to one would be discarded.
+$templateOwned = 'build/dod.ps1', 'build/Update-PublicApi.ps1', 'build/Get-TestRuntimes.ps1', 'build/Install-Dotnet.ps1', 'build/Update-Baseline.ps1'
 
 $listed = git -C $Root ls-files -z
 if ($LASTEXITCODE) { throw "git ls-files exited with code $LASTEXITCODE." }
@@ -68,7 +72,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 $checked = 0
 $failing = 0
 foreach ($path in $paths) {
-    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)(node_modules|vendor)/' -or $path -match '\.min\.js$') { continue }
+    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)(node_modules|vendor)/' -or $path -match '\.min\.js$' -or $templateOwned -contains $path) { continue }
     $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
     $open, $close = if ($hashMarker -contains $extension) { '#', '' } elseif ($slashMarker -contains $extension) { '//', '' } elseif ($blockMarker -contains $extension) { '/*', '*/' } else { continue }
     $file = Join-Path $Root $path
