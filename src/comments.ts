@@ -215,6 +215,27 @@ export interface Approver {
   login: string;
 }
 
+// The approver the publish step's env names: its API and login when the token step minted a token, so the approval
+// meets a required approval, and the token, a secret wherever the app's is. `missing` says the caller gave the
+// approver's key (CODE_REVIEW_APPROVER is 'true') but no approver came, so NCode Review approves as its own app.
+export function approverFromEnv(
+  env: NodeJS.ProcessEnv,
+  makeApi: (token: string) => Api,
+): { approver?: Approver; token?: string; missing: boolean } {
+  const token = env['CODE_REVIEW_APPROVER_TOKEN'] || undefined;
+  const login = env['CODE_REVIEW_APPROVER_LOGIN'] || undefined;
+  const approver = token && login ? { api: makeApi(token), login } : undefined;
+  return {
+    ...(approver ? { approver } : {}),
+    ...(token ? { token } : {}),
+    missing: env['CODE_REVIEW_APPROVER'] === 'true' && !approver,
+  };
+}
+
+// The warning for a run whose caller gave the approver's key but got no approver.
+export const approverMissingWarning =
+  "::warning::The approver's token couldn't be minted, so NCode Review approves with its own app, whose approval meets no required approval.";
+
 // Approves when the review qualifies; otherwise, and when the approval is refused, dismisses the bot's earlier approval,
 // so a review that doesn't approve never leaves an old approval standing. With an approver, it submits and dismisses
 // the approver's approvals, and dismisses the NCode Review app's own too, so one approval from NCode Review stands.

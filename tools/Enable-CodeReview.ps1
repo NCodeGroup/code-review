@@ -126,18 +126,19 @@ gh secret list --org $Org *> $null
 if ($LASTEXITCODE) { throw "gh can't read $Org's organization secrets. Grant the scope with: $adminOrgHint" }
 if (-not $Repo -and -not $AppPrivateKeyPath -and -not $ApproverPrivateKeyPath -and -not $UpdateBedrockKey) { throw 'Nothing to do. Pass -Repo, -AppPrivateKeyPath, -ApproverPrivateKeyPath or -UpdateBedrockKey.' }
 
-$installation = (Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations |
-    Where-Object app_slug -eq $appSlug | Select-Object -First 1
+# Read once: both apps' installations come from this list.
+$installations = @((Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations)
+$installation = $installations | Where-Object app_slug -eq $appSlug | Select-Object -First 1
 if (-not $installation) { throw "The NCode Review app isn't installed on $Org. Install it from the app's settings page first." }
 
 $approverValue = $null
 $approverInstallation = $null
 if ($ApproverPrivateKeyPath) {
     $approverKeyPath = (Resolve-Path -LiteralPath $ApproverPrivateKeyPath).Path
-    $approverValue = (Get-Content -LiteralPath $approverKeyPath -Raw).Trim()
+    # An empty file reads as $null, so the string keeps .Trim() from failing before the PEM check says why.
+    $approverValue = "$(Get-Content -LiteralPath $approverKeyPath -Raw)".Trim()
     if ($approverValue -notmatch '^-----BEGIN (RSA )?PRIVATE KEY-----') { throw "$approverKeyPath isn't a PEM private key." }
-    $approverInstallation = (Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations |
-        Where-Object app_slug -eq $approverSlug | Select-Object -First 1
+    $approverInstallation = $installations | Where-Object app_slug -eq $approverSlug | Select-Object -First 1
     if (-not $approverInstallation) { throw "The NCode Review Approver app isn't installed on $Org. Install it from the app's settings page first." }
 }
 
@@ -212,7 +213,7 @@ foreach ($name in $appKeySecret, $bedrockSecret) {
     $value = $null
     if ($name -eq $appKeySecret -and $AppPrivateKeyPath) {
         $keyPath = (Resolve-Path -LiteralPath $AppPrivateKeyPath).Path
-        $value = (Get-Content -LiteralPath $keyPath -Raw).Trim()
+        $value = "$(Get-Content -LiteralPath $keyPath -Raw)".Trim()
         if ($value -notmatch '^-----BEGIN (RSA )?PRIVATE KEY-----') { throw "$keyPath isn't a PEM private key." }
     }
     elseif ($name -eq $appKeySecret -and -not $current) {

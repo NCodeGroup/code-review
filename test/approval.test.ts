@@ -4,7 +4,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
-import { applyApproval, dismissApprovals, submitApproval } from '../src/comments.ts';
+import {
+  applyApproval,
+  approverFromEnv,
+  approverMissingWarning,
+  dismissApprovals,
+  submitApproval,
+} from '../src/comments.ts';
 import type { ThreadNode } from '../src/rereview.ts';
 import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
@@ -416,4 +422,57 @@ test('summaryComment puts the approval line right after the verdict line', () =>
   assert.equal(lines[at + 2], line);
   assert.equal(lines[at + 3], '');
   assert.ok(lines[at + 4]!.startsWith('**0 reviewers run**'), String(lines[at + 4]));
+});
+
+// approverFromEnv: how the publish step builds the approver from the env the token step fills.
+const recordApi = () => {
+  const made: string[] = [];
+  const makeApi = (token: string) => {
+    made.push(token);
+    return async () => undefined;
+  };
+  return { made, makeApi };
+};
+
+test('approverFromEnv builds the approver from its token and login', () => {
+  const { made, makeApi } = recordApi();
+  const got = approverFromEnv(
+    {
+      CODE_REVIEW_APPROVER: 'true',
+      CODE_REVIEW_APPROVER_TOKEN: 'approver-token',
+      CODE_REVIEW_APPROVER_LOGIN: 'ncode-review-approver[bot]',
+    },
+    makeApi,
+  );
+  assert.equal(got.approver?.login, 'ncode-review-approver[bot]');
+  assert.equal(got.token, 'approver-token');
+  assert.deepEqual(made, ['approver-token']);
+  assert.equal(got.missing, false);
+});
+
+test('approverFromEnv reports the approver missing when the key was given but no token came', () => {
+  const { made, makeApi } = recordApi();
+  const got = approverFromEnv(
+    { CODE_REVIEW_APPROVER: 'true', CODE_REVIEW_APPROVER_TOKEN: '', CODE_REVIEW_APPROVER_LOGIN: '' },
+    makeApi,
+  );
+  assert.equal(got.approver, undefined);
+  assert.equal(got.token, undefined);
+  assert.equal(got.missing, true);
+  assert.deepEqual(made, []);
+  assert.match(approverMissingWarning, /^::warning::The approver's token couldn't be minted/);
+});
+
+test('approverFromEnv keeps a token without a login as a secret, with no approver', () => {
+  const { makeApi } = recordApi();
+  const got = approverFromEnv({ CODE_REVIEW_APPROVER: 'true', CODE_REVIEW_APPROVER_TOKEN: 'approver-token' }, makeApi);
+  assert.equal(got.approver, undefined);
+  assert.equal(got.token, 'approver-token');
+  assert.equal(got.missing, true);
+});
+
+test('approverFromEnv is quiet when the caller gave no approver key', () => {
+  const { makeApi } = recordApi();
+  const got = approverFromEnv({ CODE_REVIEW_APPROVER: 'false' }, makeApi);
+  assert.deepEqual(got, { missing: false });
 });

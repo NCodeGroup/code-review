@@ -329,6 +329,22 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
     assert.deepEqual(calls, []);
   });
 
+  test("-ApproverPrivateKeyPath stops on a file that isn't a PEM private key, or is empty, before setting a secret", {
+    skip,
+  }, async () => {
+    for (const text of ['not a key\n', '']) {
+      const pem = path.join(tempDir(), 'approver.pem');
+      writeFileSync(pem, text);
+      const { status, output, calls } = await run(
+        ['-Repo', 'alpha', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
+        scenario(),
+      );
+      assert.notEqual(status, 0, output);
+      assert.match(output, /isn't a PEM private key/);
+      assert.ok(!joined(calls).some((line) => line.startsWith('secret set')), joined(calls).join('\n'));
+    }
+  });
+
   test("-ApproverPrivateKeyPath stops when the approver app isn't installed", { skip }, async () => {
     const pem = path.join(tempDir(), 'approver.pem');
     writeFileSync(pem, fakeApproverKey);

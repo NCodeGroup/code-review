@@ -18,7 +18,15 @@ import path from 'node:path';
 import { acknowledgedFrom, publishCheck } from './checks.ts';
 import { assertNoSecrets } from './outputs.ts';
 import { approvalFor, approvalLine, approveOn } from './approval.ts';
-import { applyApproval, postSummary, postThreads, errorText, readPostedThreads } from './comments.ts';
+import {
+  applyApproval,
+  approverFromEnv,
+  approverMissingWarning,
+  postSummary,
+  postThreads,
+  errorText,
+  readPostedThreads,
+} from './comments.ts';
 import { publishAnswer } from './explain.ts';
 import { dismissedThreads, followUpThreads, planFollowUps } from './follow-up.ts';
 import { githubApi, githubGraphql } from './github.ts';
@@ -58,9 +66,7 @@ async function main(): Promise<void> {
   const api = githubApi(token);
   // The approver's token is minted only for a run that approves. Its API submits the approval, and its token is a secret
   // wherever the app's is.
-  const approverToken = process.env['CODE_REVIEW_APPROVER_TOKEN'];
-  const approverLogin = process.env['CODE_REVIEW_APPROVER_LOGIN'];
-  const approver = approverToken && approverLogin ? { api: githubApi(approverToken), login: approverLogin } : undefined;
+  const { approver, token: approverToken, missing: approverMissing } = approverFromEnv(process.env, githubApi);
   const secrets = approverToken ? [token, approverToken] : [token];
   // A closed pull request's run records outcomes and has no review to publish, nor a check run to complete. It never
   // pauses, so it comes first.
@@ -158,10 +164,7 @@ async function main(): Promise<void> {
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, secrets);
   }
 
-  if (approving && process.env['CODE_REVIEW_APPROVER'] === 'true' && !approver)
-    writeLog(
-      "::warning::The approver's token couldn't be minted, so NCode Review approves with its own app, whose approval meets no required approval.",
-    );
+  if (approving && approverMissing) writeLog(approverMissingWarning);
   const state = approving
     ? await applyApproval(api, results, approval.approve, secrets, writeLog, approver)
     : 'not-approved';
