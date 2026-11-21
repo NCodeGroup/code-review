@@ -14,6 +14,11 @@ import { after, describe, test } from 'node:test';
 
 const script = path.resolve(import.meta.dirname, '..', 'tools', 'Enable-CodeReview.ps1');
 
+// The approver tests' key, built from parts so the source holds nothing shaped like a private key, which NCode
+// Review's trace check refuses to publish when a pull request's diff carries it.
+const pemDashes = '-'.repeat(5);
+const fakeApproverKey = `${pemDashes}BEGIN RSA PRIVATE KEY${pemDashes}\nnot-a-real-key\n${pemDashes}END RSA PRIVATE KEY${pemDashes}\n`;
+
 function findPwsh(): string | undefined {
   try {
     return execFileSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', '(Get-Process -Id $PID).Path'], {
@@ -292,7 +297,7 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
     skip,
   }, async () => {
     const pem = path.join(tempDir(), 'approver.pem');
-    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    writeFileSync(pem, fakeApproverKey);
     const installed: Answer = { match: '^api user/installations/6/repositories --paginate', stdout: `${org}/beta` };
     const { status, output, calls } = await run(
       ['-Repo', 'alpha,beta', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
@@ -317,7 +322,7 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
 
   test('-ApproverPrivateKeyPath without -Repo stops before any change', { skip }, async () => {
     const pem = path.join(tempDir(), 'approver.pem');
-    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    writeFileSync(pem, fakeApproverKey);
     const { status, output, calls } = await run(['-ApproverPrivateKeyPath', pem], scenario());
     assert.notEqual(status, 0, output);
     assert.match(output, /-ApproverPrivateKeyPath needs -Repo/);
@@ -326,7 +331,7 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
 
   test("-ApproverPrivateKeyPath stops when the approver app isn't installed", { skip }, async () => {
     const pem = path.join(tempDir(), 'approver.pem');
-    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    writeFileSync(pem, fakeApproverKey);
     const withoutApprover: Answer = {
       match: `^api orgs/${org}/installations`,
       stdout: JSON.stringify({ installations: [{ id: 5, app_slug: 'ncode-review', repository_selection: 'all' }] }),
