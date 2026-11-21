@@ -148,3 +148,45 @@ Do these for each repository, in order, after section 1.
     4. Run the baseline again.
 - **Check:** `gh api repos/<owner>/<name>/rules/branches/main --jq '.[] | select(.type == "pull_request") | .parameters.required_approving_review_count'` prints `1`.
 - **Goes wrong:** an approval required before the approver is live blocks every merge, which is what blocked this repository's pull requests on 2026-11-21.
+
+### 2.5 Check the Approval
+
+- **Who:** a maintainer.
+- **Where:** the repository's next pull request.
+- **Do:** mark it ready, or comment `/review`, and let the review finish.
+- **Check:**
+  - After a clean review, `gh api repos/<owner>/<name>/pulls/<number>/reviews --jq '.[] | .user.login + " " + .state'` shows `ncode-review-approver[bot] APPROVED`.
+  - `gh pr view <number> --repo <owner>/<name> --json reviewDecision` shows `APPROVED`.
+  - The merge box shows the requirement met.
+- **Goes wrong:**
+  - An approval from `ncode-review[bot]` means no approver key reached the review (2.2, 2.3, a pin older than v1.5.0) or the approver's token step failed, which the run's log warns about (2.1).
+  - When the approver's review doesn't count, `gh api graphql -f query='query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviews(last:20){nodes{author{login} state authorCanPushToRepository}}}}}' -f o=<owner> -f n=<name> -F p=<number>` shows `authorCanPushToRepository` false when the approver lacks Contents: write there (1.3).
+  - A missing approval was dismissed by a later review that didn't approve, or by a push. The summary comment's `Approval:` line says why.
+
+## 3. Keys
+
+### 3.1 Store a Key, Then Delete the .pem
+
+- **Who:** an organization owner.
+- **Where:** the app's settings page, `https://github.com/organizations/NCodeGroup/settings/apps/ncode-review` or `.../ncode-review-approver`, Private keys; and the clone from 1.5.
+- **Do:**
+  - Generate a private key, which downloads a `.pem`.
+  - Store it, the NCode Review app's with `-AppPrivateKeyPath` (1.5) and the approver's with `-Repo <name> -ApproverPrivateKeyPath` (2.2).
+  - Then `Remove-Item -LiteralPath <path to the .pem>`.
+  - Why: GitHub keeps the secret and gives it only to the workflows; a new key can be generated at any time; and a leaked approver key can approve on every repository the approver is installed on.
+- **Check:** `Test-Path -LiteralPath <path to the .pem>` prints `False`.
+- **Goes wrong:** a copy kept in Downloads or a backup outlives the deletion.
+
+### 3.2 Rotate a Key
+
+- **Who:** an organization owner.
+- **Where:** the app's settings page, `https://github.com/organizations/NCodeGroup/settings/apps/ncode-review` or `.../ncode-review-approver`, Private keys; and the clone from 1.5.
+- **Do:**
+  1. Generate a new key.
+  2. Store it everywhere (the approver's with `-Repo` naming every repository its installation lists).
+  3. Delete the `.pem`.
+  4. Only then delete the old key on the app's page.
+
+  The Bedrock key rotates with `.\tools\Enable-CodeReview.ps1 -UpdateBedrockKey`, then the old key is revoked in AWS.
+- **Check:** the app's page lists only the new key, and 2.5's check passes on the next review.
+- **Goes wrong:** deleting the old key first stops every repository that still has it from approving, or, for the NCode Review app, from posting.
