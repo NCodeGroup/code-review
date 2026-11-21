@@ -172,12 +172,13 @@ export async function submitApproval(
   }
 }
 
-// Dismisses the bot's own approving reviews of the pull request, so an approval of an earlier head doesn't stand after a
-// review that doesn't approve. A failure only warns.
+// Dismisses the approving reviews of the pull request that `login` (the NCode Review app by default) submitted, so an
+// approval of an earlier head doesn't stand after a review that doesn't approve. A failure only warns.
 export async function dismissApprovals(
   api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   log: (line: string) => void = writeLog,
+  login: string = botLogin,
 ): Promise<void> {
   const reviews = `/repos/${results.repository}/pulls/${results.pullRequest}/reviews`;
   type ListedReview = { id: number; state?: string; user?: { login?: string } };
@@ -195,7 +196,7 @@ export async function dismissApprovals(
     return;
   }
   for (const review of listed) {
-    if (review.user?.login !== botLogin || review.state !== 'APPROVED') continue;
+    if (review.user?.login !== login || review.state !== 'APPROVED') continue;
     try {
       await api('PUT', `${reviews}/${review.id}/dismissals`, {
         message: `Dismissed: the review at ${results.headSha.slice(0, 7)} doesn't approve.`,
@@ -207,21 +208,58 @@ export async function dismissApprovals(
   }
 }
 
+// The approver app's API client and its login, which approves and dismisses its own approvals in place of the NCode
+// Review app.
+export interface Approver {
+  api: Api;
+  login: string;
+}
+
+// The approver the publish step's env names: its API and login when the token step minted a token, so the approval
+// meets a required approval, and the token, a secret wherever the app's is. `missing` says the caller gave the
+// approver's key (CODE_REVIEW_APPROVER is 'true') but no approver came, so NCode Review approves as its own app.
+export function approverFromEnv(
+  env: NodeJS.ProcessEnv,
+  makeApi: (token: string) => Api,
+): { approver?: Approver; token?: string; missing: boolean } {
+  const token = env['CODE_REVIEW_APPROVER_TOKEN'] || undefined;
+  const login = env['CODE_REVIEW_APPROVER_LOGIN'] || undefined;
+  const approver = token && login ? { api: makeApi(token), login } : undefined;
+  return {
+    ...(approver ? { approver } : {}),
+    ...(token ? { token } : {}),
+    missing: env['CODE_REVIEW_APPROVER'] === 'true' && !approver,
+  };
+}
+
+// The warning for a run whose caller gave the approver's key but got no approver.
+export const approverMissingWarning =
+  "::warning::The approver's token couldn't be minted, so NCode Review approves with its own app, whose approval meets no required approval.";
+
 // Approves when the review qualifies; otherwise, and when the approval is refused, dismisses the bot's earlier approval,
-// so a review that doesn't approve never leaves an old approval standing.
+// so a review that doesn't approve never leaves an old approval standing. With an approver, it submits and dismisses
+// the approver's approvals, and dismisses the NCode Review app's own too, so one approval from NCode Review stands.
 export async function applyApproval(
   api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
   approve: boolean,
   secrets: Iterable<string>,
   log: (line: string) => void = writeLog,
+  approver?: Approver,
 ): Promise<'approved' | 'not-approved' | 'refused'> {
-  if (!approve) {
+  const dismissAll = async () => {
     await dismissApprovals(api, results, log);
+    if (approver) await dismissApprovals(approver.api, results, log, approver.login);
+  };
+  if (!approve) {
+    await dismissAll();
     return 'not-approved';
   }
-  if (await submitApproval(api, results, secrets, log)) return 'approved';
-  await dismissApprovals(api, results, log);
+  if (await submitApproval(approver?.api ?? api, results, secrets, log)) {
+    if (approver) await dismissApprovals(api, results, log);
+    return 'approved';
+  }
+  await dismissAll();
   return 'refused';
 }
 

@@ -1071,6 +1071,32 @@ test('action.yml gives the app key only to the token steps, and each token only 
   assert.deepEqual(users('steps.app-token.outputs.token'), ['publish', 'Finish the check run']);
 });
 
+test("action.yml gives the approver's key only to its token step, and its token only to the publish step", () => {
+  const steps = actionSteps();
+  const holders = steps.filter((s) => s.text.includes('inputs.approver-private-key') && s.id !== 'publish');
+  assert.deepEqual(
+    holders.map((s) => s.id),
+    ['approver-token'],
+  );
+  const minted = holders[0];
+  assert.match(minted?.uses ?? '', /^actions\/create-github-app-token@[0-9a-f]{40} /);
+  assert.deepEqual(Object.keys(minted?.with ?? {}).sort(), [
+    'client-id',
+    'permission-pull-requests',
+    'private-key',
+    'repositories',
+  ]);
+  assert.equal(minted?.with['permission-pull-requests'], 'write');
+  assert.equal(minted?.with['private-key'], '${{ inputs.approver-private-key }}');
+  assert.equal(
+    minted?.if,
+    "steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''",
+  );
+  const users = steps.filter((s) => s.text.includes('steps.approver-token.outputs.token')).map((s) => s.id || s.name);
+  assert.deepEqual(users, ['publish']);
+  assert.doesNotMatch(steps.find((s) => s.id === 'review')?.text ?? '', /approver/);
+});
+
 test('action.yml acknowledges before setup-node and npm ci, and never lets the acknowledgement stop the review', () => {
   const steps = actionSteps();
   const index = (id: string) => steps.findIndex((s) => s.id === id);

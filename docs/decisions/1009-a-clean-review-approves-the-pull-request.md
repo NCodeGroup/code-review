@@ -1,6 +1,6 @@
 # 1009. A clean review approves the pull request
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [1011](1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md))
 - **Date:** 2026-11-15
 - **Deciders:** Marcin Polewski
 
