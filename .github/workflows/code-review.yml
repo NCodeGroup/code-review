@@ -9,14 +9,18 @@ name: Code review
 # Review sets aside; `/review explain F3` says whether a finding still holds, and `/review teach <rule>` files a rule as
 # an issue, both on a closed pull request too. A `skip-review` label skips the automatic reviews. When a pull request
 # closes, merged or not, the outcomes job records what became of each finding (fixed, dismissed, acknowledged or
-# ignored) in the summary comment, by rules alone: no review and no model call. It needs no environment: the app's key
-# is an organization secret, and the code-review environment holds none; it only lets Anthropic's federation rule trust
-# the review job.
+# ignored) in the summary comment, by rules alone: no review and no model call. It needs no environment: the NCode
+# Review app's key is an organization secret. The code-review environment, which only the default branch can deploy
+# to, holds the approver's key, NCODE_REVIEW_APPROVER_PRIVATE_KEY, once it is stored, and lets Anthropic's federation
+# rule trust the review job.
 #
-# approve: true (v1.4.0 on) approves a pull request whose review leaves no blocker or should-fix finding open;
-# tools/Set-RepositoryBaseline.ps1 in the project template then requires one approval. A push dismisses it, so comment
-# /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
-# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md says why.
+# approve: true approves a pull request whose review leaves no blocker or should-fix finding open. With
+# approver-private-key (v1.5.0 on), the NCode Review Approver, an app that can write, submits that approval, so it meets
+# the ruleset's required approval; tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath stores its key in the code-review
+# environment, and tools/Set-RepositoryBaseline.ps1 in the project template then requires one approval, of the last
+# push. A push dismisses it, so comment /review after one; a maintainer approves a bot's pull request, which NCode
+# Review skips. docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md and the project
+# template's ADR-0022 and ADR-0036 say why.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
@@ -27,7 +31,7 @@ name: Code review
 # extended suite flags any other). Dependabot's github-actions entry opens each bump and updates the SHA and the tag.
 # Run tools/Enable-CodeReview.ps1 from a clone of NCodeGroup/code-review once for this repository: it creates the
 # code-review environment, which only the default branch can deploy to, and gives the repository access to the
-# organization's two secrets.
+# organization's two secrets; -ApproverPrivateKeyPath stores the approver's key in that environment.
 
 on:
   pull_request_target:
@@ -77,12 +81,15 @@ jobs:
           persist-credentials: false
 
       - name: Review
-        uses: NCodeGroup/code-review@da82720a1fb582551e8d460ddd277f3cdc8b43f1 # v1.4.2
+        uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           # A review that leaves no blocker or should-fix finding open approves the pull request.
           approve: true
+          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
+          # secret of the code-review environment, which only the default branch can deploy to.
+          approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
@@ -102,6 +109,6 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@da82720a1fb582551e8d460ddd277f3cdc8b43f1 # v1.4.2
+        uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
