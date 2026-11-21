@@ -114,3 +114,37 @@ Do these for each repository, in order, after section 1.
   - Then delete the `.pem` (3.1). A repository opted in later gets a newly generated key, since the app can hold several, and the others keep theirs.
 - **Check:** `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY`, and `gh api orgs/NCodeGroup/actions/secrets/NCODE_REVIEW_APP_PRIVATE_KEY/repositories --jq '.repositories[].full_name'` lists `<owner>/<name>`.
 - **Goes wrong:** [5.1](#51-a-missing-approverprivatekeypath-parameter), [5.2](#52-a-403-listing-an-installations-repositories), [5.3](#53-adminorg-errors).
+
+### 2.3 Pass the Approval Inputs in code-review.yml
+
+- **Who:** a maintainer of the repository.
+- **Where:** `.github/workflows/code-review.yml`, changed in a pull request (both triggers run the file from the default branch).
+- **Do:**
+  - Start from [Using it](../README.md#using-it), or project-template's `code_review` answer.
+  - Pin a release's full commit SHA with its tag in a comment, never a tag or a branch ([Versions](../README.md#versions)). The approver needs v1.5.0 or later: `NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0`. `gh api repos/NCodeGroup/code-review/commits/<tag> --jq .sha` prints a release's SHA.
+  - In the `review` job's `with:` only, which keeps `environment: code-review`, add these two inputs:
+
+    ```yaml
+    approve: true
+    approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
+    ```
+
+  - Never put them in the `outcomes` job: it runs outside the environment, so it can't read the key, and it never approves.
+- **Check:** once merged, `gh api repos/<owner>/<name>/contents/.github/workflows/code-review.yml -H "Accept: application/vnd.github.raw"` shows both lines in the review job.
+- **Goes wrong:** merged before 2.2, the input is empty and NCode Review approves as its own app, which is harmless until 2.4.
+
+### 2.4 Require the Approval
+
+- **Who:** an admin of the repository (`repo`).
+- **Where:** an up-to-date clone of NCodeGroup/project-template (run `git pull` first).
+- **Do:**
+  - Only once 2.1 to 2.3 are on the default branch, run `.\tools\Set-RepositoryBaseline.ps1 -Repo <name> -WhatIf`, with the `-RequireChecks` value project-template's [Run the Baseline](https://github.com/NCodeGroup/project-template/blob/main/docs/adopt.md#21-run-the-baseline) gives, then without `-WhatIf`.
+  - It reads the default branch's `code-review.yml` and the environment secret before it requires anything. With `approve: true`, a non-empty `approver-private-key` and the secret, it requires one approval, of the last push, and prints "NCode Review approves as the NCode Review Approver, which can write, so the ruleset requires one approval, of the last push". Without the secret it prints that the environment has no `NCODE_REVIEW_APPROVER_PRIVATE_KEY` and requires no approval for it.
+  - It also creates the `pull_request_target` event policy a public repository needs from 2026-12-02.
+  - For NCodeGroup/code-review, which reviews itself with a released pin, the order is:
+    1. Set the "Protect main" ruleset's required approvals to 0 (Settings > Rules > Rulesets > Protect main).
+    2. Merge and release the version that passes the key and pin it.
+    3. Store the key (2.2).
+    4. Run the baseline again.
+- **Check:** `gh api repos/<owner>/<name>/rules/branches/main --jq '.[] | select(.type == "pull_request") | .parameters.required_approving_review_count'` prints `1`.
+- **Goes wrong:** an approval required before the approver is live blocks every merge, which is what blocked this repository's pull requests on 2026-11-21.
