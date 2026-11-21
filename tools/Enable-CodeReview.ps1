@@ -16,7 +16,9 @@
     For each repository in -Repo, it:
 
       - checks that the NCode Review app is installed on it, and adds it to the installation when the app is installed
-        on selected repositories only;
+        on selected repositories only. GitHub lists and changes an installation's repositories only for a GitHub App's
+        user token or a personal access token, never for the token gh auth login gives, so when it refuses, the run
+        warns and goes on: select the repository in the app's installation settings yourself;
       - creates or updates its `code-review` environment so only the default branch can deploy to it. The environment
         holds no secrets: Anthropic's federation rule trusts only jobs in it, so only default-branch jobs get an
         Anthropic token;
@@ -26,7 +28,8 @@
 
     -ApproverPrivateKeyPath stores the NCode Review Approver app's private key as the secret
     NCODE_REVIEW_APPROVER_PRIVATE_KEY of each -Repo repository's `code-review` environment, and adds each repository to
-    the approver's installation when the app is installed on selected repositories only. With the key, the review's
+    the approver's installation when the app is installed on selected repositories only, or warns as for the NCode
+    Review app when GitHub refuses to list the installation's repositories. With the key, the review's
     approval is submitted as the approver, whose approval meets a ruleset's required approval.
 
     -AppPrivateKeyPath sets or replaces the app key. -UpdateBedrockKey replaces the Bedrock key; it's also set whenever
@@ -85,6 +88,36 @@ function Invoke-Gh {
     $output = & gh @args
     if ($LASTEXITCODE) { throw "gh $($args -join ' ') exited with code $LASTEXITCODE." }
     $output
+}
+
+# Adds the repository to an app's installation when the app is installed on selected repositories only. GitHub lists
+# and changes an installation's repositories only for a GitHub App's user token or a personal access token, never for the
+# OAuth token gh auth login gives, so when it refuses the list with HTTP 403, this warns, names the installation's
+# settings page and goes on, and the rest of the run still sets up the repository. Any other failure stops the run with
+# gh's error.
+function Add-ToInstallation($Installation, $Info, [string]$AppName) {
+    if (-not $Installation -or $Installation.repository_selection -eq 'all') { return }
+    $full = $Info.full_name
+    # Invoke-Gh throws on any failure, and this call must tell GitHub's refusal of gh's token apart from other failures,
+    # so it runs gh itself and keeps gh's error lines apart from the list.
+    $ErrorActionPreference = 'Continue'
+    $output = @(& gh api "user/installations/$($Installation.id)/repositories" --paginate --jq '.repositories[].full_name' 2>&1)
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    $errorLines = @($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $installed = @($output | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    if ($exitCode) {
+        $why = if ($errorLines.Count) { $errorLines[0] } else { "exit code $exitCode" }
+        if (($errorLines -join ' ') -match 'HTTP 403|authorized to a GitHub App') {
+            Write-Warning "Couldn't list the repositories of the $AppName installation ($why): GitHub lists them only for a GitHub App's user token or a personal access token. Make sure $full is selected at https://github.com/organizations/$Org/settings/installations/$($Installation.id)."
+            return
+        }
+        throw "Couldn't list the repositories of the $AppName installation: gh api user/installations/$($Installation.id)/repositories exited with code $exitCode ($why)."
+    }
+    if ($installed -notcontains $full -and $PSCmdlet.ShouldProcess($full, "Add the repository to the $AppName installation")) {
+        Invoke-Gh api -X PUT "user/installations/$($Installation.id)/repositories/$($Info.id)" --silent
+        "Added $full to the $AppName installation."
+    }
 }
 
 # The organization secret's visibility and, when it's limited to selected repositories, their full names.
@@ -152,23 +185,9 @@ foreach ($info in $repoInfos) {
     $full = $info.full_name
     $defaultBranch = $info.default_branch
 
-    # The app.
-    if ($installation.repository_selection -ne 'all') {
-        $installed = Invoke-Gh api "user/installations/$($installation.id)/repositories" --paginate --jq '.repositories[].full_name'
-        if ($installed -notcontains $full -and $PSCmdlet.ShouldProcess($full, 'Add the repository to the NCode Review installation')) {
-            Invoke-Gh api -X PUT "user/installations/$($installation.id)/repositories/$($info.id)" --silent
-            "Added $full to the NCode Review installation."
-        }
-    }
-
-    # The approver app.
-    if ($approverInstallation -and $approverInstallation.repository_selection -ne 'all') {
-        $approverInstalled = Invoke-Gh api "user/installations/$($approverInstallation.id)/repositories" --paginate --jq '.repositories[].full_name'
-        if ($approverInstalled -notcontains $full -and $PSCmdlet.ShouldProcess($full, 'Add the repository to the NCode Review Approver installation')) {
-            Invoke-Gh api -X PUT "user/installations/$($approverInstallation.id)/repositories/$($info.id)" --silent
-            "Added $full to the NCode Review Approver installation."
-        }
-    }
+    # The app, and the approver app.
+    Add-ToInstallation $installation $info 'NCode Review'
+    Add-ToInstallation $approverInstallation $info 'NCode Review Approver'
 
     # The environment: only the default branch may deploy to it.
     if ($PSCmdlet.ShouldProcess("$full environment $environment", "Limit deployments to $defaultBranch")) {
