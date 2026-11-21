@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-21
+
+### Added
+
+- With `approve` on and the new `approver-private-key` input, the approval is submitted as the NCode Review Approver, an app installed with Contents: write on the repositories that approve, with a token minted after the agents exit that can only write pull requests, so the approval meets a ruleset's required approval; the NCode Review app's own earlier approvals are dismissed, and without the key NCode Review approves as its own app, which meets no required approval. `approver-client-id` names the app. `tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath` stores the key in each repository's `code-review` environment and adds the repository to the approver's installation ([#232](https://github.com/NCodeGroup/code-review/issues/232), [ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
+
 ### Changed
 
 - The template's `node_lint` answer is on, matching the project's Biome lint: template updates render CI with its `npm run lint` step instead of treating it as the project's own, VS Code recommends the Biome extension, and `docs/best-practices-criteria.md` counts `coding_standards_enforced`, `warnings` and `warnings_fixed` as met ([#219](https://github.com/NCodeGroup/code-review/issues/219)).
@@ -287,7 +293,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/NCodeGroup/code-review/compare/v1.3.1...v1.4.0
