@@ -4,7 +4,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
-import { applyApproval, dismissApprovals, submitApproval } from '../src/comments.ts';
+import {
+  applyApproval,
+  approverFromEnv,
+  approverMissingWarning,
+  dismissApprovals,
+  submitApproval,
+} from '../src/comments.ts';
 import type { ThreadNode } from '../src/rereview.ts';
 import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
@@ -319,6 +325,68 @@ test('dismissApprovals dismisses only the bot approvals', async () => {
   );
 });
 
+const approverApproval = [{ id: 5, state: 'APPROVED', user: { login: 'ncode-review-approver[bot]' } }];
+
+function approverPair(options: { postThrows?: boolean } = {}) {
+  const review = fakeApi((call) => {
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
+  });
+  const approver = fakeApi((call) => {
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call.startsWith('POST') && options.postThrows) throw new Error('HTTP 422');
+    return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
+  });
+  return { review, approver, approverArg: { api: approver.api, login: 'ncode-review-approver[bot]' } };
+}
+
+test('applyApproval with an approver approves through the approver and dismisses the review app approvals', async () => {
+  const { review, approver, approverArg } = approverPair();
+  assert.equal(await applyApproval(review.api, target, true, [], () => {}, approverArg), 'approved');
+  assert.ok(approver.calls.includes('POST /repos/o/r/pulls/7/reviews'));
+  assert.equal(review.calls.filter((c) => c.startsWith('POST')).length, 0);
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.equal(approver.calls.filter((c) => c.startsWith('PUT')).length, 0);
+});
+
+test('applyApproval with an approver dismisses both apps approvals when approve is false', async () => {
+  const { review, approver, approverArg } = approverPair();
+  assert.equal(await applyApproval(review.api, target, false, [], () => {}, approverArg), 'not-approved');
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.deepEqual(
+    approver.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
+test('applyApproval with an approver dismisses both and says refused when the approver POST throws', async () => {
+  const { review, approver, approverArg } = approverPair({ postThrows: true });
+  assert.equal(await applyApproval(review.api, target, true, [], () => {}, approverArg), 'refused');
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.deepEqual(
+    approver.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
+test('dismissApprovals with a login dismisses only that login approvals', async () => {
+  const fake = fakeApi((call) => (call.startsWith('GET') ? [...botApproval, ...approverApproval] : {}));
+  await dismissApprovals(fake.api, target, () => {}, 'ncode-review-approver[bot]');
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
 const summaryInput: Results = {
   repository: 'o/r',
   pullRequest: 1,
@@ -354,4 +422,57 @@ test('summaryComment puts the approval line right after the verdict line', () =>
   assert.equal(lines[at + 2], line);
   assert.equal(lines[at + 3], '');
   assert.ok(lines[at + 4]!.startsWith('**0 reviewers run**'), String(lines[at + 4]));
+});
+
+// approverFromEnv: how the publish step builds the approver from the env the token step fills.
+const recordApi = () => {
+  const made: string[] = [];
+  const makeApi = (token: string) => {
+    made.push(token);
+    return async () => undefined;
+  };
+  return { made, makeApi };
+};
+
+test('approverFromEnv builds the approver from its token and login', () => {
+  const { made, makeApi } = recordApi();
+  const got = approverFromEnv(
+    {
+      CODE_REVIEW_APPROVER: 'true',
+      CODE_REVIEW_APPROVER_TOKEN: 'approver-token',
+      CODE_REVIEW_APPROVER_LOGIN: 'ncode-review-approver[bot]',
+    },
+    makeApi,
+  );
+  assert.equal(got.approver?.login, 'ncode-review-approver[bot]');
+  assert.equal(got.token, 'approver-token');
+  assert.deepEqual(made, ['approver-token']);
+  assert.equal(got.missing, false);
+});
+
+test('approverFromEnv reports the approver missing when the key was given but no token came', () => {
+  const { made, makeApi } = recordApi();
+  const got = approverFromEnv(
+    { CODE_REVIEW_APPROVER: 'true', CODE_REVIEW_APPROVER_TOKEN: '', CODE_REVIEW_APPROVER_LOGIN: '' },
+    makeApi,
+  );
+  assert.equal(got.approver, undefined);
+  assert.equal(got.token, undefined);
+  assert.equal(got.missing, true);
+  assert.deepEqual(made, []);
+  assert.match(approverMissingWarning, /^::warning::The approver's token couldn't be minted/);
+});
+
+test('approverFromEnv keeps a token without a login as a secret, with no approver', () => {
+  const { makeApi } = recordApi();
+  const got = approverFromEnv({ CODE_REVIEW_APPROVER: 'true', CODE_REVIEW_APPROVER_TOKEN: 'approver-token' }, makeApi);
+  assert.equal(got.approver, undefined);
+  assert.equal(got.token, 'approver-token');
+  assert.equal(got.missing, true);
+});
+
+test('approverFromEnv is quiet when the caller gave no approver key', () => {
+  const { makeApi } = recordApi();
+  const got = approverFromEnv({ CODE_REVIEW_APPROVER: 'false' }, makeApi);
+  assert.deepEqual(got, { missing: false });
 });
