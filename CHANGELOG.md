@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - This repository's own review pins NCode Review v1.5.0 and passes `approver-private-key` from its `code-review` environment, so the NCode Review Approver submits the approval of a clean review ([#234](https://github.com/NCodeGroup/code-review/issues/234), [ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
+- The project follows project-template v0.111.1: the new `/run-issues-all-in` command for Claude Code, Copilot Chat and Copilot CLI runs `/run-issues` with its answers given and its caps lifted (the template's ADR-0033); the workflow commands, `/best-practices`, the file-header check, `code-review-auto-merge.yml` and the template's decision records are refreshed, with ADR-0034, ADR-0035 and ADR-0036 on required approvals and Scorecard alerts; and `AGENTS.md` and `GOVERNANCE.md` say that the NCode Review Approver's approval meets the ruleset's required approval here.
 
 ### Fixed
 
