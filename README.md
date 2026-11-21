@@ -100,6 +100,8 @@ A [re-review](#re-reviews) runs only its own reviewers and prompt, so it runs no
 
 ## Using it
 
+To set NCode Review up for an organization or a repository, follow [docs/setup.md](docs/setup.md), the runbook that orders these steps; this README is their reference.
+
 ```yaml
 name: Code review
 on:
@@ -141,10 +143,15 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
+      - uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          # A review that leaves no blocker or should-fix finding open approves the pull request.
+          approve: true
+          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
+          # secret of the code-review environment, which only the default branch can deploy to.
+          approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
@@ -164,7 +171,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@d14405f82771819586a5ccbff636929dc894b780 # v1.0.0
+        uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
 ```
@@ -214,7 +221,8 @@ The action has no outputs. A caller needs:
   with the type `created`;
 - a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
   and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
-  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`;
+  secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK`, plus, to approve as the NCode Review
+  Approver, the `code-review` environment's secret `NCODE_REVIEW_APPROVER_PRIVATE_KEY`;
 - an `outcomes` job with no environment, the permissions `contents: read` and `pull-requests: read`, no checkout, and
   the secret `NCODE_REVIEW_APP_PRIVATE_KEY`;
 - a Linux runner for both, such as `ubuntu-latest`.
@@ -627,6 +635,8 @@ key). Anthropic needs no secret, because the workflow logs in through workload i
 setting and changing which repositories can read organization secrets needs gh's `admin:org` scope:
 `gh auth refresh -h github.com -s admin:org`.
 
+[docs/setup.md](docs/setup.md) gives every step in order, with what to check and what goes wrong; this section and [Approvals](#approvals) are their reference.
+
 From a clone of this repository:
 
 ```powershell
@@ -638,6 +648,9 @@ pwsh -File .\tools\Enable-CodeReview.ps1 -Repo identity-platform,Identity
 
 # Opt in without prompting for or setting the Bedrock key; the repositories still get access to the existing one.
 .\tools\Enable-CodeReview.ps1 -Repo identity-platform -SkipBedrock
+
+# Store the NCode Review Approver's key in each repository's code-review environment, and add it to the approver's installation.
+.\tools\Enable-CodeReview.ps1 -Repo identity-platform -ApproverPrivateKeyPath <path to the NCode Review Approver .pem>
 
 # Set or replace the app key, or the Bedrock key (from AWS_BEARER_TOKEN_BEDROCK, or a hidden prompt).
 .\tools\Enable-CodeReview.ps1 -AppPrivateKeyPath <path to the NCode Review .pem>

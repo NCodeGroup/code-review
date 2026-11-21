@@ -6,8 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `docs/setup.md` is the runbook that sets NCode Review up end to end: once per organization (gh's scopes, the NCode Review and NCode Review Approver apps, Anthropic's workload identity federation and the organization secrets), once per repository (the approver's installation and key, `code-review.yml`'s approval inputs, requiring the approval and checking it), the private keys, how a review behaves, and the errors met so far with their fixes; `README.md` and `docs/README.md` link it ([#237](https://github.com/NCodeGroup/code-review/issues/237)).
+
 ### Changed
 
+- The README's Using it caller pins NCode Review v1.5.0 and passes `approve: true` and `approver-private-key` in its review job, and the Interface's list of what a caller needs names the optional `NCODE_REVIEW_APPROVER_PRIVATE_KEY` environment secret ([#237](https://github.com/NCodeGroup/code-review/issues/237)).
 - This repository's own review pins NCode Review v1.5.0 and passes `approver-private-key` from its `code-review` environment, so the NCode Review Approver submits the approval of a clean review ([#234](https://github.com/NCodeGroup/code-review/issues/234), [ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
 - The project follows project-template v0.111.1: the new `/run-issues-all-in` command for Claude Code, Copilot Chat and Copilot CLI runs `/run-issues` with its answers given and its caps lifted ([project-template ADR-0033](docs/decisions/project-template/0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md)); the workflow commands, `/best-practices`, the file-header check, `code-review-auto-merge.yml` and the template's decision records are refreshed, with [project-template ADR-0034](docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md), [project-template ADR-0035](docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md) and [project-template ADR-0036](docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md) on required approvals and Scorecard alerts; and `AGENTS.md` and `GOVERNANCE.md` say that the NCode Review Approver's approval meets the ruleset's required approval here.
 
