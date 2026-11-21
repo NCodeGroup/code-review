@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `docs/setup.md` is the runbook that sets NCode Review up end to end: once per organization (gh's scopes, the NCode Review and NCode Review Approver apps, Anthropic's workload identity federation and the organization secrets), once per repository (the approver's installation and key, `code-review.yml`'s approval inputs, requiring the approval and checking it), the private keys, how a review behaves, and the errors met so far with their fixes; `README.md` and `docs/README.md` link it ([#237](https://github.com/NCodeGroup/code-review/issues/237)).
+
 ### Changed
 
 - This repository's own review pins NCode Review v1.5.0 and passes `approver-private-key` from its `code-review` environment, so the NCode Review Approver submits the approval of a clean review ([#234](https://github.com/NCodeGroup/code-review/issues/234), [ADR-1011](docs/decisions/1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md)).
