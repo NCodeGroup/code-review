@@ -52,6 +52,7 @@ type Call = { args: string[]; stdin: boolean };
 const org = 'NCodeGroup';
 const appKey = 'NCODE_REVIEW_APP_PRIVATE_KEY';
 const bedrock = 'AWS_BEARER_TOKEN_BEDROCK';
+const approverKey = 'NCODE_REVIEW_APPROVER_PRIVATE_KEY';
 
 // An organization with the app installed on all repositories, the repositories alpha (id 101) and beta (id 102), and
 // the app key limited to code-review. The Bedrock key is limited to code-review, visible to all repositories, or
@@ -64,7 +65,12 @@ function scenario(bedrockKey: 'selected' | 'all' | 'missing' = 'selected'): Answ
   return [
     {
       match: `^api orgs/${org}/installations`,
-      stdout: JSON.stringify({ installations: [{ id: 5, app_slug: 'ncode-review', repository_selection: 'all' }] }),
+      stdout: JSON.stringify({
+        installations: [
+          { id: 5, app_slug: 'ncode-review', repository_selection: 'all' },
+          { id: 6, app_slug: 'ncode-review-approver', repository_selection: 'selected' },
+        ],
+      }),
     },
     {
       match: `^api repos/${org}/alpha$`,
@@ -280,5 +286,57 @@ describe('tools/Enable-CodeReview.ps1', { concurrency: true }, () => {
     const set = calls.find((call) => call.args[0] === 'secret' && call.args[1] === 'set');
     assert.ok(set?.stdin, lines.join('\n'));
     assert.ok(!lines.some((line) => line.includes(bedrock) && line.includes('-X PUT')), lines.join('\n'));
+  });
+
+  test("-ApproverPrivateKeyPath sets the environment secret of each repository and adds it to the approver's installation", {
+    skip,
+  }, async () => {
+    const pem = path.join(tempDir(), 'approver.pem');
+    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    const installed: Answer = { match: '^api user/installations/6/repositories --paginate', stdout: `${org}/beta` };
+    const { status, output, calls } = await run(
+      ['-Repo', 'alpha,beta', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
+      [installed, ...scenario()],
+    );
+    assert.equal(status, 0, output);
+    const lines = joined(calls);
+    assert.ok(lines.includes('api -X PUT user/installations/6/repositories/101 --silent'), lines.join('\n'));
+    assert.ok(!lines.includes('api -X PUT user/installations/6/repositories/102 --silent'), lines.join('\n'));
+    for (const name of ['alpha', 'beta']) {
+      const set = calls.find(
+        (call) => call.args.join(' ') === `secret set ${approverKey} --env code-review --repo ${org}/${name}`,
+      );
+      assert.ok(set?.stdin, lines.join('\n'));
+      assert.match(output, new RegExp(`${org}/${name}: set the code-review environment secret ${approverKey}\\.`));
+    }
+    assert.ok(
+      !lines.some((line) => line.startsWith('secret set') && line.includes('--org') && line.includes(approverKey)),
+    );
+    assert.doesNotMatch(output, /not-a-real-key/);
+  });
+
+  test('-ApproverPrivateKeyPath without -Repo stops before any change', { skip }, async () => {
+    const pem = path.join(tempDir(), 'approver.pem');
+    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    const { status, output, calls } = await run(['-ApproverPrivateKeyPath', pem], scenario());
+    assert.notEqual(status, 0, output);
+    assert.match(output, /-ApproverPrivateKeyPath needs -Repo/);
+    assert.deepEqual(calls, []);
+  });
+
+  test("-ApproverPrivateKeyPath stops when the approver app isn't installed", { skip }, async () => {
+    const pem = path.join(tempDir(), 'approver.pem');
+    writeFileSync(pem, '-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----\n');
+    const withoutApprover: Answer = {
+      match: `^api orgs/${org}/installations`,
+      stdout: JSON.stringify({ installations: [{ id: 5, app_slug: 'ncode-review', repository_selection: 'all' }] }),
+    };
+    const { status, output, calls } = await run(
+      ['-Repo', 'alpha', '-ApproverPrivateKeyPath', pem, '-SkipBedrock'],
+      [withoutApprover, ...scenario()],
+    );
+    assert.notEqual(status, 0, output);
+    assert.match(output, /The NCode Review Approver app isn't installed on NCodeGroup/);
+    assert.ok(!joined(calls).some((line) => line.startsWith('secret set')), joined(calls).join('\n'));
   });
 });

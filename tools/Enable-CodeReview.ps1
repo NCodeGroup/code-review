@@ -3,8 +3,8 @@
 
 <#
 .SYNOPSIS
-    Opt repositories into NCode Review, and set or replace the review's two keys, which are stored once as organization
-    secrets.
+    Opt repositories into NCode Review, set or replace the review's two keys, which are stored once as organization
+    secrets, and store the approver's key in each repository's environment.
 
 .DESCRIPTION
     The review uses two organization secrets, each visible only to the repositories that opted in:
@@ -24,6 +24,11 @@
         takes precedence and would hide a replaced organization secret;
       - adds it to both organization secrets' repository lists.
 
+    -ApproverPrivateKeyPath stores the NCode Review Approver app's private key as the secret
+    NCODE_REVIEW_APPROVER_PRIVATE_KEY of each -Repo repository's `code-review` environment, and adds each repository to
+    the approver's installation when the app is installed on selected repositories only. With the key, the review's
+    approval is submitted as the approver, whose approval meets a ruleset's required approval.
+
     -AppPrivateKeyPath sets or replaces the app key. -UpdateBedrockKey replaces the Bedrock key; it's also set whenever
     the organization doesn't have it yet, unless -SkipBedrock is given. -SkipBedrock skips only the Bedrock key's
     value: it never prompts for it or sets it, and the repositories in -Repo still get access to the existing secret.
@@ -36,6 +41,11 @@
     The repositories to opt in, by name or as <org>/<name>. Separate several with commas, in one value or several:
     `pwsh -File` passes one value for a parameter, so there a list has to arrive as one string, -Repo a,b or
     -Repo 'a, b', never -Repo a, b.
+
+.PARAMETER ApproverPrivateKeyPath
+    The NCode Review Approver app's private key (.pem), stored as the secret NCODE_REVIEW_APPROVER_PRIVATE_KEY of each
+    -Repo repository's `code-review` environment, never as an organization secret: only jobs on the default branch can
+    deploy to that environment, so only they can read the key. Needs -Repo.
 
 .PARAMETER SkipBedrock
     Don't prompt for or set the Bedrock key, even when the organization doesn't have it yet. The repositories in -Repo
@@ -53,6 +63,7 @@
 param(
     [string[]]$Repo = @(),
     [string]$AppPrivateKeyPath,
+    [string]$ApproverPrivateKeyPath,
     [switch]$UpdateBedrockKey,
     [switch]$SkipBedrock,
     [string]$Org = 'NCodeGroup'
@@ -60,10 +71,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $Repo = @($Repo | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($UpdateBedrockKey -and $SkipBedrock) { throw 'Pass -UpdateBedrockKey or -SkipBedrock, not both.' }
+if ($ApproverPrivateKeyPath -and -not $Repo) { throw '-ApproverPrivateKeyPath needs -Repo: the key is stored in each repository''s code-review environment.' }
 
 $environment = 'code-review'
 $appSlug = 'ncode-review'
+$approverSlug = 'ncode-review-approver'
 $appKeySecret = 'NCODE_REVIEW_APP_PRIVATE_KEY'
+$approverKeySecret = 'NCODE_REVIEW_APPROVER_PRIVATE_KEY'
 $bedrockSecret = 'AWS_BEARER_TOKEN_BEDROCK'
 $adminOrgHint = 'gh auth refresh -h github.com -s admin:org'
 
@@ -110,11 +124,22 @@ gh auth status *> $null
 if ($LASTEXITCODE) { throw 'gh isn''t signed in. Run: gh auth login' }
 gh secret list --org $Org *> $null
 if ($LASTEXITCODE) { throw "gh can't read $Org's organization secrets. Grant the scope with: $adminOrgHint" }
-if (-not $Repo -and -not $AppPrivateKeyPath -and -not $UpdateBedrockKey) { throw 'Nothing to do. Pass -Repo, -AppPrivateKeyPath or -UpdateBedrockKey.' }
+if (-not $Repo -and -not $AppPrivateKeyPath -and -not $ApproverPrivateKeyPath -and -not $UpdateBedrockKey) { throw 'Nothing to do. Pass -Repo, -AppPrivateKeyPath, -ApproverPrivateKeyPath or -UpdateBedrockKey.' }
 
 $installation = (Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations |
     Where-Object app_slug -eq $appSlug | Select-Object -First 1
 if (-not $installation) { throw "The NCode Review app isn't installed on $Org. Install it from the app's settings page first." }
+
+$approverValue = $null
+$approverInstallation = $null
+if ($ApproverPrivateKeyPath) {
+    $approverKeyPath = (Resolve-Path -LiteralPath $ApproverPrivateKeyPath).Path
+    $approverValue = (Get-Content -LiteralPath $approverKeyPath -Raw).Trim()
+    if ($approverValue -notmatch '^-----BEGIN (RSA )?PRIVATE KEY-----') { throw "$approverKeyPath isn't a PEM private key." }
+    $approverInstallation = (Invoke-Gh api "orgs/$Org/installations?per_page=100" | ConvertFrom-Json).installations |
+        Where-Object app_slug -eq $approverSlug | Select-Object -First 1
+    if (-not $approverInstallation) { throw "The NCode Review Approver app isn't installed on $Org. Install it from the app's settings page first." }
+}
 
 $repoInfos = foreach ($name in $Repo) {
     if ($name -notmatch '/') { $name = "$Org/$name" }
@@ -135,6 +160,15 @@ foreach ($info in $repoInfos) {
         }
     }
 
+    # The approver app.
+    if ($approverInstallation -and $approverInstallation.repository_selection -ne 'all') {
+        $approverInstalled = Invoke-Gh api "user/installations/$($approverInstallation.id)/repositories" --paginate --jq '.repositories[].full_name'
+        if ($approverInstalled -notcontains $full -and $PSCmdlet.ShouldProcess($full, 'Add the repository to the NCode Review Approver installation')) {
+            Invoke-Gh api -X PUT "user/installations/$($approverInstallation.id)/repositories/$($info.id)" --silent
+            "Added $full to the NCode Review Approver installation."
+        }
+    }
+
     # The environment: only the default branch may deploy to it.
     if ($PSCmdlet.ShouldProcess("$full environment $environment", "Limit deployments to $defaultBranch")) {
         Invoke-Gh api -X PUT "repos/$full/environments/$environment" --silent `
@@ -149,6 +183,13 @@ foreach ($info in $repoInfos) {
             Invoke-Gh api -X POST "repos/$full/environments/$environment/deployment-branch-policies" -f "name=$defaultBranch" -f type=branch --silent
         }
         "${full}: environment $environment, only $defaultBranch can deploy."
+    }
+
+    # The approver's key is an environment secret, never an organization secret: only default-branch jobs can read it.
+    if ($approverValue -and $PSCmdlet.ShouldProcess("$full environment $environment", "Set the secret $approverKeySecret")) {
+        $approverValue | gh secret set $approverKeySecret --env $environment --repo $full
+        if ($LASTEXITCODE) { throw "Couldn't set ${approverKeySecret} for ${full}: gh secret set exited with code $LASTEXITCODE." }
+        "${full}: set the code-review environment secret $approverKeySecret."
     }
 
     # Environment secrets would hide the organization secrets.
