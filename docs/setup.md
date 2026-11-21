@@ -90,3 +90,27 @@ Do these once, in order.
   - "NCodeGroup has no NCODE_REVIEW_APP_PRIVATE_KEY yet. Pass -AppPrivateKeyPath with the app's .pem file."
   - "The NCode Review app isn't installed on NCodeGroup. Install it from the app's settings page first."
   - Scope errors, [5.3](#53-adminorg-errors).
+
+## 2. Once per Repository
+
+Do these for each repository, in order, after section 1.
+
+### 2.1 Add the Repository to Both Apps' Installations
+
+- **Who:** an organization owner.
+- **Where:** `https://github.com/organizations/NCodeGroup/settings/installations` > Configure next to each app > Repository access.
+- **Do:** NCode Review is installed on all repositories, so it needs nothing. For NCode Review Approver, choose the repository under Only select repositories and save, only where the approval will be required. `Enable-CodeReview.ps1` also tries to add it, but gh's token can't list the installation's repositories (1.1), so it warns and goes on.
+- **Check:** the approver's installation page lists the repository.
+- **Goes wrong:** without the approver's installation the action's approver token step fails, and the publish step warns and approves as `ncode-review[bot]`, whose approval meets no required approval (2.5).
+
+### 2.2 Store the Approver's Key
+
+- **Who:** an organization owner (`admin:org`: the script checks the organization secrets first).
+- **Where:** an up-to-date clone of NCodeGroup/code-review: run `git pull` first, since a clone from before v1.5.0 has no `-ApproverPrivateKeyPath` ([5.1](#51-a-missing-approverprivatekeypath-parameter)).
+- **Do:**
+  - Run `.\tools\Enable-CodeReview.ps1 -Repo <name> -ApproverPrivateKeyPath <path to the NCode Review Approver .pem> -WhatIf`, then without `-WhatIf`. For several repositories, pass one value, `-Repo a,b`.
+  - It creates or updates the `code-review` environment so only the default branch can deploy to it, deletes environment secrets named like the organization secrets (they would hide them), gives the repository both organization secrets, and stores `NCODE_REVIEW_APPROVER_PRIVATE_KEY` as a secret of that environment, never of the organization, so only default-branch jobs can read it.
+  - Without the script, the key alone goes in with `Get-Content -Raw -LiteralPath <path to the NCode Review Approver .pem> | gh secret set NCODE_REVIEW_APPROVER_PRIVATE_KEY --env code-review --repo <owner>/<name>`, on standard input, never on the command line.
+  - Then delete the `.pem` (3.1). A repository opted in later gets a newly generated key, since the app can hold several, and the others keep theirs.
+- **Check:** `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY`, and `gh api orgs/NCodeGroup/actions/secrets/NCODE_REVIEW_APP_PRIVATE_KEY/repositories --jq '.repositories[].full_name'` lists `<owner>/<name>`.
+- **Goes wrong:** [5.1](#51-a-missing-approverprivatekeypath-parameter), [5.2](#52-a-403-listing-an-installations-repositories), [5.3](#53-adminorg-errors).
