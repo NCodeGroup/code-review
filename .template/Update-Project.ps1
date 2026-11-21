@@ -95,7 +95,7 @@
     in .github/workflows runs on a release event or uploads release assets, whose releases the template's
     tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
     project is already up to date (the template's ADR-0028).
-    With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.4.0 or passes no approve: true, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022).
+    With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.5.0, passes no approve: true or passes approve: true without approver-private-key, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change, to store the approver's key with tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022 and ADR-0036).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -319,8 +319,9 @@ function Get-CiPermissionNote {
     ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
 }
 
-# NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take,
-# and code-review.yml and AGENTS.md are project-owned, so the update can only say what they still lack (the template's ADR-0022).
+# NCode Review approves a clean pull request only with approve: true, and from NCodeGroup/code-review v1.5.0 on submits the
+# approval as the NCode Review Approver, which meets a required approval, when approver-private-key is passed; code-review.yml
+# and AGENTS.md are project-owned, so the update can only say what they still lack (the template's ADR-0022 and ADR-0036).
 function Get-CodeReviewNote {
     $workflow = '.github/workflows/code-review.yml'
     if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) { return }
@@ -332,9 +333,10 @@ function Get-CodeReviewNote {
     $findings = [Collections.Generic.List[string]]::new()
     if ($versions.Count) {
         $lowest = @($versions | Sort-Object)[0]
-        if ($lowest -lt [version]'1.4.0') { $findings.Add(".github/workflows/code-review.yml pins NCodeGroup/code-review v$lowest") }
+        if ($lowest -lt [version]'1.5.0') { $findings.Add(".github/workflows/code-review.yml pins NCodeGroup/code-review v$lowest") }
     }
     if ($text -notmatch '(?m)^\s+approve:\s*[''"]?true[''"]?\s*(?:#.*)?$') { $findings.Add('.github/workflows/code-review.yml passes no approve: true') }
+    elseif ($text -notmatch '(?m)^\s+approver-private-key:\s*\S') { $findings.Add('.github/workflows/code-review.yml has no approver-private-key input') }
     if (Test-Path -LiteralPath AGENTS.md) {
         $draft = $null
         $inLanding = $false
@@ -347,7 +349,7 @@ function Get-CodeReviewNote {
     }
     if (-not $findings.Count) { return }
     ''
-    "NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take, and the template's tools/Set-RepositoryBaseline.ps1 then requires that approval (the template's ADR-0022, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.4.0 or later and pass approve: true in .github/workflows/code-review.yml, as the template's code-review.yml does, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch requires one approval, dismisses stale approvals and requires approval of the last push."
+    "NCode Review approves a clean pull request only with approve: true, and from NCodeGroup/code-review v1.5.0 on, given approver-private-key, submits the approval as the NCode Review Approver, an app that can write, so the approval meets a required approval (the template's ADR-0022, ADR-0034 and ADR-0036, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.5.0 or later and pass approve: true and approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }} in the review job of .github/workflows/code-review.yml, as the template's code-review.yml does, store the approver's key in the code-review environment with tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch dismisses stale approvals and requires one approval, of the last push, where the approver is set up or a second person has write access."
 }
 
 # Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
