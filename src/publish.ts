@@ -56,11 +56,17 @@ async function main(): Promise<void> {
   const outDir = process.env['CODE_REVIEW_OUT'];
   if (!token || !outDir) throw new Error('CODE_REVIEW_APP_TOKEN and CODE_REVIEW_OUT must be set.');
   const api = githubApi(token);
+  // The approver's token is minted only for a run that approves. Its API submits the approval, and its token is a secret
+  // wherever the app's is.
+  const approverToken = process.env['CODE_REVIEW_APPROVER_TOKEN'];
+  const approverLogin = process.env['CODE_REVIEW_APPROVER_LOGIN'];
+  const approver = approverToken && approverLogin ? { api: githubApi(approverToken), login: approverLogin } : undefined;
+  const secrets = approverToken ? [token, approverToken] : [token];
   // A closed pull request's run records outcomes and has no review to publish, nor a check run to complete. It never
   // pauses, so it comes first.
   const report = readOutcomes(outDir);
   if (report) {
-    await publishOutcomes(api, report, [token]);
+    await publishOutcomes(api, report, secrets);
     return;
   }
   // A paused run posts only the notice. It leaves an acknowledged check run to the finish step, which completes it with
@@ -80,7 +86,7 @@ async function main(): Promise<void> {
     return;
   }
   // A `/review explain` run leaves one comment to post instead of a review.
-  const answerUrl = await publishAnswer(outDir, api, [token]);
+  const answerUrl = await publishAnswer(outDir, api, secrets);
   if (answerUrl !== undefined) {
     writeLog(`Posted ${answerUrl}`);
     return;
@@ -132,7 +138,7 @@ async function main(): Promise<void> {
     annotations: annotations(results),
   };
   const check = { head_sha: results.headSha, conclusion: 'neutral' as const, output };
-  assertNoSecrets(JSON.stringify(check), [token], 'The check run');
+  assertNoSecrets(JSON.stringify(check), secrets, 'The check run');
   const completed = await publishCheck(api, results.repository, check, acknowledged);
   writeLog(`Posted ${completed.html_url}`);
   // Tells the finish step the check run is complete, so it leaves it alone.
@@ -142,17 +148,23 @@ async function main(): Promise<void> {
   await postThreads(
     api,
     results,
-    [token],
+    secrets,
     writeLog,
     dismissed.map((d) => d.posted),
     posted,
   );
   if (threads) {
     const actions = await planFollowUps(threads, results, isWriter, new Set(dismissed.map((d) => d.thread.id)));
-    await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, [token]);
+    await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, secrets);
   }
 
-  const state = approving ? await applyApproval(api, results, approval.approve, [token]) : 'not-approved';
+  if (approving && process.env['CODE_REVIEW_APPROVER'] === 'true' && !approver)
+    writeLog(
+      "::warning::The approver's token couldn't be minted, so NCode Review approves with its own app, whose approval meets no required approval.",
+    );
+  const state = approving
+    ? await applyApproval(api, results, approval.approve, secrets, writeLog, approver)
+    : 'not-approved';
 
   const body = summaryComment(
     results,
@@ -160,7 +172,7 @@ async function main(): Promise<void> {
     interactUrl,
     approving ? approvalLine(approval, state) : undefined,
   );
-  assertNoSecrets(body, [token], 'The summary comment');
+  assertNoSecrets(body, secrets, 'The summary comment');
   await postSummary(api, results, body);
 }
 
