@@ -319,6 +319,68 @@ test('dismissApprovals dismisses only the bot approvals', async () => {
   );
 });
 
+const approverApproval = [{ id: 5, state: 'APPROVED', user: { login: 'ncode-review-approver[bot]' } }];
+
+function approverPair(options: { postThrows?: boolean } = {}) {
+  const review = fakeApi((call) => {
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
+  });
+  const approver = fakeApi((call) => {
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call.startsWith('POST') && options.postThrows) throw new Error('HTTP 422');
+    return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
+  });
+  return { review, approver, approverArg: { api: approver.api, login: 'ncode-review-approver[bot]' } };
+}
+
+test('applyApproval with an approver approves through the approver and dismisses the review app approvals', async () => {
+  const { review, approver, approverArg } = approverPair();
+  assert.equal(await applyApproval(review.api, target, true, [], () => {}, approverArg), 'approved');
+  assert.ok(approver.calls.includes('POST /repos/o/r/pulls/7/reviews'));
+  assert.equal(review.calls.filter((c) => c.startsWith('POST')).length, 0);
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.equal(approver.calls.filter((c) => c.startsWith('PUT')).length, 0);
+});
+
+test('applyApproval with an approver dismisses both apps approvals when approve is false', async () => {
+  const { review, approver, approverArg } = approverPair();
+  assert.equal(await applyApproval(review.api, target, false, [], () => {}, approverArg), 'not-approved');
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.deepEqual(
+    approver.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
+test('applyApproval with an approver dismisses both and says refused when the approver POST throws', async () => {
+  const { review, approver, approverArg } = approverPair({ postThrows: true });
+  assert.equal(await applyApproval(review.api, target, true, [], () => {}, approverArg), 'refused');
+  assert.deepEqual(
+    review.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/1/dismissals'],
+  );
+  assert.deepEqual(
+    approver.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
+test('dismissApprovals with a login dismisses only that login approvals', async () => {
+  const fake = fakeApi((call) => (call.startsWith('GET') ? [...botApproval, ...approverApproval] : {}));
+  await dismissApprovals(fake.api, target, () => {}, 'ncode-review-approver[bot]');
+  assert.deepEqual(
+    fake.calls.filter((c) => c.startsWith('PUT')),
+    ['PUT /repos/o/r/pulls/7/reviews/5/dismissals'],
+  );
+});
+
 const summaryInput: Results = {
   repository: 'o/r',
   pullRequest: 1,
