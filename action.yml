@@ -48,6 +48,17 @@ inputs:
       comment.
     required: false
     default: 'false'
+  approver-private-key:
+    description: >-
+      The NCode Review Approver app's private key (the NCODE_REVIEW_APPROVER_PRIVATE_KEY secret of the repository's
+      code-review environment). With approve on, the approval is submitted as the approver, whose approval meets a
+      ruleset's required approval; without it, NCode Review approves as its own app, whose approval doesn't.
+    required: false
+    default: ''
+  approver-client-id:
+    description: The NCode Review Approver app's client ID.
+    required: false
+    default: Iv23liDPFX1K6NjGIr9i
 
 runs:
   using: composite
@@ -215,6 +226,21 @@ runs:
         repositories: ${{ steps.review.outputs.guidance-repository }}
         permission-issues: write
 
+    # The approver's token, minted after the agents exit, for this repository only and able to write only pull requests:
+    # the publish step uses it to approve and to dismiss the approver's own approvals. The approver app's write access
+    # to the repository is what makes GitHub count its approval toward a required approval, while this token can't push.
+    # It may fail: the publish step then warns and approves with the NCode Review app.
+    - name: Get the approver's token
+      id: approver-token
+      if: steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.approver-client-id }}
+        private-key: ${{ inputs.approver-private-key }}
+        repositories: ${{ github.event.repository.name }}
+        permission-pull-requests: write
+
     - name: Publish
       id: publish
       if: >-
@@ -229,6 +255,9 @@ runs:
         CODE_REVIEW_CHECK_RUN_ID: ${{ steps.ack.outputs.check-run-id }}
         CODE_REVIEW_CHECK_RUN_SHA: ${{ steps.ack.outputs.head-sha }}
         CODE_REVIEW_APPROVE: ${{ inputs.approve }}
+        CODE_REVIEW_APPROVER: ${{ inputs.approver-private-key != '' }}
+        CODE_REVIEW_APPROVER_TOKEN: ${{ steps.approver-token.outputs.token }}
+        CODE_REVIEW_APPROVER_LOGIN: ${{ steps.approver-token.outputs.app-slug && format('{0}[bot]', steps.approver-token.outputs.app-slug) || '' }}
       run: node "$GITHUB_ACTION_PATH/src/publish.ts"
 
     # Completes the check run when the publish step didn't, so it never stays in progress: neutral "Review budget used
