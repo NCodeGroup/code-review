@@ -190,3 +190,27 @@ Do these for each repository, in order, after section 1.
   The Bedrock key rotates with `.\tools\Enable-CodeReview.ps1 -UpdateBedrockKey`, then the old key is revoked in AWS.
 - **Check:** the app's page lists only the new key, and 2.5's check passes on the next review.
 - **Goes wrong:** deleting the old key first stops every repository that still has it from approving, or, for the NCode Review app, from posting.
+
+## 4. How a Review Behaves
+
+What a maintainer sees and does once the repository is set up; [Commands](../README.md#commands) and [Approvals](../README.md#approvals) are the reference.
+
+### 4.1 Starting a Review
+
+- Opening, reopening or marking a pull request ready starts a review, drafts included.
+- An automatic run on a commit already reviewed stops, and its log says "<commit> was already reviewed; comment /review to review it again."
+- A push starts nothing, so comment `/review` as a top-level comment whose first line is exactly `/review`; lines below it, such as a `---` footer, are fine.
+- Only people with write access can. A private organization membership counts as a contributor, so make it public or be added as a collaborator.
+- A pull request a bot opens isn't reviewed when it opens, so a maintainer approves Dependabot's where an approval is required.
+- The `skip-review` label skips the automatic reviews.
+- Pull requests from forks are never reviewed.
+- After three reviews with no comment from a writer, an automatic review posts "Paused: comment `/review` to resume".
+
+### 4.2 Findings and the Approval
+
+- With `approve: true`, a clean review approves and every other review dismisses the earlier approval.
+- A push dismisses it when the ruleset dismisses stale approvals, so comment `/review` after a push.
+- Nits don't block: a review whose only findings are nits approves when every reviewer ran in full and verification lowered or refuted nothing.
+- A later review can raise a problem's severity. A finding repeats an earlier thread only at the same severity unless a writer dismissed that thread (resolved it while still on its code, or a 👎), so an unanswered nit can come back as a should-fix in a new thread.
+- Everything a review publishes, its trace included, is checked for anything shaped like a credential, which a test fixture in the diff can trip, and the review then fails ([#233](https://github.com/NCodeGroup/code-review/pull/233), [5.5](#55-the-trace-contains-something-shaped-like-a-credential)).
+- [ADR-1009](decisions/1009-a-clean-review-approves-the-pull-request.md) records why a clean review approves.
