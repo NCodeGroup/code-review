@@ -420,6 +420,22 @@ test("gather reviews an unconfirmed template file as the project's", () => {
   assert.equal(gathered.reviewRules.length, 1);
 });
 
+test("gather doesn't hand every reviewer a decision record the template owns", () => {
+  const { repo, base, baseSha } = adoption();
+  const record = 'docs/decisions/project-template/0007-keep-it.md';
+  write(repo, record, '# 7. Keep it\n\n- **Status:** Accepted\n\n## Decision\n\nWe keep it.');
+  git(repo, 'add', '.');
+  git(repo, 'commit', '-q', '-m', 'record');
+  const owned = gather({ ...pullRequest(), baseSha }, repo, base, undefined, new Set([record]));
+  assert.deepEqual(owned.decisions, []);
+  // Without the template's ownership the record is the project's own change, so it is proposed.
+  const unowned = gather({ ...pullRequest('CONTRIBUTOR'), baseSha }, repo, base);
+  assert.deepEqual(
+    unowned.decisions.map((d) => [d.id, d.proposed]),
+    [['project-template ADR-0007', true]],
+  );
+});
+
 test("readChanges names the head's _commit and the changed files the template check sorts", () => {
   const { repo, base, baseSha } = adoption();
   assert.deepEqual(readChanges({ ...pullRequest(), baseSha }, repo, base).candidate, {
