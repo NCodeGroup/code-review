@@ -146,7 +146,17 @@ function isDecisionName(name: string): boolean {
   return decisionName.test(name) && !name.startsWith('0000-');
 }
 
-function parseDecision(name: string, text: string): Decision & { status: string } {
+// A record in a subfolder, such as the template's `project-template/`, carries the subfolder in its id, so it can't clash with the project's record of the same number.
+function decisionId(file: string): string | undefined {
+  const name = path.posix.basename(file);
+  if (!isDecisionName(name)) return undefined;
+  const dir = path.posix.dirname(file);
+  if (decisionFolders.includes(dir)) return `ADR-${name.slice(0, 4)}`;
+  if (decisionFolders.includes(path.posix.dirname(dir))) return `${path.posix.basename(dir)} ADR-${name.slice(0, 4)}`;
+  return undefined;
+}
+
+function parseDecision(id: string, name: string, text: string): Decision & { status: string } {
   const status = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(text)?.[1] ?? 'Accepted';
   const title = /^#\s+(.+)$/m.exec(text)?.[1]?.trim() ?? name;
   const sections = text.split(/^(?=## )/m);
@@ -157,18 +167,28 @@ function parseDecision(name: string, text: string): Decision & { status: string 
       .trim() ?? '';
   const consequences = section('Consequences');
   const decision = consequences ? `${section('Decision')}\n\nConsequences:\n${consequences}` : section('Decision');
-  return { id: `ADR-${name.slice(0, 4)}`, title, decision: decision.slice(0, maxDecisionChars), status };
+  return { id, title, decision: decision.slice(0, maxDecisionChars), status };
 }
 
-// The repository's accepted decision records.
+// The repository's accepted decision records, in each decision folder and its direct subfolders.
 export function readDecisions(basePath: string): Decision[] {
   const decisions: Decision[] = [];
   for (const folder of decisionFolders) {
     const dir = path.join(basePath, folder);
     if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).filter(isDecisionName).sort()) {
-      const { status, ...decision } = parseDecision(name, readFileSync(path.join(dir, name), 'utf8'));
-      if (status === 'Accepted') decisions.push(decision);
+    const subfolders = readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    for (const sub of ['', ...subfolders]) {
+      for (const name of readdirSync(path.join(dir, sub)).filter(isDecisionName).sort()) {
+        const { status, ...decision } = parseDecision(
+          decisionId(path.posix.join(folder, sub, name))!,
+          name,
+          readFileSync(path.join(dir, sub, name), 'utf8'),
+        );
+        if (status === 'Accepted') decisions.push(decision);
+      }
     }
   }
   return decisions;
@@ -177,12 +197,14 @@ export function readDecisions(basePath: string): Decision[] {
 // The decision records among the changed files, read from the pull request's head: accepted or still proposed.
 export function readProposedDecisions(prPath: string, changed: string[]): Decision[] {
   const decisions: Decision[] = [];
-  for (const file of changed
-    .filter((f) => decisionFolders.includes(path.posix.dirname(f)) && isDecisionName(path.posix.basename(f)))
-    .sort()) {
+  for (const file of changed.filter((f) => decisionId(f) !== undefined).sort()) {
     const full = path.join(prPath, file);
     if (!existsSync(full)) continue;
-    const { status, ...decision } = parseDecision(path.posix.basename(file), readFileSync(full, 'utf8'));
+    const { status, ...decision } = parseDecision(
+      decisionId(file)!,
+      path.posix.basename(file),
+      readFileSync(full, 'utf8'),
+    );
     if (status === 'Accepted' || status === 'Proposed') decisions.push({ ...decision, proposed: true });
   }
   return decisions;
