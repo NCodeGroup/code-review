@@ -40,7 +40,7 @@ The silver criteria that need a document point to these:
 | Vulnerability response and credit | [SECURITY.md](../SECURITY.md) |
 | `coding_standards` | [CONTRIBUTING.md](../CONTRIBUTING.md#conventions), [AGENTS.md](../AGENTS.md), `.editorconfig`, `biome.json` |
 | `coding_standards_enforced` | CI's `npm run typecheck` enforces `tsconfig.json`'s strict checks, and `npm run lint` fails on code that `biome.json`'s formatting and lint rules don't accept ([ADR-1010](decisions/1010-biome-formats-and-lints-the-typescript.md)) |
-| Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3 |
+| Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), which says that a change that adds or changes behavior adds or updates the automated tests that cover it |
 
 ## Needs a Person
 
