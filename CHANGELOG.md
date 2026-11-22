@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-22
+
 ### Added
 
 - `docs/setup.md` is the runbook that sets NCode Review up end to end: once per organization (gh's scopes, the NCode Review and NCode Review Approver apps, Anthropic's workload identity federation and the organization secrets), once per repository (the approver's installation and key, `code-review.yml`'s approval inputs, requiring the approval and checking it), the private keys, how a review behaves, and the errors met so far with their fixes; `README.md` and `docs/README.md` link it ([#237](https://github.com/NCodeGroup/code-review/issues/237)).
@@ -20,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - `tools/Enable-CodeReview.ps1` warns and goes on when GitHub refuses to list the repositories of an app installed on selected repositories, which it does for the token `gh auth login` gives: it names the installation's settings page, where the repository is selected by hand, and still sets up the environment and its secrets; any other failure to list them stops the run with gh's error.
+- Reviewers see the decision records in a direct subfolder of a decision folder, such as the project template's records in `docs/decisions/project-template/`: each one's id names its subfolder, such as `project-template ADR-0150`, so it can't clash with the project's record of the same number, and a record the template owns in an adoption or template update goes to the context picker instead of to every reviewer ([#230](https://github.com/NCodeGroup/code-review/issues/230)).
 
 ## [1.5.0] - 2026-11-21
 
@@ -308,7 +311,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.5.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/NCodeGroup/code-review/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/NCodeGroup/code-review/compare/v1.4.0...v1.4.1

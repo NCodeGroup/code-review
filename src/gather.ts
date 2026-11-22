@@ -583,11 +583,11 @@ export function gather(
     return heads;
   });
   const chunks = chunkDiff(files, sections, maxChunkChars, maxChunks);
-  const reviewed = files.filter((f) => !f.generated).map((f) => f.path);
   // The repository's rules and the guidance are for its own files, not the template's.
   const own = files.filter((f) => !f.generated && !f.templateOwned).map((f) => f.path);
-  // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy.
-  const proposed = readProposedDecisions(prPath, reviewed);
+  // A decision record the pull request adds or changes comes from its head, and outranks the default branch's copy; one
+  // the template owns stays with the picker, since a template update can change dozens.
+  const proposed = readProposedDecisions(prPath, own);
   const decisions = [...proposed, ...readDecisions(basePath).filter((d) => !proposed.some((p) => p.id === d.id))];
   const commits = pullRequest.authorCanWrite
     ? git(prPath, ['log', '--format=%s', '--no-merges', '-n', '60', `${mergeBase}..${pullRequest.headSha}`])
