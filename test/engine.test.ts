@@ -2193,3 +2193,47 @@ test('decision records the pull request adds or changes are read from its head a
     ['ADR-0009'],
   );
 });
+
+test("readDecisions reads the accepted records in a decision folder's direct subfolders, each id naming its subfolder", async () => {
+  const { readDecisions } = await import('../src/context.ts');
+  const base = mkdtempSync(path.join(tmpdir(), 'adr-sub-'));
+  const record = (file: string, title: string, status = 'Accepted') => {
+    const full = path.join(base, file);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, `# ${title}\n\n- **Status:** ${status}\n\n## Decision\n\n${title}.`);
+  };
+  record('docs/decisions/1000-project.md', 'Project');
+  record('docs/decisions/project-template/0150-template.md', 'Template');
+  record('docs/decisions/project-template/0151-old.md', 'Old', 'Superseded');
+  record('docs/decisions/project-template/0000-template.md', 'Blank');
+  record('docs/decisions/project-template/nested/0152-deep.md', 'Deep');
+  record('docs/adr/0001-a.md', 'A');
+  record('docs/adr/archive/0001-b.md', 'B');
+  assert.deepEqual(
+    readDecisions(base).map((d) => [d.id, d.title]),
+    [
+      ['ADR-1000', 'Project'],
+      ['project-template ADR-0150', 'Template'],
+      ['ADR-0001', 'A'],
+      ['archive ADR-0001', 'B'],
+    ],
+  );
+});
+
+test("readProposedDecisions reads a changed record in a decision folder's direct subfolder from the head", async () => {
+  const { readProposedDecisions } = await import('../src/context.ts');
+  const head = mkdtempSync(path.join(tmpdir(), 'adr-sub-head-'));
+  const changed = [
+    'docs/decisions/project-template/0150-template.md',
+    'docs/decisions/project-template/nested/0152-deep.md',
+    'docs/other/0153-other.md',
+  ];
+  for (const file of changed) {
+    mkdirSync(path.join(head, path.dirname(file)), { recursive: true });
+    writeFileSync(path.join(head, file), '# T\n\n- **Status:** Accepted\n\n## Decision\n\nT.');
+  }
+  assert.deepEqual(
+    readProposedDecisions(head, changed).map((d) => [d.id, d.proposed]),
+    [['project-template ADR-0150', true]],
+  );
+});
