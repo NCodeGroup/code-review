@@ -24,7 +24,12 @@ A GitHub repository's releases are immutable, and a public repository's release 
   library's packages ([project-template#411](https://github.com/NCodeGroup/project-template/issues/411)).
   `-SkipImmutableReleases` leaves them mutable in any repository, the script never turns them off, and
   `.template/Update-Project.ps1` says to delete `SECURITY.md`'s paragraph that says releases are immutable in such a
-  repository. How a library's release works with immutability is decided apart
+  repository.
+- Whether a repository's releases are immutable depends on the repository, not on the template. A project whose
+  releases get files or attestations after they are published keeps mutable releases, as a .NET library does, whose
+  `publish.yml` has `release-provenance.yml` attach its packages, their provenance and an SBOM; every other GitHub
+  project gets immutable ones. In the template's release flow, `tag-release.yml` publishes each release, and
+  `publish.yml` attaches its files afterwards
   ([project-template#393](https://github.com/NCodeGroup/project-template/issues/393)).
 - In a public repository, `tag-release.yml` signs each tag with gitsign, Sigstore's keyless signing through the job's
   OIDC token (`id-token: write`), installed by `chainguard-dev/actions/setup-gitsign` pinned to a commit.
@@ -39,6 +44,14 @@ A GitHub repository's releases are immutable, and a public repository's release 
   site that distributes the software.
 - Tags made through GitHub's API. Rejected: the API makes tag objects without a signature.
 - gitsign (chosen): there is no key to keep, and the signature names the workflow.
+- Drafting each release in `tag-release.yml` and publishing it from `publish.yml` once `release-provenance.yml` has
+  attached its files, so a library's releases could be immutable too. Rejected: a project that attaches attestations
+  after a release is published can't have immutable releases whatever the template does; `publish.yml` is the
+  project's, so a template update would never move an existing library to that order; a rerun of Publish packages
+  and a backfill through `release-provenance.yml` attach files to a release already published, which an immutable
+  release refuses; and each release would stay a draft, its notes unseen, until a person approves the `nuget`
+  environment's deployment.
+- Immutable releases wherever no workflow attaches files to a published release, and mutable ones elsewhere (chosen).
 
 ## Consequences
 
@@ -46,7 +59,13 @@ A GitHub repository's releases are immutable, and a public repository's release 
 - A workflow that runs on a `release` event only to publish elsewhere, such as to a package registry, also keeps
   releases mutable; its owner can turn them on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the
   script never undoes.
-- Scorecard's Signed-Releases check doesn't count an attestation that isn't an asset, so its score doesn't change.
+- Scorecard's Signed-Releases check counts only the releases that have assets among the five newest. Scorecard v5.7.0,
+  which the template's `scorecard.yml` runs through `ossf/scorecard-action` v2.6.0, has a `releasesAreImmutable`
+  probe and scores such a release 10 when it is immutable, as it scores one with a `*.intoto.jsonl` provenance file, so
+  a library that keeps mutable releases and attaches its provenance scores as high as a project whose immutable
+  releases have assets. A release without assets isn't counted, immutable or not, and the release attestation GitHub
+  signs isn't an asset: where no recent release has assets, as in a project whose releases get no files, the check is
+  inconclusive and left out of the score.
 - GitHub shows a gitsign signature as unverified, since its certificate authority isn't GitHub's; `gitsign verify-tag`
   is the check that counts.
 
@@ -56,3 +75,5 @@ A GitHub repository's releases are immutable, and a public repository's release 
   `.template/Publish-Release.ps1`, `SECURITY.md`
 - [ADR-0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md): releases are tagged and published
   when their pull request merges.
+- Scorecard's `releasesAreImmutable` probe:
+  [probes/releasesAreImmutable/def.yml](https://github.com/ossf/scorecard/blob/v5.7.0/probes/releasesAreImmutable/def.yml)

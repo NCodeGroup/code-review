@@ -39,8 +39,8 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | --- | --- | --- | --- | --- |
 | `description_good` | MUST | no | no | **Check**: the first paragraph of [README.md](../README.md) says what the software does and which problem it solves. |
 | `interact` | MUST | no | no | **Check**: [README.md](../README.md) says how to get the software, the GitHub issue tracker takes bug reports and enhancement requests, and [CONTRIBUTING.md](../CONTRIBUTING.md) says how to contribute. |
-| `contribution` | MUST | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change: an issue, a short-lived branch and a pull request. |
-| `contribution_requirements` | SHOULD | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change and Conventions, with [AGENTS.md](../AGENTS.md) and `.editorconfig`. |
+| `contribution` | MUST | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says to start each change with an issue, work on a short-lived branch and open a pull request into the default branch. |
+| `contribution_requirements` | SHOULD | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says what a change must do and when a pull request is acceptable, and that [AGENTS.md](../AGENTS.md) is the index of the conventions, with `.editorconfig`. |
 | `floss_license` | MUST | no | no | **Met**: the `Apache-2.0` license, which autofill reads. |
 | `floss_license_osi` | SUGGESTED | no | no | **Check**: Met when the OSI approves `Apache-2.0`, as it approves Apache-2.0 and MIT. |
 | `license_location` | MUST | no | yes | **Met**: `LICENSE.txt` at the repository root. |
@@ -69,7 +69,7 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `report_process` | MUST | no | yes | **Met**: the GitHub issue tracker, as [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 1, says. Autofill may cite `SECURITY.md`, the vulnerability process: replace that justification. |
+| `report_process` | MUST | no | yes | **Met**: the GitHub issue tracker: [CONTRIBUTING.md](../CONTRIBUTING.md) says to start each change with an issue. Autofill may cite `SECURITY.md`, the vulnerability process: replace that justification. |
 | `report_tracker` | SHOULD | no | no | **Met**: the GitHub issue tracker. |
 | `report_responses` | MUST | no | no | **Check**: most bug reports of the last 2 to 12 months were answered; cite closed bug issues, and say so when every report came from a maintainer. |
 | `enhancement_responses` | SHOULD | no | no | **Check**: most enhancement requests of the last 2 to 12 months were answered; cite one and its pull request. |
@@ -82,16 +82,16 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `build` | MUST | yes | no | **Check**: Met with the build command in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test; N/A when the source runs as it is, since a typecheck or a lint is not a build. |
+| `build` | MUST | yes | no | **Check**: Met with the build command [CONTRIBUTING.md](../CONTRIBUTING.md) names; N/A when the source runs as it is, since a typecheck or a lint is not a build. |
 | `build_common_tools` | SUGGESTED | yes | no | **Check**: Met with the language's usual build tools; N/A without a build. |
 | `build_floss_tools` | SHOULD | yes | no | **Check**: Met when every build tool is FLOSS; N/A without a build. |
-| `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test, names its command, and `.github/workflows/ci.yml` runs it. |
-| `test_invocation` | SHOULD | no | no | **Met**: `npm test`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test. |
+| `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md) names its command, and `.github/workflows/ci.yml` runs it. |
+| `test_invocation` | SHOULD | no | no | **Met**: `npm test`, the test command [CONTRIBUTING.md](../CONTRIBUTING.md) names. |
 | `test_most` | SUGGESTED | no | no | **Met**: CI fails below 90% of the statements and 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figures. |
 | `test_continuous_integration` | SUGGESTED | no | no | **Met**: `.github/workflows/ci.yml` runs the build and the tests on every pull request. |
-| `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
+| `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent pull requests that added a feature and its tests. |
-| `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
+| `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it. |
 | `warnings` | MUST | yes | no | **Met**: CI and the Landing gate run Biome's linter, `npm run lint`. |
 | `warnings_fixed` | MUST | yes | no | **Met**: `biome ci --error-on-warnings` fails CI on a warning. |
 | `warnings_strict` | SUGGESTED | yes | no | **Check**: Met when the strictest practical settings are on. |
@@ -139,7 +139,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `achieve_passing` | MUST | no | no | **Check**: the site sets it once the passing level is earned. |
-| `contribution_requirements` | MUST | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change and Conventions, with [AGENTS.md](../AGENTS.md) and `.editorconfig`. |
+| `contribution_requirements` | MUST | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says what a change must do and when a pull request is acceptable, and that [AGENTS.md](../AGENTS.md) is the index of the conventions, with `.editorconfig`. |
 | `dco` | SHOULD | no | yes | **Unmet**: the template asks for no `Signed-off-by` line ([ADR-0023](decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)). |
 | `governance` | MUST | no | yes | **Met**: [GOVERNANCE.md](../GOVERNANCE.md). |
 | `code_of_conduct` | MUST | no | yes | **Met**: [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), the Contributor Covenant 2.1. |
@@ -182,7 +182,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `build_repeatable` | MUST | yes | no | **Check**: N/A when no build occurs; otherwise Met once two builds of one commit are shown to match. |
 | `installation_common` | MUST | yes | no | **Check**: Met with the ecosystem's usual way to install, such as a package manager; N/A when nothing is installed. |
 | `installation_standard_variables` | MUST | yes | no | **N/A**: it applies only to an installer that writes files where users choose. |
-| `installation_development_quick` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Prerequisites, Set Up, and Build and Test. |
+| `installation_development_quick` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) names the prerequisites, the one command that sets up a clone, and the build and test commands. |
 | `external_dependencies` | MUST | yes | yes | **Check**: `package.json` and its lock file. |
 | `dependency_monitoring` | MUST | yes | no | **Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones. |
 | `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates that Dependabot proposes, with actions pinned to a full commit SHA. |
@@ -190,8 +190,8 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `automated_integration_testing` | MUST | no | no | **Met**: `.github/workflows/ci.yml` runs the tests on every pull request and push to the default branch, and reports the result. |
 | `regression_tests_added50` | MUST | yes | no | **Check**: read the changelog's `### Fixed` entries and the pull request titles of the last six months and name each fix with its test ([Checks](#checks)); N/A only when none fixed a bug. |
 | `test_statement_coverage80` | MUST | yes | no | **Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure. |
-| `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
-| `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
+| `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it, which is the written policy. |
+| `tests_documented_added` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it. |
 | `warnings_strict` | MUST | yes | no | **Check**: Met when the strictest practical settings are on. |
 
 ### Security
@@ -246,10 +246,10 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `code_review_standards` | MUST | yes | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Review Requirements. |
+| `code_review_standards` | MUST | yes | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says what a reviewer checks in each pull request and when one is acceptable. |
 | `two_person_review` | MUST | no | no | **Person**: at least half of the changes reviewed before release by someone other than their author; Unmet with one maintainer, as NCode Review's approval is a bot's. |
 | `build_reproducible` | MUST | yes | yes | **Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it. |
-| `test_invocation` | MUST | no | yes | **Met**: `npm test`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test. |
+| `test_invocation` | MUST | no | yes | **Met**: `npm test`, the test command [CONTRIBUTING.md](../CONTRIBUTING.md) names. |
 | `test_continuous_integration` | MUST | no | yes | **Met**: `.github/workflows/ci.yml` runs the build and the tests on every pull request. |
 | `test_statement_coverage90` | MUST | yes | no | **Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure. |
 | `test_branch_coverage80` | MUST | yes | no | **Met**: CI fails below 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figure. |
