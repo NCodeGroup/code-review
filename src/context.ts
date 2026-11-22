@@ -146,13 +146,18 @@ function isDecisionName(name: string): boolean {
   return decisionName.test(name) && !name.startsWith('0000-');
 }
 
-// A record in a subfolder, such as the template's `project-template/`, carries the subfolder in its id, so it can't clash with the project's record of the same number.
+// A record in a subfolder, such as the template's `project-template/`, carries the subfolder in its id, so it can't
+// clash with the project's record of the same number.
+function recordId(sub: string, name: string): string {
+  return sub ? `${sub} ADR-${name.slice(0, 4)}` : `ADR-${name.slice(0, 4)}`;
+}
+
 function decisionId(file: string): string | undefined {
   const name = path.posix.basename(file);
   if (!isDecisionName(name)) return undefined;
   const dir = path.posix.dirname(file);
-  if (decisionFolders.includes(dir)) return `ADR-${name.slice(0, 4)}`;
-  if (decisionFolders.includes(path.posix.dirname(dir))) return `${path.posix.basename(dir)} ADR-${name.slice(0, 4)}`;
+  if (decisionFolders.includes(dir)) return recordId('', name);
+  if (decisionFolders.includes(path.posix.dirname(dir))) return recordId(path.posix.basename(dir), name);
   return undefined;
 }
 
@@ -183,7 +188,7 @@ export function readDecisions(basePath: string): Decision[] {
     for (const sub of ['', ...subfolders]) {
       for (const name of readdirSync(path.join(dir, sub)).filter(isDecisionName).sort()) {
         const { status, ...decision } = parseDecision(
-          decisionId(path.posix.join(folder, sub, name))!,
+          recordId(sub, name),
           name,
           readFileSync(path.join(dir, sub, name), 'utf8'),
         );
@@ -197,14 +202,12 @@ export function readDecisions(basePath: string): Decision[] {
 // The decision records among the changed files, read from the pull request's head: accepted or still proposed.
 export function readProposedDecisions(prPath: string, changed: string[]): Decision[] {
   const decisions: Decision[] = [];
-  for (const file of changed.filter((f) => decisionId(f) !== undefined).sort()) {
+  for (const file of [...changed].sort()) {
+    const id = decisionId(file);
+    if (id === undefined) continue;
     const full = path.join(prPath, file);
     if (!existsSync(full)) continue;
-    const { status, ...decision } = parseDecision(
-      decisionId(file)!,
-      path.posix.basename(file),
-      readFileSync(full, 'utf8'),
-    );
+    const { status, ...decision } = parseDecision(id, path.posix.basename(file), readFileSync(full, 'utf8'));
     if (status === 'Accepted' || status === 'Proposed') decisions.push({ ...decision, proposed: true });
   }
   return decisions;
