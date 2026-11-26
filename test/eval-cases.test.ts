@@ -18,6 +18,21 @@ test('the re-review subset is every eval case with a reviewed head', () => {
   );
 });
 
+test('the declined subset is the four eval cases built from declined findings, each with must-not concerns and nothing expected', () => {
+  const declined = selectCases(allCases, undefined, 'declined');
+  assert.deepEqual(
+    declined.map((c) => c.id),
+    allCases.filter((c) => c.id.startsWith('declined-')).map((c) => c.id),
+  );
+  assert.equal(declined.length, 4);
+  for (const c of declined) {
+    assert.deepEqual(c.expect, [], c.id);
+    assert.ok(c.mustNotFlag.length > 0, c.id);
+    assert.match(c.base, /^[0-9a-f]{40}$/, c.id);
+    assert.match(c.head, /^[0-9a-f]{40}$/, c.id);
+  }
+});
+
 test('a re-review eval case changes a sensitive: path, and its globs are plain paths', () => {
   assert.ok(allCases.some((c) => c.reviewed && c.sensitive?.length));
   for (const c of allCases) {
