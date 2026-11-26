@@ -1387,5 +1387,26 @@
       }
     ],
     "source": "NCode Review findings on NCodeGroup/Identity#548, declined by the maintainer because the test conventions allow them: F10 (https://github.com/NCodeGroup/Identity/pull/548#discussion_r4460495828), a nit on `null!` in the review at 61b0c8e, and F8 and F19 (https://github.com/NCodeGroup/Identity/pull/548#discussion_r4461583137, https://github.com/NCodeGroup/Identity/pull/548#discussion_r4461583182), nits on the nested test doubles in the review at ea6ef24. The case reviews 61b0c8e, the commit that added them, on its own."
+  },
+  {
+    "id": "declined-pre-release-compatibility",
+    "repository": "NCodeGroup/Identity",
+    "pullRequest": 807,
+    "title": "refactor: hold the decision records' rules in code and checks",
+    "body": "The decision records' rules are held by the gate, the package references and the build instead of by a reader.\n\n- The `adr index` stage checks that every tracked `ADR-NNNN` citation names a record, and that each family record's header carries only Status, Date, Deciders and relations to project template records (#801).\n- Package references match ADR-1500: implementations collaborate through abstractions resolved from DI, a host registers the default password hasher, and `NCode.Identity.Jwk` is a foundation package (#802).\n- Every pooled buffer is rented through `BufferFactory` with its sensitivity stated, and `BannedSymbols.Buffers.txt` fails the build on the bare pools, `ArrayBufferWriter<T>` and `Sequence<T>` constructors outside the test projects (#803).\n- The failed-client-authentication limit's log message names the `ForwardedHeaders` section, and `UseTrustedForwardedHeaders` says where it goes beside `UseProxyClientCertificate` (#804, #805).\n- Open issues cite the consolidated records (#800); the platform repository's citations are in NCodeGroup/identity-platform#39.\n\nCloses #800\nCloses #801\nCloses #802\nCloses #803\nCloses #804\nCloses #805\nRefs #799\n",
+    "base": "6d13356368ea27f701450ca896642f9cd16dfe60",
+    "head": "ff1b7e5deaa5f1cd1fb07a9d111d2ac58904ff8c",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "src/NCode.Identity.OpenId.Persistence.EntityFramework.Accounts/DefaultRegistration.cs",
+        "concern": "AddLocalAccountEntityFramework stops registering the password hasher and drops the transitive reference to NCode.Identity.OpenId.Accounts, so a consumer of the published package that upgrades in place fails at resolution. Nothing is published: the repository is pre-release, so no consumer relies on the earlier registration and nothing is kept compatible."
+      },
+      {
+        "file": "src/NCode.Identity.OpenId.Authentication/Logging/Log.cs",
+        "concern": "The operator-facing log message names ForwardedHeaders instead of ReverseProxy, and no CHANGELOG entry says so. The repository is pre-release: its changelog's [Unreleased] is a catalog of capabilities under Added and Security only, so a corrected message is not tracked."
+      }
+    ],
+    "source": "NCode Review findings F5 (api-compat, https://github.com/NCodeGroup/Identity/pull/807#discussion_r4555501765) and F3 (hygiene, https://github.com/NCodeGroup/Identity/pull/807#discussion_r4555501748), nits in the review at ff1b7e5, declined by the maintainer: the repository is pre-release, nothing is published, and its changelog tracks no fixes."
   }
 ]
