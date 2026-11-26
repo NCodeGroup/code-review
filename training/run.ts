@@ -6,7 +6,7 @@
 //
 //   node training/run.ts --repo NCodeGroup/Identity --checkout C:\GitHub\NCode\Identity [--maintainer polewskm]
 //   node training/run.ts --repo NCodeGroup/Buffers --checkout ../Buffers --comments <folder> --only outcomes
-//   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules]
+//   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules] [--topics security-and-crypto,...]
 //   node training/run.ts --retag
 //
 // 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The bot's own
@@ -660,9 +660,14 @@ async function generalize(
   const scopes = sourceScopes();
   console.log(`${folder}/: ${usable.length} rules${exclude.size ? `, holding out ${exclude.size} sources` : ''}`);
   const out = path.join(root, folder);
-  rmSync(out, { recursive: true, force: true });
+  // --topics regenerates only the topics it names and keeps the folder's other files, such as after one topic's call
+  // failed; without it the folder is rebuilt from scratch.
+  const only = arg('topics')?.split(',');
+  const unknown = only?.filter((t) => !(topics as readonly string[]).includes(t));
+  if (unknown?.length) throw new Error(`--topics: no topic ${unknown.join(', ')}; the topics are ${topics.join(', ')}.`);
+  if (!only) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  await mapWithConcurrency([...topics], 4, async (topic) => {
+  await mapWithConcurrency(only ?? [...topics], 4, async (topic) => {
     const rules = usable.filter(({ rule }) => rule.topic === topic);
     if (!rules.length) return;
     const input = rules.map(({ rule, source }) => ({ ...rule, source }));
