@@ -54,8 +54,12 @@ The fourth wins.
   next version, since a release tag can't be moved.
 - Consumers' own Dependabot schedules and cooldowns decide when they move to a release.
 - Every plan that reaches consumers needs a `Release:` line and a dated section.
-- Whether Dependabot's cooldown `exclude` applies to the `github-actions` ecosystem is not documented. Without it the
-  lag is one day plus the 3-day cooldown.
+- Dependabot's documentation doesn't say whether a cooldown `exclude` applies to the `github-actions` ecosystem, and
+  it does: Dependabot opened [#199](https://github.com/NCodeGroup/code-review/pull/199) for v1.2.0 22 seconds after its
+  release on 2026-11-14, in the run that the change to `.github/dependabot.yml` started, and its weekday runs opened
+  [#227](https://github.com/NCodeGroup/code-review/pull/227) for v1.4.2 and
+  [#242](https://github.com/NCodeGroup/code-review/pull/242) for v1.5.1 within a day of their releases (read on
+  2026-11-26).
 
 ## References
 

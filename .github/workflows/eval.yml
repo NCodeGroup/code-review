@@ -15,6 +15,7 @@ on:
         options:
           - smoke
           - re-review
+          - declined
       verification:
         description: CODE_REVIEW_VERIFICATION (on by default, as in production)
         type: choice

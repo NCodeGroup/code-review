@@ -48,6 +48,8 @@ export interface EvalCase {
 // evals/baseline-smoke.json.
 // re-review: every case with a reviewed head, to compare re-reviews and read each one's cost (costUsd, reviewCostUsd in
 // the output).
+// declined: one must-not case for each kind of finding prompts/specialist.md tells the reviewers not to report, each
+// built from findings the maintainer declined (issue #191, ADR-1005), for the Eval workflow's declined choice.
 export const subsets: Record<string, readonly string[]> = {
   smoke: [
     'accepted-no-backfill',
@@ -60,5 +62,11 @@ export const subsets: Record<string, readonly string[]> = {
     're-review-merge-of-main',
     're-review-security-floor',
     're-review-sensitive-path',
+  ],
+  declined: [
+    'declined-test-project-rules',
+    'declined-pre-release-compatibility',
+    'declined-renumber-only-line',
+    'declined-other-repository-changelog',
   ],
 };
