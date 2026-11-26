@@ -185,3 +185,38 @@ test('staleExtractions lists a saved extraction no source names and not one a so
   assert.deepEqual(staleExtractions(dir, [{ kind: 'adr', id: '0205-y' }]), [path.join(dir, 'adr', '0204-x.json')]);
   assert.deepEqual(staleExtractions(path.join(dir, 'missing'), []), []);
 });
+
+test('savedComments reads saved review threads as a root and its replies, with the bot login and pages in order', async () => {
+  const { outcomeSources, savedComments } = await import('../training/run.ts');
+  const dir = mkdtempSync(path.join(tmpdir(), 'training-saved-'));
+  mkdirSync(path.join(dir, 'r'));
+  const thread = (title: string, answer: string) => ({
+    comments: [
+      { body: finding(title), path: 'a.cs', line: 3, original_line: 4, author: botLogin.replace('[bot]', '') },
+      { body: answer, path: 'a.cs', original_line: 4, author: 'polewskm' },
+    ],
+  });
+  writeFileSync(
+    path.join(dir, 'r', '7.json'),
+    JSON.stringify({ review_threads: [thread('One', 'Autopilot: fixed in abc')] }),
+  );
+  writeFileSync(
+    path.join(dir, 'r', '7.p2.json'),
+    JSON.stringify({ review_threads: [thread('Two', 'Autopilot: not changed. Generated.')] }),
+  );
+  writeFileSync(path.join(dir, 'r', 'notes.txt'), 'ignored');
+  const comments = savedComments(dir, 'o/r');
+  assert.equal(comments.length, 4);
+  assert.deepEqual(
+    comments.map((c) => [c.id, c.in_reply_to_id, c.user?.login]),
+    [
+      [1, undefined, botLogin],
+      [2, 1, 'polewskm'],
+      [3, undefined, botLogin],
+      [4, 3, 'polewskm'],
+    ],
+  );
+  assert.equal(comments[0]!.pull_request_url, 'https://api.github.com/repos/o/r/pulls/7');
+  const [source] = outcomeSources(comments, 'r', 'polewskm');
+  assert.match(source!.text, /: One\nThe problem\.\nOutcome: fixed\n[\s\S]*: Two\nThe problem\.\nOutcome: declined\n/);
+});
