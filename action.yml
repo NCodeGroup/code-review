@@ -84,7 +84,7 @@ runs:
       id: ack-token
       if: steps.ack-decide.outputs.acknowledge == 'true'
       continue-on-error: true
-      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:
         client-id: ${{ inputs.app-client-id }}
         private-key: ${{ inputs.app-private-key }}
@@ -123,7 +123,7 @@ runs:
       id: ack-ignored-token
       if: steps.ack-decide.outputs.acknowledge == 'ignored'
       continue-on-error: true
-      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:
         client-id: ${{ inputs.app-client-id }}
         private-key: ${{ inputs.app-private-key }}
@@ -202,7 +202,7 @@ runs:
           steps.review.outputs.paused == 'true' ||
           steps.review.outputs.answered == 'true' || steps.review.outputs.taught == 'true' ||
           steps.review.outputs.stopped == 'true' || steps.ack.outputs.check-run-id != '')
-      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:
         client-id: ${{ inputs.app-client-id }}
         private-key: ${{ inputs.app-private-key }}
@@ -218,7 +218,7 @@ runs:
       id: issues-token
       if: steps.review.outputs.taught == 'true'
       continue-on-error: true
-      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:
         client-id: ${{ inputs.app-client-id }}
         private-key: ${{ inputs.app-private-key }}
@@ -234,7 +234,7 @@ runs:
       id: approver-token
       if: steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''
       continue-on-error: true
-      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:
         client-id: ${{ inputs.approver-client-id }}
         private-key: ${{ inputs.approver-private-key }}
