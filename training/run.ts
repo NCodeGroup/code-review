@@ -664,7 +664,8 @@ async function generalize(
   // failed; without it the folder is rebuilt from scratch.
   const only = arg('topics')?.split(',');
   const unknown = only?.filter((t) => !(topics as readonly string[]).includes(t));
-  if (unknown?.length) throw new Error(`--topics: no topic ${unknown.join(', ')}; the topics are ${topics.join(', ')}.`);
+  if (unknown?.length)
+    throw new Error(`--topics: no topic ${unknown.join(', ')}; the topics are ${topics.join(', ')}.`);
   if (!only) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   await mapWithConcurrency(only ?? [...topics], 4, async (topic) => {
