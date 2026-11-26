@@ -1423,5 +1423,22 @@
       }
     ],
     "source": "NCodeGroup/Identity#452 renumbered the decision records from 0NNN to 1NNN. Its review at a532680 raised 37 findings, several of them should-fix, on ADR citations in `///` docs whose lines the renumber only rewrote, such as https://github.com/NCodeGroup/Identity/pull/452#discussion_r4437793521, and the maintainer declined each: the citation predates the pull request, and moving it is tracked on its own. That review's diff is 1,148 files, so the case reviews 30e4c87, the pull request's 11-file commit that renumbers the references the first sweep missed, whose lines carry the same kind of older text."
+  },
+  {
+    "id": "declined-other-repository-changelog",
+    "repository": "NCodeGroup/project-template",
+    "pullRequest": 224,
+    "title": "Keep file_header_template whole for Roslyn",
+    "body": "Roslyn ends an `.editorconfig` value at the first `;` or `#`, so the Apache-2.0 notice in `file_header_template` was cut short and IDE0073 flagged every file carrying the full notice. The template now renders the copyright line plus `SPDX-License-Identifier: <license>` for every answered license (the copyright line alone when none), with no `;` or `#`.\nTests pin the rendered header for each .NET case in `tests/Test-Template.ps1`, taking the expected license from the same answer the template uses, and `tests/Test-TemplateDotnet.ps1` builds the Apache-2.0 library with IDE0073 raised for two probe files to prove Roslyn matches it end to end. README and the 0.57.1 changelog section describe the change.\n\nCloses #215\n",
+    "base": "224a73bb268a101168cf5ee076eb28b00c603aa3",
+    "head": "a9f990705f58810de18d7dc55120ea00d1bd3b22",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "CHANGELOG.md",
+        "concern": "The entry sits in a new dated `## [0.57.1]` section, with `## [Unreleased]` left empty and the compare links moved, instead of under `[Unreleased]`. The repository releases each plan under its own version: AGENTS.md's Landing section has a plan with a `Release:` line write its version's dated section in its last step, and the release is tagged from it when the pull request merges."
+      }
+    ],
+    "source": "NCode Review finding F2 (rule-check, https://github.com/NCodeGroup/project-template/pull/224#discussion_r4439443217), a nit in the review at a9f9907, declined by the maintainer: the repository cuts a release with each plan, whose last step writes that version's changelog section, as every earlier section was written."
   }
 ]
