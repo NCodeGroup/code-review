@@ -1368,5 +1368,24 @@
       }
     ],
     "source": "Review comment https://github.com/NCodeGroup/code-review/pull/30#discussion_r4430150795, raised as should-fix on the review at 11a8def. A test that would only pin behavior nothing shows is wrong: a nit, not a should-fix."
+  },
+  {
+    "id": "declined-test-project-rules",
+    "repository": "NCodeGroup/Identity",
+    "title": "fix: address the review of the interactive ui_locales surface",
+    "body": "The UI locale catalog bounds the default and the fallback locale by the tenant's ui_locales_supported, so the advertised set and the rendered default agree. AddInteractiveLocale registers a locale in place of any registered locale of its tag, so a host rewords a shipped locale, and InteractiveLocalesValidator stops the host as it starts when a registered locale carries no interactive messages. The logout confirmation reads the ui_locales its forms carry and a declined sign-out returns to the account page in that locale, as an anonymous account page request reaches the login page. Tests cover the end-session and consent pages end to end, the end-session request's ui_locales, and the built bundle's language placeholder.",
+    "base": "faeda220c3e4ab4c4565183706fb52468a7eeefc",
+    "head": "61b0c8e0d55f6ad986c63b0e3e300e8dd788e01e",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "file": "tests/NCode.Identity.OpenId.Authentication.Interactive.Tests/DefaultRegistrationTests.cs",
+        "concern": "`builder.AddInteractiveLocale(null!)` uses the null-forgiving operator. It passes a deliberate null to the code under test in an argument-validation test, which the test conventions (csharp-tests.instructions.md) name as the one exception to the ban on `!`."
+      },
+      {
+        "concern": "A private sealed nested stub, fake or sample type in a test file, such as StubUiLocaleCatalog or PlainLocale, reported as breaking the no-nested-types rule. That rule covers production code; the test conventions make a type that one test file needs a private sealed nested type in that file."
+      }
+    ],
+    "source": "NCode Review findings on NCodeGroup/Identity#548, declined by the maintainer because the test conventions allow them: F10 (https://github.com/NCodeGroup/Identity/pull/548#discussion_r4460495828), a nit on `null!` in the review at 61b0c8e, and F8 and F19 (https://github.com/NCodeGroup/Identity/pull/548#discussion_r4461583137, https://github.com/NCodeGroup/Identity/pull/548#discussion_r4461583182), nits on the nested test doubles in the review at ea6ef24. The case reviews 61b0c8e, the commit that added them, on its own."
   }
 ]
