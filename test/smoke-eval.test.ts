@@ -684,7 +684,7 @@ test('the eval workflow runs only by hand, in the code-review environment, with 
   assert.ok(inputs['max-cost'].options.length > 0);
   for (const option of inputs['max-cost'].options)
     assert.ok(Number.isFinite(Number(option)) && Number(option) <= 25, String(option));
-  assert.deepEqual(inputs.subset.options, ['smoke', 're-review']);
+  assert.deepEqual(inputs.subset.options, ['smoke', 're-review', 'declined']);
   assert.deepEqual(inputs.runs.options.map(String), ['1', '2']);
   const job = Object.values<any>(doc['jobs'])[0];
   assert.equal(job.environment, 'code-review');

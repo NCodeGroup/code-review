@@ -1,11 +1,12 @@
-# Dependabot, built into GitHub: each week, a pull request for every newer version, which CI tests and you merge.
-# Every update of one kind, major ones included, comes together in a single pull request, so a project gets one for its
-# actions and one for its packages instead of one per package. A new version waits three days (cooldown) before it's
-# offered, so one that is withdrawn or found compromised soon after its release never reaches the project. Security
-# updates, which come whenever an advisory affects a dependency, have a group of their own in each ecosystem, so one
-# advisory run is one pull request. A new .NET SDK major isn't offered: moving to a new .NET major is a planned migration
-# (/plan-migration). A docker entry a project adds ignores major updates of its base images the same way. One update
-# comes apart: a new release of the NCode Review action (NCodeGroup/code-review) has a pull request of its own.
+# Dependabot, built into GitHub: a pull request for every newer version, which CI tests and you merge. It checks the
+# actions each weekday and the npm packages each week. Every update of one kind, major ones included, comes together in
+# a single pull request, so the project gets one for its actions and one for its packages instead of one per package. A
+# new version waits three days (cooldown) before it's offered, so one that is withdrawn or found compromised soon after
+# its release never reaches the project. A new release of the NCode Review action (NCodeGroup/code-review) waits for
+# none: it has a pull request of its own on the next weekday's run (ADR-1006). Security updates, which come whenever an
+# advisory affects a dependency, have a group of their own in each ecosystem, so one advisory run is one pull request. A
+# new .NET SDK major isn't offered: moving to a new .NET major is a planned migration (/plan-migration). A docker entry
+# a project adds ignores major updates of its base images the same way.
 version: 2
 updates:
   - package-ecosystem: github-actions
