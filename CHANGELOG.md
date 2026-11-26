@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - ADR-1006, the README's Versions section and the header of `.github/dependabot.yml` say that the Dependabot cooldown's `exclude` applies to the `github-actions` ecosystem, as Dependabot's pull requests for v1.2.0, v1.4.2 and v1.5.1 show, so this repository's pin follows a release within a weekday, and that the actions are checked each weekday and the npm packages each week ([#198](https://github.com/NCodeGroup/code-review/issues/198), [ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)).
 
+- The README's Evals section records a run of the `declined` eval subset, as the result to compare later prompt changes with: 0 must-not violations in each of its four cases, at a review cost of $4.91 ([#247](https://github.com/NCodeGroup/code-review/issues/247)).
+
 ## [1.5.1] - 2026-11-22
 
 ### Added
