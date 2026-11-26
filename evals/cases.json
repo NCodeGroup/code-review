@@ -1408,5 +1408,20 @@
       }
     ],
     "source": "NCode Review findings F5 (api-compat, https://github.com/NCodeGroup/Identity/pull/807#discussion_r4555501765) and F3 (hygiene, https://github.com/NCodeGroup/Identity/pull/807#discussion_r4555501748), nits in the review at ff1b7e5, declined by the maintainer: the repository is pre-release, nothing is published, and its changelog tracks no fixes."
+  },
+  {
+    "id": "declined-renumber-only-line",
+    "repository": "NCodeGroup/Identity",
+    "title": "Plan step 18: Renumber the path-style decision references the sweep missed",
+    "body": "",
+    "base": "d8dd6909c283183e6ad1dc957195eb481e6014e1",
+    "head": "30e4c879c74abb89137ae50708e8f4871f7388f5",
+    "expect": [],
+    "mustNotFlag": [
+      {
+        "concern": "A rule broken on a line the commit only renumbers from docs/decisions/0NNN to docs/decisions/1NNN, such as the words \"now\" and \"no longer\" in the header comment of build/frontend-install.ps1, or a decision record cited in a doc comment. The text was there before the commit, which changes only the number, and fixing it is a change of its own."
+      }
+    ],
+    "source": "NCodeGroup/Identity#452 renumbered the decision records from 0NNN to 1NNN. Its review at a532680 raised 37 findings, several of them should-fix, on ADR citations in `///` docs whose lines the renumber only rewrote, such as https://github.com/NCodeGroup/Identity/pull/452#discussion_r4437793521, and the maintainer declined each: the citation predates the pull request, and moving it is tracked on its own. That review's diff is 1,148 files, so the case reviews 30e4c87, the pull request's 11-file commit that renumbers the references the first sweep missed, whose lines carry the same kind of older text."
   }
 ]
