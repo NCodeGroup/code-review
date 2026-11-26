@@ -234,25 +234,32 @@ export interface SavedThread {
 // later pages, <number>.p2.json and on, each holding the `review_threads` that get_review_comments returned. Each
 // comment gets an id, each reply the id of its thread's root, and the bot's login gets back its "[bot]" suffix. No
 // diff hunk is saved, so a maintainer's comment read from here reaches the extraction without its diff.
+// The bot's login as the GitHub MCP server writes a thread's author: without the "[bot]" suffix.
+export const savedBotLogin = botLogin.replace(/\[bot\]$/, '');
+
 export function savedComments(folder: string, repository: string): PullComment[] {
   const dir = path.join(folder, repository.split('/')[1]!);
-  const bare = botLogin.replace(/\[bot\]$/, '');
+  if (!existsSync(dir))
+    throw new Error(`--comments: no folder ${dir}; save each pull request's threads there as <number>.json.`);
   const comments: PullComment[] = [];
   let id = 0;
   const files = readdirSync(dir)
     .map((name) => ({ name, match: /^(\d+)(?:\.p(\d+))?\.json$/.exec(name) }))
     .filter((f) => f.match)
     .sort((a, b) => Number(a.match![1]) - Number(b.match![1]) || Number(a.match![2] ?? 1) - Number(b.match![2] ?? 1));
+  if (!files.length) throw new Error(`--comments: ${dir} holds no <number>.json file of saved review threads.`);
   for (const { name, match } of files) {
     const url = `https://api.github.com/repos/${repository}/pulls/${match![1]}`;
-    const saved = JSON.parse(readFileSync(path.join(dir, name), 'utf8')) as { review_threads?: SavedThread[] };
-    for (const thread of saved.review_threads ?? []) {
+    const saved = JSON.parse(readFileSync(path.join(dir, name), 'utf8')) as { review_threads?: unknown };
+    if (!Array.isArray(saved.review_threads))
+      throw new Error(`--comments: ${path.join(dir, name)} has no review_threads list, so it isn't a saved page.`);
+    for (const thread of saved.review_threads as SavedThread[]) {
       let rootId: number | undefined;
       for (const c of thread.comments ?? []) {
         const comment: PullComment = {
           id: ++id,
           ...(rootId ? { in_reply_to_id: rootId } : {}),
-          ...(c.author ? { user: { login: c.author === bare ? botLogin : c.author } } : {}),
+          ...(c.author ? { user: { login: c.author === savedBotLogin ? botLogin : c.author } } : {}),
           ...(c.body !== undefined ? { body: c.body } : {}),
           ...(c.path !== undefined ? { path: c.path } : {}),
           line: c.line ?? null,

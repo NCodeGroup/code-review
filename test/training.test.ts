@@ -186,27 +186,28 @@ test('staleExtractions lists a saved extraction no source names and not one a so
   assert.deepEqual(staleExtractions(path.join(dir, 'missing'), []), []);
 });
 
-test('savedComments reads saved review threads as a root and its replies, with the bot login and pages in order', async () => {
-  const { outcomeSources, savedComments } = await import('../training/run.ts');
+const savedThread = (title: string, answer: string, author: string) => ({
+  comments: [
+    { body: finding(title), path: 'a.cs', line: 3, original_line: 4, author },
+    { body: answer, path: 'a.cs', original_line: 4, author: 'polewskm' },
+  ],
+});
+const savedFolder = (files: Record<string, unknown>) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'training-saved-'));
   mkdirSync(path.join(dir, 'r'));
-  const thread = (title: string, answer: string) => ({
-    comments: [
-      { body: finding(title), path: 'a.cs', line: 3, original_line: 4, author: botLogin.replace('[bot]', '') },
-      { body: answer, path: 'a.cs', original_line: 4, author: 'polewskm' },
-    ],
+  for (const [name, content] of Object.entries(files))
+    writeFileSync(path.join(dir, 'r', name), typeof content === 'string' ? content : JSON.stringify(content));
+  return dir;
+};
+
+test('savedComments reads saved review threads as a root and its replies, with the bot login back', async () => {
+  const { outcomeSources, savedBotLogin, savedComments } = await import('../training/run.ts');
+  const dir = savedFolder({
+    '7.json': { review_threads: [savedThread('One', 'Autopilot: fixed in abc', savedBotLogin)] },
+    '7.p2.json': { review_threads: [savedThread('Two', 'Autopilot: not changed. Generated.', savedBotLogin)] },
+    'notes.txt': 'ignored',
   });
-  writeFileSync(
-    path.join(dir, 'r', '7.json'),
-    JSON.stringify({ review_threads: [thread('One', 'Autopilot: fixed in abc')] }),
-  );
-  writeFileSync(
-    path.join(dir, 'r', '7.p2.json'),
-    JSON.stringify({ review_threads: [thread('Two', 'Autopilot: not changed. Generated.')] }),
-  );
-  writeFileSync(path.join(dir, 'r', 'notes.txt'), 'ignored');
   const comments = savedComments(dir, 'o/r');
-  assert.equal(comments.length, 4);
   assert.deepEqual(
     comments.map((c) => [c.id, c.in_reply_to_id, c.user?.login]),
     [
@@ -219,4 +220,39 @@ test('savedComments reads saved review threads as a root and its replies, with t
   assert.equal(comments[0]!.pull_request_url, 'https://api.github.com/repos/o/r/pulls/7');
   const [source] = outcomeSources(comments, 'r', 'polewskm');
   assert.match(source!.text, /: One\nThe problem\.\nOutcome: fixed\n[\s\S]*: Two\nThe problem\.\nOutcome: declined\n/);
+});
+
+test('savedComments orders pull requests and their pages by number, not by name', async () => {
+  const { savedComments } = await import('../training/run.ts');
+  const page = (title: string) => ({ review_threads: [{ comments: [{ body: title, author: 'polewskm' }] }] });
+  const dir = savedFolder({
+    '10.p10.json': page('10 p10'),
+    '10.p2.json': page('10 p2'),
+    '10.json': page('10'),
+    '9.json': page('9'),
+  });
+  assert.deepEqual(
+    savedComments(dir, 'o/r').map((c) => c.body),
+    ['9', '10', '10 p2', '10 p10'],
+  );
+});
+
+test('savedComments leaves out what a comment lacks and keeps a login other than the bot as it is', async () => {
+  const { savedComments } = await import('../training/run.ts');
+  const dir = savedFolder({ '7.json': { review_threads: [{ comments: [{}, { author: 'ncode-review-fan' }] }] } });
+  const [bare, other] = savedComments(dir, 'o/r');
+  assert.equal(bare!.user, undefined);
+  assert.equal(bare!.body, undefined);
+  assert.equal(bare!.path, undefined);
+  assert.equal(other!.user?.login, 'ncode-review-fan');
+});
+
+test('savedComments refuses a missing folder, a folder without saved pages and a file without review_threads', async () => {
+  const { savedComments } = await import('../training/run.ts');
+  assert.throws(() => savedComments(savedFolder({}), 'o/missing'), /no folder .*missing/);
+  assert.throws(() => savedComments(savedFolder({ 'notes.txt': 'x' }), 'o/r'), /holds no <number>\.json file/);
+  assert.throws(
+    () => savedComments(savedFolder({ '7.json': { error: 'not found' } }), 'o/r'),
+    /7\.json has no review_threads/,
+  );
 });
