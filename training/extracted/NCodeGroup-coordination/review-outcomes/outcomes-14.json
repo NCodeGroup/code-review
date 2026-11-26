@@ -1,0 +1,186 @@
+{
+  "hash": "be1ce221749fd6e5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #14",
+  "rules": [
+    {
+      "statement": "A doc comment that describes a limit must state the limit the code actually enforces, and must not claim it covers cases the code rejects.",
+      "why": "A caller who trusts an overstated comment hits an ArgumentOutOfRangeException the comment said would not happen.",
+      "check": "Compare doc-comment claims about maximums and ranges with the comparisons in the code, including edge cases such as a leap-year window plus an allowance.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test an upper or lower bound at exactly the limit (succeeds) and one unit past it (fails), not only far beyond it.",
+      "why": "Without boundary cases, changing `>` to `>=` in the check would still pass the tests.",
+      "check": "For each range check under test, look for a case at exactly the limit and one a tick or unit over it. Tests that only use values far outside the range don't count.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a contracts-only `*.Abstractions` data type to reject duplicate entries across a set when the set is validated as a whole where it is composed at startup.",
+      "why": "Abstractions assemblies hold contracts and data only, and the conventions validate a registered set when it is composed, where the offending name can be reported.",
+      "check": "Before reporting missing duplicate checks in an abstractions type, find out whether a composition or registration step validates the set as a whole.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.Abstractions/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that expects an ArgumentException (including ArgumentNullException) must also assert the exception's `ParamName`.",
+      "why": "A check on a different argument could throw the same exception type and the test would still pass.",
+      "check": "Look for Assert.Throws on argument exceptions where the test never checks `ParamName`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put tests of a type's members in that type's test class, so that each test file mirrors one type under test.",
+      "why": "Someone looking for a member's coverage in its type's test file won't find it anywhere else, and the file stops mirroring one type.",
+      "check": "Look for test regions or methods that exercise a member of a type other than the one the test class is named for.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report `new` object-creation expressions passed as arguments, such as an expected value built inline in an assertion, as violating the rule against calls nested in other calls' arguments: that rule covers method calls only.",
+      "why": "The maintainers read the hoisting rule as covering method calls, not object creation.",
+      "check": "Report a nested call only when it is a method invocation inside another call's arguments, not a `new` expression.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap doc-comment lines at the width the rest of the file keeps (about 120 columns), as sibling `<param>` tags do.",
+      "why": "A single overlong line breaks the wrap width the file otherwise keeps.",
+      "check": "Look for `///` lines noticeably longer than about 120 columns when the rest of the file wraps.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for invariant-culture formatting of numbers interpolated into exception messages meant for people: the invariant-culture rule covers values formatted or parsed for machines.",
+      "why": "Exception messages are for people, the build's analyzers (CA1305) don't flag them, and a positive int formats the same in every .NET culture.",
+      "check": "Before reporting culture-sensitive formatting, check whether the string is a human-facing message or a value a machine formats or parses.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a private constructor with more than three parameters when its only callers are adjacent one-line factories that each set one value, and tests assert the values left unset.",
+      "why": "The parameter guideline says \"rarely more than three\". One constructor per kind would add members to guard against a swap the factory tests already catch.",
+      "check": "Before reporting a long parameter list, check whether the constructor is private, which factories call it, and whether tests cover each factory's unused values.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask wire-value string constants that peers match ordinally to be composed from other constants: keep each one a whole literal that can be read and searched.",
+      "why": "A wire value is matched exactly by providers and consumers. A test that pins each prefix catches drift.",
+      "check": "Before reporting repeated prefixes in string constants, check whether they are protocol or wire values and whether a test pins them.",
+      "scope": "general",
+      "topic": "protocols",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a small validated immutable value type to become a `readonly record struct` when its `default` instance would bypass constructor validation, but do expect a `//` comment on the type saying why it is a class.",
+      "why": "A struct's default instance skips the constructor, so invalid values could reach consumers. As classes, every instance has passed validation.",
+      "check": "For a sealed record class holding a small value, check whether its constructor validates and whether a comment or ADR explains choosing a class. Report only when the comment is missing.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A comment on an analyzer suppression or a package/build workaround must name the tracking issue or ADR and say when the workaround can be removed.",
+      "why": "Otherwise a later maintainer can't tell whether the workaround is still needed after the dependency or SDK changes.",
+      "check": "Look at new suppressions in .editorconfig, Directory.Packages.props and project files, and at workaround comments, for an issue or ADR reference and a removal condition.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".editorconfig",
+        "**/*.props",
+        "**/*.targets",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a CHANGELOG `### Security` entry that describes dependency or supply-chain checks as misfiled: under the template's changelog convention, Security holds the package's security posture and protections.",
+      "why": "Checking every dependency that ships, transitive ones included, is part of the supply-chain posture a consumer can rely on. Added holds capabilities of the package itself.",
+      "check": "Check the changelog convention (template ADR-0015) before asking for a Security entry to be moved.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a citation of a project-template ADR to carry a `project-template` prefix: project records are numbered from 1000 and template records below it, so an ADR number names one record across both folders.",
+      "why": "The numbering scheme makes a bare ADR number unambiguous, and the link points into the template folder.",
+      "check": "Check the ADR number range and the link target before reporting an ambiguous ADR citation.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a decision record for restating another record when it cites that record and summarizes what it settles in one clause to frame what this record adds.",
+      "why": "A one-clause summary next to a citation tells the reader what this record adds. It doesn't copy the other record's rule terms.",
+      "check": "Report restatement only when the record repeats another record's rule terms, not when it cites the record with a brief summary.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for Markdown table columns to be re-padded when the repository runs no Markdown formatter.",
+      "why": "Nothing will rewrite the table later, and re-padding every row turns each future entry into a whole-table diff. The table renders correctly as it is.",
+      "check": "Check whether the repository's formatters (for example CSharpier, which formats only C# and XML) cover Markdown before reporting table alignment.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

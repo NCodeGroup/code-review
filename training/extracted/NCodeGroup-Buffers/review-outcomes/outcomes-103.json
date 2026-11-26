@@ -1,0 +1,24 @@
+{
+  "hash": "47ce75ca1a6606b1",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #103",
+  "rules": [
+    {
+      "statement": "Wrap code comments at about 120 columns in every kind of source file, including CSS and markup comments in web components, not only in Markdown and `//`/`///` comments.",
+      "why": "A single long comment line is hard to read and makes the next edit reflow it; the surrounding comments already wrap at about 120 columns.",
+      "check": "Look for added or changed comments in any file (for example CSS `/* */` blocks in .astro, .css or .html files) that run well past 120 columns on one line when the comments around them wrap; ask for them to be rewrapped as multi-line block comments.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.astro",
+        "**/*.css",
+        "**/*.scss",
+        "**/*.html",
+        "**/*.js",
+        "**/*.ts",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

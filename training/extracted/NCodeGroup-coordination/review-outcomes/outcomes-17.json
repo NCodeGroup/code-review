@@ -1,0 +1,194 @@
+{
+  "hash": "159d67546264d977",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #17",
+  "rules": [
+    {
+      "statement": "A public operation that takes a ReadOnlyMemory<byte> (or other borrowed buffer) must document whether it reads or copies the value before the returned task completes, and a value type that keeps the bytes must store its own copy rather than the caller's memory.",
+      "why": "Otherwise a caller can't tell whether it may return a pooled buffer once the call finishes, and a provider or value that keeps the memory would see stored values change.",
+      "check": "Look for public methods or constructors taking ReadOnlyMemory<byte>/Memory<byte> whose docs don't say whether the buffer may be reused after the call, and for types assigning such a parameter straight to a field or property without copying (e.g. ToArray()).",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test each validated bound on both sides: one test accepts the exact limit (maximum, minimum, last valid index) and another rejects one past it.",
+      "why": "Testing only the rejected side lets a check tightened or loosened by one (e.g. > changed to >=) pass every test.",
+      "check": "For each range/length/count validation, see whether the tests include an accept-at-the-limit case (e.g. count == Max, amount == 1, index == Length - 1) and a reject-one-past case (Max + 1, Length).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, write boundary values using the production limit constants (with + 1 or - 1 for the neighbouring cases) instead of bare numeric literals.",
+      "why": "If a limit changes on purpose, literal-based tests fail for the wrong reason or silently stop testing the boundary.",
+      "check": "Look for numeric literals in boundary tests that equal a limit defined as a constant in production code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a validation exception's message describe the same side of the bound that the comparison operator accepts (inclusive vs exclusive).",
+      "why": "A message that disagrees with the operator misdescribes the rule to the caller.",
+      "check": "Compare each guard's operator (>, >=, <, <=) with its message wording such as 'at or before', 'less than', 'at most'.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "An argument exception's ParamName must name a parameter of the method the caller invoked; a factory that computes arguments for another constructor validates the computed result itself and throws for its own parameter.",
+      "why": "Otherwise the caller sees an error naming a parameter it never supplied.",
+      "check": "Look for static factories or helpers that pass computed values into a validating constructor, where the constructor's ArgumentException would surface with the inner parameter name.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put a validation check and its message that recur across types in one internal helper, and declare a message repeated within a type once as a private const.",
+      "why": "Copied checks and messages drift apart when the rule or its wording changes.",
+      "check": "Look for identical guard conditions and exception message strings repeated in several types or in several throws of one type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pass a capacity when creating a collection whose final count is known, such as new HashSet<T>(items.Length).",
+      "why": "Sizing up front avoids avoidable reallocations.",
+      "check": "Look for new List/HashSet/Dictionary created without a capacity right before being filled from a source with a known Length or Count.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name a region for a member under test in the '{MemberName} Tests' form, e.g. 'Equals Tests' rather than 'Equality Tests'.",
+      "why": "Region names should name the member under test consistently across test suites.",
+      "check": "Look for #region names in test classes that describe a concept instead of naming the tested member when a single member is under test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test's name must cover everything it asserts; split an unrelated assertion into its own test or rename the test.",
+      "why": "Otherwise a failure is reported under a name about something else.",
+      "check": "Compare each test's name with its assertions and look for checks that the name doesn't mention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write non-ASCII characters in string literals as C# Unicode escapes (\\uXXXX), and when normalization matters, cover both the precomposed and decomposed forms.",
+      "why": "A pasted accented character's form depends on the editor's normalization, so the test could silently check a different sequence.",
+      "check": "Look for raw non-ASCII characters in string literals, especially in test data.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask refusal tests to also assert exception message text when each test's input breaks only its own rule; the test conventions assert the exception type and ParamName.",
+      "why": "When removing a rule lets that test's input through, the test already fails, and asserting messages would tie tests to wording the conventions don't pin.",
+      "check": "Before reporting, check whether each refusal test's input breaks exactly one rule (no other check rejects it) and whether the test conventions pin only the type and ParamName.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report static members declared after the constructor or instance members as an ordering violation: the C# conventions have no static-members-first rule; only a type's shared static instances come before its instance members.",
+      "why": "The conventions don't require it, and existing code puts static factories after the constructor.",
+      "check": "Before reporting member order, check the C# instructions for a stated ordering rule and compare with sibling types on main.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for XML doc comments to be rewrapped to a column width when the repository sets no max_line_length and the formatter (CSharpier) leaves comments as written.",
+      "why": "No width rule exists, and a shared paragraph kept as one line stays checkable word for word with a plain text match.",
+      "check": "Before reporting comment line length, check .editorconfig for max_line_length and the C# instructions for a wrapping rule.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for invariant-culture formatting of numbers in exception messages meant for people, such as positive int limits and lengths; the invariant-culture rule covers values meant for machines.",
+      "why": "Positive ints format as plain digits with no group separator in every culture, and the message is read by a person.",
+      "check": "Before reporting, check whether the formatted value is meant for machines (identifiers, protocol, storage) or only appears in a human-read message.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a method with more than three data parameters when an ADR records the signature, or when the parameters are the operation's whole meaning and recurring inputs are already grouped; the conventions say 'rarely more than three', not never.",
+      "why": "The limit allows rare exceptions, and recorded design decisions settle the signature.",
+      "check": "Before reporting parameter count, check the decision records for the operation's shape and whether the recurring inputs are already grouped into types.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply the no-nested-calls rule to a `new X(...)` constructor expression passed as an argument; the rule covers method calls, and constructor arguments may stay inline.",
+      "why": "The repository reads the rule that way, and existing tests that follow it keep constructor arguments inline.",
+      "check": "Before reporting a nested call, check whether the nested expression is a method call or only an object creation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't require the member-name region form for tests that check a set of constants or the shape of many types, which no single member names; a region naming what the group checks is acceptable.",
+      "why": "Renaming such regions to a member form would point at a test helper rather than production code.",
+      "check": "Before reporting a region name, check whether the tests in it target a single production member at all.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

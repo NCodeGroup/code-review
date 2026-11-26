@@ -1,0 +1,58 @@
+{
+  "hash": "802d18adc4cb9792",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #98",
+  "rules": [
+    {
+      "statement": "Don't ask a docs site to add its own build script that checks each `var(--nc-…)` read is defined in the brand tokens when the pinned NCodeGroup/docs toolchain already fails the site build on undefined or private token reads.",
+      "why": "The pinned toolchain (ADR-1012, `src/brand/tokens.mjs`) already reports every undefined `--nc-` read and every private-primitive read on each pull request, so a second check would only repeat it.",
+      "check": "Before reporting a missing token-definition check, look at the NCodeGroup/docs version the docs workflow pins and whether its build validates `--nc-` reads; report only if the pinned version predates that check.",
+      "scope": "domain",
+      "domain": "docs-site",
+      "topic": "testing",
+      "applies_to": [
+        "docs/site/**/*.astro",
+        "docs/site/**/*.css",
+        "build/**"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't ask docs site components to replace font-size, font-weight or line-height literals with the brand's `--nc-text-*`, `--nc-weight-*` or `--nc-leading-*` tokens, or to switch to a type role's `font` shorthand just to remove the literals.",
+      "why": "Those tokens are private brand primitives that any release may change and the toolchain build fails a component that reads them; no public token holds those single values, so the literals are the component's own design values, and switching to a type role's shorthand changes the component's look.",
+      "check": "Before reporting repeated type-scale literals, check whether a public (non-primitive) brand token holds exactly that value; if only private primitives do, don't report.",
+      "scope": "domain",
+      "domain": "docs-site",
+      "topic": "code-organization",
+      "applies_to": [
+        "docs/site/**/*.astro",
+        "docs/site/**/*.css"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End a .NET regex meant to match a whole string with `\\z`, not `$`.",
+      "why": "In .NET `$` also matches just before a trailing newline, so a value with a trailing newline would wrongly count as a full match.",
+      "check": "Look for regex patterns built or written as `^...$` that are used for whole-string matching (globs, identifiers, validation) and check they use `\\z` instead.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code translates glob patterns to regular expressions, give each translation branch its own test: `?`, `*`, `**`, `**/`, escaped regex metacharacters such as `.`, and any case normalisation of the input.",
+      "why": "A regression in an untested branch leaves the suite green while the matcher selects different items from the ones the consumer expects.",
+      "check": "For a change to a glob-to-regex converter or its tests, check that each token kind it handles and each input normalisation has a positive and a negative test case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/Test-*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "hash": "df9bec2144fa93b2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #12",
+  "rules": [
+    {
+      "statement": "When a constructor or factory takes many values, several of the same type, take them as `required init` properties set by name in an object initializer (or group them into small types) instead of long positional parameter lists.",
+      "why": "Swapping two positional arguments of the same type still compiles and quietly breaks behavior such as verification.",
+      "check": "Look for new constructors or methods with more than three data parameters, especially adjacent parameters sharing a type (string, int, same record).",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every catch that translates exceptions into a domain error, and every throw guard, a test that reaches it and asserts the error code, the message and, for translated exceptions, the original InnerException.",
+      "why": "Otherwise a regression that drops the catch or misclassifies the exception passes the suite.",
+      "check": "For each new catch/filter or `?? throw`/guard in the diff, look for a test that drives execution into it and asserts the resulting error.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't keep a second copy of fetch-verify-cache logic when a shared loader already does it; call the shared loader instead.",
+      "why": "A fix to loading, error text or failure handling would have to be made twice, and the copies drift.",
+      "check": "Look for a new or retained private loader (gate, volatile field, fetch, verify) that duplicates an existing cache or loader service.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a shared async cache, don't hold one lock across the fetch for every key; keep a gate per key (e.g. via `ConcurrentDictionary.GetOrAdd`) and have each caller fetch under its own cancellation token.",
+      "why": "A single gate lets a slow, retried or cancelled fetch of one key delay or fail unrelated lookups, coupling independent consumers.",
+      "check": "Look for a single `SemaphoreSlim`/lock in a cache that is held across network I/O or verification for all keys.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a `TryGet`-style lookup return false only when the key is missing, and throw the same format exception as `Get` when the key is present with the wrong type.",
+      "why": "Treating a mistyped value as missing silently skips malformed data instead of refusing it, producing vaguer errors later.",
+      "check": "Look at TryGet implementations that return false on a type mismatch or failed cast.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When configuration names an unknown key or entry, end the error message with the list of valid names, and make sure the check runs at host start rather than on a lazy first resolution.",
+      "why": "An operator who misspells a name otherwise has to look up valid names elsewhere, and a lazily resolved check fails only after the host has started.",
+      "check": "Look for validation errors for unknown keys that name only the bad key, and for checks in services that are not resolved during startup (options validation or a hosted service).",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Type an options dictionary property as the concrete `Dictionary<TKey, TValue>`, and have the consumer copy it once at start into a `FrozenDictionary` with an explicit ordinal comparer instead of keeping the caller's instance.",
+      "why": "Keeping the caller's instance leaves it mutable after validation and keeps whatever comparer the caller chose.",
+      "check": "Look for options properties typed as `IDictionary`/`IReadOnlyDictionary` and consumers that store the options' collection directly.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rent a transient working buffer from `ArrayPool<byte>.Shared` (or `NCode.Buffers`) and return it in a `finally` instead of allocating a `new byte[]` that is neither returned nor stored; clear it only when it holds secrets.",
+      "why": "Per-call allocations add GC pressure, and large ones land on the large object heap.",
+      "check": "Look for `new byte[n]` used only as scratch space within a method, especially with a size driven by input.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't `new` up a shared service such as a cache inside another service's constructor; register it (e.g. `TryAddSingleton`) so the container owns and disposes it, and inject it.",
+      "why": "Newing it up prevents tests from substituting it and other registrations from sharing it.",
+      "check": "Look for constructors that create service-like dependencies with `new` instead of taking them as parameters.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Remove properties and parameters that nothing reads, rather than keeping dead state that duplicates a value available elsewhere.",
+      "why": "Dead state can drift from the real source of the value.",
+      "check": "Look for new properties or constructor parameters with no readers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define a string literal that is repeated across members or types (route prefixes, payload field names) once as a named const, and build the paths and lookups from it.",
+      "why": "Renaming a repeated literal means editing several places, and one can be missed.",
+      "check": "Look for the same route or key literal appearing more than once in the diff.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give every added or changed member, including internal and private helpers and properties, a `///` summary (with `<param>`/`<returns>` where useful) instead of `//` comments.",
+      "why": "Members whose results carry meaning, such as a bool or a selected item, are otherwise undocumented where they are defined.",
+      "check": "Look for new or changed members with no XML doc comment or with only `//` comments above them.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to rename a local or apply a naming style that the repository's conventions file doesn't state when the sibling code in the same file uses the same name.",
+      "why": "The maintainer declined renaming `services` locals because no convention names an alternative and existing code uses `services`.",
+      "check": "Before reporting a naming finding, confirm the conventions file states the rule and that sibling code doesn't already follow the current name.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't demand grouping a method's four parameters into a record when they don't recur together elsewhere; the parameter guideline allows rarely more than three.",
+      "why": "The maintainer declined because the guideline says 'zero to two, rarely more than three' and a type is warranted only when the values recur together.",
+      "check": "Before reporting a parameter-count finding, check whether the same group of values appears together in other signatures.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, narrow a nullable result with `Assert.NotNull` before reading it instead of using the null-forgiving `!` operator.",
+      "why": "A null value then fails as a clear assertion rather than a NullReferenceException.",
+      "check": "Look for `!` dereferences on values returned by the code under test in test methods.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use the shared fixture constant instead of copying its value into a test class.",
+      "why": "When fixtures are refreshed, a copy drifts and the test fails confusingly.",
+      "check": "Look for test-local constants whose value duplicates a constant already defined in a fixture class.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin every limit or bound in tests from both sides: an accepted case exactly at the limit and a refused case just past it.",
+      "why": "Testing only far-out values lets an off-by-one (`>=` versus `>`) or a limit lowered by one pass the suite.",
+      "check": "For each new limit, cap or range check, look for tests at the exact edge value and at edge plus or minus one.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a refusal test to assert the full error message when the asserted fragment is unique to its check.",
+      "why": "The test conventions ask for the specific error message or code, which a unique fragment satisfies.",
+      "check": "Before reporting, confirm the asserted fragment could match the message of another check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an unconditional test that a platform-capability skip probe is true when reference-vector tests already exercise every implementation path on every platform.",
+      "why": "A skipped platform cross-check still leaves the paths verified against independent vectors, and the test conventions require no probe test.",
+      "check": "Before reporting, look for unconditional tests that check each implementation against known reference outputs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Rewrap every edited Markdown paragraph or list item evenly to about 120 columns, with continuation lines indented under the item; only a single long link may run longer.",
+      "why": "Unwrapped edits break the documents' roughly 120-column wrap.",
+      "check": "Look for edited Markdown lines over 120 columns that aren't a single unbreakable link.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a catch that translates every unexpected (non-cancellation) exception into the domain exception when the interface contract documents that failures are reported that way and the original exception is kept as the InnerException.",
+      "why": "The maintainer declined because the contract requires it, the inner exception preserves the local fault's type and stack in logs, and refusing the result is the safe outcome.",
+      "check": "Before reporting, read the interface's documented failure contract and check that the translation preserves InnerException.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an HttpClient decompresses responses automatically, classify `InvalidDataException` alongside `IOException` as a transport failure rather than as invalid data.",
+      "why": "A truncated compressed body throws InvalidDataException, and it is otherwise misreported as malformed content instead of an outage.",
+      "check": "Look at exception-classification predicates for HTTP fetches with `AutomaticDecompression` enabled and check that InvalidDataException is counted as transient.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Put helpers shared by sibling types, such as exception classification, in their own internal static class instead of widening one type's members so the others can reach into it.",
+      "why": "Otherwise a change to one type's behavior silently changes the others, and each new sibling has to depend on the first.",
+      "check": "Look for members made `internal static` on a concrete type only so a sibling type can call them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

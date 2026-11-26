@@ -1,0 +1,161 @@
+{
+  "hash": "442419b733cb9a39",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #112",
+  "rules": [
+    {
+      "statement": "In production code, an overload that only delegates to another overload must not repeat the argument null checks that the target overload already makes.",
+      "why": "The check runs twice, and the copies can drift apart.",
+      "check": "Look for ArgumentNullException.ThrowIfNull (or similar guards) in a convenience overload whose body calls a sibling overload that guards the same parameter.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code slices a rented buffer to the count an encoder or writer actually wrote, add a test with a custom implementation that writes fewer units than it counted, and assert that the returned length equals the written count.",
+      "why": "BCL encodings count exactly, so without such a test, removing the slice would expose the rental's unused tail and no test would fail.",
+      "check": "For a `[..written]` slice after a GetBytes/GetChars-style call, look for a test with a stub Encoding (or similar) that overcounts and fails if the slice is removed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test a buffer growth-size helper directly for each outcome: doubling wins, the minimum wins, the required size wins, and the Array.MaxLength cap applies.",
+      "why": "If growth regressed to linear (quadratic copying) or Max and Min were swapped, the indirect writer and builder suites would stay green.",
+      "check": "For a GetNewSize-style capacity helper, check that the tests cover every branch directly, including the cap above Array.MaxLength/2.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put a test that observes process-wide shared state (a shared ArrayPool's arrays, a static Meter's measurements through MeterListener) in its own xUnit collection with DisableParallelization = true, so that other tests can't affect what it reads.",
+      "why": "Otherwise another test running in parallel can make it flaky, or make it pass on measurements it didn't produce.",
+      "check": "Look for tests that read old pool arrays or sum MeterListener measurements from a shared pool or static meter, in a class that isn't in a non-parallel collection.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when you assert on measurements from a process-wide static Meter, find this test's own measurement with Assert.Contains over a snapshot, or assert an exact count only inside a non-parallel collection. Don't use Assert.Single or a `>= 1` check over everything recorded.",
+      "why": "Other pools, tests or GC callbacks can record on the same meter. Assert.Single then fails at random, and `>= 1` passes on other tests' data.",
+      "check": "Look for Assert.Single or loose `>=` checks over MeterListener or metric collector snapshots of a static meter.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test of an argument exception captures the exception and asserts its ParamName, not only its type.",
+      "why": "A different check that throws the same exception type would keep the test green.",
+      "check": "Look for Assert.Throws<ArgumentNullException>/ArgumentException/ArgumentOutOfRangeException whose result isn't checked for ParamName.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest merging similar rent-copy-release growth sequences of different buffer types into one shared helper when their copy-before-release order differs on purpose.",
+      "why": "Some callers must copy input that may alias their own buffer (such as their own WrittenSpan) before the old buffer is released. One helper couldn't keep each order, and tests pin those orders.",
+      "check": "Before reporting, compare when each Grow releases or disposes the old owner, and look for tests that write or append a type's own written span while it grows.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an internal, test-only property on a production type as a drifting test seam when it reads live state and keeps none of its own, and tests need something the public members can't expose.",
+      "why": "It can't drift from the real state, and the test conventions let tests use internal members, for example to inspect the whole rented buffer of a ref struct after Dispose.",
+      "check": "Before reporting, check whether the property only forwards existing state (such as Owner.Memory) and whether the public API could give the tests the same view.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report RS0026 or optional-parameter overload fragility for a generic method paired with its non-generic `byte` convenience overload when each declares the same optional parameter and the build treats RS0026 and RS0027 as errors.",
+      "why": "A call without a type argument binds only to the non-generic overload, and one with a type argument binds only to the generic one. Splitting the overloads would only add public surface.",
+      "check": "Before reporting, check whether the overloads differ by generic arity, whether a shipped precedent has the same shape, and whether the analyzers already pass as errors.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't report a sample or snippet test as asserting nothing when the helper the sample calls (such as a Process method) performs the assertion.",
+      "why": "The helper's assertion already fails the test when the result is wrong.",
+      "check": "Before reporting, open the helper methods the test calls and check whether they contain Assert calls on the data passed in.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you split, rename or restructure a test, keep the name of any test that the documentation cites, and don't ask to rename such a test.",
+      "why": "Documentation pages and evidence data refer to tests by name, so a rename breaks those references.",
+      "check": "Before asking for a test rename, search the docs (for example docs/site evidence data and guides) for the test's name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to hoist nested calls, or otherwise restyle code, inside a documentation sample's snippet markers when the snippet's point is to show that call shape.",
+      "why": "The text between snippet markers is published on documentation pages, which must read as intended.",
+      "check": "Before reporting a style issue in a sample test, check whether the line is inside a snippet region that the docs include.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a comment about ownership hand-off on a method whose XML <returns> doc already says the caller must dispose the returned owner.",
+      "why": "The contract is already documented where callers read it.",
+      "check": "Before reporting, read the method's XML doc comments for the ownership or disposal contract.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test of invalid input to assert the exception message when only one check throws for every cause, its message doesn't tell the causes apart (or is BCL text), and each cause is already its own theory case.",
+      "why": "The test conventions ask for the message only when several checks could reject the input. A failing theory case already names its input, and tests shouldn't pin BCL messages.",
+      "check": "Before reporting, check how many code paths throw the exception, whether their messages differ, and whether each invalid input is a separate theory case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

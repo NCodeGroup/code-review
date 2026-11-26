@@ -1,0 +1,30 @@
+{
+  "hash": "0acf2b945c988b59",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #75",
+  "rules": [
+    {
+      "statement": "When computing a byte count from an element count and an element size (for example to call CryptographicOperations.ZeroMemory over a span reinterpreted as bytes), process the span in chunks of at most int.MaxValue / Unsafe.SizeOf<T>() elements, so the byte count can't overflow int and large buffers still get handled.",
+      "why": "A checked int multiplication throws OverflowException on large spans of wide element types. A wipe then fails before it zeroes anything, which leaves the secret in memory and breaks callers that used to work with Span<T>.Clear().",
+      "check": "Look for `checked(length * elementSize)`, `length * Unsafe.SizeOf<T>()` or MemoryMarshal.AsBytes over a whole span of generic or wide elements without chunking. Also check that a test covers the chunked path.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When prose documentation (a docs site page or guide) describes how an operation behaves, cover every branch that the code and its XML docs have, for example both the ZeroMemory path and the Span<T>.Clear() fallback for element types that hold references.",
+      "why": "A reader whose case takes the left-out branch gets wrong information about what the code does, which matters most for security-relevant behaviour like wiping secrets.",
+      "check": "When a diff changes prose docs that describe behaviour, compare them with the implementation and its XML docs. Flag any conditional path that the prose leaves out.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

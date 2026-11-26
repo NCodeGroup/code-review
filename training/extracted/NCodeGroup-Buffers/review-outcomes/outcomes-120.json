@@ -1,0 +1,40 @@
+{
+  "hash": "d50ddd3e6a278186",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #120",
+  "rules": [
+    {
+      "statement": "Don't ask for the `project-template` prefix on template ADR citations (such as `ADR-0032`) in a project that numbers its own records from 1000; the prefix is required only in projects whose own records started below 1000.",
+      "why": "When the project's own records start at 1000, a bare number below 1000 names exactly one template record, and its link already points into `docs/decisions/project-template/`.",
+      "check": "Before reporting a missing prefix, check where the project's own ADR numbering starts (records at 1000 and above) and whether the changelog or docs already cite template records with bare numbers.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep the bullets inside a changelog section group on consecutive lines, with no blank lines between them.",
+      "why": "A blank line between bullets turns the group into a loose list and breaks the file's usual style of contiguous bullets.",
+      "check": "Look for blank lines between `- ` bullets under the same `###` heading in CHANGELOG.md.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for reordering or other local edits in template-owned files, such as the project-template ADR index, when the content matches what the template renders.",
+      "why": "Template updates replace template-owned files, so a local edit would be thrown away on the next update. Their content belongs to the template.",
+      "check": "Before reporting an issue in a file, check AGENTS.md (Template Files and Project Files) to see whether the template owns the file. If it does, report the issue only when the content differs from what the template renders.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "docs/decisions/project-template/**"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

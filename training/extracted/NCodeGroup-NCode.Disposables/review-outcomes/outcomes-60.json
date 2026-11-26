@@ -1,0 +1,18 @@
+{
+  "hash": "c26b871978701feb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #60",
+  "rules": [
+    {
+      "statement": "In a test project, don't ask for a small stub or fake type nested in one test file to be moved into a shared helper file just because another test file nests a similar copy: the test conventions keep a `private sealed` nested copy in each file that needs it.",
+      "why": "The test conventions say a stub or fake type that one test file needs is a private sealed nested type in that file, and the repository keeps one copy per file instead of a shared helper.",
+      "check": "Before reporting a duplicated test helper, look at the test instructions and the sibling test files: if other stubs are nested per file and there's no shared helper file, the duplicate follows the convention and shouldn't be reported.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

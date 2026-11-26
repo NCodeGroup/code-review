@@ -1,0 +1,106 @@
+{
+  "hash": "5d55ffef69056241",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #18",
+  "rules": [
+    {
+      "statement": "Don't report a method with a fourth parameter as breaking the 'zero to two, rarely more than three parameters' convention when the extra parameter is needed for a distinct case and the design records it on purpose, and a swapped argument fails closed.",
+      "why": "The convention allows more than three parameters where they are needed. A deliberate overload covering a real case, such as a pulse after a certificate rotation, is that exception.",
+      "check": "Before reporting, look for an ADR or plan decision that records the overload, a simpler overload for the common case, and whether swapped arguments fail validation instead of succeeding silently.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to merge the JsonException-to-domain-exception wrapping in a remote API client's parse method with the one in an offline parse overload when the parse options and limits are already defined once and the two exception messages differ on purpose.",
+      "why": "Defining the parse limits once is what protects the data. The wrapping messages are different on purpose: one names a malformed remote response, the other names a document the caller supplied.",
+      "check": "Before reporting, check whether both paths use the same shared JsonSerializerOptions or limits, and whether the exception messages describe different sources.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, put a format or validation rule that both an options validator and another type use in a shared internal helper on the domain type, rather than having the other type call into the options validator.",
+      "why": "If a public type depends on an options validator's helper, a later change to how configured values are validated silently changes that type's behavior.",
+      "check": "Look for public or non-validator types calling a method on an IValidateOptions implementation, or for private validator helpers widened to internal so another type can use them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Declare a limit or constant that several types share once, on a shared internal type, instead of repeating the same private const in each type.",
+      "why": "Duplicated constants can drift, so one component's limit stops matching the documented value.",
+      "check": "Look for identical private const declarations with the same meaning added in sibling types, especially where one shared constant was used before.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a public member throws ArgumentNullException (for example through ArgumentNullException.ThrowIfNull), its XML docs include an <exception cref=\"ArgumentNullException\"> entry, along with an entry for every other argument exception it throws.",
+      "why": "Otherwise the documented contract doesn't tell callers that a null argument throws.",
+      "check": "Compare the ThrowIfNull or ArgumentException calls in public constructors and methods with their <exception> XML doc entries.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that expects an ArgumentException (or a subclass) from argument validation captures the exception and asserts its ParamName, and cases that differ only in the kind of invalid input also assert their distinct messages.",
+      "why": "Asserting only the exception type misses a regression that blames the wrong parameter or skips one parameter's validation while another check throws.",
+      "check": "Look for Assert.Throws<ArgumentException>/<ArgumentNullException>/<ArgumentOutOfRangeException> whose result is discarded, without assertions on ParamName.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a call used as the receiver of a `with` expression, or chained onto its result, as breaking the 'don't nest a call inside another call's arguments' rule.",
+      "why": "The rule is only about calls inside another call's argument list. A receiver of a `with` expression is not an argument, and the existing tests use this form.",
+      "check": "Before reporting a nested-call violation, check that the inner call actually sits inside another invocation's argument list.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report calls that are elements of a collection expression or initializer as breaking the 'don't nest a call inside another call's arguments' rule, as long as no element nests a call inside its own arguments.",
+      "why": "Collection expression elements are not a call's arguments, so the named-local rule doesn't apply to them.",
+      "check": "Before reporting, check whether the call is inside an invocation's argument list or is only a collection element.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't require CultureInfo.InvariantCulture or FormattableString.Invariant for exception messages meant for a person that interpolate values such as non-negative integers, which format the same in every culture.",
+      "why": "The invariant-culture rule covers values formatted for machines. Human-readable exception messages are not covered, and the analyzers raise nothing on them.",
+      "check": "Before reporting, check whether the formatted string is read by a machine (protocol, persisted or parsed data) or is only an exception or log message for a person, and whether the values depend on culture.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

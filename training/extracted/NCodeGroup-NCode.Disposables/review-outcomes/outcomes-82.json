@@ -1,0 +1,93 @@
+{
+  "hash": "294c11b762b51dfc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #82",
+  "rules": [
+    {
+      "statement": "Don't ask a documentation site's test project to check the site's behavior data (such as a per-type behavior matrix) against the library when the library's own tests already cover those behaviors and the site tests are scoped to the pages' samples.",
+      "why": "Such tests would repeat existing library tests. The site test project is kept to the samples, and the conventions require a behavior change to update the data file.",
+      "check": "Before reporting, look for library tests that already cover the claimed behaviors (for example double-dispose tests), and check whether an ADR or the conventions limit the site test project to samples and require data updates alongside behavior changes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "docs/**",
+        "**/*Site.Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for browser-level tests (such as Playwright) of a documentation site's inline scripts when the repository has no JavaScript test runner and the site is built and layout-checked by the shared NCodeGroup/docs toolchain.",
+      "why": "It would add a new dependency and its browsers. The site build already fails on unknown data and sample keys, and the shared toolchain renders the pages in a browser on every pull request.",
+      "check": "Before reporting, check whether the repository has a JS test runner and whether the site's build comes from the shared docs toolchain, which already validates data references and renders the pages.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "docs/**/*.astro",
+        "docs/**/*.js",
+        "docs/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In documentation site components that read structured data, fail the build when a required key is missing (undefined), and render a 'does not apply' or empty state only for an explicit null.",
+      "why": "Treating a missing or misspelled key like an intended null publishes a data mistake silently when it should fail the build.",
+      "check": "Look for checks like `value === null || value === undefined`, or fallbacks to empty strings, on data keys that render a default instead of throwing for a missing key.",
+      "scope": "domain",
+      "domain": "documentation-sites",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "docs/**/*.astro",
+        "docs/**/*.ts",
+        "docs/**/*.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a missing `merge_group` trigger on a GitHub Actions workflow unless its check is required by the branch ruleset and the branch uses a merge queue.",
+      "why": "A workflow whose check is not required never blocks queued merges, so a `merge_group` trigger on it would never run.",
+      "check": "Before reporting, check the default branch's ruleset for required checks and for a merge queue, and compare with the workflow (such as ci.yml) that already has a `merge_group` trigger.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the C# coding conventions, including the rule against nesting calls (such as factory calls) in other calls' arguments, to documentation sample code as well: create the inner value in a named local first.",
+      "why": "The C# instructions cover every .cs file and no convention or ADR exempts samples that show consumer code.",
+      "check": "In sample or snippet .cs files, look for factory or other calls passed directly as arguments to another call, such as `Disposable.Guard(Disposable.Create(...))`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Explain a configuration exception in one comment next to the setting it affects, not again in a header comment.",
+      "why": "A duplicated explanation means both comments must be edited together when the exception ends.",
+      "check": "Look for config files such as dependabot.yml where a header comment and an inline comment both explain the same exclusion or exception.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.yml",
+        "**/*.yaml",
+        ".editorconfig",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A test of a thread-safety guarantee must force the concurrent calls to overlap, for example by holding the first call inside the critical section with a ManualResetEventSlim, barrier or TaskCompletionSource while other threads call in, rather than relying on an ungated Parallel.For over trivial work.",
+      "why": "Ungated parallel loops over trivial work may run mostly in sequence, so a regression in the guarantee could still pass.",
+      "check": "Look for concurrency tests that use `Parallel.For` or `Task.Run` over trivial work with no synchronization primitive ensuring the calls overlap before asserting a run-once or thread-safety claim.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

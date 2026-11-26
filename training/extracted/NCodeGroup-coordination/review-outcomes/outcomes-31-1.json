@@ -1,0 +1,185 @@
+{
+  "hash": "d6a14121d9a2212d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #31",
+  "rules": [
+    {
+      "statement": "In production code, when a caller catches an exception that a central failure-classification helper has already classified, rewrap it under a different code only for the replies that helper doesn't classify, and let every other exception keep its original code.",
+      "why": "Rewrapping every server error as 'unsupported' turned temporary conditions such as LOADING or BUSY into a permanent misconfiguration, so start gates that retry on 'unavailable' didn't retry.",
+      "check": "Look for catch filters or wrappers that rethrow a broad category of already-classified exceptions with a new code or message, overriding the mapping the shared classifier gives.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a component accepts an externally owned dependency, such as a shared connection from the host, test that path: check that it uses the supplied instance, and dispose the component against a strict mock with no dispose setup so that any disposal of the borrowed instance fails the test.",
+      "why": "A regression that treats the borrowed instance as owned would dispose the host's shared object, and no test would catch it.",
+      "check": "In a diff that adds an owned/not-owned branch for an injected dependency, look for a test that runs the not-owned branch through the real registration and asserts that the dependency isn't disposed.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an async helper to return ValueTask when its result is awaited more than once or discarded without being awaited: those cases need Task (CA2012). Accept them when a comment explains why.",
+      "why": "A ValueTask must be awaited exactly once. A connect task awaited again after a canceled wait, or a cleanup task that is discarded, has to be a Task.",
+      "check": "Before you report a Task-returning own async method, check whether its task is stored and awaited twice or discarded unawaited, and whether a comment gives that reason.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a fire-and-forget cleanup method to take a CancellationToken when it must always run to completion.",
+      "why": "Cleanup that must finish shouldn't be cancellable, so a trailing token would be wrong there.",
+      "check": "Before you report a missing token, check whether the method is cleanup or dispose logic that is meant to run to completion.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't add or request test cases that couldn't fail if the behavior under test were removed, such as inputs where a default branch gives the same answer as the specific branch being covered.",
+      "why": "Such a case passes whether or not the specific branch exists, so it proves nothing.",
+      "check": "For each requested or added theory case, ask whether removing the branch it targets would change the outcome. If the default path gives the same result, the case is useless.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a method that only reads text to take ReadOnlySpan<char> instead of string when its callers hold strings. The span-input convention applies to byte inputs.",
+      "why": "The conventions ask for span inputs only for bytes, and callers that already hold strings gain nothing from the change.",
+      "check": "Before you report a string parameter that is only read, check whether the input is text rather than bytes and whether the callers pass strings.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report string.Split or substring allocations in code that runs once, such as startup parsing of a variable number of lines. Allocation-free splitting is required only for fixed-segment strings on per-call paths.",
+      "why": "The conventions ask for allocation-free splits only for fixed-segment strings, and their per-call allocation rules don't reach startup paths.",
+      "check": "Before you report allocating parsing, check whether the code runs on a per-call hot path and whether the string has a fixed number of segments.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test class whose namespace is its production type's namespace plus `.Tests` just because sibling test files use the project's namespace. The production namespace decides.",
+      "why": "The test conventions name the test namespace after the production type's namespace, and test assemblies that don't reference each other can't collide.",
+      "check": "Compare the test class's namespace with the namespace of the production type it tests, not with its sibling test files.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask that tests needing an external resource, such as Docker containers, be moved out of the main Definition of Done build when a custom fact attribute gates them and skips them unless an environment variable enables them.",
+      "why": "The test conventions handle such tests with a skip-unless-environment-variable fact attribute, and CI may enable them in the main step on purpose so that the coverage gate counts them.",
+      "check": "Before you report this, check whether an instruction file or decision record actually keeps these suites out of the main build, and whether the tests use the gating fact attribute.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a test that fails when CI runs without the environment variable that enables the gated tests.",
+      "why": "A test that branches on CI's environment reads machine state, which the hermetic test rule rules out. The enabling variable lives in the CI workflow, where review sees any change to it.",
+      "check": "Before you report that gated tests could be silently skipped on CI, check that the gating follows the conventions' skip attribute and that the CI workflow sets the variable.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report comment or XML doc lines for their length unless an instruction file, .editorconfig or the formatter sets a width for comments.",
+      "why": "No convention sets a comment width, and CSharpier leaves comments as written, so no formatter will reflow them.",
+      "check": "Check the instruction files, .editorconfig and the formatter configuration for a comment width before you report long comment lines.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't require a test fixture's sequential disposals to be wrapped in try/finally blocks. The conventions only require that owned objects be disposed.",
+      "why": "No convention asks for this, and tools such as the Testcontainers resource reaper clean up anything left behind when the test run ends.",
+      "check": "Before you report sequential disposals in a fixture's DisposeAsync, check whether a convention actually requires per-disposal try/finally.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a read-only array parameter to become IReadOnlyList<T> when the method passes it straight to a library API that requires an array.",
+      "why": "A read-only interface would force a copy into a new array on every call, which is the per-call allocation the conventions' Memory and Performance section avoids.",
+      "check": "Before you report an array parameter, check whether it is passed unchanged to an API, such as StackExchange.Redis, whose signature takes an array.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't require the invariant culture when an exception message interpolates a value. The invariant culture is for values meant for machines, and exception messages are meant for people.",
+      "why": "The conventions require the invariant culture only for machine-readable values, and an int writes the same digits in every culture.",
+      "check": "Before you report culture-sensitive formatting, check whether the string is meant for machines (serialized, a protocol value, a key) or is a human-readable message.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a decision record for citing a different dependency version than the pinned test version when the record states the version its own experiment ran on and claims nothing about the other.",
+      "why": "The record accurately reports its evidence. Pins can lag behind because of the dependency cooldown, and later tests cover the pinned version.",
+      "check": "Check whether the record ties its observation to the version it actually ran and makes no claim about the pinned version.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask StackExchange.Redis code to switch from the text overload of ScriptEvaluateAsync to a prepared or loaded script for caching. Unless CommandFlags.NoScriptCache is passed, the text overload already uses the client's script cache (SCRIPT LOAD once, then EVALSHA, resending after NOSCRIPT).",
+      "why": "A test with MONITOR showed that the text overload caches by SHA, and ScriptEvaluateRespAsync returns a RespResult that unit tests can't construct.",
+      "check": "Before you report Lua source being resent on every call, check whether the call passes CommandFlags.NoScriptCache.",
+      "scope": "domain",
+      "domain": "redis-resp",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+  "hash": "8cdd130d15724b87",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #12",
+  "rules": [
+    {
+      "statement": "Don't report a void helper that only adds a failure to a caller-supplied list (for example a validator's Check* method) as a command-query separation violation.",
+      "why": "Such a helper is a command that answers nothing, so it doesn't mix acting and answering, and it matches the existing validator helper shape.",
+      "check": "Before raising CQS, confirm the method both mutates state and returns a value; a void method that only appends to a list is acceptable.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace a private constructor with a primary constructor when the type is meant to be created only through a static factory such as a Verify method.",
+      "why": "A primary constructor can't be private, so it would let any code in the assembly build an unverified instance; a classic constructor is kept where a primary one can't express the type.",
+      "check": "Check the constructor's accessibility and whether a static factory is the only way to create the type before suggesting a primary constructor.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to add a trailing newline, reformat, or otherwise normalize test fixture files that are documented as byte-exact copies of third-party documents, and don't require a strict decoder to read them when a test already recomputes their content hashes.",
+      "why": "The fixtures must stay byte for byte as the vendor served them, and a test that recomputes each fixture's content identifier already catches any corrupted byte.",
+      "check": "Look for a fixtures README or similar note saying the files are verbatim copies, and for a test that hashes the fixture content, before raising encoding or newline findings.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a catch-all that turns any exception during fetching or verifying external data into the contract's domain exception when the contract requires that, the original stays as InnerException, and a comment explains why.",
+      "why": "The contract treats a fetch that yields no verifiable result as that domain exception, the inner exception keeps the cause for the log, and refusing the result lets nothing unverified through.",
+      "check": "Check whether the catch keeps the original as InnerException and has a comment justifying the catch-all before asking to narrow it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest replacing a per-key gated fetch that runs under the gate holder's cancellation token with a detached shared task on its own token when a cancelled fetch only costs the next waiter one refetch.",
+      "why": "A detached task has no owner and can't be cancelled at shutdown, which costs more than the occasional refetch it would save, and nothing wrong gets cached.",
+      "check": "Check whether cancelling the fetch can cache a wrong result; if it only causes a refetch, don't raise the finding.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't demand a second, pooled IBufferWriter<byte> read path when a method reuses the existing single capped read that returns a byte[] and allocates only once per uncached operation.",
+      "why": "The guideline only says to prefer an IBufferWriter<byte> output, and a second read path costs more complexity than one buffer per uncached operation saves.",
+      "check": "Check whether the body read is already capped and shared, and how often it runs, before raising an allocation finding.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask private methods to take IReadOnlyList<T> or other interface-typed parameters when they only ever receive a List<T>; save that request for signatures that callers outside the type see.",
+      "why": "Analyzer rule CA1859 is an error in the build and requires the concrete type on private methods, while public signatures take IReadOnlyList<T>.",
+      "check": "Check the method's accessibility before asking for an interface parameter type.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't report two tests as duplicates when they check the same input against different methods that each have their own check.",
+      "why": "Each method that has its own check needs its own test.",
+      "check": "Compare which method under test each test calls before calling them duplicates.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use an existing named constant for a size, limit, message, key or fixture value instead of repeating its literal, and declare one const or field when the same literal appears more than once.",
+      "why": "Copies of a literal can drift apart, and renaming means editing every copy.",
+      "check": "Look for repeated string or numeric literals, and for literals that match a constant that already exists (such as a hash length passed to stackalloc).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give documented methods a <param> tag for each parameter and a <returns> tag that states special results, such as what a not-found response gives.",
+      "why": "Without them IntelliSense describes no parameters, and a special result stated only in the summary is easy to miss.",
+      "check": "Look for methods whose XML doc has a summary but no <param> or <returns> tags.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In test code, keep a format or setup detail that several builders or test files share in one helper instead of copying it, and share duplicated private test helpers through one internal helper.",
+      "why": "If one copy is edited, the copies produce mismatched data, and the failure shows up as a confusing verification error.",
+      "check": "Look for identical format strings or helper methods in more than one test builder or test class.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write helpers, test builders included, that both change a caller's state through a ref parameter and return a value; compute results from an explicit input such as an index, and advance state in a separate step.",
+      "why": "When a call both mutates and answers, the order of calls silently decides the results.",
+      "check": "Look for methods that take ref parameters, change them, and also return a result.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a long method that reads and checks many fields into small per-field helpers, and put chained lookups into named intermediate locals.",
+      "why": "Long methods with chained lookups are harder to read and to test than small helpers.",
+      "check": "Look for long methods with chains like a.Get<X>(k).Get<Y>(k2).Value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a boundary test must cover the values on both sides of the limit and assert the exact message for each cause it checks.",
+      "why": "Otherwise moving the limit or changing < to <= leaves the suite green, and a misleading message can be pinned.",
+      "check": "Look at range tests and check that they include the accepted edge value and the first refused value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test pins how much work is done, such as crawl depth or the requests sent, assert the exact ordered list or count instead of just checking that one item is present.",
+      "why": "Extra, duplicate or missing work still passes a presence-only assertion.",
+      "check": "Look for tests about request sequences or depth that only use Contains on a single item.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a new List<T> an initial capacity when its maximum size is known.",
+      "why": "It avoids resizes that serve no purpose on every call.",
+      "check": "Look for new List<T>() that is filled up to a known bound.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make helpers private when only their own type calls them.",
+      "why": "Wider visibility invites callers from outside the type.",
+      "check": "Look for internal members that only their own file uses.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When documentation states measured figures or dated observations, say where and when they were measured and link to the record.",
+      "why": "Nothing keeps unsourced figures current, so they mislead readers when the facts change.",
+      "check": "Look for figures in README or other docs that have no date or link to their source.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use a collection expression, or a typed local initialized with one, instead of new[] { ... }.",
+      "why": "It keeps the code in line with the collection-expression convention.",
+      "check": "Look for new[] { ... } array creation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put shared assertion helpers in their own static helper class, not in a class whose job is building or disposing test services.",
+      "why": "Mixing them makes the class's purpose harder to read, and unrelated helpers pile up.",
+      "check": "Look for static assertion methods added to fixture or service-owner classes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Import namespaces with using directives instead of writing fully qualified type names, unless a member with the same name shadows the type in that scope.",
+      "why": "Fully qualified names add noise, but they are needed where a property such as Options shadows the type.",
+      "check": "Look for fully qualified calls like Microsoft.Extensions.Options.Options.Create, and check the class for a member of the same name before reporting.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When enforcing the rule to hoist nested calls into named locals, report only lines the change adds or modifies, not unchanged lines that came from the base branch.",
+      "why": "The maintainer fixed only the new nested calls and left the base branch's lines as they were.",
+      "check": "Compare against the diff's added lines before reporting nested calls.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

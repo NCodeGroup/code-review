@@ -1,0 +1,231 @@
+{
+  "hash": "7af9b96e5d70563d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #20",
+  "rules": [
+    {
+      "statement": "Don't report bounded per-key history as a memory leak, or ask for it to be dropped when the key goes idle, if that history is the documented replay window that resuming consumers rely on.",
+      "why": "Dropping the retained log of an emptied keyspace would turn a documented replay into a resync, and the memory saved is bounded and small.",
+      "check": "Before reporting retained history, check the docs and changelog for a promised replay or resume window that the retained entries implement.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a unit test of a component's own internal rule (such as a compaction threshold) to stop asserting the exact value that rule produces.",
+      "why": "The test is the unit test of that rule, so changing the rule or its constants should change the test.",
+      "check": "Before reporting a test for pinning an internal threshold, check whether the test targets the type that owns the rule rather than a caller of it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for separately named constants to be merged or derived from one another just because they share a value today, when each names a distinct limit.",
+      "why": "Deriving one limit from another lets a change to one silently resize the others.",
+      "check": "Before reporting duplicate numeric constants, check whether each is a named constant in its own type with its own meaning (e.g. history kept vs. how far a consumer may lag).",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a private constructor that is reached only through a static factory to become a primary constructor.",
+      "why": "A primary constructor is public, which would bypass the factory that does required work before construction.",
+      "check": "Before reporting a missing primary constructor, check whether the existing constructor is private or non-public and used only by a static factory.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report sequential or guessable tokens as a security issue when the contract documents them as identifiers rather than credentials and they never cross a trust boundary.",
+      "why": "A token documented as \"identifies a holder and is not a credential\" only needs to be unique within the provider, and an in-process provider runs in the caller's own process.",
+      "check": "Before reporting a guessable token, read the token type's docs for whether it is a credential, and check whether it ever leaves the process or trust boundary.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a call made on the value that the previous call just returned (such as `.AsTask()`, `.GetAsyncEnumerator(token)` or `.Value`) as breaking the no-nested-calls or no-collaborator-chain rule.",
+      "why": "The convention bans only calls nested in another call's arguments and chains through collaborators (`a.B().C().D()`). Acting on a returned value is neither.",
+      "check": "Before reporting a chained call, check whether it is really a call inside another call's arguments or a walk through collaborators, and not just an operation on the value just returned.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for short, similar code in several types to be pulled into a shared helper when the copies differ in how the item is identified and what the action does, so the helper would only take delegates and remove no logic.",
+      "why": "Such a helper adds indirection without removing logic. Only bookkeeping that really is the same across the types is worth sharing.",
+      "check": "Before reporting duplication, compare the copies: if each is two or three lines and differs in its key type and its action, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Extract bookkeeping that is copied identically across several types, where only the key type and a final action differ, into one shared generic helper, and have each type supply only its own action.",
+      "why": "Otherwise a fix to one copy has to be repeated in every other copy, and the copies drift apart.",
+      "check": "Look for the same dictionary-of-sets bind/unbind/take logic or loop written out in several services.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a literal that is repeated across files or within a test (a token prefix, a test address) one named constant, and use that constant everywhere.",
+      "why": "Bare copies can drift apart, which leads to inconsistent formats or tests that pass or fail for the wrong reason.",
+      "check": "Look for the same string or number literal with the same meaning written in more than one place.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a boolean property's computation changes, update its doc comment so that it states exactly when the value is true and when it is false.",
+      "why": "A caller who reads the old doc misinterprets the value and can't tell the different false cases apart.",
+      "check": "Compare a changed property expression with its <summary>, and check that every outcome that now makes it false is described.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a conformance or contract test suite, cover stale-handle cases in each primitive: releasing or renewing a grant that has ended, or whose slot was granted again to another holder, returns false and leaves the new holder in place.",
+      "why": "A provider that matches only on the resource and slot, or that renews an ended grant, would otherwise pass the kit while admitting extra holders.",
+      "check": "For each ownership primitive in a contract suite, look for tests that release or renew a stale grant and assert false, and that waits complete on expiry and cancellation, as the sibling suites do.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that expects an ArgumentException (or a subtype) keeps the exception and asserts its ParamName.",
+      "why": "Otherwise an unrelated argument failure satisfies the test and hides a broken check.",
+      "check": "Look for Assert.Throws/ThrowsAnyAsync of an ArgumentException type whose result isn't used to assert ParamName.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test a size or length limit with input exactly at the limit, which succeeds, as well as with input just past it.",
+      "why": "An off-by-one that rejects input at exactly the limit would otherwise pass.",
+      "check": "For each limit+1 rejection test, look for a matching test that uses exactly the limit and asserts success.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every test asserts something; a test that only checks a call doesn't throw uses `Assert.Null(Record.Exception(...))`.",
+      "why": "A test with no assertion lets misbehavior go unnoticed.",
+      "check": "Look for test methods with no Assert call, such as a test that disposes twice and checks nothing.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, move a helper that is copied into several test files into one shared test helper class, and call it from there.",
+      "why": "The copies can drift apart.",
+      "check": "Look for the same private helper method declared in more than one test file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the rule that async methods take a trailing CancellationToken to test-kit and test helper methods as well: they take the token and forward it, instead of reading the test context's token themselves.",
+      "why": "Otherwise the helpers are shaped inconsistently, and callers can't pass their own token.",
+      "check": "Look for async helpers in test or conformance-kit code that have no CancellationToken parameter or that read TestContext's token internally.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Take a lock scope with a `using var` declaration rather than a `using (...) { }` block or a `lock` statement, unless code after the locked part must run outside the lock; when it must, add a comment saying why.",
+      "why": "This keeps lock scoping consistent, and an undocumented block looks like a departure from the convention.",
+      "check": "Look for `lock (...)` or `using (X.EnterScope()) { }` blocks, and check whether any code after them has to run unlocked and whether a comment explains that.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a method return void when no caller uses its return value.",
+      "why": "An unused return value suggests that callers branch on it when none do.",
+      "check": "For a method with a non-void return in a diff, check whether any caller reads the result.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't implement paged listing by scanning, copying and sorting the whole collection on every page; keep an ordered index, seek to the continuation and read at most limit + 1 entries.",
+      "why": "A full scan and sort per page makes paging through a large collection quadratic.",
+      "check": "Look for list or page methods that enumerate and sort the full set and then skip to the continuation token.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When you edit a paragraph in a doc comment or a Markdown document, reflow the whole paragraph evenly to 120 columns without changing its words.",
+      "why": "Inserted text otherwise leaves short or overlong lines, the wrap is uneven, and a wrap check may flag it.",
+      "check": "Look at edited paragraphs for a short line in the middle of the paragraph or a line over 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

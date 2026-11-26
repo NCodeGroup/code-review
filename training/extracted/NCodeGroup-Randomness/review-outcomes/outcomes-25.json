@@ -1,0 +1,29 @@
+{
+  "hash": "fad8d7cdeaa4143c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #25",
+  "rules": [
+    {
+      "statement": "In a test project, when a source file is copied into several packages, give each package's test project direct tests of its own copy that cover the same cases, instead of relying on indirect coverage from higher-level tests.",
+      "why": "An edit to one copy can drift from the others, for example by accepting input it should reject, and the suites that test that copy only indirectly still pass.",
+      "check": "Look for a helper file duplicated across packages where only one package's tests call it directly and the others cover it only through parser-level or caller-level tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when code checks that input bytes are well-formed UTF-8, test each call site of that check with a raw invalid byte sequence (such as a lone 0x80) as well as with invalid escapes such as lone surrogates.",
+      "why": "If the check at a call site is changed or bypassed, raw invalid bytes can reach the JSON parser and surface later as an unexpected exception, and no test at that call site would fail.",
+      "check": "Find tests of input-validation call sites that cover only escaped invalid sequences (for example lone \\uD800 surrogates) and never feed in raw invalid UTF-8 bytes and assert the error that results.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

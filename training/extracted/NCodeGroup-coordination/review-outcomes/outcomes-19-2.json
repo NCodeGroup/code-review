@@ -1,0 +1,18 @@
+{
+  "hash": "4fea37d2a06117e6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #19",
+  "rules": [
+    {
+      "statement": "Don't report a service collection variable or parameter named `services` as a naming violation unless the repository's own instruction files require a different name such as `serviceCollection`; when sibling code in the same project uses `services`, the code follows the convention.",
+      "why": "The maintainer declined the finding because no instruction file in the repository names `serviceCollection`, and the project's existing tests consistently name the collection `services`.",
+      "check": "Before reporting, search the repository's instruction and conventions files for a required name for `IServiceCollection`/`ServiceCollection` variables, and look at how sibling files on the main branch name them. Report only if a rule actually requires the other name and the sibling code follows it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

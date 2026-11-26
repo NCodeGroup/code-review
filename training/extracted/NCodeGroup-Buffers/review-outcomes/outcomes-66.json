@@ -1,0 +1,42 @@
+{
+  "hash": "5602c34fa8b458e5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #66",
+  "rules": [
+    {
+      "statement": "When a build or CI gate script gains a validation check, put the check in its own script or function that takes its inputs (such as the repository root or file list) as parameters, and add a test that runs every failure branch and a clean case against fixture files.",
+      "why": "If the repository's real inputs are all valid, nothing ever runs the failure branches. A mistake in the pattern or path could then leave a check that passes on anything, or one that blocks correct pull requests.",
+      "check": "Look for new failure branches in a build/gate script (duplicate detection, regex or prefix checks) that only run against the live repository, with no fixture-based test script that checks the exit code and output for each failing case.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a GitHub Actions job that calls a reusable workflow to drop permissions such as `pages: write` or `id-token: write` when only a called job that is gated by `if:` uses them. First check the permissions the called workflow's jobs declare.",
+      "why": "The caller's grant is a ceiling, not a token: each called job only gets the permissions it declares. GitHub checks those against the ceiling when the run starts, before it evaluates `if:`, so narrowing the caller makes every run fail at start.",
+      "check": "Before reporting broad permissions on a `uses:` job, read the pinned called workflow. Confirm whether it sets `permissions: {}` at the top level and narrower permissions per job, and which job needs the elevated permission.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a non-constant-time comparison (such as `SequenceEqual`) of a secret or MAC in a documentation sample that deliberately shows the insecure usual code and has a comment saying it does so on purpose.",
+      "why": "Some guide samples exist to show the common, leaky pattern next to the safe one. Changing them would defeat the page's purpose.",
+      "check": "Before reporting, check whether the comparison sits inside a sample region for a page about how secrets leak or what not to do, and whether a nearby comment explains that the comparison is intentional.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

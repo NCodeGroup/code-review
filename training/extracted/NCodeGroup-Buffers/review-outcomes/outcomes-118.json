@@ -1,0 +1,18 @@
+{
+  "hash": "a0b7d6faeaeaf1f0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #118",
+  "rules": [
+    {
+      "statement": "A new or changed build PowerShell script must come with an offline Test-*.ps1 script that runs it against fakes (fake toolchain, fake executables, a temporary git repository, worktrees where relevant) and checks its path lookup, its argument passing, its error exits and that it passes child exit codes through, and the build gate must run that test.",
+      "why": "Without tests, a wrong path lookup (for example in a git worktree), a dropped flag or a failure reported as success only shows up when a contributor runs the documented command.",
+      "check": "In the diff, look for a new or changed script under build/ with no matching Test-*.ps1 that covers its branches and exit codes, or with a test the gate script doesn't run. Check that the test cleans up its fixtures in a finally block.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

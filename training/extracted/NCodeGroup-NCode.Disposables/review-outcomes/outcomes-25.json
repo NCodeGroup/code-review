@@ -1,0 +1,79 @@
+{
+  "hash": "167e39caecfe84c6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #25",
+  "rules": [
+    {
+      "statement": "Make sure only one workflow publishes packages to nuget.org for a given release event; when you add a new publish workflow, remove or retire the old one.",
+      "why": "Two publish paths on the same release make the second one fail on a version that already exists, so every release shows a failing run. An unused long-lived API key also stays in use.",
+      "check": "In a workflow diff that adds or changes a `release: published` (or similar) trigger that pushes to nuget.org, look for any other workflow in the repository that also pushes packages on the same event.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make sure every documentation link to a file anchor points at a heading that exists in the target file, and that the target actually holds the content the link promises.",
+      "why": "A dead anchor drops readers at the top of the target file, where they can't find the content they were promised.",
+      "check": "For each added or changed Markdown link of the form `file.md#anchor`, confirm the target file has a matching heading and holds the described content.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for changes to files the project template owns, such as `.claude/commands/` or `build/ProjectTemplate.props`, in a downstream repository; send the problem upstream to NCodeGroup/project-template instead.",
+      "why": "Every template update replaces template-owned files, so a local edit gets overwritten. These choices belong to the template.",
+      "check": "Before reporting a gap or defect in a file, find out whether the project template supplies and replaces that file. If it does, report it as an upstream template issue rather than asking for a local fix.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".claude/commands/**",
+        "build/ProjectTemplate.props",
+        ".github/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a build change makes a library's AssemblyVersion lower than the one its last release shipped with (for example, pinning it to Major.0.0.0 after releases shipped the full version), flag it as a binary break and require either an explicit `<AssemblyVersion>` in the repository's own props or a note in CHANGELOG.md.",
+      "why": "Consumers compiled against the higher assembly version can fail with FileLoadException when only the new assembly is deployed, so a minor or patch release becomes a breaking change.",
+      "check": "In a diff to versioning properties in props or csproj files, compare the resulting AssemblyVersion with the version the last release shipped, and look for an explicit override or a CHANGELOG entry.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.props",
+        "**/*.csproj",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report the template's Dependabot auto-merge workflow, which auto-merges only a pull request whose one change is the NCode Review pin, as breaking the no-auto-merge rule when the repository's AGENTS.md records that it accepts the ADR-0006 exception.",
+      "why": "The template's ADR-0006 documents this narrow exception, and the repository has recorded that it accepts it.",
+      "check": "Before flagging `gh pr merge --auto` in the code-review auto-merge workflow, look in AGENTS.md conventions for a recorded acceptance of the ADR-0006 exception, and confirm the workflow limits auto-merge to NCode Review pin bumps.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/code-review-auto-merge.yml",
+        "AGENTS.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a project's Landing `draft: no` setting as breaking the agents-open-drafts rule when the diff doesn't change it: ADR-0006 allows pull requests to be ready by default, and the setting is the project's choice.",
+      "why": "The value is the project's existing Landing choice, which ADR-0006 permits. A template update that leaves it unchanged has nothing to fix.",
+      "check": "Before flagging `draft: no` in AGENTS.md Landing settings, check whether the diff actually changes the value. If it doesn't, don't report it.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "AGENTS.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

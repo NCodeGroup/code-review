@@ -1,0 +1,52 @@
+{
+  "hash": "ef5786736c7d4174",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #52",
+  "rules": [
+    {
+      "statement": "A build or CI check script that fails on drift (such as a README-from-tests check) must have a self-test that runs it against a controlled input and asserts both that it passes on an unchanged tree and that it exits non-zero with its failure message when the content changed.",
+      "why": "Without a test of the failure path, broken comparison logic would let the gate keep printing PASSED while the guarantee it enforces silently disappears.",
+      "check": "When a diff adds or changes a gate script's failure detection, look for a self-test (ideally fast and offline, e.g. with a faked external tool) that asserts the pass case, the drift case and other failure cases, and that the gate runs it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for edits to files the project template owns; a template update would discard them, so only report a problem there if the text is actually false.",
+      "why": "Template-owned files are overwritten by template updates, so a repository-local edit is lost.",
+      "check": "Before reporting a stale or wrong statement in a doc, check the template's list of template files versus project files (e.g. the project-template instructions) and whether the statement is still true.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that claims an async dispose ran must assert it with a test double that records which dispose method was called, not with a side effect such as `Stream.CanWrite == false` that synchronous `Dispose` also produces.",
+      "why": "An assertion that both `Dispose` and `DisposeAsync` satisfy would still pass if the code called the wrong method, so the documented claim could become false unnoticed.",
+      "check": "Look for tests of `DisposeAsync`/`IAsyncDisposable` behavior that assert only state shared by both dispose paths; expect a nested private recording type (e.g. a `MemoryStream` subclass overriding `DisposeAsync`) and an assertion on its record.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for Markdown prose (READMEs, CHANGELOG, CONTRIBUTING and similar) to be wrapped at a column limit unless a rule requires it; one paragraph per line is the norm and only decision records wrap at about 120 columns.",
+      "why": "No `.editorconfig` `max_line_length` or instruction covers general Markdown, sibling Markdown files use one line per paragraph, and GitHub and nuget.org render them the same either way.",
+      "check": "Before reporting long Markdown lines, check the `[*.md]` section of `.editorconfig`, the instruction files, and the line style of sibling Markdown files outside `docs/decisions/`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

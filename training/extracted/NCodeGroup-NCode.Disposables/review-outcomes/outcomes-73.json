@@ -1,0 +1,107 @@
+{
+  "hash": "3b3430ba78f0e9bb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #73",
+  "rules": [
+    {
+      "statement": "In a test project, when a Moq setup's call must happen exactly once, end it with `.Verifiable(Times.Once())` rather than a bare `.Verifiable()`, which only checks at-least-once.",
+      "why": "A bare `.Verifiable()` lets a duplicated call, such as a second completion callback, pass unnoticed.",
+      "check": "Look for Moq setups using `.Verifiable()` with no count in tests whose behaviour depends on the call happening only once.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test's name must describe what its assertions actually check; rename it or change the test when the two disagree.",
+      "why": "A name that says the opposite of what is asserted misleads readers about the behaviour the test proves.",
+      "check": "Compare each new or moved test's name (e.g. 'CalledTwice', 'DisposesEachTime') with its calls and asserted counts or values.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a Moq setup deliberately left without `.Verifiable()` gets a comment explaining why the call is not verified, such as it happening only on some iterations of a race.",
+      "why": "Without a comment, a missing `.Verifiable()` looks like an oversight that would let a never-made call go unnoticed.",
+      "check": "Look for `Setup(...)` calls on strict or repository mocks without `.Verifiable()` and no adjacent comment giving the reason.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a pull request relaxes an analyzer rule or banned-symbol check (for example in `.editorconfig`), its description must mention the suppression and why.",
+      "why": "Readers of the description otherwise don't learn that a check was relaxed.",
+      "check": "Look for new `dotnet_diagnostic.*.severity = none` or similar suppressions in the diff and confirm the PR description names them and their reason.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/.editorconfig",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report private static helpers placed after a C# 14 `extension(...)` block as a member-order violation unless the repository's conventions actually require static members before extension blocks.",
+      "why": "The C# conventions only require using extension blocks with one receiver type per static class; a helper placed right after the block that calls it is acceptable.",
+      "check": "Before reporting, check the repository's `.github/instructions/csharp.instructions.md` for an explicit member-order rule about extension blocks.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to replace a manual `mock.Verify(..., Times.Exactly(n))` with `.Verifiable(Times.Exactly(n))` on the setup; manual Verify calls are allowed for checking call counts.",
+      "why": "The test conventions forbid manual Verify only for what the setup already checks and explicitly permit it for call counts like `Times.Exactly(2)`.",
+      "check": "Before reporting, see whether the manual Verify asserts a call count; if so it follows the convention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to delete or restyle members of a shared test base class (such as `UnitTestBase` with `CreateStrictMock`/`CreateLooseMock`/`CreatePartialMock`) that is copied verbatim from the project template's documented sample; such fixes belong upstream in NCodeGroup/project-template.",
+      "why": "The helpers are the base's documented surface for later tests, and every project's copy should change together through the template.",
+      "check": "Before reporting unused helpers or style deviations in a test base class, compare it with the sample in `csharp-tests.instructions.md`; if it matches verbatim, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report comment lines as too wide unless `.editorconfig` or the repository's conventions set a comment width and the line exceeds what the surrounding code already uses.",
+      "why": "No NCodeGroup convention sets a comment width and CSharpier doesn't wrap comments, so existing code already has longer comment lines.",
+      "check": "Before reporting, check `.editorconfig` and the C# instructions for a line-length rule and compare with existing comment widths in the codebase.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a single region grouping a class's tests of obsolete members inside one `#pragma warning disable` block as breaking the `{MethodName} Tests` region convention.",
+      "why": "Grouping keeps the obsolete-warning suppression to one block per file and lets the whole region be deleted when the obsolete members are removed.",
+      "check": "Before reporting a non-`{MethodName}` region name, see whether it groups obsolete-member tests under one pragma suppression.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

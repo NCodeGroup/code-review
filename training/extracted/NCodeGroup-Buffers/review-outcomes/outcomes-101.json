@@ -1,0 +1,18 @@
+{
+  "hash": "daf55909056ff811",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #101",
+  "rules": [
+    {
+      "statement": "In Markdown documentation such as decision records, write every issue or pull request reference as a full Markdown link to its GitHub URL (for example `[#56](https://github.com/<org>/<repo>/issues/56)`), never as a bare `#56`, and do this at every place in the document that mentions it.",
+      "why": "A bare `#56` only resolves in GitHub's own rendering. It stays plain text in other Markdown viewers, such as one used on a local clone.",
+      "check": "Search changed Markdown files for `#<number>` that isn't inside a Markdown link, including in Amends lines, option lists and Consequences bullets, especially when the same document links that number elsewhere.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

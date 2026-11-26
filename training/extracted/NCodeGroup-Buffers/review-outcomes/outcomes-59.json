@@ -1,0 +1,53 @@
+{
+  "hash": "271ecf1e5a73c821",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #59",
+  "rules": [
+    {
+      "statement": "When a build or CI script polls a remote service such as nuget.org, give each request an explicit timeout, treat a thrown connection or DNS error like a not-ready response so the loop keeps retrying until its deadline, and space the retries with a growing delay plus jitter.",
+      "why": "Without a timeout a hung request can run past the script's deadline until the job timeout kills it, and a single transient network error ends the loop and fails the run.",
+      "check": "Look for `Invoke-RestMethod`/`Invoke-WebRequest` or similar calls in polling loops that lack `-TimeoutSec`, aren't wrapped in try/catch, or wait a fixed interval between tries.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "build/**/*.ps1",
+        "**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a build script that rewrites repository files (changelog, version baseline, project files) an offline test that runs it against copies of those files in a temporary root, covers each rewrite branch and the no-change path, and checks that a second run changes nothing. Run that test from the build gate.",
+      "why": "A regex or ordering mistake otherwise only shows up after a real release, in an automated pull request that a maintainer may merge without noticing.",
+      "check": "Look for new or changed build scripts that edit files and have no test, or no parameters (such as a root path or a switch that skips network checks) that would let them run offline.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a workflow-opened pull request should start as a draft unless this repository's own ADRs or conventions require it. A rule recorded only in another repository's ADR doesn't apply here.",
+      "why": "The maintainer declined the finding because the draft rule came from another repository's ADR, and a small one-line pull request that a person merges after CI passes doesn't need the extra step.",
+      "check": "Before raising the finding, search this repository's ADRs and conventions for a draft-PR rule or a recorded exception to it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a GitHub Actions job that holds a write-scoped token, set `persist-credentials: false` on `actions/checkout`, and pass the token only to the command that needs it, for example a `git push` that uses `http.extraheader`.",
+      "why": "Otherwise the token stays in `.git/config` for every later step, and less trusted code that the job runs after a future change could read it.",
+      "check": "Look for `actions/checkout` steps that don't set `persist-credentials: false` in jobs whose permissions include write scopes, or later `git push` steps that depend on the stored credential.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

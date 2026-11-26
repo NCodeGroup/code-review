@@ -1,0 +1,18 @@
+{
+  "hash": "383afbb90d9d0f96",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #17",
+  "rules": [
+    {
+      "statement": "When the repository has both a root README and a package README, guidance the change adds to one (or that the pull request description says both carry) must appear in the other as well, in the same words.",
+      "why": "Readers of the NuGet package page see only the package README, so guidance missing there leaves them without it and leaves the change only partly done.",
+      "check": "In a diff that adds or changes guidance in README.md or a package README, compare the two READMEs and the PR description; flag guidance present in one but missing from the other.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

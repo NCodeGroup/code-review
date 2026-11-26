@@ -1,0 +1,42 @@
+{
+  "hash": "bb31f3d4ac721da7",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #130",
+  "rules": [
+    {
+      "statement": "Don't ask for rewording, restructuring or other edits to a template-owned or protected file whose text is copied word for word from project-template; any fix belongs in the template.",
+      "why": "Later template updates compare against the project's copy, so a local rewording makes the copy differ from the template's text and gets in the way of those updates.",
+      "check": "Before reporting wording in a file such as a workflow header or a criteria page, check whether project-template owns it, for example whether it matches a template release word for word or is listed as template-owned. If it does, don't report it against this repository.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/**",
+        "docs/**",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a changelog entry to add a 'project-template' prefix to the link text of a template ADR when the existing entries link template records without one and the link path points into the template's decisions folder.",
+      "why": "Template records are numbered below 1000 and the project's from 1000, so the number names one record and the link path shows it is a template record. The new entry follows the style of the existing entries.",
+      "check": "Compare the new entry's link text with how the existing CHANGELOG.md entries cite template ADRs, and check that the link target is under docs/decisions/project-template/. If they match, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a pull request description as understating its scope because it doesn't list each edit to template-owned files, when the description already says those files pick up a template update.",
+      "why": "Edits to template-owned files come from the template update itself, and the description covers them where it names that update.",
+      "check": "Before reporting that the description leaves out a change, check whether the changed file is template-owned and whether the description mentions the template version update that brings in the change.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

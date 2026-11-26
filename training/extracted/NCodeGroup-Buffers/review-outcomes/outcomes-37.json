@@ -1,0 +1,19 @@
+{
+  "hash": "29b85b9f24bb270e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #37",
+  "rules": [
+    {
+      "statement": "Don't report an accepted decision record as contradicted, or ask for its text to be edited or annotated, when the change carries out a future step that the record itself already prescribes.",
+      "why": "The record already decided the switch, so the change does what it says. Accepted records are never rewritten beyond their status line, and an amending record is only for a decision that has actually changed.",
+      "check": "Before raising a mismatch between config or code and an accepted ADR, read the whole ADR item for wording like 'the change that starts X sets it to Y', and check the decisions README's Statuses rule. Report only when the change departs from what the record prescribes. Even then, ask for a new amending record, not an edit to the accepted one.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md",
+        "**/version.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

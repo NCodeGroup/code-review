@@ -1,0 +1,129 @@
+{
+  "hash": "b10fb564ab6f9ff2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #31",
+  "rules": [
+    {
+      "statement": "Let an OperationCanceledException raised by the caller's cancellation token escape as is, rather than wrapping it in a domain exception, and document that a call already sent may still take effect.",
+      "why": "OperationCanceledException is the cancellation signal in the primitives' contracts, after which a write's outcome is unknown; translating it into another exception type would break that contract.",
+      "check": "Look for catch blocks that turn an OperationCanceledException from the caller's token into a custom exception. Don't report code that lets it propagate. Do check that the `<exception>` docs say the outcome is unknown after cancellation.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't catch InvalidCastException as control flow when converting a value of unknown shape: check its type or null state first, and name the actual type in the failure message.",
+      "why": "Catching the cast exception hides other cast failures behind one generic message, and operators can't tell what was actually returned without a debugger.",
+      "check": "Look for try/catch around a cast or conversion that catches InvalidCastException and falls back to null or a generic error, and for error messages that don't say what type of value was received.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `//` comment that cites an ADR next to a member's XML doc block: the C# conventions put ADR citations in `//` comments because `///` docs never cite an ADR.",
+      "why": "The conventions keep ADR references out of public XML docs and put them in plain comments that point to where the reason is recorded.",
+      "check": "Before reporting a stray ADR reference, check whether it is a `//` comment rather than `///` text. Only `///` citations of ADRs break the convention.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that an ADR's record of an observed run names a newer dependency version than the pinned or minimum version, when the pin comes from the dependency cooldown policy.",
+      "why": "The observation records the run as it happened. The pinned version and the minimum come from the cooldown policy, and CI tests run on the pinned version.",
+      "check": "Before reporting a version mismatch in an ADR's Observed notes, check whether the lower pinned or minimum version is set by the dependency cooldown policy and whether CI tests cover the pinned version.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an options type accepts a client or connection supplied and owned by the host, document in its `<remarks>` (and in the package README) which of that client's settings the library relies on and what happens if they differ.",
+      "why": "A host passing its own shared client otherwise gets no warning that its settings affect how the library behaves, for example how failures are classified.",
+      "check": "Look for new or changed option properties that take a shared external client or connection, with docs that only cover ownership or disposal and don't name the required settings.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/README.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A parameter's doc must state exactly what the type disposes, and must say when an injected resource that the type doesn't own is left undisposed.",
+      "why": "A loose doc such as 'which the provider disposes' makes readers think the type tears down a shared resource owned by the host.",
+      "check": "Compare `<param>` and remarks docs about disposal with the actual Dispose logic, especially when ownership depends on a flag such as `owned`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a type's get-only properties are initialized from primary-constructor parameters or static fields, order the initializers so that guards and dependencies run before their users, because initializers run in textual order.",
+      "why": "Field and property initializers run in declaration order, so a hoisted static field or guarded parameter must come before the initializers that use it.",
+      "check": "Look for property or static field initializers that use another static field or guarded value declared below them.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a bool parameter on an internal method under the flag-parameter rule: that rule covers public API, and a bool that carries a fact the method reads as data, named at every call site, is allowed.",
+      "why": "The flag-parameter rule sits in the Public API section of the C# conventions, and the same rule allows a bool carried as data.",
+      "check": "Before reporting a flag parameter, check whether the member is public and whether call sites pass the bool as a named argument that describes a fact.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a public constructor for having more than three parameters when every parameter is a required input: the conventions make required inputs constructor parameters, and 'rarely more than three' is guidance, not a ban.",
+      "why": "The Public API conventions put required inputs in the constructor, and changing it to a settings record or `required init` would change the public API for a nit.",
+      "check": "Before reporting a long constructor, check whether all its parameters are required and whether a misordered call would be caught some other way, such as validation at startup.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for a shared base test class for the strict MockRepository: a test class that owns its own repository and verifies it on dispose meets the convention.",
+      "why": "The test conventions ask only that mocks come from one MockRepository that the test class verifies on dispose; a base class is an example, not a requirement.",
+      "check": "Before reporting duplicated mock setup, check that each test class creates one MockRepository and calls Verify in Dispose. If it does, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an internal wrapper to take read-only collection interfaces instead of arrays when it passes them straight to a client API that requires arrays and never writes to them.",
+      "why": "Taking an interface would force a copy at the client call, and passing the caller's arrays through unchanged avoids that copy.",
+      "check": "Before reporting array parameters under the read-only collection rule, check whether the member is internal, whether the arrays go unchanged to an API whose signature needs arrays, and whether anything writes to them.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

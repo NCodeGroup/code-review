@@ -1,0 +1,64 @@
+{
+  "hash": "1db83cb541c4f63b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #23",
+  "rules": [
+    {
+      "statement": "When documentation such as an assurance case says what tests cover (which components are fuzzed, which methods a property checks), name exactly the components and methods the tests cover, and don't use blanket words like \"each\" or \"every\" unless every one is tested.",
+      "why": "Readers will assume something is tested when it isn't, for example that an untested verifier is fuzz-tested.",
+      "check": "Compare coverage claims in docs changed by the diff with the test classes in the PR. Flag any \"each\"/\"every\"/\"all\" claim that leaves out a component or method that has no matching test.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a property test whose key assertion runs only on a rare success path must generate inputs that reach that path often, for example by drawing from the valid alphabet or encoding random values. Otherwise it must count successful cases and assert a minimum.",
+      "why": "If random input almost always takes the failure or catch branch, the property asserts nothing on most runs, and a regression on the success path still passes.",
+      "check": "Look for property tests where an assertion sits inside a success branch after try/catch or a TryX call, and the generator is unconstrained (any string, any bytes) that rarely produces valid input.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a build property whose purpose isn't obvious (for example `RunSettingsFilePath` pointing at a coverage runsettings file) a one-line comment in the MSBuild file that says why it is there and when it can be removed.",
+      "why": "Without the comment a maintainer could remove it as stray, which would silently break things like the coverage gate.",
+      "check": "Look for new properties in Directory.Build.props or .csproj files that change tooling behavior and have no comment explaining why.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/Directory.Build.props",
+        "**/Directory.Build.targets",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a method call written as an element of a collection expression as breaking the rule against nesting a call inside another call's arguments. A collection element isn't a call argument, and the rule applies only when the element's own arguments contain a nested call.",
+      "why": "The convention forbids nesting a call inside another call's arguments. Collection-expression elements are outside it, and repository code commonly writes calls as elements.",
+      "check": "Before reporting, check whether the call is really an argument to another call, or whether its own arguments contain a nested call. An element like `Encoding.UTF8.GetBytes(local)` inside `[...]` is fine.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for a per-class fixed replay-seed constant in property test classes to be moved into a shared constant across classes or test assemblies.",
+      "why": "Each class needs only its own fixed seed so that its runs repeat, and nothing requires the classes to share one value. Sharing it across assemblies would need linked files or a new project, both protected build changes.",
+      "check": "Check whether the seed is already a single const within each class, and whether any doc or test actually requires all classes to use the same seed. Report only if one does.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

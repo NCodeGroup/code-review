@@ -1,0 +1,95 @@
+{
+  "hash": "fe59e0e9f3d123cc",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #33",
+  "rules": [
+    {
+      "statement": "Don't report a void method that appends to a list or buffer its caller passes in as a command-query separation violation, and don't ask it to return a new collection for the caller to `AddRange` instead.",
+      "why": "A void method acts and doesn't answer, so command-query separation holds; writing into the caller's buffer is preferred over returning a new collection, which adds allocations without removing the dependence on call order.",
+      "check": "Before reporting, confirm the method returns a value as well as mutating its argument. If it returns void and only appends, and a test pins the order of the appended data, don't raise the finding.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, give every new error-translation branch its own test, including exception filters that map unrecognized server errors and guards that reject a null or wrongly-typed reply, and pair it with a control case that takes the other path.",
+      "why": "Without them a regression, such as a filter that wraps every error or lets an unknown reply through under the wrong code, would still pass the suite.",
+      "check": "For each new exception filter or reply-shape guard in production code, look for a test that reaches it and asserts the resulting error code and message, plus a control where a known input passes the filter.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't wait for a time-based state change with a fixed `Task.Delay`. Advance a fake clock, or poll for the expected state against a generous wall-clock deadline and fail with the state you observed.",
+      "why": "A fixed wait can be too short on a loaded CI host, so the test flakes, and it also slows the run.",
+      "check": "Look for `Task.Delay` or `Thread.Sleep` with a constant used to let a time to live, timeout or expiry pass before an assertion.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, pin each size or length limit with a test at exactly the limit, which succeeds, and one just past it, which throws.",
+      "why": "Without both sides an off-by-one change, such as `>` becoming `>=`, still passes the suite.",
+      "check": "For each new length or size check or comparison guard, look for tests at the boundary value and at one past it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that expects an `ArgumentException` asserts its `ParamName`, and has a control case showing that valid input gets past the same check.",
+      "why": "A test that checks only the exception type could pass on some other ArgumentException even if the check under test were removed.",
+      "check": "Look for `Assert.Throws<ArgumentException>` or similar assertions that don't check `ParamName`, or that have no matching positive test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name constants for the field counts and offsets of a positional reply or wire layout, and use them in both the shape check and the parsing loop, instead of repeating bare numbers.",
+      "why": "If the layout changes, scattered literal copies can drift, and the shape check or the loop then reads the wrong fields.",
+      "check": "Look for repeated numeric literals such as 2 or 3 used as header length or fields per item when parsing an array reply.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Split a long method that validates input, makes a remote call and parses the reply into private helpers for validation and reply parsing, matching how its sibling methods are organized.",
+      "why": "Mixed methods are harder to read and harder to test in parts.",
+      "check": "Look for a method of roughly 70 or more lines that combines argument validation, the call and an inline reply-decoding loop, when sibling methods already use a separate parse helper.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never cite an ADR in `///` XML documentation. Put the citation in a `//` line comment on the declaration instead.",
+      "why": "The C# conventions say `///` docs never cite an ADR. A stray line comment between doc blocks reads as a leftover.",
+      "check": "Look for ADR references inside `///` summaries or remarks, and for loose ADR comments that sit outside the declaration they describe.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

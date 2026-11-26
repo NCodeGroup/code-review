@@ -1,0 +1,86 @@
+{
+  "hash": "1739fc43ac98c500",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #32",
+  "rules": [
+    {
+      "statement": "When a limit or refusal is enforced inside a server-side script (for example a Lua script run by a RESP server), add tests for the refusal branch at the exact boundary, for its mapping to the error result, and for the branches that handle malformed script replies.",
+      "why": "Otherwise an off-by-one (`>` versus `>=`), a dropped refusal or a wrong error code passes every test, and counts could be silently wrong or a batch could partly apply.",
+      "check": "A diff that adds or changes a script-enforced limit: look for hermetic tests with stubbed script replies (refusal, out-of-range and short replies) and a server test that reaches the boundary value exactly, then goes one past it and asserts the state is unchanged.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.lua"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same constant is defined both in C# and in an embedded script or other artifact, pass it to the script as an argument or add a test that asserts both copies hold the same value.",
+      "why": "If one copy changes, error messages and docs drift away from the limit that is actually enforced.",
+      "check": "Look for a literal in a .lua or other embedded resource that duplicates a C# constant with nothing (no argument and no test) tying the two together.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.lua"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report non-negative integer constants interpolated into human-readable exception messages as breaking the invariant-culture rule: that rule covers values formatted or parsed for machines.",
+      "why": "An integer's default format uses no group separator or culture-specific digits, so it reads the same under every culture, and exception messages are meant for people, not machines.",
+      "check": "Before reporting, check whether the interpolated value is an integer in a message meant for people, or a value meant for machines such as a wire format, key or protocol field. Report only the second, or a type whose format depends on culture.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a positional argument layout (such as a per-item stride and offsets into a script's argument array) a named const and named offset locals, not bare numeric literals.",
+      "why": "Otherwise a change to the layout means editing several literals in step.",
+      "check": "Look for repeated expressions such as `3*index+1` and `3*index+2`, or a bare stride literal, that encode the layout of arguments a script or protocol reads.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build each error message in one helper, giving it an optional inner-exception parameter when needed, instead of repeating the message text inline in a catch block.",
+      "why": "Duplicated message text can drift apart.",
+      "check": "Look for exception message text in a catch or throw that matches what an existing message-building helper already produces.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Define protocol command names (such as RESP `DEL`, `GET`, `SET`) once as shared constants and send commands through them, even when each service uses a command only once.",
+      "why": "A command name spelled as a literal in several files can drift apart.",
+      "check": "Look for the same command-name string literal in more than one file or service.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the rule to hoist nested calls into named locals to calls inside a constructor's arguments too: for example, build a `TimeSpan` in a named local before passing it to `new`.",
+      "why": "The maintainer confirmed that the hoisting convention covers a call in a constructor's arguments.",
+      "check": "Look for `new X(SomeType.Method(...))`, such as `new TimeToLive(TimeSpan.FromSeconds(5))`, where the inner call isn't hoisted into a local.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

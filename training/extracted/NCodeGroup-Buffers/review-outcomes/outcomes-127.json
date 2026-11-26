@@ -1,0 +1,18 @@
+{
+  "hash": "bd9dd656d86e14f5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #127",
+  "rules": [
+    {
+      "statement": "In a changelog entry, cite a pull request or issue as a full Markdown link such as `([owner/repo#N](https://github.com/owner/repo/pull/N))`, not as plain `owner/repo#N` shorthand.",
+      "why": "GitHub doesn't auto-link that shorthand in a committed Markdown file, so people reading CHANGELOG.md raw, on nuget.org or in other tools can't follow the reference.",
+      "check": "Look at new or changed CHANGELOG.md entries for `owner/repo#N` or `#N` references that aren't wrapped in a Markdown link to the GitHub URL. Use `/pull/N` for pull requests.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

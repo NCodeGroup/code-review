@@ -1,0 +1,40 @@
+{
+  "hash": "ecff5c3c523cd829",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #49",
+  "rules": [
+    {
+      "statement": "In a test project, a test for a documentation sample that reads data back (spans, sequences, leases) writes known non-empty data first and asserts the exact content, rather than running the sample on an empty input or leaving a placeholder comment in place of the write.",
+      "why": "A test that only sees an empty buffer passes even if the code returns the wrong content, so the sample's claims are never actually checked.",
+      "check": "Look for sample or README tests where the writer or buffer is left empty (or holds a `// ... write ...` placeholder) and the only assertion is that the result is empty.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report README sample test facts named `<Sample>Sample_Runs`, or their regions named after README sections, for breaking the `Method_State_Expected` and `{MethodName} Tests` naming conventions: the README-sample ADR exempts them, and each such fact asserts what its one sample claims.",
+      "why": "The maintainer wrote this naming down in the README-samples ADR as a deliberate exception to the general test naming conventions.",
+      "check": "Before flagging names in a README samples test file, check the repository's README-sample ADR for the exemption. Report only if a fact asserts behaviour beyond what its own sample claims.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/ReadmeSamples*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a `using` directive as possibly unused when the build enforces IDE0005 as an error and passes; first check whether any type the file uses, including exception types in `catch` clauses, comes from that namespace and is missing from the SDK's implicit usings.",
+      "why": "The build already treats unused usings as errors, so a passing build shows the directive is needed (for example `System.Text` for `DecoderFallbackException`).",
+      "check": "Check the repository's globalconfig for IDE0005 severity, and search the file for types from the namespace, including those in catch clauses and attributes, before reporting.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    }
+  ]
+}

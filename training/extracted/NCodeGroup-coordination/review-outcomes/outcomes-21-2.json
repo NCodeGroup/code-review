@@ -1,0 +1,205 @@
+{
+  "hash": "d54de5a91f9ac5d3",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #21",
+  "rules": [
+    {
+      "statement": "When a method has generic and non-generic overloads with the same logic, implement the non-generic one by delegating to the generic one (with a wrapper returning a dummy value) instead of repeating the steps.",
+      "why": "Duplicated logic has to be changed twice, and the copies can drift.",
+      "check": "Look for paired generic/non-generic overloads whose bodies repeat the same sequence of steps.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several parameters are shared state that always travel together through a method, group them into a small state type, or make the method a member of a class that holds that state.",
+      "why": "Long signatures are hard to read and grow with every new piece of shared state.",
+      "check": "Look for methods taking many parameters (around seven plus a token) where a subset is the same shared state passed together at every call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to group parameters into a descriptor type when they are separate facts about a call, or when they mirror the fields of an existing record that the method builds or fills.",
+      "why": "The record already groups them, so a new descriptor would duplicate it and be built at every call site only to carry the same values.",
+      "check": "Before reporting a long parameter list, check whether the parameters map onto an existing record's constructor or are distinct facts the method passes on.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a bool parameter as a mode flag when it carries data, such as a declared guarantee or capability that the method checks against.",
+      "why": "The conventions allow a bool carried as data. Only bools that switch between behaviours are a smell.",
+      "check": "Before reporting, see whether the bool's value comes from data (a declared capability or a property read by the caller) and whether sibling methods take it the same way.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to pass a composite value instead of separate parameters when the parameters are computed once outside a loop and passing the composite would recompute them on every iteration.",
+      "why": "The separate parameters exist to avoid repeating work, such as decoding, inside the scan.",
+      "check": "Check whether the separate arguments are hoisted computations reused across a loop that calls the method.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report as nested calls that should be hoisted: a `with` initializer's values, a `new` expression passed as an argument, `TimeSpan.From*` of a literal, or a chain of calls on one receiver.",
+      "why": "A `with` initializer isn't a call's argument, and these forms are deliberately kept inline. The hoisting rule targets calls nested in other calls' arguments, such as in string interpolations.",
+      "check": "Before reporting a nested call, check whether it is one of these allowed inline forms.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a method dispatches many operations in one long switch, put each operation's handling in its own private helper so the switch only dispatches.",
+      "why": "A single long switch is harder to follow and extend than per-operation helpers.",
+      "check": "Look for long switch statements whose branches contain the full logic for each operation, unlike sibling types that already split it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to extract each rule of a single-pass check into its own helper when the rules share that pass's state and each helper would need four or more parameters.",
+      "why": "Splitting would break the few-parameters rule. When each rule already has its own test, splitting adds nothing.",
+      "check": "Before reporting, see whether the rules in a long loop share mutable loop state and are already tested one by one.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace `new` of a positional record with a `with` expression when the branch states the whole next state and keeps only one or two members.",
+      "why": "Adding a member to a positional record changes its constructor, so every `new` stops compiling instead of silently resetting the member, and no convention asks for `with` here.",
+      "check": "Check that the record is positional and that the branch sets most members anew, rather than changing one or two.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Document every `ArgumentNullException` a public method throws (for example from `ArgumentNullException.ThrowIfNull`) with an `<exception cref=\"ArgumentNullException\">` tag.",
+      "why": "Otherwise the docs don't say that null arguments throw.",
+      "check": "Look for public methods calling `ThrowIfNull` or throwing `ArgumentNullException` without a matching `<exception>` doc tag.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a nested scan (deliveries × history) in test-only checking code as a performance problem when the run sizes are small and fixed by the test harness.",
+      "why": "The cost is not measurable at those sizes, and an index would add a second structure that must keep the scan's rules in sync.",
+      "check": "Check the harness's fixed run sizes (clients, steps, keys) before reporting a quadratic scan in test tooling.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to speed up a failure-shrinking search (such as finding the shortest failing prefix) when it only runs for a test that is already failing and its steps are bounded.",
+      "why": "Only failing tests pay the cost. A shortcut such as falling back to the full history would drop the shortest failing prefix that the design promises in the report.",
+      "check": "Check whether the code path runs only after a failure has been decided, and whether a design record promises its output.",
+      "scope": "repository",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a test records an expected call and also runs the real call with the same values, declare those values once as named locals or constants and use them in both places.",
+      "why": "If the copies drift, the model is checked against a call the provider never ran.",
+      "check": "Look for the same bare literals repeated in an expected or recorded call and in the real call next to it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a test helper for taking `params IEnumerable<T>`. The maintainer's C# conventions prefer it to `params T[]`, with buffering inside, and `IReadOnlyList<T>` is meant for a list parameter that isn't `params`.",
+      "why": "No convention keeps `params` out of test helpers.",
+      "check": "Before reporting, check whether the parameter is `params` and whether the helper buffers the enumerable inside.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap XML doc comment lines at about 120 columns.",
+      "why": "Overlong lines are hard to read and need reflowing later.",
+      "check": "Look for `///` lines much longer than 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test project to add a fault test for each method of a forwarding decorator when each forward is one call through a shared path whose faults are already tested, and contract tests run every forward.",
+      "why": "A drop test per method would repeat what the shared-path tests and the contract tests already show.",
+      "check": "Check whether each decorator method only forwards through one shared, tested wrapper, and whether a contract suite covers all the forwards.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test helper that mirrors a record's positional constructor to group its parameters into a new type.",
+      "why": "A test that builds the record states each of its fields. A grouping type would exist only for tests, beside a record that already names those fields.",
+      "check": "Check whether the helper's parameters match an existing record's constructor fields.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't suggest a per-caller context type for recording helpers when every call site would have to build it just to carry the same two values.",
+      "why": "The values are separate facts: one shared history and the caller of one call, which the caller gets per call. A context type would only add construction at every call site.",
+      "check": "Check where the repeated parameters come from at each call site, and whether they vary per call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

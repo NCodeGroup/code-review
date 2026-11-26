@@ -1,0 +1,223 @@
+{
+  "hash": "11c2db077a4a6c48",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #80",
+  "rules": [
+    {
+      "statement": "In a test project, a test that disposes a buffer rented from a process-wide shared pool and then asserts on that memory must either rent from its own private pool instance or run in an xUnit collection defined with `DisableParallelization = true`.",
+      "why": "xUnit runs test classes in parallel, so another test can rent and overwrite the returned shared buffer between Dispose and the assertion, giving random failures or false passes.",
+      "check": "Look for tests that rent from a `.Shared` pool, dispose, then read the memory, without a private pool or a non-parallel collection.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a read-after-Dispose race on shared-pool buffers when the test class is in an xUnit collection whose definition sets `DisableParallelization = true`.",
+      "why": "xUnit runs such a collection after all parallel collections finish, with nothing else running, so no other test can rent the buffer in between.",
+      "check": "Before reporting, check the class's `[Collection]` attribute and whether its `CollectionDefinition` sets `DisableParallelization = true`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that claims a pool hands the same buffer out again must assert identity (for example `Assert.Same` on the underlying arrays) and that the buffer held data before disposal, not just that the next rental is zeroed.",
+      "why": "Otherwise the test still passes when the buffer is never returned, because a fresh page is already zeroed, so the claim it backs is false.",
+      "check": "Look for zeroing or reuse tests that only assert zeros on a second rental without asserting it is the same array.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a check that infers pinning from `GC.GetGeneration(array) == GC.MaxGeneration` must test a freshly allocated array, for example by clearing the pool's cache first.",
+      "why": "An ordinary array that survived collections, such as one reused from a pool, also reports MaxGeneration, so the check can't tell it from a pinned one.",
+      "check": "Look for pinning assertions based on GC generation on arrays that may come from a pool's cache.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't use an assertion that can't fail for the value under test, such as `Assert.NotNull` on a result that is never null or `Assert.IsAssignableFrom<T>` on a value already typed as `T`; assert an observable property instead.",
+      "why": "Such an assertion adds nothing beyond the absence of an exception and misleads readers about what is validated.",
+      "check": "Look for NotNull/IsAssignableFrom assertions on values whose type or API already guarantees them.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, write non-ASCII characters in string and `u8` literals as Unicode escapes (such as `é`) when the test depends on their exact code points or bytes.",
+      "why": "An editor that normalizes the file (e.g. to decomposed form) would change the bytes silently and the test's claims would drift.",
+      "check": "Look for literal accented or other non-ASCII characters in test strings whose encoding matters.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, hoist range slices used as arguments (such as `buffer.Span[..32]`) into named locals along with nested method calls, but don't report object creation (`new X(...)`) passed inline as a nested call.",
+      "why": "The hoisting rule forbids nesting a method call, and the maintainer applied it to range slices; object creation is not a method call.",
+      "check": "Look for method calls or range slices inside another call's arguments; skip `new` expressions.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask that a valid UTF-8 row in a table of byte-array decoding error cases be rewritten as a `u8` literal.",
+      "why": "The valid row is the table's control case and every row is written as explicit bytes so they read alike; explicit byte arrays are kept for error-condition tests.",
+      "check": "Before reporting, check whether the byte array is a row in a uniform table of error-condition cases.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a data file a test reads should be copied to the output directory with `CopyToOutputDirectory` and read from `AppContext.BaseDirectory`, not found by walking up parent directories to the source tree.",
+      "why": "Walking up depends on the repository layout and fails or reads a different file under another output layout.",
+      "check": "Look for tests that walk parent directories from `AppContext.BaseDirectory` to locate data files.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*Tests/**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test class that doesn't mirror a single production type, or whose regions aren't named per member, must record that exception in a comment above the class.",
+      "why": "Contributors find tests by the type under test; an unrecorded exception looks like a convention violation.",
+      "check": "Look for test classes whose name matches no production type without an explanatory comment.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't assign two different kinds of value to the same variable in one script or method; give the second value its own name.",
+      "why": "A later edit that reads the variable expecting the first value would silently get the wrong one.",
+      "check": "Look for a variable reassigned with a value of a different meaning or shape.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A build script that generates a committed file and offers a `-Check` mode must have a fixture test that asserts the exact generated output and the check's failure message and exit code, run from the gate.",
+      "why": "A parsing bug is written into the generated file by the same code `-Check` compares against, so the gate stays green while the output is wrong.",
+      "check": "Look for new generator or checker scripts without a fixture test script wired into the gate.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a PowerShell script, wrap a loop that collects results in `@(...)` (`$x = @(foreach ...)`) rather than wrapping the variable afterwards.",
+      "why": "When the loop yields nothing, the variable is `$null` and `@($x)` becomes a one-element array holding null instead of an empty array.",
+      "check": "Look for `foreach` results assigned to a variable then wrapped as `@($var)` later.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A script must check lookups that can find nothing before using the result, and throw an error that names the input file and what is missing.",
+      "why": "Otherwise the script fails with an unclear null error that doesn't name the input that broke.",
+      "check": "Look for method calls on the result of a search or match without a null check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Code that scans Markdown for headings or markers must track fenced code blocks (backtick and tilde fences of any length) and skip lines inside them.",
+      "why": "A fenced sample containing a matching line would silently cut short or corrupt the result.",
+      "check": "Look for line-based Markdown parsing that matches headings without fence tracking.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs",
+        "**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep each comment directly above the command or code it describes; when inserting a new command, give it its own comment instead of placing it between an existing comment and its command.",
+      "why": "Otherwise the comment reads as describing the wrong command.",
+      "check": "Look for inserted statements between an existing comment and the statement it describes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script's steps change, update its help (`.SYNOPSIS`) to list the new steps and describe accurately where each one runs.",
+      "why": "Readers of the help otherwise don't learn what fails the gate and get a wrong picture of the flow.",
+      "check": "Look for added or moved steps in a script whose help text isn't updated.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In docs site components, import the shared helper instead of defining a local copy, unless the difference is intended and explained in a comment, and build displayed text such as legend counts from the same data that draws the figure.",
+      "why": "Fixes to the shared helper won't reach the copy, and typed-twice numbers drift from the data they describe.",
+      "check": "Look for local reimplementations of shared helpers and hard-coded numbers duplicating data values.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "docs/**/*.astro",
+        "docs/**/*.ts"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap prose paragraphs in Markdown/MDX docs evenly at about 120 columns, re-wrapping the whole paragraph when a line runs past; leave frontmatter and table rows as they are.",
+      "why": "Inconsistent wrapping breaks with the rest of each file.",
+      "check": "Look for prose lines past 120 characters or paragraphs ending in a short dangling line after an edit.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

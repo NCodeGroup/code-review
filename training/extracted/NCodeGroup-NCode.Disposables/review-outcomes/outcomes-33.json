@@ -1,0 +1,22 @@
+{
+  "hash": "557a957ba01c1ac2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #33",
+  "rules": [
+    {
+      "statement": "When editing an existing file, keep its original encoding and byte order mark (for example the UTF-8 BOM on a Visual Studio .sln file) so the diff shows only the intended content changes.",
+      "why": "Dropping or adding a BOM as a side effect makes the diff noisier and changes the file's encoding, and Visual Studio may re-add the BOM on its next save, which leaves another unrelated diff.",
+      "check": "Look for a first-line change in an edited file where only an invisible BOM (U+FEFF) was added or removed, especially in .sln, .csproj or other IDE-managed files, when the PR doesn't say it changes the encoding.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.sln",
+        "**/*.csproj",
+        "**/*.props",
+        "**/*.targets",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

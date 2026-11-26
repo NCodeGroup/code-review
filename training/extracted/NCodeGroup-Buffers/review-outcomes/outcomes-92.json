@@ -1,0 +1,63 @@
+{
+  "hash": "038b54b53a45aa34",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #92",
+  "rules": [
+    {
+      "statement": "When tests are gated behind an environment variable or opt-in attribute (for example large-memory tests), make sure a CI job sets that variable and runs them, and that the job fails if the tests were skipped instead of run.",
+      "why": "Otherwise a regression in the gated code path passes CI, and a local run is the only evidence that the path works.",
+      "check": "Look for new or changed tests gated by an environment variable or a custom conditional Fact; check that a workflow job sets the variable and checks that the tests weren't skipped.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/.github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep code comments factually accurate about what they describe (counts of types, members or cases), and wrap them at the same width as the comments around them, about 120 columns.",
+      "why": "A wrong count sends readers looking for things that aren't there, and an overlong line doesn't match the file's comment width.",
+      "check": "Compare the counts and lists in new comments against the code they describe; flag comment lines much longer than the surrounding comments, past about 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When testing code that processes data in chunks, include fixed cases where the length equals the chunk size, where the length is an exact multiple of the chunk size, and where the chunk size is 1, each with inputs that differ only in the final element.",
+      "why": "Without them, an off-by-one in the slicing could pass the fixed tests, and property tests reach these cases only by chance.",
+      "check": "For new chunked loops, check that the tests cover more than just a partial last chunk: look for cases at the equal-length, exact-multiple and chunk-size-1 boundaries.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to extract a shared helper for two span-chunking loops that share only the slicing but have different bodies, when the helper would need a delegate or struct callback (lambdas can't capture spans) and each loop has its own chunk tests.",
+      "why": "The helper would add a delegate or callback type to save two lines, and each loop's own tests already catch drift.",
+      "check": "Before reporting duplicated chunking loops over Span<T>, check whether the loop bodies differ and whether each loop has dedicated multi-chunk tests; if both are true, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, each test asserts one outcome; split a test that checks two outcomes (for example equal inputs return true and differing inputs return false) into separately named tests, even when the test setup is expensive.",
+      "why": "If the first assertion fails the second never runs, and the test name doesn't say which outcome failed.",
+      "check": "Look for a single test method that asserts contrasting outcomes for different inputs, especially with a name like 'ComparesEveryElement' that doesn't name a single result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

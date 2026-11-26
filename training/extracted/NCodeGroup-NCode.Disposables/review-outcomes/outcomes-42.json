@@ -1,0 +1,40 @@
+{
+  "hash": "3251294ce658c82b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #42",
+  "rules": [
+    {
+      "statement": "Don't report a change to a project-template-owned file as a hand edit when the same pull request changed the matching template answer through the template's update script and `.copier-answers.yml` records the new answer.",
+      "why": "Changing an answer through the template's own update script makes the template re-render the files it owns. The changed rows are that render, so the next template update produces the same content instead of overwriting it.",
+      "check": "Before flagging an edit to a template-owned file, look for a matching change in `.copier-answers.yml` and a commit that ran the template update script with that answer. Only report it if no such answer change explains the edit.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for style or convention changes inside a file that is kept byte-for-byte identical to the project template's copy; such wording must change in the template, not in the repository.",
+      "why": "Keeping template-owned files identical to the template's copy lets later template updates merge cleanly. The template writes its own files in that style too.",
+      "check": "Before reporting a convention mismatch, such as a cross-repository reference form, in a template-managed file like a shared workflow, check whether the file matches the template's version verbatim. If it does, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A pull request description that resolves an issue must account for every step the issue asks for, either by saying it is done or by listing it as a follow-up with who must do it.",
+      "why": "Otherwise a requested step, such as an admin-only repository setting change, is silently dropped after merge and nothing tracks the gap.",
+      "check": "Compare the steps in the linked issue with the pull request description. Flag any step that the description neither claims as done nor lists as a follow-up.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

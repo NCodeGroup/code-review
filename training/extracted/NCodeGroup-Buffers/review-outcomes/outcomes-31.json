@@ -1,0 +1,18 @@
+{
+  "hash": "5828f413131f4e78",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #31",
+  "rules": [
+    {
+      "statement": "A changelog entry must describe what the change actually does once merged, and must not state in the present tense behavior that stays off until a later configuration or setting turns it on.",
+      "why": "An entry that claims inactive behavior contradicts the other changelog entries, the repository's settings and the PR description, and misleads readers about what the merge really does.",
+      "check": "For each new CHANGELOG.md bullet, compare the claimed behavior with the settings and code in the same diff (for example, a workflow or feature that the configuration keeps disabled). Flag bullets that present gated or disabled behavior as already active.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

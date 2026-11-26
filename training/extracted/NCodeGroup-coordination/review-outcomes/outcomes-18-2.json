@@ -1,0 +1,139 @@
+{
+  "hash": "cb2cf60eca137079",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #18",
+  "rules": [
+    {
+      "statement": "Don't report the closure and delegate that a lambda capturing its arguments allocates on each call unless a measurement shows allocation pressure on that path.",
+      "why": "The maintainer declined this finding: no measurement showed a cost, the cost is small next to a provider's round trip, and the finding itself advised leaving it until profiling shows otherwise.",
+      "check": "Before raising a per-call closure allocation, look for a benchmark, profile or hot-path evidence in the PR or issue; without it, don't report.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a private constructor to become a primary constructor when the type keeps it private so that a validating static factory such as `Create` is the only way to build it.",
+      "why": "A primary constructor takes the type's accessibility and can't be private, so it would let any code in the assembly build the type without validation.",
+      "check": "Before reporting a classic constructor under the primary-constructor convention, check whether it is private and whether a static factory that validates is the only caller; if so, don't report.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a dedicated exception type that reports invalid configuration to derive from `InvalidOperationException` unless the repository's instruction files or decision records require it.",
+      "why": "No convention requires it, and the dedicated type is what callers catch to read its failure details, as the design record names it.",
+      "check": "Before reporting an exception's base type, look for a rule in the instruction files or ADRs that requires the base type; if there is none and the type is documented as the one callers catch, don't report.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for a shared base test class when each test class already creates its mocks from one strict `MockRepository` and verifies it when it is disposed.",
+      "why": "The test convention only requires one repository per test class that is verified on dispose. A base-class sample in the conventions shows one way to do that and is not a requirement.",
+      "check": "Check that each test class owns a `MockRepository` and calls `VerifyAll` or `Verify` in `Dispose`; if it does, don't report the missing base class.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an internal type for sitting in a folder-matching sub-namespace that differs from its public contract's shallow namespace.",
+      "why": "Internal types live in a namespace that matches their folder, while a library's public types stay in its shallow public namespace, so a contract and its internal default implementation can be in different namespaces.",
+      "check": "Before raising a namespace mismatch between a contract and its implementation, check whether the implementation is internal and its namespace matches its folder; if so, don't report.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a violation of a convention or instruction file unless that file and rule actually exist in the repository under review.",
+      "why": "The maintainer declined a naming finding that cited instruction files and a rule the repository doesn't have.",
+      "check": "Before citing a rule, confirm the instruction file exists in this repository's `.github/instructions` or docs and contains that rule; if it doesn't, drop the finding.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when several tests check different refusals that throw the same exception type with the same `ParamName`, give each refusal its own message and assert that exact message in each test.",
+      "why": "If the tests assert only the shared `ParamName`, they all still pass when one check starts refusing another check's input.",
+      "check": "Look for sibling tests of different validation paths that assert only the exception type or `ParamName` and never the message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, use the shared test fixture or helper for setup it already provides instead of rebuilding that setup inline or keeping a private copy of the helper, and factor setup that two helpers repeat into one private helper.",
+      "why": "Copied setup and duplicate helpers can drift away from the shared fixture.",
+      "check": "Look for test setup or private helpers that repeat what an existing shared test helper does, or for two helpers that differ in only one argument.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When recording an operation's outcome in telemetry, record `canceled` for an `OperationCanceledException` only when the caller's own token was canceled; record any other cancellation, such as a provider timeout, as a failure with the exception type as `error.type`.",
+      "why": "Otherwise timeouts are left out of the failure outcome and `error.type`, so failure-rate alerts miss them.",
+      "check": "Look for catch blocks or outcome mapping that treat every `OperationCanceledException` as canceled without checking `cancellationToken.IsCancellationRequested`.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't call `GC.SuppressFinalize(this)` in `Dispose` or `DisposeAsync` of a type that declares no finalizer, unless an analyzer in the build requires it.",
+      "why": "The call does nothing there and leads readers to think a finalizer exists.",
+      "check": "Look for `GC.SuppressFinalize(this)` in a type that has no `~TypeName()` finalizer.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A doc comment that describes a relaxation or special case must name exactly the cases it covers, not a broader category.",
+      "why": "An overstated summary leads callers to expect behavior the code doesn't provide, such as a startup failure they didn't expect.",
+      "check": "Compare doc summaries that describe relaxed or accepted cases with the code that implements them, and look for wording broader than what the code accepts.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap prose lines in Markdown docs at about 120 columns, as the neighbouring docs do.",
+      "why": "A long line gets reflowed on a later edit, which makes the diff noisy.",
+      "check": "Look for added Markdown prose lines that run well past 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}
