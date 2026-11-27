@@ -9,7 +9,7 @@
 
 A caller's `code-review.yml` admits a `pull_request_target` event only when the pull request's head is in the
 repository, and `isFromFork` in `src/command.ts` refuses a fork's pull request again, for a `/review` comment too. So an
-outside contribution, where a review helps most, gets none: NCodeGroup/NCode.Disposables#95, that project's first
+outside contribution, where a review helps most, gets none: [NCodeGroup/NCode.Disposables#95](https://github.com/NCodeGroup/NCode.Disposables/pull/95), that project's first
 outside contribution, got no review ([#251](https://github.com/NCodeGroup/code-review/issues/251)).
 
 - `pull_request_target` runs the default branch's workflow with the repository's secrets, and it runs whatever the
