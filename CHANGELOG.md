@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- This repository's `code-review.yml` and the README's caller review a pull request Dependabot opens, when it opens and after each push Dependabot makes to it, such as a rebase, so a clean review approves it and the NCode Review pin bump merges with no person's action; another bot's pull request waits for a `/review`. `docs/setup.md`, `code-review-auto-merge.yml`'s header and `GOVERNANCE.md` say so ([#253](https://github.com/NCodeGroup/code-review/issues/253), [project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+- This repository's `code-review.yml` and the README's caller review a pull request Dependabot opens, when it opens and after each push Dependabot makes to it, such as a rebase, so a clean review approves it and the NCode Review pin bump merges with no person's action; another bot's pull request waits for a `/review`. Like any pull request, it pauses after three reviews with no comment from someone with write access, such as its opening and two rebases, since Dependabot's comments don't count: a writer's `/review` resumes it, and any comment of theirs, such as `@dependabot rebase`, starts the count again. `docs/setup.md`, `code-review-auto-merge.yml`'s header and `GOVERNANCE.md` say so ([#253](https://github.com/NCodeGroup/code-review/issues/253), [project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
 
 ## [1.6.0] - 2026-11-27
 

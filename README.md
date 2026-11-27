@@ -520,8 +520,12 @@ for what the project chose: its answers, its merged files and its own files.
 After three reviews with no comment from someone with write access in between, counted from the summary comments, an
 automatic review stops before any model call and posts once "Paused: comment `/review` to resume". An acknowledged
 "Code review" check run is completed as "Review paused", so it never stays in progress. Comments the
-autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. A
-`/review` from someone with write access always reviews, and counts as their comment. A comment counts as from someone
+autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. Neither do a
+bot's, Dependabot's included, so a Dependabot pull request pauses after three reviews, such as its opening and two
+rebases, until someone with write access comments: a `/review` resumes it, and any other comment of theirs,
+such as `@dependabot rebase`, starts the count again
+([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+A `/review` from someone with write access always reviews, and counts as their comment. A comment counts as from someone
 with write access by its author's association or, when that doesn't say so, their permission on the repository; one
 whose permission can't be read doesn't count.
 
