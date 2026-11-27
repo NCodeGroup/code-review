@@ -188,8 +188,8 @@ out: the engine fetches the exact commit itself, after it has decided to review,
 configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
 that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing, except
 Dependabot's to its own pull request ([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md));
-comment `/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger, unless the caller
-turns on [`review-forks`](#pull-requests-from-forks).
+comment `/review` to review the latest commit. The caller above turns on
+[`review-forks`](#pull-requests-from-forks), so a pull request from a fork is reviewed too, once it isn't a draft.
 
 The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
 receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
@@ -206,13 +206,13 @@ A pull request from a fork isn't reviewed unless the caller passes `review-forks
 
 Its review is never an approval, whatever `approve` says: its author can't write to the repository and can try to steer the verdict through the diff, so the summary's `Approval:` line says a maintainer approves it, and the NCode Review Approver's token isn't minted. Nothing from the fork is built or run: the engine fetches the commit the event names from this repository's `refs/pull/<number>/head`, only to read it, and the author's description, commit subjects and one-click suggestions stay out, as for anyone without write access. Against a burst of pull requests from many accounts, set GitHub's [interaction limits](https://docs.github.com/en/communities/moderating-comments-and-conversations/limiting-interactions-in-your-repository) or turn the input off ([ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
 
-The caller's `if:` lets a fork's events through. In the `review` job, replace the line `github.event.pull_request.head.repo.full_name == github.repository &&` with:
+The caller in [Using it](#using-it) turns it on: both NCode Review steps pass `review-forks: true`, and the `review` job's `if:` lets a fork's pull request through once it isn't a draft with the line:
 
 ```yaml
         (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
 ```
 
-In the `outcomes` job, the `if:` becomes `github.event_name == 'pull_request_target' && github.event.action == 'closed'`, so a fork's closed pull request records its outcomes.
+The `outcomes` job's `if:` is `github.event_name == 'pull_request_target' && github.event.action == 'closed'`, so a fork's closed pull request records its outcomes. To leave forks out, drop `review-forks` from both steps, put `github.event.pull_request.head.repo.full_name == github.repository &&` in place of that line, and add ` && github.event.pull_request.head.repo.full_name == github.repository` to the end of the `outcomes` job's `if:`.
 
 ## Interface
 
