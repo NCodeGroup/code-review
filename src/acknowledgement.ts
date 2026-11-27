@@ -5,8 +5,9 @@
 // src/acknowledge.ts runs them. Nothing here imports an npm package: they run with the runner's own node, before npm ci.
 //
 // `decideAcknowledgement` holds only the read-only token and makes the review step's own decision (decideReview): a
-// comment that isn't a /review command from a writer, a fork, or an automatic run on a commit already reviewed gets
-// nothing. For a run that will review, it gives the head commit and the comment's id as step outputs.
+// comment that isn't a /review command from a writer, a fork's pull request without review-forks, a fork's draft on an
+// automatic run, or an automatic run on a commit already reviewed gets nothing. For a run that will review, it gives the
+// head commit and the comment's id as step outputs.
 //
 // `postAcknowledgement` holds the app's token, minted for it alone: it adds 👀 to the /review comment, creates the
 // "Code review" check run in progress, gives the check run's id to the publish and finish steps as a step output, and
@@ -27,7 +28,12 @@ import { newestReviewedHead } from './results.ts';
 
 // The step outputs for a run that will review, or undefined when there's nothing to acknowledge.
 export async function decideAcknowledgement(
-  input: { event: CommentEvent & { pull_request?: PullRequestRef }; repository: string; token: string | undefined },
+  input: {
+    event: CommentEvent & { pull_request?: PullRequestRef };
+    repository: string;
+    token: string | undefined;
+    reviewForks?: boolean;
+  },
   fetchFn: typeof fetch = fetch,
   log: (line: string) => void = writeLog,
 ): Promise<string | undefined> {
@@ -44,6 +50,7 @@ export async function decideAcknowledgement(
     repository,
     (number) => fetchPullRequest(repository, number, token, fetchFn),
     async (number) => newestReviewedHead(await readIssueComments(repository, number, token, fetchFn, log)),
+    { reviewForks: input.reviewForks ?? false },
   );
   if (!decision.review) {
     log(`No acknowledgement: ${decision.reason}`);

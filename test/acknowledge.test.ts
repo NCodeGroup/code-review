@@ -189,6 +189,22 @@ test('decideReview gives nothing for an automatic review of a commit already rev
   );
 });
 
+const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
+
+test("decideRun with review-forks gives a writer's /review, /review explain and /review teach on a fork's pull request", async () => {
+  for (const [body, kind] of [
+    ['/review', 'review'],
+    ['/review explain F1', 'explain'],
+    ['/review teach Prefer early returns.', 'teach'],
+  ] as const) {
+    const r = readers(fork, sha);
+    const decision = await decideRun(comment(body), repository, r.readPullRequest, r.reviewedHead, {
+      reviewForks: true,
+    });
+    assert.equal(decision.run && decision.command.kind, kind, body);
+  }
+});
+
 test('decideReview gives nothing for a closed pull request, merged or not, without an API call', async () => {
   for (const merged of [true, false]) {
     const r = readers(own, newer);
@@ -660,6 +676,28 @@ test('decideAcknowledgement passes on the head of an automatic review of a new c
     fetched.requests[0]?.url ?? '',
     new RegExp(`^https://api\\.github\\.com/repos/${repository}/issues/7/comments`),
   );
+});
+
+test("decideAcknowledgement with review-forks acknowledges a fork's ready pull request and passes on nothing for its draft", async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({ 'api.github.com': { status: 200, body: [] } });
+  assert.equal(
+    await decideAcknowledgement(
+      { event: { pull_request: { ...fork, draft: false } }, repository, token: 'read-only', reviewForks: true },
+      fetched.fn,
+      (line) => lines.push(line),
+    ),
+    `acknowledge=true\nhead-sha=${sha}\n`,
+  );
+  assert.equal(
+    await decideAcknowledgement(
+      { event: { pull_request: { ...fork, draft: true } }, repository, token: 'read-only', reviewForks: true },
+      fetched.fn,
+      (line) => lines.push(line),
+    ),
+    undefined,
+  );
+  assert.match(lines[0] ?? '', /^No acknowledgement: #7 is a draft from a fork/);
 });
 
 test('decideAcknowledgement warns with the reason when it cannot read the comments, and still acknowledges', async () => {
