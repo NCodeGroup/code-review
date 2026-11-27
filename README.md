@@ -119,7 +119,7 @@ jobs:
     # cancel or displace the outcomes job. The concurrency group below decides which comments can cancel a review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
         !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
         ((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||
           (github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]'))) ||
@@ -146,7 +146,7 @@ jobs:
         with:
           path: base
           persist-credentials: false
-      - uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
+      - uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -155,14 +155,15 @@ jobs:
           # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
           # secret of the code-review environment, which only the default branch can deploy to.
           approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
+          # Reviews a fork's pull request once it isn't a draft; it is never approved (ADR-1013).
+          review-forks: true
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
     # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
     # environment, without id-token: write, the Bedrock key or a checkout.
     if: >-
-      github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'pull_request_target' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The review's group: it waits for a review in progress, so that review's threads are counted, instead of cancelling it.
@@ -174,9 +175,10 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@a4cdf65d2450e4e1b2b92ed53430ceb8026d4f97 # v1.5.0
+        uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
+          review-forks: true
 ```
 
 `pull_request_target` and `issue_comment` both run this file from the default branch, so a pull request can't change

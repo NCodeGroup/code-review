@@ -1151,10 +1151,11 @@ function assertOutcomesJob(text: string, label: string): void {
   );
   assert.equal(outcomes.steps?.length, 1, label);
   const [step] = outcomes.steps ?? [];
-  assert.deepEqual(Object.keys(step?.with ?? {}), ['app-private-key'], label);
+  assert.deepEqual(Object.keys(step?.with ?? {}), ['app-private-key', 'review-forks'], label);
   const reviewStep = review.steps?.find((s) => s.uses?.startsWith('NCodeGroup/code-review@'));
   assert.ok(reviewStep, label);
   assert.equal(step?.uses, reviewStep.uses, label);
+  assert.equal(step?.with?.['review-forks'], reviewStep.with?.['review-forks'], label);
 }
 
 test("this repository's workflow records outcomes in a job of its own, outside the code-review environment", () => {
