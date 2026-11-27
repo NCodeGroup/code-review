@@ -681,6 +681,8 @@ async function generalize(
       maxTurns: 3,
       budgetUsd: 15,
       cache: false,
+      // A large topic's answer takes Opus longer than the five minutes a review's request gets.
+      apiTimeoutMs: 1_200_000,
     });
     calls.push(...result.records);
     if (!result.output) {

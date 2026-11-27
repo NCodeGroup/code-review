@@ -135,7 +135,14 @@ function pathGuard(checkout: string): HookCallback {
 // Prompt caching is on unless a call turns it off: a call with tools reads its earlier turns' prefix, and calls that share
 // a first block read each other's. The context, selection and synthesis calls have no tools and make one request each, so
 // they turn it off (issue #133).
-export function agentEnvironment(run: AgentRun, home: string, cache = true): Record<string, string> {
+// apiTimeoutMs bounds each model request; a review's calls keep the default, and a training call that writes a long
+// answer passes a longer one, since Claude Code retries a request that times out and then gives up.
+export function agentEnvironment(
+  run: AgentRun,
+  home: string,
+  cache = true,
+  apiTimeoutMs = 300_000,
+): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',
     HOME: home,
@@ -150,7 +157,7 @@ export function agentEnvironment(run: AgentRun, home: string, cache = true): Rec
     DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1',
     CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK: '1',
-    API_TIMEOUT_MS: '300000',
+    API_TIMEOUT_MS: String(apiTimeoutMs),
   };
   if (!cache) env['DISABLE_PROMPT_CACHING'] = '1';
   for (const name of ['SYSTEMROOT', 'SystemRoot', 'COMSPEC', 'WINDIR']) {
@@ -184,6 +191,8 @@ export interface AgentRequest {
   effort?: (typeof effortLevels)[number];
   // False only for a call that makes one model request and whose prompt nothing else reuses.
   cache?: boolean;
+  // How long one model request may take, when longer than the five minutes a review's calls get.
+  apiTimeoutMs?: number;
   // Called once, when the call's first model response arrives: by then the prompt's cache entry exists, so calls that share its first block can start and read it.
   onFirstResponse?: () => void;
 }
@@ -259,7 +268,7 @@ async function callOnce<T>(run: AgentRun, request: AgentRequest): Promise<CallOu
     ...(request.effort ? { effort: request.effort } : {}),
     outputFormat: { type: 'json_schema', schema: request.schema },
     persistSession: false,
-    env: agentEnvironment(run, home, request.cache ?? true),
+    env: agentEnvironment(run, home, request.cache ?? true, request.apiTimeoutMs),
     ...(run.checkout
       ? { hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [pathGuard(run.checkout)] }] } }
       : {}),
