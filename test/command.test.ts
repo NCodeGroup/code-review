@@ -159,6 +159,44 @@ test("the README's caller has this repository's review job if: and triggers", ()
   assert.deepEqual(caller.on.pull_request_target.types, workflow.on.pull_request_target.types);
 });
 
+test("this repository's workflow and the README's caller turn fork reviews on", () => {
+  type Step = { uses?: string; with?: Record<string, unknown> };
+  type Job = { if: string; steps: Step[] };
+  type Caller = { jobs: { review: Job; outcomes: Job } };
+  const workflowText = readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8');
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
+  const callerText = readme.slice(callerStart, readme.indexOf('\n```', callerStart));
+  for (const [label, text] of [
+    ['workflow', workflowText],
+    ['README', callerText],
+  ] as const) {
+    const { review, outcomes } = (parse(text) as Caller).jobs;
+    assert.ok(
+      review.if.includes(
+        '(github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&',
+      ),
+      label,
+    );
+    assert.equal(outcomes.if, "github.event_name == 'pull_request_target' && github.event.action == 'closed'", label);
+    const reviewSteps = [...review.steps, ...outcomes.steps].filter((step) =>
+      step.uses?.startsWith('NCodeGroup/code-review@'),
+    );
+    assert.equal(reviewSteps.length, 2, label);
+    for (const step of reviewSteps) {
+      assert.equal(step.with?.['review-forks'], true, label);
+    }
+    // review-forks needs v1.7.0 or later.
+    const pins = [...text.matchAll(/NCodeGroup\/code-review@[0-9a-f]{40} # v(\d+)\.(\d+)\.\d+/g)];
+    assert.equal(pins.length, 2, label);
+    for (const pin of pins) {
+      const major = Number(pin[1]);
+      const minor = Number(pin[2]);
+      assert.ok(major > 1 || (major === 1 && minor >= 7), label);
+    }
+  }
+});
+
 test('parseCommand reads /review explain with a finding id and no question', () => {
   assert.deepEqual(parseCommand('/review explain F3'), {
     kind: 'explain',
