@@ -29,7 +29,7 @@ access acting against the project, and a vulnerability in a dependency itself ([
 | Prompt injection makes an agent leak the model credentials | Yes | R1: `src/proxy.ts` and `src/credentials.ts` keep them in the review step's process; agents get a placeholder |
 | An agent reads a file outside the checkout, through `..` or a symlink | Yes | R3: the path guard in `src/agent.ts` resolves symlinks and refuses any path outside the checkout |
 | The pull request's code runs in the job that holds the credentials | Yes | R3: `src/fetch-head.ts` fetches the head only to read; `pull_request_target` runs the default branch's workflow |
-| A stranger steers the review through a description, comment or issue | Yes | R4: `src/writers.ts` keeps only writers' text; `/review` runs only for writers; a fork's pull request isn't reviewed |
+| A stranger steers the review through a description, comment or issue | Yes | R4: `src/writers.ts` keeps only writers' text; `/review` runs only for writers; a fork's pull request is reviewed only where the caller sets `review-forks`, never as a draft when it opens, and is never approved ([ADR-1013](decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)) |
 | A pull request softens its own review | Yes | R5: `src/settings.ts` reads `.github/code-review/` from the default branch only |
 | A secret reaches a comment, the check run or the trace artifact | Yes | R1: `src/outputs.ts` scans everything published |
 | An app token is misused by an agent | Yes | R2: tokens are minted per step, revoked before the review step, and minted again only after the agents exit |

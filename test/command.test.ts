@@ -2,17 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { after, test } from 'node:test';
 import { parse } from 'yaml';
 import {
   commandFromEvent,
   isFromFork,
   maxQuestionChars,
   parseCommand,
+  reviewForksOn,
   skipReason,
   skipReasonFor,
 } from '../src/command.ts';
+import { pullRequestCheckout, reviewStep } from './steps.ts';
+
+const made: string[] = [];
+
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
   const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
@@ -114,6 +124,39 @@ test("the caller's concurrency group puts only a first line of /review in the pu
   for (const body of ['/review please', '/review explain F3', '/review teach a rule', '/reviewed', '/review ']) {
     assert.equal(joinsPullRequestGroup(body), false, body);
   }
+});
+
+test("the caller's review job reviews Dependabot's own pushes and no other push", () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8')) as {
+    on: { pull_request_target: { types: string[] } };
+    jobs: { review: { if: string } };
+  };
+  assert.deepEqual(workflow.on.pull_request_target.types, [
+    'opened',
+    'reopened',
+    'ready_for_review',
+    'synchronize',
+    'closed',
+  ]);
+  const condition = workflow.jobs.review.if;
+  assert.ok(condition.includes("((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||"));
+  assert.ok(
+    condition.includes(
+      "(github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]')",
+    ),
+  );
+});
+
+test("the README's caller has this repository's review job if: and triggers", () => {
+  type Caller = { on: { pull_request_target: { types: string[] } }; jobs: { review: { if: string } } };
+  const workflow = parse(
+    readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8'),
+  ) as Caller;
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
+  const caller = parse(readme.slice(callerStart, readme.indexOf('\n```', callerStart))) as Caller;
+  assert.equal(caller.jobs.review.if, workflow.jobs.review.if);
+  assert.deepEqual(caller.on.pull_request_target.types, workflow.on.pull_request_target.types);
 });
 
 test('parseCommand reads /review explain with a finding id and no question', () => {
@@ -303,5 +346,79 @@ test('skipReasonFor skips a fork for either trigger', async () => {
       (await skipReasonFor(trigger, fork, 'NCodeGroup/code-review', lookup(undefined).fn)) ?? '',
       /comes from a fork/,
     );
+  }
+});
+
+test('reviewForksOn is true only for true, ignoring case and spaces', () => {
+  assert.equal(reviewForksOn('true'), true);
+  assert.equal(reviewForksOn(' TRUE '), true);
+  assert.equal(reviewForksOn('yes'), false);
+  assert.equal(reviewForksOn(''), false);
+  assert.equal(reviewForksOn(undefined), false);
+});
+
+test('skipReason reviews a pull request from a fork with review-forks, and looks up its reviewed head', async () => {
+  const fork = { ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } };
+  const fresh = lookup('b'.repeat(40));
+  assert.equal(await skipReason(fork, 'NCodeGroup/code-review', fresh.fn, true), undefined);
+  assert.equal(fresh.calls, 1);
+  assert.match(
+    (await skipReason(fork, 'NCodeGroup/code-review', lookup('a'.repeat(40)).fn, true)) ?? '',
+    /already reviewed/,
+  );
+});
+
+test("skipReasonFor skips a fork's draft for an automatic run with review-forks, and reviews it on a /review", async () => {
+  const fork = { ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } };
+  const draft = { ...fork, draft: true };
+  const looked = lookup(undefined);
+  assert.match(
+    (await skipReasonFor('automatic', draft, 'NCodeGroup/code-review', looked.fn, true)) ?? '',
+    /#7 is a draft from a fork/,
+  );
+  assert.equal(looked.calls, 0);
+  assert.equal(await skipReasonFor('comment', draft, 'NCodeGroup/code-review', looked.fn, true), undefined);
+  assert.equal(
+    await skipReasonFor('automatic', { ...fork, draft: false }, 'NCodeGroup/code-review', lookup(undefined).fn, true),
+    undefined,
+  );
+  assert.match(
+    (await skipReasonFor('automatic', draft, 'NCodeGroup/code-review', lookup(undefined).fn)) ?? '',
+    /comes from a fork/,
+  );
+});
+
+test("the review step reviews a fork's ready pull request only with review-forks on", () => {
+  for (const [value, reviews] of [
+    ['true', true],
+    ['false', false],
+  ] as const) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fork-run-'));
+    made.push(dir);
+    const checkout = pullRequestCheckout(dir);
+    const event = {
+      action: 'opened',
+      pull_request: {
+        number: 1,
+        draft: false,
+        user: { login: 'stranger' },
+        author_association: 'FIRST_TIME_CONTRIBUTOR',
+        base: { ref: 'main', sha: checkout.base },
+        head: { sha: checkout.head, repo: { full_name: 'stranger/r' } },
+      },
+    };
+    const { stdout } = reviewStep(
+      dir,
+      event,
+      {
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/issues?state=open&sort=updated&direction=desc&per_page=100&page=1': [],
+      },
+      false,
+      { CODE_REVIEW_REVIEW_FORKS: value },
+    );
+    if (reviews) assert.match(stdout, /::warning::No provider available/);
+    else assert.match(stdout, /#1 comes from a fork, and forks aren't reviewed\./);
   }
 });

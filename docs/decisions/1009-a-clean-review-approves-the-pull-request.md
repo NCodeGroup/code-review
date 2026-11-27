@@ -1,6 +1,6 @@
 # 1009. A clean review approves the pull request
 
-- **Status:** Accepted (amended by [1011](1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md))
+- **Status:** Accepted (amended by [1011](1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md), [1013](1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md) and [project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md), which reviews Dependabot's own pushes)
 - **Date:** 2026-11-15
 - **Deciders:** Marcin Polewski
 

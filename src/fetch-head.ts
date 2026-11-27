@@ -3,10 +3,10 @@
 
 // Fetches the pull request's head into a folder to read, so the calling workflow needs no checkout of untrusted code.
 // The engine does it only after it has decided to review (a comment that is a /review command from a writer, a pull
-// request that isn't from a fork, a commit not already reviewed), and checks out the exact commit the event or the API
-// named, never a ref that can move between the decision and the checkout. Nothing is built or run from it: git is
-// started without the user's or the system's configuration, without hooks, and without a credential helper, and the
-// token goes through the environment, never a command line or the remote's URL.
+// request from the repository or, with review-forks, from a fork, a commit not already reviewed), and checks out the
+// exact commit the event or the API named, never a ref that can move between the decision and the checkout. Nothing is
+// built or run from it: git is started without the user's or the system's configuration, without hooks, and without a
+// credential helper, and the token goes through the environment, never a command line or the remote's URL.
 //
 // This git wrapper is separate from the one in gather.ts on purpose: that one only reads a checkout that exists, while
 // this one talks to the network and so needs the token and a stricter environment.

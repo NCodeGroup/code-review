@@ -124,8 +124,15 @@ export function ignoredCommentId(event: CommentEvent): number | undefined {
   return parseCommand(body) ? undefined : id;
 }
 
-// A pull request whose head is in another repository, or in none (a deleted fork), is not reviewed: its author has no
-// write access here, and the workflow's own condition is not the only guard.
+// Reads the action's `review-forks` input: on only for `true`, as `approveOn` reads `approve`. Like the rest of this
+// file it imports nothing, because the acknowledgement loads it before npm ci.
+export function reviewForksOn(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === 'true';
+}
+
+// A pull request whose head is in another repository, or in none (a deleted fork), comes from a fork: its author has no
+// write access here. A fork's pull request is reviewed only when the caller turns `review-forks` on, and the workflow's
+// own condition is not the only guard.
 export function isFromFork(
   pullRequest: { head?: { repo?: { full_name?: string } | null } } | undefined,
   repository: string,
@@ -133,15 +140,19 @@ export function isFromFork(
   return pullRequest?.head?.repo?.full_name !== repository;
 }
 
-// Why a review is skipped, if it is: the pull request comes from a fork, or its head was already reviewed.
-// `reviewedHead` looks up the head the bot last reviewed; it is called only for a pull request that isn't from a fork
-// and has a head, so a fork costs no API call. /review passes none, because it reviews a commit again on purpose.
+// Why a review is skipped, if it is: the pull request comes from a fork and `reviewForks` is off, or its head was
+// already reviewed. `reviewedHead` looks up the head the bot last reviewed; it is called for a pull request that has a
+// head and, unless `reviewForks` is on, isn't from a fork, so a fork costs no API call while the input is off. /review
+// passes none, because it reviews a commit again on purpose.
 export async function skipReason(
-  pullRequest: { number?: number; head?: { sha?: string; repo?: { full_name?: string } | null } } | undefined,
+  pullRequest:
+    | { number?: number; draft?: boolean; head?: { sha?: string; repo?: { full_name?: string } | null } }
+    | undefined,
   repository: string,
   reviewedHead?: () => Promise<string | undefined>,
+  reviewForks = false,
 ): Promise<string | undefined> {
-  if (isFromFork(pullRequest, repository))
+  if (!reviewForks && isFromFork(pullRequest, repository))
     return `#${pullRequest?.number} comes from a fork, and forks aren't reviewed.`;
   const head = pullRequest?.head?.sha;
   if (head && reviewedHead && (await reviewedHead()) === head)
@@ -149,15 +160,19 @@ export async function skipReason(
   return undefined;
 }
 
-// The skip rules for one run. A /review comment reviews a commit again on purpose, so only the fork rule applies and the
-// reviewed head is never looked up; an automatic run also skips a head already reviewed.
-export function skipReasonFor(
+// The skip rules for one run. A /review comment reviews a commit again on purpose, so the reviewed head is never looked
+// up and, with `reviewForks` on, it reviews a fork's draft too. An automatic run also skips a head already reviewed, and
+// with `reviewForks` on it skips a fork's draft, which is reviewed once it is marked ready for review.
+export async function skipReasonFor(
   trigger: 'comment' | 'automatic',
   pullRequest: Parameters<typeof skipReason>[0],
   repository: string,
   reviewedHead: () => Promise<string | undefined>,
+  reviewForks = false,
 ): Promise<string | undefined> {
-  return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined);
+  if (reviewForks && trigger === 'automatic' && pullRequest?.draft === true && isFromFork(pullRequest, repository))
+    return `#${pullRequest.number} is a draft from a fork; it is reviewed once it is marked ready for review.`;
+  return skipReason(pullRequest, repository, trigger === 'automatic' ? reviewedHead : undefined, reviewForks);
 }
 
 // A pull request closed, merged or not: the run records outcomes and never reviews. A comment's event is never one.
@@ -172,21 +187,29 @@ export type RunDecision<P extends PullRequestLike> =
   | { run: false; reason: string };
 
 // Whether this run does anything, and what: a command from a writer's comment, or an automatic review, on a pull request
-// that isn't from a fork. The review step decides with this. A closed pull request is never reviewed: its run records
-// outcomes instead. `readPullRequest` reads the pull request a comment is on, and `reviewedHead` the head the bot last
-// reviewed; a comment that isn't a command, or a closed pull request, costs no API call.
+// that isn't from a fork, or on one that is when `options.reviewForks` is on (an automatic run still skips a fork's
+// draft). The review step decides with this. A closed pull request is never reviewed: its run records outcomes instead.
+// `readPullRequest` reads the pull request a comment is on, and `reviewedHead` the head the bot last reviewed; a comment
+// that isn't a command, or a closed pull request, costs no API call.
 export async function decideRun<P extends PullRequestLike>(
   event: CommentEvent & { pull_request?: P },
   repository: string,
   readPullRequest: (number: number) => Promise<P>,
   reviewedHead: (number: number) => Promise<string | undefined>,
+  options: { reviewForks?: boolean } = {},
 ): Promise<RunDecision<P>> {
   if (isClosedEvent(event)) return { run: false, reason: "The pull request closed; it isn't reviewed." };
   if (event.comment) {
     const request = commandFromEvent(event);
     if (!request) return { run: false, reason: 'Not a /review command from someone with write access; nothing to do.' };
     const pullRequest = await readPullRequest(request.number);
-    const reason = await skipReasonFor('comment', pullRequest, repository, () => reviewedHead(request.number));
+    const reason = await skipReasonFor(
+      'comment',
+      pullRequest,
+      repository,
+      () => reviewedHead(request.number),
+      options.reviewForks ?? false,
+    );
     if (reason) return { run: false, reason };
     const commentId = event.comment.id;
     return {
@@ -199,8 +222,12 @@ export async function decideRun<P extends PullRequestLike>(
   }
   const pullRequest = event.pull_request;
   if (!pullRequest) return { run: false, reason: 'The event has no pull request.' };
-  const reason = await skipReasonFor('automatic', pullRequest, repository, () =>
-    reviewedHead(Number(pullRequest.number)),
+  const reason = await skipReasonFor(
+    'automatic',
+    pullRequest,
+    repository,
+    () => reviewedHead(Number(pullRequest.number)),
+    options.reviewForks ?? false,
   );
   return reason
     ? { run: false, reason }
@@ -213,7 +240,8 @@ export type ReviewDecision<P extends PullRequestLike> =
 
 // Whether this run reviews, and which pull request. The early acknowledgement decides with this, through the review
 // step's own decideRun, so a run acknowledges exactly what it goes on to review: a /review comment from a writer, or an
-// automatic run, on a pull request that isn't from a fork. A closed pull request is never reviewed, so it gets no
+// automatic run, on a pull request that isn't from a fork, or on one that is when `options.reviewForks` is on (an
+// automatic run still skips a fork's draft). A closed pull request is never reviewed, so it gets no
 // acknowledgement and no check run. `/review explain` and `/review teach` aren't reviews: they answer with a comment,
 // not the "Code review" check run, so they get no acknowledgement, and no API call decides that.
 export async function decideReview<P extends PullRequestLike>(
@@ -221,11 +249,12 @@ export async function decideReview<P extends PullRequestLike>(
   repository: string,
   readPullRequest: (number: number) => Promise<P>,
   reviewedHead: (number: number) => Promise<string | undefined>,
+  options: { reviewForks?: boolean } = {},
 ): Promise<ReviewDecision<P>> {
   const kind = event.comment ? commandFromEvent(event)?.command.kind : undefined;
   if (kind && kind !== 'review')
     return { review: false, reason: `/review ${kind} isn't a review; it gets no acknowledgement.` };
-  const decision = await decideRun(event, repository, readPullRequest, reviewedHead);
+  const decision = await decideRun(event, repository, readPullRequest, reviewedHead, options);
   if (!decision.run) return { review: false, reason: decision.reason };
   const { pullRequest, commentId } = decision;
   return { review: true, pullRequest, ...(commentId === undefined ? {} : { commentId }) };

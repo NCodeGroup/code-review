@@ -17,6 +17,7 @@ import {
   reactToIgnoredComment,
   revokeAcknowledgementToken,
 } from './acknowledgement.ts';
+import { reviewForksOn } from './command.ts';
 import { errorText } from './comments.ts';
 import { required, take } from './env.ts';
 import { githubApi } from './github.ts';
@@ -25,7 +26,12 @@ import { writeLog } from './log.ts';
 async function decide(): Promise<void> {
   const repository = required('GITHUB_REPOSITORY');
   const event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
-  const outputs = await decideAcknowledgement({ event, repository, token: take('CODE_REVIEW_GITHUB_TOKEN') });
+  const outputs = await decideAcknowledgement({
+    event,
+    repository,
+    token: take('CODE_REVIEW_GITHUB_TOKEN'),
+    reviewForks: reviewForksOn(process.env['CODE_REVIEW_REVIEW_FORKS']),
+  });
   if (outputs) appendFileSync(required('GITHUB_OUTPUT'), outputs);
 }
 

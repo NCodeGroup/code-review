@@ -24,8 +24,9 @@ scanned for secrets before they're written.
 
 Within seconds of the event, before setup-node and `npm ci`, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
-takes a few minutes", linked to the run. It decides exactly as the review step does, so a pull request from a fork, an
-automatic run on a commit already reviewed, and a closed pull request get nothing, and a comment from someone without
+takes a few minutes", linked to the run. It decides exactly as the review step does, so a pull request from a fork without
+[`review-forks`](#pull-requests-from-forks), a fork's draft when it opens, an automatic run on a commit already
+reviewed, and a closed pull request get nothing, and a comment from someone without
 write access gets nothing. A comment from someone with write access that starts with `/review` and then a space or its
 end but isn't a command, such as `/review please`, gets 😕 instead, so its author can tell that no review started; the
 run's log lists the commands. `/review explain` and `/review teach` get nothing either: they aren't
@@ -106,20 +107,22 @@ To set NCode Review up for an organization or a repository, follow [docs/setup.m
 name: Code review
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, closed]
+    types: [opened, reopened, ready_for_review, synchronize, closed]
   issue_comment:
     types: [created]
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A plain
-    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The concurrency
-    # group below decides which comments can cancel a review.
+    # A pull request when it opens or is marked ready, a push Dependabot makes to its own pull request, or a top-level
+    # `/review`, `/review explain` or `/review teach` comment on one from someone with write access. The engine checks
+    # the comment again and skips anything else. A plain `/review` on a closed pull request doesn't run, so it can't
+    # cancel or displace the outcomes job. The concurrency group below decides which comments can cancel a review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
+        !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
+        ((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||
+          (github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]'))) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
         (github.event.issue.state == 'open' || startsWith(github.event.comment.body, '/review explain') ||
@@ -180,8 +183,10 @@ jobs:
 its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head
 out: the engine fetches the exact commit itself, after it has decided to review, with git started without
 configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
-that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
-`/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
+that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing, except
+Dependabot's to its own pull request ([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md));
+comment `/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger, unless the caller
+turns on [`review-forks`](#pull-requests-from-forks).
 
 The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
 receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
@@ -191,6 +196,20 @@ acknowledgement.
 The `outcomes` job runs only when a pull request closes. It makes no model call, so it runs outside the `code-review`
 environment, without `id-token: write`, the Bedrock key or a checkout, and only the app's key reaches it, to post the
 outcomes. It shares the review's concurrency group, so it waits for a review in progress.
+
+### Pull requests from forks
+
+A pull request from a fork isn't reviewed unless the caller passes `review-forks: true` (v1.7.0 on) to the NCode Review step of both jobs. With it, a fork's pull request is reviewed when it opens or reopens as ready for review and when it's marked ready, and a writer's `/review`, `/review explain` and `/review teach` work on it, drafts included. A fork's draft gets no automatic review, its pushes start nothing, and the loop limit and the cost ceiling apply as to any pull request. First-time contributors are reviewed too, and their pull request's closing records its outcomes.
+
+Its review is never an approval, whatever `approve` says: its author can't write to the repository and can try to steer the verdict through the diff, so the summary's `Approval:` line says a maintainer approves it, and the NCode Review Approver's token isn't minted. Nothing from the fork is built or run: the engine fetches the commit the event names from this repository's `refs/pull/<number>/head`, only to read it, and the author's description, commit subjects and one-click suggestions stay out, as for anyone without write access. Against a burst of pull requests from many accounts, set GitHub's [interaction limits](https://docs.github.com/en/communities/moderating-comments-and-conversations/limiting-interactions-in-your-repository) or turn the input off ([ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
+
+The caller's `if:` lets a fork's events through. In the `review` job, replace the line `github.event.pull_request.head.repo.full_name == github.repository &&` with:
+
+```yaml
+        (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
+```
+
+In the `outcomes` job, the `if:` becomes `github.event_name == 'pull_request_target' && github.event.action == 'closed'`, so a fork's closed pull request records its outcomes.
 
 ## Interface
 
@@ -214,10 +233,12 @@ before 1.0.0 changed it in minor releases; their changelog sections say how.
 | `approve` | no | `false` | Submits a review whose verdict is Approve as an approving review, so a ruleset can require one approval; every other review stays a comment and dismisses the bot's earlier approval. |
 | `approver-private-key` | no | | The NCode Review Approver app's private key, from the repository's code-review environment; with `approve` on, the approval is submitted as the approver, which meets a required approval. |
 | `approver-client-id` | no | `Iv23liDPFX1K6NjGIr9i` | The NCode Review Approver app's client ID. |
+| `review-forks` | no | `false` | Reviews a pull request from a fork when it opens or reopens as ready for review, when it's marked ready, and on a writer's `/review`; never a fork's draft automatically, and never as an approval. See [Pull requests from forks](#pull-requests-from-forks). |
 
 The action has no outputs. A caller needs:
 
-- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, and `issue_comment`,
+- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, plus `synchronize`
+  to review Dependabot's own pushes, and `issue_comment`,
   with the type `created`;
 - a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
   and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
@@ -300,7 +321,7 @@ you to the repository as a collaborator.
 
 | Comment | What happens |
 |---|---|
-| `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+| `/review` | Reviews the pull request's latest commit. Pushes start no review, except Dependabot's to its own pull request, so use this after changes. |
 | `/review explain F3 [question]` | Reads the code again and answers about the newest review's F3 in a comment: "Re F3 (link): …", ending with "Still holds because …" or "On reflection this doesn't hold: …". The question is optional and may go on over several lines. |
 | `/review explain <link> [question]` | The same for the inline finding comment the link points to, from any review of this pull request. Finding ids restart at F1 in every review, so use a link for an earlier review's finding. |
 | `/review teach <rule>` | Opens an issue labelled `review-guidance` in this repository with the rule, to add to its `.github/code-review/guidance.md`, and replies with a link to it. The rule may go on over several lines. |
@@ -369,7 +390,9 @@ request's head is still the reviewed commit, and, for a full review, no should-f
 open. A re-review relies on its verdict, which already counts the earlier findings that wait. A review whose only
 findings are nits approves when every reviewer ran in full and verification lowered or refuted nothing. Every other
 review stays a comment and dismisses the bot's earlier approval of the pull request, so a later blocker never leaves an
-old approval standing. Drafts are approved like any pull request; fork pull requests are skipped, as for every review.
+old approval standing. Drafts are approved like any pull request. A pull request from a fork never is, even with
+[`review-forks`](#pull-requests-from-forks): its `Approval:` line says a maintainer approves it
+([ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
 The summary comment has an `Approval:` line that says "Approved" or "Not approved" with the reason. When GitHub refuses
 an approval, the run warns, dismisses the earlier approval too, and the summary says the approval couldn't be submitted.
 
@@ -384,8 +407,9 @@ which only the default branch can deploy to, so a pull request's workflow never 
 
 A push removes the approval when the ruleset dismisses stale reviews and requires approval of the last push, and
 `/review` approves again. `/run-feedback` and `/run-issues` comment it after each push; after a hand push, comment
-`/review` yourself, because NCode Review doesn't review on `synchronize`. With the approver, require one approval, of
-the last push, in the ruleset; without it, require none where one person can write.
+`/review` yourself, because a push starts a review only when Dependabot makes it to its own pull request, so a clean
+review approves Dependabot's pull requests by itself. With the approver, require one approval, of the last push, in the
+ruleset; without it, require none where one person can write.
 
 The trade-offs: an NCode Review outage or budget stop blocks merges where the approval is required until it is fixed or
 the ruleset changes, and a leaked approver key can mint a Contents: write token for the repositories the approver is
@@ -496,8 +520,12 @@ for what the project chose: its answers, its merged files and its own files.
 After three reviews with no comment from someone with write access in between, counted from the summary comments, an
 automatic review stops before any model call and posts once "Paused: comment `/review` to resume". An acknowledged
 "Code review" check run is completed as "Review paused", so it never stays in progress. Comments the
-autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. A
-`/review` from someone with write access always reviews, and counts as their comment. A comment counts as from someone
+autopilot posts as the maintainer's account, which start with `Autopilot:`, don't count as the maintainer's. Neither do a
+bot's, Dependabot's included, so a Dependabot pull request pauses after three reviews, such as its opening and two
+rebases, until someone with write access comments: a `/review` resumes it, and any other comment of theirs,
+such as `@dependabot rebase`, starts the count again
+([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+A `/review` from someone with write access always reviews, and counts as their comment. A comment counts as from someone
 with write access by its author's association or, when that doesn't say so, their permission on the repository; one
 whose permission can't be read doesn't count.
 

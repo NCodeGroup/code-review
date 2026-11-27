@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Whether the publish step approves the pull request. The engine's settled verdict decides; a full review also needs no
-// bot thread of should-fix or above still open, because it can't tell a finding it no longer raises from a fixed one.
+// bot thread of should-fix or above still open, because it can't tell a finding it no longer raises from a fixed one. A
+// pull request from a fork is never approved.
 
 import { postedFinding } from './follow-up.ts';
 import type { ThreadNode } from './rereview.ts';
@@ -23,10 +24,13 @@ export function openEarlierFindings(threads: ThreadNode[], dismissed: ReadonlySe
   return count;
 }
 
-export type Approval = { approve: boolean; blockers: number; shouldFix: number; earlierOpen: number };
+export type Approval = { approve: boolean; blockers: number; shouldFix: number; earlierOpen: number; fork?: true };
 
 export function approvalFor(
-  results: Pick<Results, 'verdict' | 'findings' | 'alreadyRaised' | 'reReview' | 'reviewers' | 'refuted' | 'demoted'>,
+  results: Pick<
+    Results,
+    'verdict' | 'findings' | 'alreadyRaised' | 'reReview' | 'reviewers' | 'refuted' | 'demoted' | 'fromFork'
+  >,
   earlier: { threads?: ThreadNode[]; dismissed: ReadonlySet<string>; posted?: PostedThread[] },
 ): Approval {
   const unresolved = [...results.findings, ...(results.alreadyRaised ?? []).filter((f) => !f.earlier.dismissed)];
@@ -48,6 +52,7 @@ export function approvalFor(
   if (approve && !results.reReview) {
     approve = earlierOpen === 0 && !(earlier.threads === undefined && earlier.posted === undefined);
   }
+  if (results.fromFork) return { approve: false, blockers, shouldFix, earlierOpen, fork: true };
   return { approve, blockers, shouldFix, earlierOpen };
 }
 
@@ -57,6 +62,7 @@ function plural(n: number, one: string, many: string): string {
 
 export function approvalLine(approval: Approval, state: 'approved' | 'not-approved' | 'refused'): string {
   if (state === 'approved') return '**Approval: Approved** — no blocker or should-fix finding remains.';
+  if (approval.fork) return '**Approval: Not approved** — a pull request from a fork is approved by a maintainer.';
   if (state === 'refused') return "**Approval: Not approved** — the approval couldn't be submitted.";
   const reasons: string[] = [];
   if (approval.blockers > 0) reasons.push(plural(approval.blockers, 'blocker', 'blockers'));

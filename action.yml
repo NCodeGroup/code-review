@@ -59,23 +59,32 @@ inputs:
     description: The NCode Review Approver app's client ID.
     required: false
     default: Iv23liDPFX1K6NjGIr9i
+  review-forks:
+    description: >-
+      Whether a pull request from a fork is reviewed: when it opens or reopens as ready for review, when it's marked
+      ready, and on a /review comment from someone with write access. A fork's draft gets no automatic review, and a
+      fork's pull request is never approved. Off by default: forks aren't reviewed. The caller's if: must let a
+      fork's events through.
+    required: false
+    default: 'false'
 
 runs:
   using: composite
   steps:
     # The acknowledgement: a sign on the pull request within seconds, before setup-node and npm ci, which are most of the
     # wait. It runs with the runner's own node and no npm package, and continues on error: without it, the review runs
-    # as before. This step holds only the read-only token and makes the review step's own decision, so a fork, an
-    # automatic run on a commit already reviewed and a closed pull request get nothing, and a writer's
-    # comment that starts with /review but isn't a command gets a 😕 from a token of its own that holds only the pull
-    # requests permission. /review explain and /review teach get no check run: they answer with a comment, not the
-    # "Code review" check run.
+    # as before. This step holds only the read-only token and makes the review step's own decision, so a fork's pull
+    # request without review-forks, a fork's draft on an automatic run, an automatic run on a commit already reviewed and
+    # a closed pull request get nothing, and a writer's comment that starts with /review but isn't a command gets a 😕
+    # from a token of its own that holds only the pull requests permission. /review explain and /review teach get no
+    # check run: they answer with a comment, not the "Code review" check run.
     - name: Decide whether to acknowledge
       id: ack-decide
       continue-on-error: true
       shell: bash
       env:
         CODE_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
+        CODE_REVIEW_REVIEW_FORKS: ${{ inputs.review-forks }}
       run: node "$GITHUB_ACTION_PATH/src/acknowledge.ts" decide
 
     # A token for the acknowledgement alone. The Acknowledge step revokes it before it exits, and the step after it
@@ -190,6 +199,7 @@ runs:
         CODE_REVIEW_ORGANIZATION_ID: ${{ inputs.organization-id }}
         CODE_REVIEW_SERVICE_ACCOUNT_ID: ${{ inputs.service-account-id }}
         CODE_REVIEW_WORKSPACE_ID: ${{ inputs.workspace-id }}
+        CODE_REVIEW_REVIEW_FORKS: ${{ inputs.review-forks }}
       run: node "$GITHUB_ACTION_PATH/src/main.ts"
 
     # Minted after the agents have exited, for this repository only, and able to write only check runs and pull request
@@ -229,10 +239,11 @@ runs:
     # The approver's token, minted after the agents exit, for this repository only and able to write only pull requests:
     # the publish step uses it to approve and to dismiss the approver's own approvals. The approver app's write access
     # to the repository is what makes GitHub count its approval toward a required approval, while this token can't push.
-    # It may fail: the publish step then warns and approves with the NCode Review app.
+    # It may fail: the publish step then warns and approves with the NCode Review app. It isn't minted for a pull request
+    # from a fork, which is never approved.
     - name: Get the approver's token
       id: approver-token
-      if: steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''
+      if: steps.review.outputs.reviewed == 'true' && steps.review.outputs.fork != 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''
       continue-on-error: true
       uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
       with:

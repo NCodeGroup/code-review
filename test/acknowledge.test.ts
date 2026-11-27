@@ -176,17 +176,32 @@ test('decideReview acknowledges an automatic review of a new commit, with no com
   assert.equal(r.counts.pullRequest, 0);
 });
 
+const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
+
 test('decideReview gives nothing for an automatic review of a commit already reviewed, or of a fork', async () => {
   const r = readers(own, sha);
   assert.equal(
     (await decideReview({ pull_request: own }, repository, r.readPullRequest, r.reviewedHead)).review,
     false,
   );
-  const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
   assert.equal(
     (await decideReview({ pull_request: fork }, repository, r.readPullRequest, r.reviewedHead)).review,
     false,
   );
+});
+
+test("decideRun with review-forks gives a writer's /review, /review explain and /review teach on a fork's pull request", async () => {
+  for (const [body, kind] of [
+    ['/review', 'review'],
+    ['/review explain F1', 'explain'],
+    ['/review teach Prefer early returns.', 'teach'],
+  ] as const) {
+    const r = readers(fork, sha);
+    const decision = await decideRun(comment(body), repository, r.readPullRequest, r.reviewedHead, {
+      reviewForks: true,
+    });
+    assert.equal(decision.run && decision.command.kind, kind, body);
+  }
 });
 
 test('decideReview gives nothing for a closed pull request, merged or not, without an API call', async () => {
@@ -662,6 +677,28 @@ test('decideAcknowledgement passes on the head of an automatic review of a new c
   );
 });
 
+test("decideAcknowledgement with review-forks acknowledges a fork's ready pull request and passes on nothing for its draft", async () => {
+  const lines: string[] = [];
+  const fetched = fakeFetch({ 'api.github.com': { status: 200, body: [] } });
+  assert.equal(
+    await decideAcknowledgement(
+      { event: { pull_request: { ...fork, draft: false } }, repository, token: 'read-only', reviewForks: true },
+      fetched.fn,
+      (line) => lines.push(line),
+    ),
+    `acknowledge=true\nhead-sha=${sha}\n`,
+  );
+  assert.equal(
+    await decideAcknowledgement(
+      { event: { pull_request: { ...fork, draft: true } }, repository, token: 'read-only', reviewForks: true },
+      fetched.fn,
+      (line) => lines.push(line),
+    ),
+    undefined,
+  );
+  assert.match(lines[0] ?? '', /^No acknowledgement: #7 is a draft from a fork/);
+});
+
 test('decideAcknowledgement warns with the reason when it cannot read the comments, and still acknowledges', async () => {
   const lines: string[] = [];
   const fetched = fakeFetch({ 'api.github.com': { status: 500 } });
@@ -1044,6 +1081,7 @@ test('action.yml keeps the app key and every app token out of the review step', 
     'CODE_REVIEW_ORGANIZATION_ID',
     'CODE_REVIEW_OUT',
     'CODE_REVIEW_PR_PATH',
+    'CODE_REVIEW_REVIEW_FORKS',
     'CODE_REVIEW_SERVICE_ACCOUNT_ID',
     'CODE_REVIEW_WORKSPACE_ID',
   ]);
@@ -1058,6 +1096,16 @@ test('action.yml gives the approve input to the publish step only', () => {
   assert.ok(reviewStep && publishStep);
   assert.equal('CODE_REVIEW_APPROVE' in reviewStep.env, false);
   assert.equal(publishStep.env['CODE_REVIEW_APPROVE'], '${{ inputs.approve }}');
+});
+
+test('action.yml gives review-forks to the decide and review steps only', () => {
+  const steps = actionSteps();
+  const holders = steps.filter((s) => s.text.includes('inputs.review-forks'));
+  assert.deepEqual(
+    holders.map((s) => s.id),
+    ['ack-decide', 'review'],
+  );
+  for (const step of holders) assert.equal(step.env['CODE_REVIEW_REVIEW_FORKS'], '${{ inputs.review-forks }}');
 });
 
 test('action.yml gives the app key only to the token steps, and each token only to the steps that write to the pull request', () => {
@@ -1090,7 +1138,7 @@ test("action.yml gives the approver's key only to its token step, and its token 
   assert.equal(minted?.with['private-key'], '${{ inputs.approver-private-key }}');
   assert.equal(
     minted?.if,
-    "steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''",
+    "steps.review.outputs.reviewed == 'true' && steps.review.outputs.fork != 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''",
   );
   const users = steps.filter((s) => s.text.includes('steps.approver-token.outputs.token')).map((s) => s.id || s.name);
   assert.deepEqual(users, ['publish']);
@@ -1133,7 +1181,10 @@ test('action.yml acknowledges before setup-node and npm ci, and never lets the a
   assert.deepEqual(Object.keys(revoke?.env ?? {}), ['CODE_REVIEW_APP_TOKEN']);
   assert.ok(revoke?.text.includes('acknowledge.ts" revoke'));
   assert.equal(steps[index('ack-decide')]?.env['CODE_REVIEW_GITHUB_TOKEN'], '${{ inputs.github-token }}');
-  assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
+  assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), [
+    'CODE_REVIEW_GITHUB_TOKEN',
+    'CODE_REVIEW_REVIEW_FORKS',
+  ]);
 });
 
 test("action.yml mints the reaction's token with the pull requests permission alone and keeps it out of the review step", () => {

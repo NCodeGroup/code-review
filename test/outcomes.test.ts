@@ -1005,13 +1005,17 @@ test("recordOutcomes skips a fork's pull request without a call", async () => {
 });
 
 // Runs recordOutcomes with a scratch output folder and GITHUB_OUTPUT file, removed afterwards.
-async function recordInScratch(api: Parameters<typeof recordOutcomes>[0], event: Parameters<typeof recordOutcomes>[1]) {
+async function recordInScratch(
+  api: Parameters<typeof recordOutcomes>[0],
+  event: Parameters<typeof recordOutcomes>[1],
+  options: { reviewForks?: boolean } = {},
+) {
   const dir = mkdtempSync(path.join(tmpdir(), 'outcomes-'));
   const saved = process.env['GITHUB_OUTPUT'];
   process.env['GITHUB_OUTPUT'] = path.join(dir, 'github-output');
   const lines: string[] = [];
   try {
-    await recordOutcomes(api, event, 'o/r', path.join(dir, 'out'), (line) => lines.push(line));
+    await recordOutcomes(api, event, 'o/r', path.join(dir, 'out'), (line) => lines.push(line), options);
     const output = existsSync(path.join(dir, 'github-output'))
       ? readFileSync(path.join(dir, 'github-output'), 'utf8')
       : '';
@@ -1044,6 +1048,16 @@ test('recordOutcomes writes outcomes.json for the publish step and sets the outc
   );
   assert.equal(output, 'outcomes=true\n');
   assert.deepEqual(lines, ['Merged: F1 fixed, F2 dismissed, F3 ignored.']);
+});
+
+test("recordOutcomes with review-forks records a fork's pull request", async () => {
+  const { report, output } = await recordInScratch(
+    fakeGitHub().api,
+    { pull_request: { ...closedEvent.pull_request, head: { sha: closedHead, repo: { full_name: 'fork/r' } } } },
+    { reviewForks: true },
+  );
+  assert.equal(report?.state, 'merged');
+  assert.equal(output, 'outcomes=true\n');
 });
 
 test('recordOutcomes writes nothing for a pull request the bot never reviewed', async () => {
@@ -1082,7 +1096,7 @@ test('readOutcomes reads the outcomes the review step left, and none after a rev
 
 test('the caller triggers on closed, and the action gives a closed run no model key', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-  assert.match(readme, /types: \[opened, reopened, ready_for_review, closed\]/);
+  assert.match(readme, /types: \[opened, reopened, ready_for_review, synchronize, closed\]/);
   const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
   const caller = readme.slice(callerStart, readme.indexOf('\n```', callerStart));
   assertOutcomesJob(caller, 'README');

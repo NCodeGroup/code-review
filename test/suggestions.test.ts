@@ -92,6 +92,11 @@ test("results built without the author's write access hold back suggestions too"
   assert.equal(results.suggestionsWithheld, 1);
 });
 
+test("buildResults marks the results of a fork's pull request fromFork", () => {
+  assert.equal(buildResults(outcome([]), { ...context, fromFork: true }).fromFork, true);
+  assert.equal('fromFork' in buildResults(outcome([]), context), false);
+});
+
 test('the check run says how many suggestions were held back, and nothing when none was', () => {
   const one = checkSummary(buildResults(outcome([finding('F1', 2)]), context));
   assert.match(

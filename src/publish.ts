@@ -164,7 +164,8 @@ async function main(): Promise<void> {
     await followUpThreads((query, variables) => githubGraphql(api, query, variables), actions, secrets);
   }
 
-  if (approving && approverMissing) writeLog(approverMissingWarning);
+  // A fork's pull request gets no approver token on purpose, so it gets no warning that the token is missing.
+  if (approving && approverMissing && !results.fromFork) writeLog(approverMissingWarning);
   const state = approving
     ? await applyApproval(api, results, approval.approve, secrets, writeLog, approver)
     : 'not-approved';

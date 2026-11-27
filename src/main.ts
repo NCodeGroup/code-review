@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bedrockFallbackFor, runAgent, totalCost, type AgentRun } from './agent.ts';
 import { skippedStatus, stoppedBy, stoppedRecord, type RunStatus } from './checks.ts';
-import { decideRun, type Command, type CommentEvent } from './command.ts';
+import { decideRun, isFromFork, reviewForksOn, type Command, type CommentEvent } from './command.ts';
 import { errorText, readIssueComments, type ListedComment } from './comments.ts';
 import { AnthropicTokenSource, secretValues, type Credentials } from './credentials.ts';
 import { required, take } from './env.ts';
@@ -173,6 +173,7 @@ async function main(): Promise<void> {
   const prPath = path.resolve(required('CODE_REVIEW_PR_PATH'));
   const basePath = path.resolve(required('CODE_REVIEW_BASE_PATH'));
   const repository = required('GITHUB_REPOSITORY');
+  const reviewForks = reviewForksOn(process.env['CODE_REVIEW_REVIEW_FORKS']);
   let event = JSON.parse(readFileSync(required('GITHUB_EVENT_PATH'), 'utf8'));
   const githubToken = take('CODE_REVIEW_GITHUB_TOKEN');
   if (githubToken) run.githubToken = githubToken;
@@ -190,7 +191,7 @@ async function main(): Promise<void> {
   if (isClosedEvent(event)) {
     if (!githubToken)
       throw new Error("CODE_REVIEW_GITHUB_TOKEN isn't set; the outcomes need it to read the review threads.");
-    await recordOutcomes(github, event, repository, outDir);
+    await recordOutcomes(github, event, repository, outDir, writeLog, { reviewForks });
     return;
   }
   // A /review comment carries the issue, not the pull request, so the decision reads the pull request from the API.
@@ -201,6 +202,7 @@ async function main(): Promise<void> {
     repository,
     (number) => fetchPullRequest(repository, number, githubToken),
     reviewedHead,
+    { reviewForks },
   );
   if (!decision.run) {
     writeLog(decision.reason);
@@ -219,6 +221,7 @@ async function main(): Promise<void> {
     await teach({ outDir, repository, number, githubToken, event }, command);
     return;
   }
+  const fromFork = isFromFork(decision.pullRequest, repository);
   const isWriter = writerCheck(repository, github, log);
   // After three reviews with no word from the maintainer, an automatic run reviews nothing and makes no model call. Its
   // status lets the finish step complete an acknowledged check run, so a paused run never leaves one in progress.
@@ -340,6 +343,7 @@ async function main(): Promise<void> {
       pullRequest: pullRequest.number,
       headSha: pullRequest.headSha,
       authorCanWrite: pullRequest.authorCanWrite,
+      ...(fromFork ? { fromFork: true } : {}),
       provider: choice.provider,
       providerReason: choice.reason,
       ...(fallback?.reason ? { switchedToBedrock: fallback.reason } : {}),
@@ -381,7 +385,13 @@ async function main(): Promise<void> {
       },
       ...reReviewTrace,
     };
-    writeForPublish(outDir, { 'results.json': results, 'trace.json': trace }, secretValues(credentials), 'reviewed');
+    writeForPublish(
+      outDir,
+      { 'results.json': results, 'trace.json': trace },
+      secretValues(credentials),
+      'reviewed',
+      fromFork ? { fork: 'true' } : {},
+    );
   } finally {
     await proxy.close();
   }
