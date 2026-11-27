@@ -27,6 +27,11 @@ name: Code review
 # https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md,
 # say why.
 #
+# review-forks: true (v1.7.0 on) reviews a pull request from a fork too: when it opens or reopens as ready for review,
+# when it's marked ready and on a writer's /review, never as a draft when it opens, and never as an approval, so a
+# maintainer approves it. Its closing records its outcomes. The README's Pull requests from forks section and
+# docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md say why.
+#
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
 #
@@ -48,18 +53,18 @@ permissions: {}
 
 jobs:
   review:
-    # The engine checks a comment again (`/review`, `/review explain` or `/review teach`, from a writer, on a pull request
-    # that isn't from a fork) and stops before any model call when it isn't one. A plain `/review` on a closed pull
-    # request doesn't run, so it can't cancel or displace the outcomes job, which shares its concurrency group. The
-    # concurrency group below decides which comments can cancel a review.
+    # The engine checks a comment again (`/review`, `/review explain` or `/review teach`, from a writer) and stops
+    # before any model call when it isn't one. A plain `/review` on a closed pull request doesn't run, so it can't
+    # cancel or displace the outcomes job, which shares its concurrency group. The concurrency group below decides
+    # which comments can cancel a review.
     #
-    # A person opening, reopening or marking ready a pull request from the repository starts a review, and so does
-    # Dependabot opening one or pushing to its own (synchronize), so the approval follows Dependabot's latest commit
-    # (project-template ADR-0041). Another bot's pull request, and a push by anyone but Dependabot, start nothing; a
-    # job its if: skips joins no concurrency group, so it cancels no review.
+    # A person opening, reopening or marking ready a pull request starts a review, one from a fork only when it isn't a
+    # draft, and so does Dependabot opening one or pushing to its own (synchronize), so the approval follows
+    # Dependabot's latest commit (project-template ADR-0041). Another bot's pull request, and a push by anyone but
+    # Dependabot, start nothing; a job its if: skips joins no concurrency group, so it cancels no review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
         !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
         ((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||
           (github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]'))) ||
@@ -93,7 +98,7 @@ jobs:
           persist-credentials: false
 
       - name: Review
-        uses: NCodeGroup/code-review@06f654d475d42ddd674d35159b227500e74947dc # v1.6.0
+        uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -102,14 +107,15 @@ jobs:
           # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
           # secret of the code-review environment, which only the default branch can deploy to.
           approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
+          # Reviews a fork's pull request once it isn't a draft; it is never approved (ADR-1013).
+          review-forks: true
 
   outcomes:
-    # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
-    # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
-    # environment, without id-token: write, the Bedrock key or a checkout.
+    # A closed pull request, merged or not, a fork's too, whoever closed it (a merge queue merges as a bot) and whatever
+    # its labels: records what became of each finding, by rules alone. It makes no model call, so it runs outside the
+    # code-review environment, without id-token: write, the Bedrock key or a checkout.
     if: >-
-      github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'pull_request_target' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The review's group: it waits for a review in progress, so that review's threads are counted, instead of cancelling it.
@@ -121,6 +127,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@06f654d475d42ddd674d35159b227500e74947dc # v1.6.0
+        uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
+          review-forks: true

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- This repository's `code-review.yml` and the README's caller pin v1.7.0 and pass `review-forks: true` to both NCode Review steps, so a pull request from a fork is reviewed once it isn't a draft, never as an approval, and its closing records its outcomes; the README's Pull requests from forks section says how to leave forks out ([#256](https://github.com/NCodeGroup/code-review/issues/256), [ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
+
 ## [1.7.0] - 2026-11-27
 
 ### Added
