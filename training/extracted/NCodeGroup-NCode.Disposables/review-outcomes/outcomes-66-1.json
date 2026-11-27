@@ -1,0 +1,208 @@
+{
+  "hash": "a3301dac61c39f1c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #66",
+  "rules": [
+    {
+      "statement": "Don't report an `async ValueTask` method just because its common path usually completes synchronously; only ask for a hand-written fast path when a measured cost shows it is needed.",
+      "why": "An async ValueTask state machine is a struct that is boxed only when an await doesn't complete at once, so the synchronous path allocates nothing, and without a measured cost the simpler async form stays.",
+      "check": "Before flagging an async method for the async seam on a mostly-synchronous path, check whether it returns ValueTask, whether the awaited calls usually complete synchronously, and whether any benchmark shows a cost.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a private async helper that returns `Task` instead of `ValueTask` when its result is discarded by a callback API such as `SynchronizationContext.Post` and a comment records why.",
+      "why": "A ValueTask must be consumed exactly once (CA2012), so a discarded ValueTask would break that rule; returning ValueTask and calling `.AsTask()` would only add a conversion.",
+      "check": "Look at whether the helper's result is discarded by its caller (posted callbacks, fire-and-forget with errors routed elsewhere) and whether a comment above it records the exception to the ValueTask convention.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report the parameter count of an overload family (such as arity 1 to 8 state overloads) that deliberately mirrors an existing sibling API's overloads.",
+      "why": "Keeping parallel factories (for example sync and async) in step is the intent, and capping arity or using a single state type would make them differ.",
+      "check": "Before flagging many-parameter overloads, check whether a sibling type already ships the same overload set and whether an ADR records the parity.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an optional trailing `CancellationToken cancellationToken = default` on a method that mirrors a BCL method with the same optional token and has a single overload.",
+      "why": "A trailing token is what the convention asks for; making it required would force every caller without one to pass `CancellationToken.None`, and the one-overload-with-optional-parameters rule still holds.",
+      "check": "Check whether the token is trailing, whether the wrapped BCL API (e.g. `SemaphoreSlim.WaitAsync`) and the sync sibling take it optionally, and whether there is only one overload.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report randomized `Task.Run` race tests as not proving overlap when gated deterministic tests beside them already cover the interleaving and the race tests are kept as stress tests.",
+      "why": "The randomized tests are a deliberate extra check; a start barrier would make overlap more likely without proving it, and the gated tests are the ones that cover the window.",
+      "check": "Look for sibling gated tests (TaskCompletionSource or ManualResetEventSlim holding an operation open) covering the same interleaving before flagging a race test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test a concurrency window deterministically by gating one operation open (a `TaskCompletionSource` for async, a bounded `ManualResetEventSlim` for sync), running the competing operation, asserting the intermediate state, then releasing the gate.",
+      "why": "Unsynchronized `Task.Run` loops with mocks that complete immediately may never hit the interleaving, so a regression there goes unnoticed.",
+      "check": "For thread-safe types with CAS or lock-free state machines (set vs dispose, release vs dispose, add vs dispose), check that at least one gated test holds the window open; flag suites with only single-threaded or ungated race tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, make an async delegate stub fail by returning a faulted task (`ValueTask.FromException(...)`/`Task.FromException(...)`) rather than throwing synchronously with `() => throw ...`.",
+      "why": "A synchronously throwing stub doesn't cover an awaited task that faults, which is how real async code fails.",
+      "check": "Look for `Func<ValueTask>` or `Func<Task>` stubs written as `() => throw ...` in tests of failure paths.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert the exact expected exception type (and inner exceptions where relevant) instead of `Assert.ThrowsAny<Exception>`/`ThrowsAnyAsync<Exception>`.",
+      "why": "Accepting any exception lets an unrelated one, such as an ObjectDisposedException, keep the test green.",
+      "check": "Flag `ThrowsAny<Exception>` / `ThrowsAnyAsync<Exception>` and compare with the sync twin test's assertions.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a null-argument test captures the `ArgumentNullException` and asserts its `ParamName`.",
+      "why": "A null check that names the wrong parameter would otherwise still pass.",
+      "check": "Look for bare `Assert.Throws<ArgumentNullException>(...)` without a following `ParamName` assertion.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, give every public method that guards a null argument its own null-argument test, including each sibling overload or extension method.",
+      "why": "If one guard were dropped or named the wrong parameter, callers would get a NullReferenceException or wrong ParamName and the suite would stay green.",
+      "check": "Compare the set of public methods with `ArgumentNullException` guards against the null-argument tests; flag siblings (e.g. WriteLock next to ReadLock) with none.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that checks something does not throw must assert it explicitly, e.g. `Assert.Null(Record.Exception(...))` or `Record.ExceptionAsync`, not just call the code or discard a read.",
+      "why": "A test with no assertion shows nothing explicit, and a cleanup could delete an apparently unused read, leaving a test that asserts nothing.",
+      "check": "Flag tests with no Assert/Verify call, or ending in a bare discard like `_ = x.Property;` used as an implicit check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, each test asserts one behavior; split a test whose name or assertions cover two behaviors (e.g. `..._PropagatesAndDisposes...`) into one test per behavior.",
+      "why": "When one test checks two behaviors, a failure doesn't show which behavior broke.",
+      "check": "Look for test names joining two outcomes with And, or tests asserting unrelated outcomes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep README prose consistent with the sample it introduces, and when README samples are generated from tests (e.g. mdsnippets), fix the source test and regenerate rather than editing the README.",
+      "why": "Prose that describes a different type than the sample shows leaves readers unable to tell which behavior applies, and hand edits to generated snippets are lost.",
+      "check": "Compare each README lead-in sentence to the types and calls in the snippet below it; check that snippet changes come from the test file.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "README.md",
+        "**/*.md",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A code comment describes the synchronization the code actually uses and sits on the member or accessor that does it.",
+      "why": "Comments copied from elsewhere (e.g. naming SpinLock above a CompareExchange loop) or placed above a getter that only reads mislead readers about the primitive and the behavior.",
+      "check": "Compare comments about locking or retry loops with the code directly below them; flag comments above `get` that describe `set` behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't name a member the same as a commonly used type it's next to, such as a property `Action` of type `Action<T>`; use a role name like `Callback`.",
+      "why": "The property and the type are easy to confuse when reading the code.",
+      "check": "Look for members named `Action`, `Func`, `Task` or other BCL type names, especially when typed as that type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write an ADR's Context section in present terms that stay true after the decision is applied, not as a description of the code before the change.",
+      "why": "After merge a Context describing the old state contradicts both the Decision and the code.",
+      "check": "In changed ADRs, look for Context sentences describing current code that the change itself makes false.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change adds public overloads or static state, update the architecture docs that list the API surface or claim what static state exists.",
+      "why": "Otherwise readers of the component table miss the new overloads and the doc gives a wrong picture of static state.",
+      "check": "For new public overloads or static fields and delegates, check docs/architecture.md (or equivalent) tables and statements about static state.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code calls `SynchronizationContext.OperationStarted()` before `Post`, call `OperationCompleted()` and rethrow if `Post` throws.",
+      "why": "Otherwise a context that rejects the post leaves its operation count unbalanced and the failure is silent.",
+      "check": "Look for OperationStarted followed by Post without a try/catch that balances with OperationCompleted on failure.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

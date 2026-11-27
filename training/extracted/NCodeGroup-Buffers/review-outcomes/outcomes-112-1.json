@@ -1,0 +1,196 @@
+{
+  "hash": "12f6761381fa567b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #112",
+  "rules": [
+    {
+      "statement": "Don't report a documentation evidence or proof-link entry for naming a file or line range that has since moved, when the entry pins a commit at which that file and range were correct and the pinned commit stays reachable.",
+      "why": "The evidence check and the site links read each range at the pinned commit, so the entries are correct; pointing them at today's files without moving the pin would break the check.",
+      "check": "Before reporting a stale file/line reference in an evidence file, look for a pinned commit field and check the reference against that commit, not the working tree.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.json",
+        "docs/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report as a breaking change a minor-release change that gives a documented exception to input that never worked, such as a length above int.MaxValue that previously failed with an undocumented exception.",
+      "why": "Code written against the documentation sees no change, so documenting a new exception for input that could never succeed is acceptable in a minor release when the changelog records it.",
+      "check": "Before flagging an exception-type change as semver-major, check whether the old exception was documented and whether the input could ever succeed before; confirm the changelog's Changed entry records it.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report new entries added directly to PublicAPI.Shipped.txt when the pull request is the release commit for that version.",
+      "why": "The release change moves the unshipped entries into PublicAPI.Shipped.txt and leaves PublicAPI.Unshipped.txt holding only `#nullable enable`.",
+      "check": "Before flagging Shipped additions, check whether the version file and CHANGELOG show this PR releases the version and whether PublicAPI.Unshipped.txt is left empty except `#nullable enable`.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.Shipped.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace a public enum with an open strategy when every member names something the library implements itself and callers can't plug in new members, and don't ask for a throwing default switch arm that earlier validation makes unreachable.",
+      "why": "An enum is kept for members fixed by the code itself, so adding one is an additive change; a default arm that no test can reach is dead code to delete.",
+      "check": "Check whether callers can extend the set, and whether a validation step rejects undefined enum values before the switch runs.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A member documented to throw ObjectDisposedException after Dispose must check disposal before any shortcut, such as a ReferenceEquals check in Equals, that could return early.",
+      "why": "Otherwise a disposed instance compared with itself returns true instead of the documented exception, hiding use-after-dispose.",
+      "check": "Look at Equals and similar methods on disposable types for a same-instance or other fast path that runs before the disposal check.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Documentation on which members throw after Dispose must match the code and name the members, such as Flush, FlushAsync or canceled-token paths, that don't throw.",
+      "why": "A caller who relies on the docs would expect a throw that never comes.",
+      "check": "Compare class remarks claiming 'every member throws after Dispose' against members that skip the disposal check.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test a helper that rents a buffer and disposes it when filling fails by checking that the rental was returned and zeroed, not only that the exception was thrown.",
+      "why": "If the test only checks the exception type, deleting the dispose from the catch block leaves the suite green, and secret data could stay in an unzeroed pooled buffer.",
+      "check": "Look for failure-path tests on rent-and-fill helpers that assert only the exception type; each Span and Memory overload needs coverage.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert metric meter names, instrument units and tag keys and values as string literals, not through the library's internal constants.",
+      "why": "Dashboards depend on these names, and a test that reads the constants won't catch a rename.",
+      "check": "Look for metrics tests that compare against internal constants, or that skip the unit on some counters.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When several types implement the same sizing or growth rule and constant, move them into one internal helper that all of them call.",
+      "why": "If the rule changes in one type, the copies in the other types can keep the old rule.",
+      "check": "Look for duplicated required/doubled/minimum capacity computations and repeated minimum-size constants across buffer types.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Implement a Span overload by calling its Memory sibling and returning memory.Span, rather than repeating the validation, sizing, rental and dispose-on-throw body in each overload.",
+      "why": "If each overload repeats the body, a fix to failure handling or sizing in one can miss its sibling.",
+      "check": "Look for Span/Memory overload pairs whose bodies duplicate the rent-and-fill logic.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a method returns a pooled owner together with an out Span or Memory view, its XML docs must say that the view is valid only until the returned owner is disposed.",
+      "why": "A caller could keep using the view after disposing the owner and read zeros or another renter's data.",
+      "check": "Check the <param> or <returns> docs of rent helpers with out Span/Memory parameters for a statement about how long the view is valid.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give new private and internal helpers a /// summary, plus <returns> when the return value carries a contract, such as a count of elements written or an owner that the caller must dispose.",
+      "why": "Otherwise maintainers have to read method bodies to learn these contracts.",
+      "check": "Look for new non-public methods and properties without /// docs, especially ones whose return value must be disposed or is a count.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Document an internal member that exists only for tests as test-only.",
+      "why": "Otherwise a later refactor can't tell that the member exists only to give tests access.",
+      "check": "Look for internal members whose only readers are in test projects and whose docs don't say so.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap edited Markdown/MDX prose paragraphs evenly at about 120 columns, and write identifiers such as meter names and constants as code spans.",
+      "why": "This keeps edits consistent with the rest of the docs, and a wrap check may flag long lines.",
+      "check": "Look in edited doc paragraphs for lines well past 120 columns, uneven wraps, or identifiers in plain text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When citing an ADR from another project, such as the project template, include that project's prefix (for example 'project-template ADR-0113').",
+      "why": "Without the prefix, readers may take it for one of this project's own records.",
+      "check": "Look in ADRs and docs for ADR numbers outside this project's own numbering range that have no project prefix.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, tests of argument validation must assert the exception's ParamName, not just use a bare Assert.Throws.",
+      "why": "Without ParamName, the test still passes if a different check, or one on the wrong parameter, rejects the input.",
+      "check": "Look for Assert.Throws<ArgumentException/ArgumentNullException/ArgumentOutOfRangeException> whose result's ParamName isn't checked.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't check many members or cases in one test; split them into one fact per behavior or a [Theory] over the cases.",
+      "why": "The first failing assertion hides the rest, and the test name doesn't say which member broke.",
+      "check": "Look for single tests asserting many members (for example after Dispose) or many unrelated argument cases.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

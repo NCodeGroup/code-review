@@ -10,11 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The `declined` eval subset, also a `subset` choice of the Eval workflow, runs four must-not cases built from findings the maintainer declined, one for each kind that `prompts/specialist.md` tells the reviewers not to report: a test-project rule (`null!` in an argument-validation test, nested test doubles), a compatibility or changelog note asked of a pre-release repository, older text on a line a renumber only rewrote, and another repository's `[Unreleased]` changelog rule asked of a plan that writes its own dated section ([#191](https://github.com/NCodeGroup/code-review/issues/191), [ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
 
+- `npm run train` reads review threads saved from the GitHub MCP server's `get_review_comments` with `--comments <folder>`, for a session that can't call `gh api`, and refuses a folder that holds none. `--topics` regenerates only the guidance topics it names, and a topic's generalization call may take 20 minutes, so the largest topic no longer times out ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
+
 ### Changed
 
 - ADR-1006, the README's Versions section and the header of `.github/dependabot.yml` say that the Dependabot cooldown's `exclude` applies to the `github-actions` ecosystem, as Dependabot's pull requests for v1.2.0, v1.4.2 and v1.5.1 show, so this repository's pin follows a release within a weekday, and that the actions are checked each weekday and the npm packages each week ([#198](https://github.com/NCodeGroup/code-review/issues/198), [ADR-1006](docs/decisions/1006-a-plan-that-reaches-consumers-releases-when-its-pull-request-merges.md)).
 
 - The README's Evals section records a run of the `declined` eval subset, as the result to compare later prompt changes with: 0 must-not violations in each of its four cases, at a review cost of $4.91 ([#247](https://github.com/NCodeGroup/code-review/issues/247)).
+
+- The learned guidance includes the bot's answered findings in Randomness, NCode.Disposables, Buffers and coordination: reviewers leave template-owned, Copier-generated and snippet-copied files alone, and check `.copier-answers.yml` and `AGENTS.md` before calling an edit a template-ownership violation ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
 
 ## [1.5.1] - 2026-11-22
 

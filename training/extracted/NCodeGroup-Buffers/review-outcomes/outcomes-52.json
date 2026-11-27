@@ -1,0 +1,19 @@
+{
+  "hash": "8a963bea82d5afeb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #52",
+  "rules": [
+    {
+      "statement": "When a change alters a public API's documented behaviour, update every other description of that behaviour in the same change: the README, snippet sources and ADRs, as well as the XML docs and changelog.",
+      "why": "A README that still describes the old behaviour contradicts the corrected XML docs and changelog, and misleads readers about how to use the API (for example, they may wrongly think an object is unusable after disposal).",
+      "check": "When a diff changes semantics described in XML docs or the changelog (ownership, disposal, lifetime, validity after a call), search README.md, doc snippet sources and ADRs for statements about that API, and report any that still describe the old behaviour.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

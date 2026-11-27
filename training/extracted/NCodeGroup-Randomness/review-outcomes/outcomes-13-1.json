@@ -1,0 +1,272 @@
+{
+  "hash": "09e683b71330802e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #13",
+  "rules": [
+    {
+      "statement": "Don't ask to narrow a catch-all that translates every unexpected exception into the component's documented contract exception when the interface's contract says implementations fail only with that exception type.",
+      "why": "Narrowing it would let raw exceptions escape the interface contract. The catch-all is deliberate and pinned by tests.",
+      "check": "Before reporting, read the interface or adapter contract docs and the sibling implementations. If they require failing only with the domain exception, the catch-all is correct.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to set HttpClient.Timeout to Timeout.InfiniteTimeSpan on a client whose AddStandardResilienceHandler total timeout is shorter than the 100-second default client timeout.",
+      "why": "The pipeline's total timeout always fires first, so the client timeout never decides, and no rule asks for an infinite client timeout.",
+      "check": "Compare the configured resilience total timeout with HttpClient.Timeout. Report only if the total timeout is longer than the client timeout.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report the use of Microsoft.Extensions.Http.Resilience's AddStandardResilienceHandler on a named HttpClient as a violation that calls for a hand-written Polly.Core DelegatingHandler.",
+      "why": "The C# instructions name Microsoft.Extensions.Http.Resilience for bounded, jittered retries of outbound calls.",
+      "check": "Check the coding instructions' outbound-calls section before asking to swap the resilience package.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to split a theory row into its own test when the row's input passes every check except the one under test.",
+      "why": "Such a row already isolates that check: removing the check makes only that row fail.",
+      "check": "Before reporting, ask whether the row's input could be refused for any reason other than the setting or check it targets.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report as nested calls the calls that sit in string interpolations, in lambda bodies, as the receiver of a member call, in object or array creation expressions, or in a method chain. The hoist-into-a-local rule covers only calls passed directly as arguments to other calls.",
+      "why": "The hoisting convention exempts these forms, as applied consistently across the codebase.",
+      "check": "Report only a method call written directly as an argument of another call, outside those exempt forms.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to rename an IServiceCollection variable or parameter named `services`, or a JsonElement that holds a parsed response's root and is named `document`.",
+      "why": "The C# and test instructions and existing code use `services`. A parsed response's root element is the document.",
+      "check": "Before reporting a naming issue, check that a written naming rule actually requires the other name.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Options validation for an outbound base address must refuse a URI that carries user info, as well as a URI that isn't an absolute https URL ending in a slash with no query or fragment.",
+      "why": "A URL with embedded credentials would otherwise pass start-up validation and send them on every request.",
+      "check": "Look at validators of Uri options for a UserInfo check alongside the scheme, query and fragment checks.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an options validator to echo the refused value of a URL or other credential-bearing option in its failure message. Naming the configuration key is enough.",
+      "why": "A base address is exactly where a credential would sit, and echoing it would copy that credential into the start-up exception.",
+      "check": "Before asking for the value in a validation message, consider whether the option can contain secrets such as user info.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace a bounded byte[] response body with a pooled IBufferWriter<byte> when every caller parses or hashes the whole document. Rent only the transient chunk buffer from ArrayPool<byte>.Shared.",
+      "why": "The body must be kept whole anyway, so the gain is a chunk buffer that is already pooled.",
+      "check": "Check whether the read is size-capped and its callers need the full body before reporting the byte[].",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When logic is deliberately duplicated across independently versioned packages, mark each copy with a `// Copied on purpose` comment that names the other copies, and don't ask to merge the copies into a shared type.",
+      "why": "Independently versioned packages never share a type, and the comment keeps a fix from landing in only one copy.",
+      "check": "Look for duplicated helpers across packages that have no comment naming their twins. Don't suggest a shared helper across separately versioned packages.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build options-validation failure messages from the same named constants the checks use, rather than repeating threshold literals in the message.",
+      "why": "A message written with a literal can drift from its check.",
+      "check": "Look for numbers or lengths in validator messages that duplicate the limit the code tests.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to drop a null check on a non-nullable reference-type options property: a configure callback can set null at runtime. The validator should refuse null with a message naming the key, not coalesce it to a new default.",
+      "why": "Without the check, the validator would throw instead of naming the configuration key, and coalescing hides bad configuration.",
+      "check": "For options validators, check that null is refused with a keyed message rather than replaced by `?? []`.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When wrapping a caught exception such as JsonException, FormatException or CryptographicException in a domain exception, pass it as the inner exception.",
+      "why": "Otherwise diagnostic details such as the parser's line and byte position are lost.",
+      "check": "Look for catch blocks that throw a new exception built from the caught exception's message only.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover every branch of an exception-classification helper: an unexpected exception, each outage type, and each exception that must propagate unwrapped.",
+      "why": "If the clauses were reordered or dropped, bad data could be reported as an outage, or leak unwrapped, and no test would fail.",
+      "check": "Compare the catch or when clauses of the classifier with the tests that drive each one.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, pin each comparison boundary on both sides: a value exactly at the limit, a value just outside it, and the smallest accepted value of each validator bound.",
+      "why": "Otherwise flipping `<` to `<=`, or `>` to `>=`, leaves the suite green.",
+      "check": "For each new bound or range check, look for tests at the exact limit and just beyond it, not only far-away values.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test a shared or deduplicated asynchronous fetch with concurrent callers: hold the stub's response behind a TaskCompletionSource, never a fixed delay, and assert a single request and the same result.",
+      "why": "Sequential calls never exercise the concurrent path, so a regression where each caller fetches would go unnoticed.",
+      "check": "Look for caches or single-flight code whose tests only make calls one after another, or that use Task.Delay to create overlap.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A fetch shared by several callers must run under its own timeout, not the first caller's CancellationToken. Each caller stops waiting with WaitAsync on its own token.",
+      "why": "Otherwise one caller's cancellation aborts the fetch that other callers are waiting on.",
+      "check": "Look for a cached or shared Task started with the triggering caller's cancellation token.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a static class to move its static helpers ahead of its extension block. The statics-first member order applies to types that also have instance members.",
+      "why": "A static class has no instance members for its statics to precede.",
+      "check": "Before reporting member order, check whether the type has instance members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hash concatenated inputs with IncrementalHash, appending each part, instead of allocating an array just to concatenate them, and encode text straight into the destination writer or buffer.",
+      "why": "Temporary concatenation arrays and string-to-byte[] encodings are avoidable allocations on every call.",
+      "check": "Look for byte arrays built only to be hashed, and for Encoding.GetBytes(string) results that are copied straight on.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Have fixed-size cryptographic routines write into a caller-supplied Span<byte> with stackalloc'd blocks, rather than returning byte[] and allocating transient arrays.",
+      "why": "Transient arrays and ToArray copies add several allocations per call.",
+      "check": "Look for new byte[] temporaries, ToArray() copies and byte[] returns in hashing or expansion helpers whose sizes are fixed.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put a comment above each group of standard test vectors that cites its source, such as the RFC appendix, along with the inputs.",
+      "why": "Without it, reviewers can't confirm that the expected bytes are the specification's, unedited.",
+      "check": "Look for hard-coded expected cryptographic outputs that have no provenance comment.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, exercise exceptional branches of a cryptographic algorithm, such as the zero input of a curve map, with an expected value taken from an independent implementation or the specification.",
+      "why": "A real input reaches such a branch with negligible probability, so only a direct test catches a regression in it.",
+      "check": "Look for special-case arms in crypto math that no test reaches.",
+      "scope": "domain",
+      "domain": "cryptography",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, an options validator for an outbound HTTP base address must not accept a URI that contains user info.",
+      "why": "Credentials embedded in a configured URL are sent on every request.",
+      "check": "Look at Uri option validators for a UserInfo.Length check.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace a literal resilience or timeout setting with a named constant when the literal is used once, on the property that names it.",
+      "why": "The property name already names the value, so a constant adds nothing.",
+      "check": "Before reporting a magic number, check whether it is repeated, or used once on a self-describing property.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

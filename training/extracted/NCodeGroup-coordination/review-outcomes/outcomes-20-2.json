@@ -1,0 +1,96 @@
+{
+  "hash": "fe84f862d11f2915",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #20",
+  "rules": [
+    {
+      "statement": "Make a ValueTask-returning wait method non-async when it often finishes synchronously: return ValueTask.CompletedTask if the underlying task has already completed, and otherwise return new ValueTask(task.WaitAsync(cancellationToken)).",
+      "why": "An async method runs and allocates a state machine even in the common case where the wait is already over.",
+      "check": "Look for `async ValueTask` methods whose only await is a task that is frequently already complete (e.g. a `Task.CompletedTask` returned when the resource is free) with no fast path.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a foreach over an interface-typed collection for enumerator allocation when the loop runs on a path that isn't per-request (for example, once per session end) or when the empty case iterates a shared empty array.",
+      "why": "The allocation-free loop rule targets per-request paths, and .NET hands out a cached enumerator for an empty array, so the empty case allocates nothing.",
+      "check": "Before reporting, check how often the loop runs (per request or per lifecycle event) and whether an empty result is the shared Array.Empty instance.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "On read paths that may return an empty collection, use a shared empty instance (such as Array.Empty<T>() or a `[]` collection expression typed as IEnumerable<T> or IReadOnlyList<T>) instead of allocating a new empty List<T> each time.",
+      "why": "Each read of an empty result otherwise allocates a list it doesn't need.",
+      "check": "Look for `new List<T>()`, or a `[]` assigned to a List<T>-typed target, produced for an empty result on frequently called read, watch or notification paths.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a method call inside an object initializer's property assignment as a violation of the rule against nesting a call inside another call's arguments.",
+      "why": "A property assignment in an initializer isn't an argument, and it reads as the member's value. No convention covers calls in initializers.",
+      "check": "Before reporting a nested call, confirm that the inner call really is an argument to another call, not the value in an initializer assignment.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to split a test that drives one behavior and asserts more than one of its effects (such as the return value and the resulting state), even when its name joins them with 'And'.",
+      "why": "The test conventions ask for one behavior per test, not one assertion per test.",
+      "check": "Before reporting, decide whether the test performs one action whose several effects it asserts (acceptable) or performs a second, separate action and asserts on that.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test verifies its named behavior and then performs a further action and asserts on that, move the further action and its assertions into a separate, named test.",
+      "why": "Otherwise a failure in either half points at the whole test, and the test's name describes only the first behavior.",
+      "check": "Look for tests that act again (publish, call or advance) after the assertions for the behavior in their name, and then assert on that second action.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, declare each IDisposable the test creates (such as an object that owns a timer) with `using var`, and have helpers take the disposable as a parameter rather than create it, so that the test owns and disposes it.",
+      "why": "Undisposed objects leave live resources such as timers behind instead of releasing them deterministically.",
+      "check": "Look for `var x = new SomeDisposable(...)` in tests without `using`, and for helper methods that create a disposable internally that no caller disposes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Replace an unexplained hard-coded duration with a named constant whose documentation says why that value was chosen (for example, that it only has to outlive the call).",
+      "why": "Otherwise readers have to work out why that particular value is used.",
+      "check": "Look for inline literals such as `TimeSpan.FromSeconds(30)` whose purpose isn't clear from context.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "hash": "3e94d712f1c7ada6",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #92",
+  "rules": [
+    {
+      "statement": "In a test project, a property-based test (such as an FsCheck property returning a boolean) checks exactly one behavior: split a property that combines several checks into one property per behavior, and don't check anything the test name doesn't mention.",
+      "why": "When a property that returns one combined boolean fails, FsCheck reports only that it was false, not which of the combined behaviors broke.",
+      "check": "Look for property tests whose returned boolean joins several conditions with && (for example, order plus exception content plus exception type), whose names join outcomes with \"And\", or that check state (such as IsDisposed) the name doesn't mention.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

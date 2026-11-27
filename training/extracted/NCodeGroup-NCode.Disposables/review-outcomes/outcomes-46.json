@@ -1,0 +1,53 @@
+{
+  "hash": "76bd152d1b53b227",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #46",
+  "rules": [
+    {
+      "statement": "Don't report that a publish workflow skips the Definition of Done script (for example `./build/dod.ps1`) when it only publishes a tagged commit that it first checks is on the default branch, and the default branch's required CI check already runs that script.",
+      "why": "Every commit on the default branch has already passed the required CI build, which runs the formatting, SPDX header and decision index checks. Running them again at publish time adds nothing.",
+      "check": "Before reporting, look for a step in the publish workflow that checks the tagged commit is on the default branch, and confirm that the required CI workflow runs the DoD script.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report that a pull request closes an issue while part of it is left as an after-merge step, when that step is an admin action outside the repository (such as deleting a secret or revoking a key) and the plan or PR description tracks it as a follow-up.",
+      "why": "No commit can make an admin action outside the repository. Tracking it as a follow-up issue keeps it from being lost once the original issue closes.",
+      "check": "Before reporting, check whether the remaining step can be done in a commit at all, and whether the plan's Follow-ups section or the PR description tracks it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In validation regexes for tags, versions or IDs, use `[0-9]` instead of `\\d` and `\\z` instead of `$`, and match case-sensitively (`-cmatch`/`-cnotmatch` in PowerShell).",
+      "why": "In .NET, `\\d` matches non-ASCII digits and `$` accepts a trailing newline. Culture-aware case-insensitive matching lets characters such as the Kelvin sign through `[A-Za-z]`, so malformed values pass validation and fail later with less clear errors.",
+      "check": "Look for `\\d`, a trailing `$`, or a case-insensitive `-match`/`-notmatch` in regexes that validate input used for versions, URLs or API paths.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.yml",
+        "**/*.ps1",
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for local edits to template-owned files. Point the fix at the project template repository instead.",
+      "why": "The template update script throws away local edits to template-owned files, so a local fix would be overwritten.",
+      "check": "Before suggesting a change to a workflow or build file, check whether the project template owns it. If it does, recommend a fix in the template.",
+      "scope": "repository",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

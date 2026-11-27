@@ -1,0 +1,263 @@
+{
+  "hash": "f706256393e4af96",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #22",
+  "rules": [
+    {
+      "statement": "Start independent async reads together and await them with `Task.WhenAll` rather than awaiting them one after another in a loop.",
+      "why": "Sequential awaits on a networked provider add one round trip per read to every request.",
+      "check": "Look for a loop that awaits a read per iteration where no iteration depends on an earlier one's result.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report the `.AsTask()` call on ValueTasks that are collected to pass to `Task.WhenAll` as a needless allocation.",
+      "why": "`Task.WhenAll` needs tasks, so the conversion is required.",
+      "check": "Before reporting an AsTask allocation, see whether the tasks feed `Task.WhenAll` or are stored and awaited more than once.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a best-effort release in a `finally` can fail and the resource expires on its own anyway, absorb the expected failure so the operation's own result or exception stands.",
+      "why": "An exception from the release would otherwise hide a value that was fetched successfully, or replace the real failure.",
+      "check": "Look for a release or give-back in `finally` that can throw and so replace the try block's return value or exception.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a later step of a multi-step acquire fails after an earlier step wrote shared state, undo that state, for example by deleting the registration, before failing or retrying.",
+      "why": "A leftover registration blocks other parties until its time to live or session ends.",
+      "check": "Follow each failure path after the first write in an acquire and check that the write is undone on every path.",
+      "scope": "domain",
+      "domain": "distributed-coordination",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a timeout on give-back or cleanup calls to a coordination provider that run with `CancellationToken.None`, when the provider bounds each call with its own timeout.",
+      "why": "The give-back runs on None by design so that it still happens after the caller cancels, and the provider's own timeout bounds it.",
+      "check": "Before reporting, check whether the design records that cleanup runs on None and whether the provider's calls have a timeout of their own.",
+      "scope": "domain",
+      "domain": "distributed-coordination",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a timeout, or for exceptions to be caught, around a final cleanup call into a handler the caller supplied.",
+      "why": "The handler is the caller's code, so the caller bounds how long it may take, and a failed cleanup has to surface (a stale cache matters more than the cause that ended the run).",
+      "check": "Before reporting, check whether the awaited cleanup call goes to caller-supplied code rather than to an infrastructure dependency.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a distributed rate limiter to fail open when its provider fails if the design records that limiters fail closed on purpose.",
+      "why": "A limiter can't tell whether it guards capacity or abuse. A host that only guards capacity can catch the exception and admit the request itself.",
+      "check": "Before reporting, read the ADR and the limiter interface's remarks to see whether they say failures throw.",
+      "scope": "domain",
+      "domain": "distributed-coordination",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that checks an argument is refused captures the exception and asserts its exact type and its `ParamName`.",
+      "why": "A test that checks only the exception type still passes when a different check rejected the input, so it doesn't pin the check it's named for.",
+      "check": "Look for `Assert.Throws`/`ThrowsAny` on an `ArgumentException` family type with no `ParamName` assertion, or for `ThrowsAny` where the exact type is known.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when several failure cases throw the same exception type, each test asserts the exact message.",
+      "why": "Otherwise one check could reject another case's input without any test failing.",
+      "check": "Look for failure tests that share an exception type and don't assert the message.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, define an error message used in more than one place as one internal const, while tests keep asserting the literal text.",
+      "why": "Inline copies can drift apart, and a test with the literal still fails when the message changes.",
+      "check": "Look for the same exception message literal in several production files, and for tests that assert messages through the production constant.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write the same algorithm loop twice. Put it in one shared helper that both callers use.",
+      "why": "A fix made to one copy can miss the other.",
+      "check": "Look for a new method whose loop matches an existing one elsewhere in the codebase.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a collection an initial capacity when its final size is known, and don't have a helper both mutate an argument and return a result.",
+      "why": "Unsized collections reallocate as they fill, and mutating an argument while also returning a value hides the order of effects.",
+      "check": "Look for `new HashSet`/`List`/`Dictionary` without a capacity when the count is at hand, and for helpers that add to a parameter collection and also return data.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, wait for a background effect on a `TaskCompletionSource` gate that test-owned code signals, not by polling with `Task.Delay`.",
+      "why": "Polling real time makes tests slow and flaky under load.",
+      "check": "Look for test helpers that loop over a condition with `Task.Delay` when a test-owned delegate or handler sets the condition.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a stub that several test files need goes in one shared internal file instead of being copied into each one.",
+      "why": "The copies can drift, and a fix to one can miss the others.",
+      "check": "Look for nested stub classes with the same name and near-identical bodies in more than one test file.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report static methods declared after instance members as breaking a statics-first order. Read that order as applying to static data, and check what the existing code does first.",
+      "why": "The existing code puts static methods after the constructor and properties, and reads 'statics at the top' as static fields and properties.",
+      "check": "Before reporting, see whether the member is a static method or static data, and where sibling types put their static methods.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an `IServiceCollection` local to be named `serviceCollection`. The conventional name is `services`.",
+      "why": "No convention requires `serviceCollection`, and existing tests use `services`.",
+      "check": "Before reporting a naming issue, check the conventions and how sibling tests name the local.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a comment at a discarded call whose method name and summary already say what it does.",
+      "why": "Comments say why, not what, and no convention asks for a comment at a discard.",
+      "check": "Before reporting, check whether the method's name and XML summary already describe the side effect.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `<exception cref>` entries on interface members when the contracts it follows list none and its remarks say how failures surface.",
+      "why": "No convention asks for exception entries on interfaces, and the sibling contracts don't have them.",
+      "check": "Before reporting, look at the sibling interfaces' XML docs and at the member's remarks on failures.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply the no-nested-calls rule to a `stackalloc` size expression or to a lambda argument's body. The rule covers only calls written directly inside another call's arguments.",
+      "why": "A `stackalloc` size isn't a call argument, and a lambda body runs later, so it isn't evaluated into the argument.",
+      "check": "Before reporting a nested call, confirm it is evaluated directly as an argument of another call.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a cheaper algorithm on a rarely run path when a design decision fixes the algorithm and no cost has been measured.",
+      "why": "A cheaper hash would change the decision that every node computes the same result, and membership changes are rare.",
+      "check": "Before reporting, check whether an ADR fixes the algorithm and how often the path runs.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask tests that pin a documented limit to use the production constant instead of the literal value.",
+      "why": "A test that reads the constant moves with it and still passes after an unintended change, which is exactly what the literal catches.",
+      "check": "Before reporting, check whether the literal matches a limit that the docs or an ADR state.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't report a test's namespace for not matching its folder. It is the tested type's namespace with a `.Tests` suffix.",
+      "why": "The test conventions derive the test namespace from the production namespace, and public types can live in the root namespace even when their files sit in subfolders.",
+      "check": "Before reporting, look up the namespace of the type under test.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for an array literal passed straight to an assertion to be hoisted into a local.",
+      "why": "The test conventions keep such literals inline and hoist an array only when it's used more than once.",
+      "check": "Before reporting, check whether the array is used once, directly as an assertion argument.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

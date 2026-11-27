@@ -1,0 +1,18 @@
+{
+  "hash": "8835dab5598e352e",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #79",
+  "rules": [
+    {
+      "statement": "In a project whose own decision records are numbered from 1000, don't ask for the `project-template ADR-NNNN` prefix on a citation of a template record numbered below 1000: the number alone identifies it as the template's record.",
+      "why": "The template convention asks for the prefix only in projects whose own records started below 1000; when a project's records start at 1000, a number below 1000 can only name a template record, and the link points into the project-template folder.",
+      "check": "Before reporting an unprefixed template ADR citation, check the decisions README for where the project's own numbering starts, and whether the link targets the project-template folder. Report only if the project's own records also use numbers below 1000.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

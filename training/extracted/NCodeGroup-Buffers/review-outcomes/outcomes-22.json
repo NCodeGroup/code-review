@@ -1,0 +1,57 @@
+{
+  "hash": "e408e955d3602abb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #22",
+  "rules": [
+    {
+      "statement": "Don't report that a workflow job lacking `environment:` can't reach, or wrongly widens access to, an organization secret when the environment holds no secrets and exists only to scope OIDC federation trust to the job with `id-token: write`.",
+      "why": "The organization secret is visible to every job in an opted-in repository. In that case the environment only gates the OIDC token, so a job without it, and without `id-token`, gets strictly less access than the gated job, not more.",
+      "check": "Before reporting, read the workflow's header comment and the job's `permissions` to see where the secret is defined and what the environment is for. Report only if the environment actually holds the secret, or if the job gains `id-token: write` without the environment.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't let a workflow job whose run must not be skipped share a concurrency group with a job that uses `cancel-in-progress: true`, or narrow the cancelling job's trigger so it can't fire in the same group.",
+      "why": "Otherwise a later run in the shared group can silently cancel or replace a running or pending run. Nothing retries it, so its work is lost.",
+      "check": "Look for jobs with the same `concurrency.group` expression where one sets `cancel-in-progress: true`. Then check whether the cancelling job's `if:` can fire on the same event or state as the job that must complete, for example a comment command on a closed pull request.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't leave notes about migrating from older versions in standing code or configuration comments once the code no longer uses those versions; move them to release notes or upgrade documentation.",
+      "why": "Readers have to work out whether the warning still applies, and the note goes stale.",
+      "check": "Look for header or inline comments that warn about versions, releases or pins older than the ones the file now uses.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report duplicated conditions between a GitHub Actions job's `if:` and its `concurrency.group` expression when a comment already says the two must stay in sync.",
+      "why": "Workflow expressions can't share a definition between a job's own `if` and `concurrency`, and a job output can't feed them. Removing the duplication would need a restructure that isn't worth it for a few conditions.",
+      "check": "Before reporting, check whether a nearby comment already says the `if` and `concurrency` expressions must name the same conditions. Report only if the two lists have actually drifted apart, or if no comment links them.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "code-organization",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

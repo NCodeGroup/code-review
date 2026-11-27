@@ -1,0 +1,281 @@
+{
+  "hash": "e97ed759df626e54",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #19",
+  "rules": [
+    {
+      "statement": "In a test project, give every refusal or overflow branch that the public API can reach (for example adding long.MaxValue then 1) its own test, for both the single and batch variants, and assert the specific error code.",
+      "why": "If a regression drops the check, the value wraps or the refusal changes, and the suite stays green.",
+      "check": "Look for new throw/limit branches in production code with no test reaching them, especially overflow checks and batch variants.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a state is impractical to reach through the public API (such as a counter near long.MaxValue), add a narrow internal hook to seed it rather than leaving the branch untested.",
+      "why": "Without the hook, overflow branches go untested and a regression could hand out wrapped or duplicate values.",
+      "check": "Look for limit branches justified as untestable because the state can't be reached; suggest an internal seed hook.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test the path where an expiry sweep frees space before a capacity refusal, by filling with short-lived entries and advancing a fake clock past expiry.",
+      "why": "Tests that only fill with long-lived entries never run the sweep, so removing it would refuse adds to a set whose members have all expired.",
+      "check": "Look at capacity tests that only use long time-to-live entries while the code sweeps expired entries before refusing.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test of an argument refusal asserts the exception's ParamName and, for operations that change state, that nothing was applied, not only the exception type.",
+      "why": "A provider that refuses for a different reason or rejects a different argument would otherwise pass.",
+      "check": "Look for Assert.Throws<ArgumentException>/ArgumentOutOfRangeException with no ParamName assertion or no follow-up read of the state.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, pin each limit's boundary: a value exactly at the limit is accepted (and is not reported as exceeded), and one past it is refused.",
+      "why": "A `>=` instead of `>` or an off-by-one in a size check otherwise passes the tests.",
+      "check": "For each max size, count or limit, look for an accepted case at exactly the limit.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, drive time with FakeTimeProvider (for example its AutoAdvanceAmount) rather than a hand-written TimeProvider subclass, and when a test depends on the order of clock reads, say so in its comment.",
+      "why": "Hand-written clocks tied to the read count break or pass for the wrong reason when the code adds or removes a timestamp read.",
+      "check": "Look for classes deriving from TimeProvider in tests, and tests whose outcome depends on how many times GetTimestamp/GetUtcNow is read with no comment saying so.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test meant to exercise a branch makes that branch's effect observable in its assertions instead of relying on the code reaching it through an exact sequence of internal calls.",
+      "why": "Otherwise the test can pass without exercising the branch when the implementation changes.",
+      "check": "Look for tests whose names claim a branch (such as ended-during-apply) but whose assertions would hold even if the branch were never taken.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test's name describes the scenario it arranges and the single behavior it asserts; split tests whose names join behaviors with 'And' or that assert behaviors their names omit.",
+      "why": "A failure is otherwise reported under a misleading name, and later assertions don't run after the first fails.",
+      "check": "Compare each test name with its Arrange and Assert sections; flag names with 'And' joining outcomes and extra unrelated assertions.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a concurrency test holds every caller on a shared gate such as a TaskCompletionSource or Barrier and releases them together once all have started.",
+      "why": "Callers started with Task.Run alone may run one after another, so the test can pass without exercising contention.",
+      "check": "Look for race tests that start tasks with Task.Run and await them with no start gate.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Async test helpers take a trailing CancellationToken parameter instead of reading the test framework's cancellation token themselves.",
+      "why": "Callers can then pass their own token, and the helpers follow the usual async method shape.",
+      "check": "Look for async helper methods in tests that read TestContext.Current.CancellationToken or a TestCancellationToken property internally instead of taking a parameter.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't duplicate helpers or fixture values (start times, keyspaces, create helpers) across test files; put them in one shared internal helper, with overloads for the variations.",
+      "why": "Copies drift apart and one change has to be made in several files.",
+      "check": "Look for private helpers or constant properties with the same body declared in several test classes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert against the production constant (made internal if needed) instead of copying its literal text, unless the test pins the wording on purpose.",
+      "why": "A copied literal goes stale when the wording changes in production.",
+      "check": "Look for string literals in tests that repeat a private const message from production code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Build an exception that is thrown from several places in one private static factory method instead of repeating its construction and message literal.",
+      "why": "Repeated copies of the exception and message can drift apart.",
+      "check": "Look for identical `new XException(..., \"literal\")` expressions in several methods of a class.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a List or Dictionary with its capacity when the final size or an upper bound is known, using the minimum of the bound and the source count when the bound can be large.",
+      "why": "Collections otherwise resize as they fill, costing extra allocations, while an unbounded capacity over few items allocates more than needed.",
+      "check": "Look for `new List<T>()`/`new Dictionary<K,V>()` filled in a loop over a collection of known count or a known limit.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't make a paged listing copy and sort the whole store on each page; read only the entries under the requested prefix or partition, filter while iterating, and sort only the matches.",
+      "why": "Each page otherwise costs O(total records) and holds the store's lock meanwhile, so paging a small prefix of a large table repeats the full copy many times.",
+      "check": "Look for list/page methods that snapshot all entries and then filter by prefix and sort.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Replace a loop that always throws or returns on its first iteration with an if-statement on the collection's count.",
+      "why": "The loop suggests every element is checked when only the first is.",
+      "check": "Look for foreach bodies that unconditionally throw or return.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A discard kept only for a call's side effect gets a comment saying what the side effect is.",
+      "why": "A later cleanup could otherwise delete the discard as unused and change behavior.",
+      "check": "Look for `_ = Method(...);` lines with no comment where the result is unused.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A member's XML doc summary describes that member, not a sibling member with a similar name, and opens with 'Gets or sets' when the property has a setter.",
+      "why": "IntelliSense otherwise shows the wrong description to authors.",
+      "check": "Look for summaries copied word for word between sibling members, and settable properties whose summary opens with only 'Gets'.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to remove GC.SuppressFinalize from DisposeAsync/Dispose of a public unsealed class with no finalizer, because CA1816 requires it; ask only for a comment saying why it stays.",
+      "why": "Removing it fails the build under CA1816, and a derived class may declare a finalizer.",
+      "check": "Check whether the class is public and unsealed before reporting the call as dead; look for a CA1816 comment.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't report a helper parameter declared as `params IEnumerable<T>` as breaking helper conventions; the C# conventions prefer `params IEnumerable<T>` to `params T[]`, especially when it mirrors the API it forwards to.",
+      "why": "No convention asks helpers to take IReadOnlyList<T> instead of params, and mirroring the forwarded API lets callers use both the same way.",
+      "check": "Check the C# instruction file and the API the helper forwards to before reporting a params parameter.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an unbounded in-memory map as a leak when its remarks already document the bound as accepted and the semantics forbid dropping entries (such as a sequence that must never reuse a number) in a volatile in-process component.",
+      "why": "The component can't drop or cap entries without breaking its guarantee, and its memory ends with the process.",
+      "check": "Read the type's remarks and the guarantee it provides before asking for a cap or eviction.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a test to use Assert.Empty or Assert.Single on a type that doesn't implement IEnumerable<T>; Assert.Equal on its Count is correct there.",
+      "why": "The collection-assertion rule only applies to collections, and those assertions can't take a non-enumerable type.",
+      "check": "Check whether the asserted type implements IEnumerable<T> before reporting Assert.Equal(0/1, x.Count).",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report `Call(...) with { ... }` as a nested call or a call chain; a `with` expression on a call's result passes no call as another call's argument.",
+      "why": "The no-nested-calls rule covers calls inside another call's arguments, and the chain rule covers `a.B().C().D()`; neither covers `with`.",
+      "check": "Before reporting a nested call, confirm that a call result is actually passed as an argument to another call or chained with other calls.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask tests to add `_ =` to awaited setup calls whose results aren't the behavior under test.",
+      "why": "No convention or enforced analyzer requires a discard on an awaited call, and adding one to every setup call adds noise; tests assert the result where it is the behavior under test.",
+      "check": "Report a dropped result only when the test's name says the result is the behavior under test and nothing asserts it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs",
+        "**/*.Testing/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

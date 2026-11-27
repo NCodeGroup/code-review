@@ -1,0 +1,18 @@
+{
+  "hash": "d9fa889399a0ce52",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #32",
+  "rules": [
+    {
+      "statement": "In a test project, when code compares a size threshold in bytes for a generic element type (for example `count * Unsafe.SizeOf<T>()` against a page size), test the boundary on both sides with an element type larger than one byte, not only with `byte`.",
+      "why": "If only `byte` is tested, element count and byte count are the same number. A regression that counts elements instead of bytes would then pass every test while handing callers buffers that are too short for wider types.",
+      "check": "Look for new or changed size or threshold logic that multiplies by `Unsafe.SizeOf<T>()` or `sizeof(T)`. Confirm that some test uses a wider T (such as `int` or `char`) and asserts the result at exactly threshold/sizeof(T) elements and at one element more.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

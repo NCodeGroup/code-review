@@ -1,0 +1,46 @@
+{
+  "hash": "3ef63ef85c106015",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #24",
+  "rules": [
+    {
+      "statement": "Don't ask for comments or other measures to keep repeated pins of the same GitHub Action in sync within one workflow file when Dependabot's `github-actions` updater is configured, because it rewrites every reference, both the SHA and the `# vX.Y.Z` comment, in a single pull request.",
+      "why": "Dependabot moves all pins of an action together, so the duplicated pins can't drift, and splitting jobs that use the same action can be intentional, for example to run one with fewer privileges.",
+      "check": "Before reporting a duplicated action pin, check whether `.github/dependabot.yml` enables the `github-actions` ecosystem for the repository.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a workflow job joins a concurrency group with `cancel-in-progress: false` and another job in the same group uses `cancel-in-progress: true`, gate the cancelling job's trigger so that it can't enter the group while the non-cancellable run has to finish, for example by running it only on open pull requests.",
+      "why": "A run that enters a group with `cancel-in-progress: true` cancels pending and in-progress runs in that group no matter what their own setting says, so work that nothing re-triggers, such as recording outcomes when a pull request closes, can be lost.",
+      "check": "Look for concurrency groups that jobs share with mixed `cancel-in-progress` values, and check whether the cancelling job's `if:` stops it from running while the other job's run must complete.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a new workflow job for reading an organization secret without a protected `environment:` as new exposure when the secret is already scoped at the organization or repository level, so that every job in the repository can read it, and the new job holds no more privileges than the existing jobs.",
+      "why": "The environment does not hold the secret, so adding the job widens nothing. The environment may exist only for another purpose, such as an OIDC federation rule that should trust only one job's token.",
+      "check": "Before reporting, read the workflow's header comments and setup script to see where the secret is scoped and what the environment is for. Then compare the new job's permissions (`id-token`, other secrets, checkout) with those of the existing jobs.",
+      "scope": "domain",
+      "domain": "github-actions",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -25,3 +25,5 @@ NCodeGroup/code-review; edit the rest by hand.
   are allowed outright.
 - A parameter the repository's conventions require, such as a `CancellationToken` on every async method, isn't dead
   code; don't teach reviewers to remove it.
+- When a rule's example shows a Unicode escape, such as `"caf\u00e9"`, keep the escape as written: don't turn it into
+  the character it names, or the example contradicts the rule it illustrates.

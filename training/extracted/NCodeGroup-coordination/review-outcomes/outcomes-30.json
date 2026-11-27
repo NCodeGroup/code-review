@@ -1,0 +1,19 @@
+{
+  "hash": "7979f77e0d15a824",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #30",
+  "rules": [
+    {
+      "statement": "Insert a new row into a dated provenance table at its place in ascending date order, after the last row with an earlier or equal date, not next to a related row.",
+      "why": "The provenance table is kept in ascending date order, and a row out of order misleads a reader who scans the table by date.",
+      "check": "In a diff that adds a row to a provenance or other dated table, compare the new row's date with the rows just before and after it, and report it if they are out of ascending order.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/provenance.md",
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+{
+  "hash": "501ef47660318853",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #21",
+  "rules": [
+    {
+      "statement": "Don't ask for a primary constructor on a type whose constructor is deliberately private (or otherwise needs an access modifier), because C# primary constructors can't take one.",
+      "why": "The convention asks for primary constructors only where they can express the type. A private constructor that guards invariants, such as an array no outside code may hold, can't be expressed that way.",
+      "check": "Before reporting a classic constructor, check whether it is private or protected on purpose, for example when only static factories may build the type.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a call nested in another call's arguments when it is a `new` expression passed as an argument (even one whose arguments are simple calls on literals such as `TimeSpan.FromSeconds(30)`), or a chain of calls on one receiver such as `SubscribeAsync(...).GetAsyncEnumerator(...)`. Those stay inline.",
+      "why": "The nested-call rule covers calls nested in other calls' arguments. The project keeps these forms inline throughout its code and tests.",
+      "check": "Before asking for a hoisted local, check whether the nested expression is an object creation passed as an argument or a fluent chain on one receiver, and how sibling code writes the same form.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Hoist `Math.Max`/`Math.Min` calls inside `with` initializers, conditional expressions used as arguments, and calls nested in assertion arguments into named locals.",
+      "why": "The nested-call rule asks for named locals instead of calls and ternaries buried inside other expressions.",
+      "check": "Look for method calls or `?:` inside `with { ... }` initializers, method arguments or `Assert.*` arguments that aren't `new` expressions or receiver chains.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report two helpers of the same shape as duplicates when the shared logic is already factored out and each copy works with different types and services. Factoring them out would only add delegates for each difference.",
+      "why": "The shared format already lives in one place, so changing it touches neither copy. A generic helper would need a delegate for every difference and would save little.",
+      "check": "Before reporting duplication, check whether the common behavior already sits in a shared type and whether the copies differ in the types, services or results they handle.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report two named constants in different types as duplicates when they share a value but each names a different concept in its own type and no code compares the two.",
+      "why": "The values can drift apart without any effect. Each literal still appears once as a named constant, which is what the convention asks for.",
+      "check": "Check whether any code compares or mixes the two constants. If none does and each belongs to its own type's state, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to group a method's parameters into a new descriptor type when they are separate facts about the call and the method already builds the record that groups them.",
+      "why": "The conventions allow more than three parameters in rare cases. A wrapper would only move the same values into a new object at each call site.",
+      "check": "Before reporting a long parameter list, check whether an existing record already groups those values and is built from them inside the method.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a catch that ends a stream or operation quietly as a swallowed failure when a comment on that catch or an ADR says the delivery guarantee allows that outcome.",
+      "why": "The maintainer declined this finding twice: the swallowing was intended and documented, and the runs that need it still fail when the guarantee is stricter.",
+      "check": "Before reporting a catch that only completes or returns, read the comment on the catch and the ADR it cites, and check whether a stricter mode still fails the run.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test whose input yields a known set of violations or messages asserts the exact list with `Assert.Equal`, not just `Assert.Single` or `Assert.Contains`.",
+      "why": "A count or containment check stays green when a different check reports the violation, or when a stray or duplicate one appears.",
+      "check": "Look for `Assert.Single(results)` or `Assert.Contains` on a result list where sibling tests assert the whole list.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, compare an `ImmutableArray<T>` result with a collection expression through an explicit element type, such as `Assert.Equal<string>([...], actual)`.",
+      "why": "Without the type argument, T can bind to `ImmutableArray<T>` and the comparison uses the backing array instead of the elements.",
+      "check": "Look for `Assert.Equal([...], x)` where x is an `ImmutableArray<T>` and there is no explicit `<T>`.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, every behavior a test's name promises (such as 'without reading more') must be asserted, or the name must be cut down to what is checked.",
+      "why": "A regression in the unasserted part would still pass while the name says it is covered.",
+      "check": "Compare each test name's claims against its assertions.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert the result of a setup call that returns a success bool (such as `TryX(..., out var value)`) with `Assert.True` before using its output.",
+      "why": "A setup regression then fails with a direct message instead of a confusing later failure.",
+      "check": "Look for setup `Try*` calls whose bool result is discarded and whose out value is used after only a null check.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make sure tests exercise each clause of a compound condition and each boundary of a comparison, so that removing a clause, inverting a filter, or changing `<` to `<=` fails a test.",
+      "why": "Clauses and boundaries that never decide an outcome can regress unnoticed.",
+      "check": "For new `||`/`&&` conditions, exception filters and range comparisons, look for a test where that clause or the exact boundary value alone decides the result.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make a wait timeout injectable (for example through a constructor overload) so that tests can cover the timeout path with a short value, and test separately that the caller's own cancellation escapes as `OperationCanceledException`.",
+      "why": "Without that, the timeout branch and the cancellation filter go untested, and callers depend on both.",
+      "check": "Look for code that catches `OperationCanceledException` from a timeout, and check that there is a test for the timeout path and one for caller cancellation.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When behavior is documented per occurrence (per outage, per attempt or per session), reset its counters at the start of each occurrence, and add a test that triggers it twice in a row and again while it is still in progress.",
+      "why": "A counter that is never reset makes the second occurrence behave differently from the documentation, and tests that trigger it only once can't catch that.",
+      "check": "Look for state counters that start or restart an episode without being reset, and for missing tests that trigger the episode twice.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive bit-index arithmetic from the named word-size constant (`index / WordBits`, `index % WordBits`) or from named shift and mask constants, not hard-coded literals such as `>> 6` and `& 63`.",
+      "why": "Changing the constant would otherwise make sizing and indexing disagree, with no compiler error.",
+      "check": "Look for shift or mask literals next to a named size constant they depend on.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Format numbers in diagnostic and failure messages with `CultureInfo.InvariantCulture`, including numbers joined through `string.Join` or built in interpolated strings.",
+      "why": "Otherwise the same report reads differently across cultures, for example with a different negative sign.",
+      "check": "Look for `string.Join` over numeric collections, or numeric interpolation, without an invariant culture in message-building code.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name a magic index that depends on another constant (such as a step index within a step count) by deriving it from that constant, and build repeated formatted strings through one helper.",
+      "why": "A bare literal silently loses coverage when the constant it depends on changes, and repeated format strings can drift apart.",
+      "check": "Look for comparisons against bare numeric literals tied to a named count, and for the same interpolated string written several times.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put each test in the `#region` named for the member it tests.",
+      "why": "Tests are grouped by the member under test.",
+      "check": "Look for a test whose name starts with one member's name inside another member's region.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "hash": "9cf90265d5171d3a",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #90",
+  "rules": [
+    {
+      "statement": "Don't ask an extension member to drop its null guard on the receiver because the method it delegates to repeats the same check: extension members must guard the receiver themselves, since they can be called on null.",
+      "why": "The conventions require every extension member to guard its receiver against null. Its tests pin what a caller sees, an ArgumentNullException for a null receiver, whichever check throws it.",
+      "check": "Before reporting a duplicated null check, see whether the method is an extension member (a `this` parameter or an extension block) and the check is on the receiver; if so, don't report it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A plain (non-extension) overload that only delegates to another overload doing the same argument null check, with the same parameter name, should not repeat that check.",
+      "why": "A rule that guards data has one implementation. Copies can drift apart, and tests named for the outer check don't pin it because the inner check throws the same exception.",
+      "check": "Look for `ArgumentNullException.ThrowIfNull` (or a similar guard) in a convenience overload whose body forwards the same argument to an overload that guards it the same way. Make sure the `<exception>` docs still hold after the check is removed.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "hash": "274eb37d59cecce5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #67",
+  "rules": [
+    {
+      "statement": "Don't report a `$schema` URL in a docs site config (`site.config.json`) that points at the NCodeGroup/docs `main` branch instead of the release the docs workflow pins: tracking `main` is what the toolchain's contract asks for.",
+      "why": "The build never reads `$schema`. It checks the config against the schema of the toolchain commit the workflow pins, so `$schema` only affects editor hints. Dependabot updates the workflow `uses:` pin but not URLs inside JSON, so an address pinned to a tag would fall behind. The toolchain's CONTRACT.md names the `main` address.",
+      "check": "Before reporting a moving `$schema` reference in a docs site config, confirm that it points at the NCodeGroup/docs `main` address the toolchain's CONTRACT.md names. Also confirm that the build validates against the pinned toolchain's own schema file. If both hold, raise no finding.",
+      "scope": "domain",
+      "domain": "ncode-docs-site-toolchain",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/site.config.json"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

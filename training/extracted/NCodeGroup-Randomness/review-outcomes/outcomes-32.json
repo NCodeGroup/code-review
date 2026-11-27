@@ -1,0 +1,19 @@
+{
+  "hash": "4122dbdfeb91dd5b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #32",
+  "rules": [
+    {
+      "statement": "Don't report that a first stable release (0.x to 1.0.0) is missing a release candidate when the repository's pre-release policy is `pre-release: untracked` and published 0.x packages already exist: those 0.x releases play the release candidate's role.",
+      "why": "The maintainer declined this finding: under an untracked pre-release policy, the 0.x packages on nuget.org already gate the major version. Here the public API was unchanged since an earlier 0.x and package validation against the last 0.x baseline passed.",
+      "check": "Before flagging a missing rc on a move to 1.0.0, check the repository's Landing/pre-release policy in AGENTS.md for `pre-release: untracked`, check whether 0.x versions were published, and check that `PackageValidationBaselineVersion` points at the last 0.x release with no compatibility diagnostics. Only report it if the policy requires tracked pre-releases or no 0.x packages were shipped.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/version.json",
+        "**/Directory.Build.props"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

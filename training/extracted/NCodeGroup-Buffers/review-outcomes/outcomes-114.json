@@ -1,0 +1,31 @@
+{
+  "hash": "dbecb78e62c87c27",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #114",
+  "rules": [
+    {
+      "statement": "Don't report long lines in Markdown or MDX docs as a wrap-width violation unless one of the repository's instruction files (AGENTS.md and the files it lists, .github/instructions, .claude/rules, .editorconfig, CONTRIBUTING.md, docs README) sets a wrap width.",
+      "why": "The maintainer declined a finding that cited a 120-column wrap rule that no instruction set. The existing docs already had many lines past 120 columns.",
+      "check": "Before raising a line-length finding on docs, find the written instruction that sets the width. If there isn't one, or the PR's plan allows long lines, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In MDX, don't suggest moving an inline JSX component tag that continues a paragraph onto its own line starting at column 0, and don't suggest splitting a row of component tags across lines.",
+      "why": "In MDX, a line that starts at column 0 with a component tag becomes a separate block, not part of the paragraph. This closes the paragraph and changes the rendering and the CSS that applies, for example adding a stray label.",
+      "check": "When a suggested rewrap would put a `<Component … />` tag at the start of a line in an MDX file, check whether that turns the tag into its own block. If it does, don't suggest the rewrap.",
+      "scope": "domain",
+      "domain": "mdx-documentation",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "hash": "6a16a58ab5804ca5",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #79",
+  "rules": [
+    {
+      "statement": "When a change raises the package validation baseline, replace the existing baseline line in the CHANGELOG's [Unreleased] section instead of adding a second one, so that section names exactly one baseline and it matches `PackageValidationBaselineVersion` in the project file.",
+      "why": "With two baseline entries, readers and the next release's notes can't tell which baseline is in effect, and the changelog no longer matches what the project file does. An older baseline line that never shipped in a release gets deleted, not moved to another section.",
+      "check": "In a diff that changes `PackageValidationBaselineVersion`, or that adds a baseline line to CHANGELOG.md, check that [Unreleased] has only one package-validation baseline line and that its version equals the csproj value.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/CHANGELOG.md",
+        "**/*.csproj"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

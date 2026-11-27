@@ -1,0 +1,21 @@
+{
+  "hash": "920547c1b698be2f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #107",
+  "rules": [
+    {
+      "statement": "Don't report a removed `justify-self`/`align-self` declaration as a layout regression when the grid item fills its track (for example `width: 100%` with a `max-width` larger than the track at every breakpoint), because the alignment has no free space to act on.",
+      "why": "The maintainer declined such a finding: the drawing kept `width: 100%` and `max-width: 26rem`, the column was always narrower than 26rem, so `justify-self` had nothing to move, and renders before and after were identical.",
+      "check": "Before reporting, look at the item's remaining `width`/`max-width` and the grid track sizes at each breakpoint. Report only if the item can be narrower than its track, so that removing the alignment actually moves it.",
+      "scope": "domain",
+      "domain": "docs-site-css",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.css",
+        "**/*.astro",
+        "**/*.scss"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFi
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { agentEnvironment, isInside } from '../src/agent.ts';
+import { agentEnvironment, defaultApiTimeoutMs, isInside } from '../src/agent.ts';
 import {
   chunkDiff,
   dropToolEnforced,
@@ -619,6 +619,13 @@ test('agentEnvironment passes no secret and no job variable to the agents', () =
   assert.ok(values.includes(placeholderKey));
   delete process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'];
   delete process.env['CODE_REVIEW_BEDROCK_KEY'];
+});
+
+test('agentEnvironment gives a model request five minutes unless the call asks for longer', () => {
+  const run = { provider: 'bedrock' as const, proxyUrl: 'http://127.0.0.1:1' };
+  assert.equal(defaultApiTimeoutMs, 300_000);
+  assert.equal(agentEnvironment(run, '/tmp/h')['API_TIMEOUT_MS'], String(defaultApiTimeoutMs));
+  assert.equal(agentEnvironment(run, '/tmp/h', true, 1_200_000)['API_TIMEOUT_MS'], '1200000');
 });
 
 test('assertNoSecrets catches known values and credential shapes', () => {

@@ -1,0 +1,89 @@
+{
+  "hash": "f0082509006e781c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #23",
+  "rules": [
+    {
+      "statement": "Make what the security policy says about how packages are published match the workflows in the repository: name only workflow files that exist, and don't claim trusted publishing or 'no long-lived API key' when a workflow pushes with a stored API key.",
+      "why": "A false supply-chain claim, or a reference to a workflow that isn't there, can lead consumers and auditors to skip checks because they think there is no stored key to steal.",
+      "check": "Compare the publishing paragraphs in SECURITY.md with .github/workflows: does every workflow it names exist, and does any job push with `--api-key` or a secret while the text claims trusted publishing or no API key?",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "SECURITY.md",
+        "**/*.md",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make every Markdown link to another document's section point at a heading that exists in that document, and make the target contain the content the link promises.",
+      "why": "A dead anchor lands the reader at the top of the file, and the promised content isn't there.",
+      "check": "For each `file.md#anchor` link added or changed, confirm the target file has a matching heading that contains the content the link describes.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Add a CHANGELOG entry when a change alters how the assembly version or assembly identity is computed, such as tying AssemblyVersion to the major version only.",
+      "why": "Consumers who use strong naming or binding redirects need to know that the assembly identity rule changed.",
+      "check": "Look for build props or targets that set AssemblyVersion, FileVersion or strong-naming properties, and confirm the Unreleased section of CHANGELOG.md describes the change.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.props",
+        "**/*.targets",
+        "**/*.csproj",
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a documentation catalog (for example of metrics, spans or meters) has no entries yet, say so in plain text under each table heading instead of leaving empty tables.",
+      "why": "Empty tables send readers to a catalog that tells them nothing.",
+      "check": "Look for Markdown tables in docs that have a header row but no data rows and no sentence saying nothing is defined yet.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a pull request to hand-edit `.copier-answers.yml` or other files Copier generates to fix a mismatched answer; changes to those belong upstream in the project template.",
+      "why": "Copier writes and owns its answers file, so hand edits in a consuming repository are the wrong place for the fix.",
+      "check": "Before reporting a mismatch involving `.copier-answers.yml`, check whether the setting really comes from another template answer (for example package_license matching LICENSE.txt). If it does, don't ask for an edit to the answers file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        ".copier-answers.yml"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report PublicAPI.Shipped.txt being filled outside a release when an already released library is adopting the public API analyzer and the entries match the surface of its last released version.",
+      "why": "The analyzer needs a baseline of the shipped surface to pass on an already released library, so this edit is a baseline record, not a release change.",
+      "check": "Check whether PublicAPI.Shipped.txt is being created or filled for the first time and whether the source matches the last release tag; if so, at most ask that the PR description call it a baseline.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/PublicAPI.Shipped.txt"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to remove a short, single-line CHANGELOG entry that records a project-template update just because it describes repository tooling.",
+      "why": "The maintainer keeps that one line so the tooling change stays visible in the project's history.",
+      "check": "If the tooling entry is one concise line and public API and behavior entries are kept separately, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

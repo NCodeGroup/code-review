@@ -1,0 +1,51 @@
+{
+  "hash": "01c6c01dde524f31",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #66",
+  "rules": [
+    {
+      "statement": "Don't report the allocation and O(n) copy of an enumerator that snapshots a collection under its lock, or suggest a version-counter snapshot cache, when the member's remarks document that cost and no measured hot enumeration path exists.",
+      "why": "Snapshot enumeration under the lock is a deliberate thread-safety design, and a cache would add state and invalidation to every mutating member for a gain nobody has measured.",
+      "check": "Before reporting, read the GetEnumerator XML remarks for a documented copy cost and look for a benchmark or caller showing hot repeated enumeration; report only if the cost is undocumented or a measured hot path exists.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't flag the parameter count of generic state-passing factory overloads (for example T1 through T8) when they deliberately mirror an existing overload family of the same arities.",
+      "why": "Keeping parallel factories (such as sync and async variants) in step with matching arities is the intent, and a design decision may already record it.",
+      "check": "Before reporting a few-parameters violation on a generic overload, look for a sibling overload family with the same arities or an ADR that sets them; report only if the overload breaks that pattern or no such family exists.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Write XML doc summaries for integer state-flag fields in plain terms that state each value and when it holds, such as \"Holds 1 after disposal has been requested and 0 before\", instead of compressed wording like \"One once …, zero before\".",
+      "why": "Compressed wording in flag summaries is hard to parse and leaves readers unsure what the field's values mean.",
+      "check": "Look at <summary> comments on int fields used as flags (for example, ones set with Interlocked) for unclear phrasing that doesn't plainly give each value and the condition for it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for a named constant for a numeric wait-timeout literal that only serves as a safety cap ending a hung test.",
+      "why": "The named-constant rule covers repeated string literals, not numeric arguments, and a safety cap that no passing run reaches changes nothing a test asserts if its copies drift apart.",
+      "check": "Before reporting a bare TimeSpan or timeout literal in a test, check whether it's a string literal covered by the named-const rule or a timeout a test actually asserts on; don't report safety-cap timeouts passed to Wait or similar calls.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "hash": "04c5129e6d2b5b71",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #47",
+  "rules": [
+    {
+      "statement": "A build script that copies reports into an output directory it is given must first remove the report folders an earlier run left there, deleting only folders it recognizes as its own output and leaving everything else in place.",
+      "why": "Otherwise local reruns leave stale reports next to the new one, and anything that uploads the directory picks them up. CI starts from a clean checkout, so the problem only shows up locally.",
+      "check": "In a build or coverage script that writes run-specific output, such as GUID-named folders, into a caller-supplied directory, look for a cleanup step before the copy. Make sure the cleanup removes only the script's own earlier output, for example subfolders that contain its report file, and doesn't wipe the whole directory.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "build/**/*.ps1",
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a unit-test framework such as Pester to cover a build-script path when a CI step already runs that path and a later step fails the run if its output is missing, and the repository doesn't use that framework yet.",
+      "why": "The CI run already tests the path on every push, for example through an upload step with `if-no-files-found: error`. Adding a test framework the repository doesn't use is a separate decision.",
+      "check": "Before reporting a missing test for a build script, look at the CI workflow. See whether a step calls the script with the parameter in question and a following step fails when the expected output is missing. Also check whether the repository already has tests for that scripting language.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1",
+        "**/*.ps1",
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

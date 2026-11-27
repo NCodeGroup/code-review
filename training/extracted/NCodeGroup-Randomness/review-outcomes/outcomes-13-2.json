@@ -1,0 +1,249 @@
+{
+  "hash": "6b8507befec6e9e2",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #13",
+  "rules": [
+    {
+      "statement": "Don't ask an HTTP error message to format the `HttpStatusCode` enum instead of `(int)response.StatusCode`.",
+      "why": "The numeric status is the standard form in an HTTP error message. Codes such as 425 have no enum member, so the enum prints a number anyway, and `HttpRequestException.StatusCode` already carries the enum for code that needs it.",
+      "check": "Before reporting a numeric status in an exception or log message, confirm the typed status is still available on the exception. If it is, don't report it.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name an HTTP status code that `HttpStatusCode` has no member for (such as 425 Too Early) with a named constant instead of writing a bare `(HttpStatusCode)425` cast.",
+      "why": "A bare numeric cast hides what the status means where it is used.",
+      "check": "Look for `(HttpStatusCode)<number>` casts in production or test code, including `InlineData` attributes.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't discard the bool result of a `TryWrite…`/`TryFormat` call. Validate the input range up front and throw `ArgumentOutOfRangeException` for a value outside it, so the try call can't fail, and state that in a comment.",
+      "why": "An ignored failure lets a broken precondition surface later as an unrelated, misleading exception.",
+      "check": "Look for `TryWriteBytes`, `TryFormat` or similar calls used as statements without checking their result, and for missing range checks before them.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a private method's parameter to be widened from a concrete collection or buffer type (such as `List<T>` or a concrete buffer writer) to an interface when analyzer CA1859 requires the concrete type.",
+      "why": "CA1859 is an error under the build's analyzers with warnings as errors, so changing the parameter to the interface fails the build.",
+      "check": "Before reporting, check whether the method is private or internal and its callers pass only the concrete type. If so, CA1859 decides and there's nothing to report.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't ask for a private constructor to be replaced with a primary constructor when it's private so that instances can only be made through a verifying static factory such as `Parse` or `Verify`.",
+      "why": "A primary constructor can't be private, so the conversion would let any code in the assembly build an unverified instance. The primary-constructor convention covers only types a primary constructor can fully express.",
+      "check": "Before reporting, check whether the constructor is private and the type has a static factory that validates or verifies its input.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, put each test in a `#region <Member> Tests` block named for the member under test, including live or integration test files.",
+      "why": "It keeps every test file laid out the same way as its sibling test files.",
+      "check": "Look for test methods sitting directly in a test class without the `#region <Member> Tests` grouping that the sibling test files use.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a capped response body to be collected in a pooled buffer writer when the resulting `byte[]` is kept or returned to callers. The pooled-rental rule applies only to transient buffers, such as the read chunk.",
+      "why": "A body that callers keep (for example, one stored in a cache) isn't a transient buffer, so the transient read chunk is the only buffer that needs to come from `ArrayPool<byte>.Shared`.",
+      "check": "Before reporting a `MemoryStream`/`ToArray` body, check whether the array outlives the call (it is returned, stored or handed to a cache) and whether the read chunk is already rented.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a catch-all exception translation to be narrowed when the interface contract requires implementations to fail only with one exception type.",
+      "why": "Narrowing the translation would let raw exceptions escape the interface's documented failure contract.",
+      "check": "Before reporting a catch-all mapping, check the interface's documented failure contract and the tests that pin the mapping.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a duplicate-fetch race in a single-flight cache of `Lazy` tasks when successful entries are never removed and a failed entry is removed only by value, with `TryRemove(KeyValuePair.Create(key, fetch))`.",
+      "why": "Removing an entry only by value means a late caller's `GetOrAdd` receives the completed fetch, not a new one, so no second fetch can start.",
+      "check": "Before reporting, read how the cache removes entries: unconditional removal by key can race, but compare-and-remove by key and value can't.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a `CancellationToken` parameter on a private shared (single-flight) fetch that is bounded by its own timeout.",
+      "why": "A fetch shared by many callers must be bounded by its own timeout, not by one caller's token, so that one caller's cancellation doesn't cancel the fetch for everyone else.",
+      "check": "Before reporting a missing token, check whether the method's result is shared across callers and whether it creates its own timeout `CancellationTokenSource`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code is deliberately duplicated in more than one class or package, give each copy a comment saying it is copied on purpose and naming the other copies.",
+      "why": "Without the marker, a fix to one copy (timeouts, failure memory, race handling) can miss the others.",
+      "check": "Look for logic that duplicates another class's policy or helper without a 'copied on purpose' comment naming the other copy.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a component to log a failure it rethrows or returns when a caller further up already logs that failure with its cause.",
+      "why": "The central logger already records every failure, and the rethrown exception names the cause, so logging it again adds nothing.",
+      "check": "Before reporting missing logging, trace where the exception goes and check whether that caller logs it.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "End an options-validation failure message for a range or duration with the refused value (for example \"; it is {value}.\"), but never echo values that may carry credentials, such as a base address URI.",
+      "why": "An operator whose host fails to start can see what was configured, while a URI echoed into a start-up exception could copy a credential into it.",
+      "check": "Look for range-validation messages that leave out the configured value, and for messages that interpolate URIs or connection strings.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for the invariant culture in human-facing exception or validation messages that interpolate non-negative integers or `TimeSpan` values with their default format.",
+      "why": "Invariant formatting is required only for values meant for machines. These values format the same in every culture, and analyzer CA1305 accepts them.",
+      "check": "Before reporting, check whether the string is meant for machines (protocol, persistence, a key) and whether the interpolated values could format differently by culture.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Use `stackalloc` buffers, and span overloads such as `SHA512.HashData(source, destination)`, for small fixed-size transient byte values instead of allocating heap arrays.",
+      "why": "Heap arrays that never outlive the call add avoidable allocations on hot paths such as verification.",
+      "check": "Look for `new byte[N]` with a small constant N, `ToArray()` or allocating hash overloads whose result is used once and dropped.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a read-only text helper to take `ReadOnlySpan<char>` instead of `string` when every caller holds a string, the helper must handle null, or it is used as a method group, such as in `Select`.",
+      "why": "In those cases the span signature saves nothing or can't be used at all.",
+      "check": "Before reporting, look at the helper's callers and usages: where they come from, whether null is handled, and whether it is passed as a method group.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Name the sizes that a specification defines (such as RFC 9380's L and count) as constants, and derive buffer sizes and slice offsets from them instead of writing bare literals.",
+      "why": "A later change to one literal could leave the buffer size and the slice offsets out of step.",
+      "check": "Look for `stackalloc byte[<literal>]` and range slices with literal offsets that stand for values from a specification.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a call nested in a `with` initializer, a receiver of `with`/`Build`, a lambda body, a string interpolation or an object creation as a nested-call violation. Don't report a plain two-call chain such as `GetRequiredService<T>().Method()` either, since it isn't a call nested in another call's arguments.",
+      "why": "These are the exemptions the hoisting convention applies, and a chain isn't nesting.",
+      "check": "Before reporting a nested call, check whether it's in one of the exempt positions or is only a member-access chain. Report calls nested in another call's arguments, such as `Assert.Equal(TimeSpan.FromSeconds(..), ..)`.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an `IServiceCollection` local named `services`, or a `JsonElement` that is a parsed response's root named `document`.",
+      "why": "No naming convention forbids these names, and existing code uses them.",
+      "check": "Before reporting a naming issue, find the written naming rule and look at how sibling code names the same kind of value.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for private static helpers in a static class made only of extension blocks to be moved above the first extension block.",
+      "why": "The member-order rule places statics before instance members, and a static registration class has no instance members for them to precede.",
+      "check": "Before reporting member order, check whether the class is static and holds only extension blocks and static helpers.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Mark every member that implements an interface with `/// <inheritdoc/>`, and give private constants and properties a short `///` summary that states units and behavior (for example, a byte count, or that an encoding throws on invalid input).",
+      "why": "Otherwise IntelliSense shows nothing for the member, and readers aren't told what a constant measures or how a helper behaves.",
+      "check": "Look for interface implementations with no doc comment, and for new private constants or properties with no `<summary>`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a `### Changed` changelog entry in a pre-release project. Its changelog describes the product as it is, under Added and Security only, but it must still catalog new options and behavior in every package the change touches.",
+      "why": "A pre-release project doesn't track changes between versions, yet the release notes must still describe every new setting and behavior.",
+      "check": "Check AGENTS.md for the project's pre-release status before asking for Changed entries, and check that options and behavior added to any touched package appear in the changelog.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

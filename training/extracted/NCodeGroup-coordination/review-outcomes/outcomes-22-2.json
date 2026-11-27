@@ -1,0 +1,172 @@
+{
+  "hash": "3ac9ac415f3e56eb",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #22",
+  "rules": [
+    {
+      "statement": "Declare static data (static fields and static properties) before instance members, after constants, in test code as well as production code, but don't report static methods declared after instance members.",
+      "why": "The member-order convention's \"statics at the top\" means static data; static methods may sit with the instance code they serve.",
+      "check": "Look for a static field or static property declared below an instance field or member. Don't raise a finding for a static method placed after instance members.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When an implementation refuses inputs beyond a fixed limit (for example a maximum number of key segments), state that limit in the XML documentation of the interface member it implements.",
+      "why": "Callers and other implementers can't tell from the contract that over-long inputs are refused.",
+      "check": "Compare limits enforced in the implementation with the interface's <param> or <summary> text, and with sibling interfaces that already document the same limit.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for <exception cref> entries on interface members just because an implementation throws: no convention requires them on interfaces.",
+      "why": "The maintainer declined this twice. The interface contracts of the primitives list no exceptions.",
+      "check": "Before reporting missing <exception> docs, check whether the member is on an interface and whether sibling interfaces list exceptions. If they don't, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a private async helper to take a trailing CancellationToken when it is cancelled through a CancellationTokenSource it receives, watches and is stopped by.",
+      "why": "A separate token would have nothing to cancel, because the passed source already carries the helper's cancellation.",
+      "check": "Before reporting a missing CancellationToken on a private async method, check whether it receives a CancellationTokenSource or a token-bearing object that controls its lifetime.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test of service registrations asserts each descriptor's ServiceLifetime as well as its implementation type.",
+      "why": "Otherwise a service registered as scoped or transient instead of singleton would still pass.",
+      "check": "Look for registration tests that find a ServiceDescriptor and check only ImplementationType, with no Lifetime assertion.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test every validated upper bound at its exact maximum and assert that the maximum is accepted, as well as testing that the value just past it is refused.",
+      "why": "Changing `>` to `>=` on a bound would reject the largest valid value without failing any test.",
+      "check": "For each constant maximum or equality-allowed relation that a constructor validates, look for a test case that uses exactly that value and expects success.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when callers share one in-flight operation, test that cancelling the caller running the operation still lets a waiting caller complete and get the value.",
+      "why": "If the leading caller's cancellation abandons the shared work, waiting callers could hang or fail and no test would catch it.",
+      "check": "For single-flight, coalescing or deduplicating code, look for a gated test that cancels the leading caller and asserts that a waiter still succeeds.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a fake async delegate that fails returns a faulted task (for example ValueTask.FromException) and doesn't throw synchronously.",
+      "why": "A synchronous throw doesn't exercise the way real async code fails, and the test conventions call for faulted tasks.",
+      "check": "Look for lambdas or fakes that return Task or ValueTask but contain a bare `throw` that runs before any task is returned.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask an exception test to assert the full Message when its Assert.Contains text appears in only one of the type's possible messages.",
+      "why": "A unique substring already fails when the message is reworded or the cause is swapped. Asserting the whole Message ties the test to the runtime's \" (Parameter '...')\" suffix.",
+      "check": "Before reporting a substring message assertion, check whether the asserted text distinguishes that message from the type's other messages.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a conditional (ternary) expression passed as an argument as a nesting violation: the no-nesting rule bans only nesting a call inside another call's arguments.",
+      "why": "No convention bans a conditional expression as an argument.",
+      "check": "Before reporting nesting, confirm that the argument contains a method or constructor call, not just an operator expression.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a public data type that guards its arguments to switch to a primary constructor: such types keep a classic constructor that carries the <exception> documentation for its guards.",
+      "why": "Every public data type in the contracts guards arguments in a classic constructor. A primary constructor would move the guards into initializers and lose that documentation.",
+      "check": "Before suggesting a primary constructor, check whether the type is public and its constructor validates arguments and documents exceptions. If so, don't report it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap XML documentation comments evenly within 120 columns.",
+      "why": "Lines past 120 columns, or a final line holding a single word, break the file's wrap width.",
+      "check": "Look for /// lines longer than 120 columns or paragraphs that end with an unbalanced short line.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to fold a `//` implementation note on a private member into its <summary>: such notes sit above the member's `///` block, so the line directly above the member is its `///` block or an attribute.",
+      "why": "The `//` explains why the value was chosen, which is an implementation note, not the member's summary.",
+      "check": "Before reporting a detached `//` comment, check whether it sits directly above a `///` block on a private member and explains the implementation.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when two or more fakes repeat the same forwarding boilerplate for an interface, replace them with one shared, parameterized fake, but don't report a fake that is the only one of its kind.",
+      "why": "Every interface change otherwise has to be made in several copies that can drift apart.",
+      "check": "Look for several nested fake classes that implement the same interface with identical forwarding methods and differ in only one member.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't keep unreachable code under `#pragma warning disable CS0162` (for example a `yield break` after a throw just to keep a method an iterator). Restructure the code so that every statement is reachable.",
+      "why": "Readers have to work out why the dead code is there, and the pragma would hide real unreachable code added later.",
+      "check": "Look for `#pragma warning disable CS0162` or for statements that follow an unconditional throw.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

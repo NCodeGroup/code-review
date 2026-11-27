@@ -1,0 +1,189 @@
+{
+  "hash": "c7eca70fd796cf4c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #26",
+  "rules": [
+    {
+      "statement": "When documentation describes when a library contacts external services or does background work, make it match the code and the other documentation pages, such as noting that a hosted background service starts fetching once the host runs.",
+      "why": "A page that says no outbound traffic happens until a call is made misleads readers about firewalled or air-gapped deployments, how outages show up, and startup options.",
+      "check": "Look for documentation claims about runtime behavior (when network calls, background work or startup fetches happen). Compare them with the hosted services and code they describe, and with sibling pages that describe the same behavior.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, don't write an assertion that holds for every possible value of its type, such as Assert.InRange over a type's full range, Assert.Contains over every bool, or Assert.IsType on a statically typed value. Assert something that would fail if the code returned a constant, such as two draws differing.",
+      "why": "Assertions that cannot fail let the test pass even if the code under test is broken.",
+      "check": "Look for assertions whose condition is a tautology given the value's static type or full domain.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a script self-test compares a child process's output exactly with expected lines, capture stderr separately instead of merging it with 2>&1, compare only stdout, check the exit code separately, and include the stderr in the failure message.",
+      "why": "A stray stderr line, such as a git or runtime warning, would fail a case even though the check behaved correctly.",
+      "check": "Look for `2>&1` on a child pwsh or process call whose merged output is then compared exactly with expected output.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep a PowerShell script's `.SYNOPSIS` to one sentence, and put longer detail, such as a list of checks, in `.DESCRIPTION`, wrapped at about 120 columns.",
+      "why": "A synopsis hundreds of characters long is hard to read and breaks the file's wrapping.",
+      "check": "Look for comment-based help with a very long single-line `.SYNOPSIS`, or help lines far over 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap Markdown prose paragraphs at about 120 columns. Leave tables, list items and HTML blocks on their single lines.",
+      "why": "Paragraphs several hundred characters long make the file's wrapping inconsistent and their diffs harder to read.",
+      "check": "Look for new or rewritten prose paragraphs in Markdown files that are a single line much longer than 120 columns, when the rest of the file wraps.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a script, declare a list such as package names once and derive parameter defaults from it, for example with `$PSBoundParameters.ContainsKey`, instead of repeating it. Don't report a test's own fixture copy of that list as duplication.",
+      "why": "If an entry is added or renamed in only one copy, the copies drift and entries go unchecked or are misreported. A test's fixture data, which the test builds its fixtures from, is its own input, not a copy to remove.",
+      "check": "Look for the same literal list in a param default and in a script variable. Before reporting a copy in a test script, check whether it is fixture data the test builds from.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to delete a comment that explains why a line that looks redundant is needed, such as an explicit `exit 0` that resets a `$LASTEXITCODE` a caller reads.",
+      "why": "Deleting the comment leaves the line unexplained, and a later edit could remove it and break callers.",
+      "check": "Before reporting a comment as describing a value the next line overrides, check whether the comment is the explanation for that overriding line and whether a caller depends on it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a status note in documentation or data as going stale when it is already dated with an explicit \"(as of <date>)\".",
+      "why": "A dated observation stays true as it ages, and readers still need the information.",
+      "check": "Check whether the status text carries an explicit as-of date before reporting it as a stale current-tense claim.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md",
+        "**/*.mdx",
+        "**/*.json"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for JavaScript or TypeScript unit tests in a repository that has no package.json, lock file or JavaScript test runner. The site build that renders the code serves as its check.",
+      "why": "There is no test runner to put such a test in, and the repository deliberately has no Node.js tooling of its own.",
+      "check": "Before suggesting a JS/TS test, check for a package.json, a lock file and a JS test runner in the repository, and for a CI build that already exercises the code.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ts",
+        "**/*.js"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply the rule against nesting a call inside another call's arguments to a call inside an indexer or element access, such as `items[random.Next(0, items.Length)]`.",
+      "why": "An element access isn't a call's argument list, so the rule doesn't cover it.",
+      "check": "Before reporting a nested call, confirm that the call sits inside another method call's argument list, not inside an indexer's brackets.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test, hoist the expected value into a named local, such as `var expected = new Uri(address);`, and assert against it instead of building it inline in the assertion. Name a value used in both setup and expectation once.",
+      "why": "It keeps tests consistent and readable and avoids repeating the same literal.",
+      "check": "Look for Assert calls whose expected argument is a constructed object or a repeated literal built inline.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Derive a value that depends on a named constant from that constant, such as `PreviousRound = LatestRound - 1`, instead of writing it as a bare literal.",
+      "why": "If the constant changes, the literal copy drifts and code that depends on the two staying in step fails.",
+      "check": "Look for numeric literals that equal a named constant plus or minus an offset, used next to that constant.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report test fixture file paths for not matching the real repository layout when they are made up on purpose and the code under test doesn't depend on which real project they name.",
+      "why": "Fictional fixture paths are intentional, and moving them would change no behavior.",
+      "check": "Check whether the fixture names are clearly invented and whether the logic under test only distinguishes a path prefix that the fixtures already cover.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code splits or parses text files by line, include test cases with CRLF line endings, including one where the same key appears in a CRLF file and an LF file.",
+      "why": "A regression that leaves a trailing `\\r` on parsed values would pass LF-only tests and misfire on Windows, where tools can write untracked files with CRLF.",
+      "check": "Look for line-parsing checks whose test fixtures are all written with LF only.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.ps1",
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't apply the rule that outbound calls need timeouts to an offline child process in a build or test script, such as pwsh against a local repository with no remote, when the CI job has its own timeout-minutes.",
+      "why": "The timeout rule is for outbound calls in C# code. An offline local child process can't hang on a network or a prompt, and the CI job timeout bounds the run.",
+      "check": "Before reporting a missing timeout in a script, check whether the call is outbound or network-dependent and whether the workflow job sets timeout-minutes.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a `merge_group` trigger on a GitHub Actions workflow unless the repository uses a merge queue and that workflow's check is required.",
+      "why": "Without a merge queue a `merge_group` trigger never fires, and a check that isn't required can't block queued merges.",
+      "check": "Check the branch ruleset for a merge-queue rule and for the list of required status checks before reporting a missing `merge_group` trigger.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        ".github/workflows/*.yml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

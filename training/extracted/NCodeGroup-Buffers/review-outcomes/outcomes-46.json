@@ -1,0 +1,29 @@
+{
+  "hash": "938e786632feed1d",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #46",
+  "rules": [
+    {
+      "statement": "In documentation, the sentence that introduces a table must say what the table is for (for example, a guide for choosing among options) and must not credit all rows to one type when some rows are other types, extension methods or members of other classes.",
+      "why": "If the lead names only one type, readers may think the table covers only that type's calls, or may miss that the table is a choice guide.",
+      "check": "In README or docs diffs, read the sentence above each table and compare it with the rows. Flag it if it names only one owning type while rows list other types or extension methods, or if it doesn't say how to use the table.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a removed documentation sentence to be restored when the same fact is still stated elsewhere in that document.",
+      "why": "The maintainer chose not to restore a dropped sentence because another intro and a security note in the same README already covered it, and repeating it adds nothing.",
+      "check": "Before reporting a removed doc sentence, search the rest of the document for the same fact, such as a section intro or note. Report it only if the fact is gone from the whole document.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

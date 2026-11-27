@@ -1,0 +1,19 @@
+{
+  "hash": "6a9a5d68bd2b8094",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #62",
+  "rules": [
+    {
+      "statement": "A header comment in a CI workflow that describes when or in what order it runs (for example \"as its last job\") must match the jobs' actual `needs:` dependencies, and must not call a job the final step when other jobs run in parallel with it.",
+      "why": "A header that gets the job order wrong leads readers to think a job is the final step of the run when sibling jobs actually run alongside it.",
+      "check": "When a workflow's jobs or `needs:` lists change, read the header comments of the calling and called workflows. Flag any wording about ordering (\"last\", \"final\", \"after X\") that the dependency graph doesn't support.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

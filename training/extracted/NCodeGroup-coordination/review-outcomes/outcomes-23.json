@@ -1,0 +1,183 @@
+{
+  "hash": "9089e03cc1b1af80",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #23",
+  "rules": [
+    {
+      "statement": "When a background loop acquires a resource (such as a session or lease) and cancellation can interrupt it before the resource is published to the field that shutdown cleans up, keep the acquired-but-unpublished resource tracked and release it on stop, using a token other than the one that was cancelled.",
+      "why": "Otherwise a stop during the follow-up step leaks the resource until it expires, skipping a graceful release and blocking a restarted node from reclaiming it.",
+      "check": "Look for catch blocks filtered on `!stopping.IsCancellationRequested` or similar that let cancellation escape after an acquire but before the resource is assigned to the state the stop path releases.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Validate options that become `PeriodicTimer` or timer periods against a minimum of one millisecond, using a shared named minimum constant, and name the option's configuration key in each failure message.",
+      "why": "`PeriodicTimer` throws for periods under 1 ms, so a value that only passes an above-zero check fails later at run time instead of at start-time validation.",
+      "check": "Look for TimeSpan options validated only as `> TimeSpan.Zero` that feed a `PeriodicTimer`, `Task.Delay` or timer, and failure messages that don't name the option.",
+      "scope": "general",
+      "topic": "configuration-and-options",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test every point at which a background loop can be stopped, including stopping during a retry or back-off wait, and assert that the stop completes, the final state is stopped, and no more work runs.",
+      "why": "If cancellation of a wait were mishandled, the host would hang in stop or log a spurious failure, and no test would catch it.",
+      "check": "For each awaited delay or wait in a hosted loop, look for a test that stops the host while the loop waits there without advancing the fake clock.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When code tolerates a transient failure and keeps retrying, add a test where one attempt fails and the next succeeds, and assert that the state degrades and then recovers.",
+      "why": "A regression that gave up after one failure would otherwise pass the suite, and a brief outage would drop the resource.",
+      "check": "For retry or renew loops, look for a test with a failure followed by a success, not only tests that fail until the deadline.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Test validation bounds at the exact limit and one step past it on each side, and assert that the failure names the property.",
+      "why": "Flipping `>=` and `>`, or `<` and `<=`, would otherwise pass every test even though the bounds are specified exactly.",
+      "check": "For range validation, look for tests that only use values far past each limit and have no cases at the limit and one tick or unit outside it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests of failure paths that log, pass a `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger` and assert the event id and level of the expected entry.",
+      "why": "Operators rely on these entries to see why a node isn't ready, and a dropped, mislevelled or renumbered entry would otherwise fail no test.",
+      "check": "Look for fault-path tests that use only `NullLogger` and never assert a log record for the error or warning the path writes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Make XML documentation state the behaviour the code actually has: if a callback that throws is caught and logged, the remarks must say so instead of saying callbacks must not throw.",
+      "why": "A documented contract that disagrees with the behaviour, and with the tests that pin it, misleads callers.",
+      "check": "Compare `<remarks>` and summaries that forbid or promise something against the implementation's catch blocks and the tests.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Replace a string literal that is repeated in several places in a type with one private const.",
+      "why": "The copies can drift apart.",
+      "check": "Look for the same string literal written inline more than once in a class.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In tests that check an exception message, assert the exact message or its full distinctive text, not a short substring.",
+      "why": "A different failure that happens to mention the substring would still pass, so the test doesn't prove the intended check failed.",
+      "check": "Look for `Assert.Contains(\"<fragment>\", exception.Message)` where the message is deterministic and could be asserted exactly.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace a synchronous `CancellationTokenSource.Cancel()` with `await CancelAsync()` when its callbacks must finish before the next step, unless a convention requires `CancelAsync`.",
+      "why": "Awaiting `CancelAsync()` also waits for every callback, so it doesn't stop a slow callback from delaying the next step, and the ordering is deliberate.",
+      "check": "Before reporting, check whether the code relies on callbacks finishing before it continues, and whether the repository's conventions actually require `CancelAsync`.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `[ExcludeFromCodeCoverage]` on a source-generated logging class unless the repository's conventions require it.",
+      "why": "The conventions describe the logging class without the attribute, and the coverage gate passes with the class counted.",
+      "check": "Before reporting, check the logging section of the conventions and whether any sibling project uses the attribute.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report `params IEnumerable<T>` or other params collection parameters as unable to bind individual arguments when the projects build with C# 13 or later.",
+      "why": "C# 13 params collections accept individual element arguments, and the shared project template sets the latest language version.",
+      "check": "Before reporting, check the LangVersion that the build props set.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't ask for `IServiceCollection` parameters, extension receivers or locals to be renamed from `services` unless the repository's conventions state such a naming rule.",
+      "why": "No convention requires it, and the sibling registration code uses `services`.",
+      "check": "Before reporting, check the C# conventions file and how the sibling service-collection extensions name the receiver.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask to replace a private nested `FakeTimeProvider` subclass that overrides one member, such as `CreateTimer` to throw, with a strict `Mock<TimeProvider>`.",
+      "why": "The test conventions allow a stub one test file needs as a `private sealed` nested type, and the subclass still uses `FakeTimeProvider` as the time convention asks while changing only the behaviour under test.",
+      "check": "Before reporting, check whether the stub derives from `FakeTimeProvider`, is nested in the one test file that uses it, and overrides only what the test needs.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for an event-id `Base` constant to be made private when its containing class is already `internal`, unless the conventions require it.",
+      "why": "The logging convention only asks for named event-id constants written as `Base + n`, and an internal class already limits `Base` to the assembly.",
+      "check": "Before reporting, check the accessibility of the containing class and what the logging convention actually requires.",
+      "scope": "general",
+      "topic": "logging-and-telemetry",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap Markdown paragraphs and list items in decision records to fill lines to about 120 columns, without short lines in the middle of a paragraph, except before a link too long to share a line.",
+      "why": "Wrap checks and formatters flag uneven paragraphs.",
+      "check": "Look for lines that end well short of 120 columns while the sentence continues on the next line.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/**/*.md"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

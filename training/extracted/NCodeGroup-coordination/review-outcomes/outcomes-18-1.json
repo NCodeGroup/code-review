@@ -1,0 +1,194 @@
+{
+  "hash": "5f0f37b11fc7b68c",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "coordination outcomes of #18",
+  "rules": [
+    {
+      "statement": "When a batch operation routes the whole batch by its first item's key, check that every item is non-null and routes to the same target, and throw ArgumentException before resolving the target when one doesn't.",
+      "why": "A batch that spans keys bound to different targets would otherwise be written to the wrong target, with the wrong guarantees and no error, and be measured under the wrong name.",
+      "check": "Look for batch methods that pick a provider, shard or binding from the first element only. Report them when they don't validate the remaining elements, or when no test covers a mixed batch or a null element.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a component creates disposable resources while it composes or initializes, dispose every resource it created even if the composition fails, and don't make disposal depend on a Lazy<T> having produced a value.",
+      "why": "Otherwise a failed validation leaks the resources already created, such as connections, because a faulted Lazy leaves IsValueCreated false and Dispose skips them.",
+      "check": "Look for factories that run inside a Lazy<T> or an initializer before validation runs, where Dispose/DisposeAsync are guarded by IsValueCreated or a success-only field. Also check that one disposal throwing doesn't skip the rest.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a synchronous Dispose to block on DisposeAsync for a resource that is only IAsyncDisposable, and don't ask Dispose and DisposeAsync to share one loop body. Instead, require Dispose's documentation to say that such resources are released only by DisposeAsync.",
+      "why": "Blocking on a task is banned, so the two loops call different things and can't share a body cleanly. Leaving the limitation undocumented means callers who dispose synchronously leak async-only resources without knowing it.",
+      "check": "Before reporting duplicated Dispose/DisposeAsync bodies or an async-only resource that Dispose skips, check whether blocking is banned, for example in BannedSymbols.txt. Report only when Dispose's docs fail to state the limitation.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Document every exception a member can throw in an <exception> entry, including exceptions thrown on first use by lazy initialization it triggers.",
+      "why": "A caller who catches only the documented exception misses the failure that lazy initialization throws on the first call.",
+      "check": "For members that read Lazy<T>.Value or trigger first-use composition, check that the XML docs list the exceptions that initialization can throw.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, remove a member that only tests call, such as a second entry point or a convenience list, and have the tests go through the production path instead.",
+      "why": "A member only tests use is extra surface that has to be kept in step, and it blurs which path production really uses.",
+      "check": "For newly added non-private members, search src for callers. Report members whose only callers are in test projects.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In an architecture decision record, cite every entry of the References section in the body where it applies, or drop it.",
+      "why": "A reader can't tell which rule an uncited reference supports.",
+      "check": "Compare the ADR's References list with the citations in its Context and Decision text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask a library that deliberately depends only on DI and hosting abstractions to call AddMetrics() or register IMeterFactory itself when a decision record keeps it on abstractions.",
+      "why": "Every generic and ASP.NET Core host registers IMeterFactory. On a bare ServiceCollection, DI's own error names the missing service, and the ADR tells such callers to call AddMetrics().",
+      "check": "Before reporting a framework dependency the package doesn't register, check the package's references and any ADR that limits it to abstractions packages.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report internal implementation classes as unsealed when the assembly grants InternalsVisibleTo to its tests: internal implementations stay unsealed so Moq can proxy them, and only data and result types are sealed.",
+      "why": "The C# conventions keep internal implementations unsealed for mocking, and CA1852 stays on only for assemblies without InternalsVisibleTo.",
+      "check": "Check whether the assembly has InternalsVisibleTo and whether the type is a service implementation or a data/result type before asking to seal it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask to replace capturing lambdas with static lambdas and explicit state on calls that mostly do I/O, unless a profile shows allocation pressure.",
+      "why": "The closure and delegate cost a few small allocations per call, which matters only at very high call rates. The change would add a state parameter across every caller.",
+      "check": "Before reporting closure allocations, check whether the path is I/O-bound and whether any measurement shows allocation pressure.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a naming or style convention as broken unless one of the repository's instruction files actually states it, and don't cite an instruction file the repository doesn't have.",
+      "why": "A finding was declined because no instruction file in the repository set the claimed name, and the file it cited didn't exist.",
+      "check": "Open .github/instructions/ and confirm that the cited file and rule exist before reporting a convention violation.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when tests check an emitted metric instrument, assert its unit as well as its name and tags.",
+      "why": "A change of unit, for example from seconds to milliseconds, would otherwise pass every test while dashboards read values a thousandfold off.",
+      "check": "Look at metric tests that collect an instrument. Report them when none asserts Instrument.Unit against the documented unit.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover each field that an equality or conflict comparison checks with a case that differs only in that field.",
+      "why": "A regression that dropped one field from the comparison would otherwise let conflicting values through without any test failing.",
+      "check": "For a comparison method that compares several fields, check that each field has a test differing only in that field.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test that a method that accepts a CancellationToken passes it on: call it with an already-cancelled token and assert that OperationCanceledException propagates.",
+      "why": "If the token stopped being passed on, a shutdown during a slow call would wait for it to finish, and no test would notice.",
+      "check": "For new async methods that take a CancellationToken and pass it to a dependency, look for a test that cancels it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a failure-path test asserts the exact failures or message, not only the exception type, and a success-path test of a method that returns failures asserts that the failures are empty.",
+      "why": "Otherwise a test still passes when the code fails for a different reason, or when it wrongly records a failure alongside a result that looks valid.",
+      "check": "Look for Assert.Throws checks that don't inspect the exception's failures or message, Assert.Contains on failure lists where the exact list is known, and success tests that never assert the returned failures are empty.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, replace a fixture helper copied into several test classes with one shared generic helper.",
+      "why": "About 14 copies of one fixture can drift when the setup changes.",
+      "check": "Look for private helpers that are near-identical across test classes and differ only in a type or argument.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover each method in its own test rather than one test that exercises several methods.",
+      "why": "When one method breaks, a combined test stops at the first failure, and its name doesn't say which method broke.",
+      "check": "Look for tests whose bodies call and assert on several different members under one generic name.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, dispose a real ServiceProvider with `await using` in an async Task test, and keep synchronous `using` only for types that are only IDisposable, such as IHost.",
+      "why": "Synchronous disposal skips asynchronous disposal of the services and throws if a service is only IAsyncDisposable.",
+      "check": "Look for `using var` on a ServiceProvider built with BuildServiceProvider in tests.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

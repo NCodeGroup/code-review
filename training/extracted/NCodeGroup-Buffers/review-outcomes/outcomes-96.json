@@ -1,0 +1,75 @@
+{
+  "hash": "72ad7c95d5f2e375",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #96",
+  "rules": [
+    {
+      "statement": "Don't require a major version for a change to an exception type that was never documented, when sibling APIs already document the new exception for the same input; instead check that the release's ADR or changelog records why the change ships in a minor release.",
+      "why": "A major version is kept for changes to documented behavior. Replacing an undocumented exception so it matches what sibling APIs already document can ship as a minor release if the reason is recorded.",
+      "check": "When a diff changes which exception is thrown and bumps only the minor version, check the old exception's XML docs and the docs of sibling APIs. Report it only if the old exception was documented, or if no ADR or changelog entry explains the exemption.",
+      "scope": "general",
+      "topic": "public-api",
+      "applies_to": [
+        "**/*.cs",
+        "version.json",
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a project marked `pre-release: tracked`, don't report an ADR's Context for describing the behavior that the decision corrects.",
+      "why": "In a tracked project, an ADR's Context states the forces that called for the decision, including the behavior it corrects. The rule that every text describes only the current product doesn't apply.",
+      "check": "Before reporting an ADR Context that describes old behavior, read the Landing section of AGENTS.md. If it says `pre-release: tracked`, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a negative-argument test for failing to prove the check runs before allocation when its `ParamName` assertion would already fail if allocation came first.",
+      "why": "If the method allocated or rented before checking, the throw would come from somewhere else with a different or missing `ParamName`, so the existing assertion already catches that regression.",
+      "check": "Before asking for extra pool-state or allocation assertions, work out what exception and `ParamName` the allocate-first order would produce. If it differs from what the test asserts, don't report it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report hoisting a nested call out of another call's arguments into a named local as an unrelated rewrite.",
+      "why": "The C# conventions say not to nest a call inside another call's arguments but to hoist it into a named local first, so applying that in a file the change already edits follows the convention.",
+      "check": "Before flagging such an edit as an unrelated change, check the repository's C# instructions for the hoist-into-a-local rule and whether the pull request already edits that file.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, a test that asserts the contents of a pooled buffer, such as zeroing after reuse, rents a private element type that no other test uses, and any comment that claims this isolation names the exceptions accurately.",
+      "why": "Pools are shared per element type, so a test that rents a common type such as `byte` from a pool can be disturbed by other tests. A comment that overstates the isolation misleads later authors.",
+      "check": "Look for zeroing or content assertions on rentals of shared element types from a pool, and for comments about test isolation that don't match which tests actually use private types.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A build or gate script that extracts items from source, such as XML doc `<code>` examples, also counts the raw occurrences, fails when that count differs from the number extracted, and lists the location of each item it missed.",
+      "why": "Without a count check, extraction that drops some items still passes the gate. Only the loss of every item would be caught.",
+      "check": "In a new or changed gate script that extracts items from source, look for a cross-check between the raw count and the extracted count, or a fixture test. Report it if neither is present.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "build/**/*.ps1"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

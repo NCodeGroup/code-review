@@ -78,3 +78,14 @@ test('a call that ends on an API error records no first response', async () => {
   assert.equal(told, 0);
   assert.equal('firstResponseMs' in records[0]!, false);
 });
+
+test('runAgent gives the model request the timeout its call asks for, and five minutes otherwise', async () => {
+  const timeouts: (string | undefined)[] = [];
+  const query: QueryFunction = async function* ({ options }) {
+    timeouts.push(options?.env?.['API_TIMEOUT_MS']);
+    yield resultMessage({ structured_output: {} });
+  };
+  await runAgent(runWith(query), request({ apiTimeoutMs: 1_200_000 }));
+  await runAgent(runWith(query), request());
+  assert.deepEqual(timeouts, ['1200000', '300000']);
+});

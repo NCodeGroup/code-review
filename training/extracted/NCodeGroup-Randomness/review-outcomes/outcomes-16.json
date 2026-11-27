@@ -1,0 +1,95 @@
+{
+  "hash": "fea8726cf082dc39",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #16",
+  "rules": [
+    {
+      "statement": "In a test project, cover each public factory or overload with a success-path test that shows its input is actually applied, and with null-argument tests that assert the ArgumentNullException's ParamName for each guard.",
+      "why": "If an overload accepts its input but drops its values, or a null guard is removed, tests that only cover a failure path still pass.",
+      "check": "New public overloads or ArgumentNullException.ThrowIfNull guards whose tests only cover an error case, or have no test passing null and asserting ParamName.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when code promises an ordering (such as stopping services in reverse registration order), add a test that records the order and asserts it, rather than test doubles that only count calls.",
+      "why": "Doubles that only count calls let the order change without any test failing.",
+      "check": "A documented or ADR-stated ordering whose test doubles only count invocations and no test asserts the sequence.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a builder enables ServiceProviderOptions such as ValidateOnBuild or ValidateScopes, add a test that registers a service with an unresolvable dependency and asserts that the build fails with the AggregateException ValidateOnBuild raises, holding an InvalidOperationException that names the dependency.",
+      "why": "Without that test, dropping the provider options would let a broken composition build and fail only on first use.",
+      "check": "BuildServiceProvider calls with ValidateOnBuild/ValidateScopes and no test that exercises a missing dependency.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when a test expects a common exception type such as InvalidOperationException from a specific guard, capture the exception and assert something that identifies that guard, such as part of its message, instead of checking the type alone.",
+      "why": "Any other exception of the same type from the call would pass, so the test wouldn't prove the intended guard threw.",
+      "check": "Assert.Throws<InvalidOperationException> (or similar) whose result isn't inspected, where the call could throw that type for more than one reason.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, make each test check only the single behavior its name states, and split a test that asserts several outcomes (such as stopping, disposing and the thrown exception) into separate tests.",
+      "why": "When a multi-behavior test fails, its name doesn't say which behavior broke, and the assertions after the failing one don't run.",
+      "check": "Tests whose assertions cover outcomes the test name leaves out, or names that join several outcomes with 'And'.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, declare a literal value that a test double and an assertion both use as a single const on the double, and reference it in both places instead of repeating the literal.",
+      "why": "Duplicated literals can drift apart, and the test would then fail for a reason unrelated to the behavior.",
+      "check": "The same string or number literal appearing both in a stub's member and in an assertion against it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give private helpers, constructors, fields and properties a /// summary (with <param> tags on methods) that states non-obvious behavior such as ordering and which exceptions they throw, instead of a plain // comment or no comment.",
+      "why": "Otherwise nothing at the helper itself documents contracts such as reverse-order stopping or merging failures into an AggregateException.",
+      "check": "Private members in a change that have no /// summary, or only a // comment, especially helpers with ordering or exception semantics.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Create a collection that is usually empty, such as a list of caught failures, lazily on first use (for example `List<Exception>? failures = null; (failures ??= []).Add(ex)`) instead of allocating it on every call.",
+      "why": "Allocating it up front costs every call an allocation it usually doesn't need.",
+      "check": "`new List<...>()` created at the start of a method only to collect rare items such as exceptions in a catch block.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+{
+  "hash": "53e8fee7cfef489f",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #13",
+  "rules": [
+    {
+      "statement": "Don't ask for an `<exception cref=\"ArgumentNullException\">` XML doc entry for each `ArgumentNullException.ThrowIfNull` argument guard.",
+      "why": "The conventions ask for `<param>`, `<returns>` and `<remarks>` where they help, not an `<exception>` entry for every argument guard, and no existing guard site documents one.",
+      "check": "Before reporting a missing exception doc, check whether the only undocumented exception comes from an argument null guard. If so, don't report it.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a theory of invalid inputs for asserting only the option name in the failure message when each row breaks exactly one clause and an accepted control case exists.",
+      "why": "If any clause is dropped, its row validates and the test fails, so each sub-rule is already pinned. Full-message wording is pinned by other tests.",
+      "check": "Check whether each theory row breaks exactly one validation clause and whether a test shows that valid defaults succeed. If both are true, don't ask for cause-specific assertions.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, don't ask for the primary HTTP handler to be created inside the `ConfigurePrimaryHttpMessageHandler` factory when the test builds one provider and one client and owns and disposes the handler itself.",
+      "why": "No convention requires it, and with one handler chain per test no rotation or second chain can dispose the shared handler while the test reads it.",
+      "check": "Check whether the test builds more than one client or handler chain, or outlives handler rotation. If it doesn't, don't report a handler captured from outside the factory.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a `[SuppressMessage]` to justify a shared fetch that is bound by its own timeout instead of a caller's token when no analyzer diagnostic is being suppressed; a `//` comment stating the reason is enough.",
+      "why": "The conventions ask that a shared fetch be bound by its own timeout rather than any one caller's token. `[SuppressMessage]` is only for suppressing a real diagnostic.",
+      "check": "Check whether the build reports any diagnostic at the site. If not, accept the explanatory comment.",
+      "scope": "general",
+      "topic": "async-and-concurrency",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that a guard is untested, search the tests for one whose input only that guard can refuse, and don't report the gap if such a test exists.",
+      "why": "A finding that an existing test already answers costs review time and gets declined.",
+      "check": "Look for a test that drives the guard's exact condition, for example a mismatched round with a valid signature, and asserts the refusal.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Never echo a refused base address or URI in a validation or error message, because it may contain a credential; don't ask for it to be added.",
+      "why": "User info or secrets can sit in a base address, so naming only the option key keeps them out of logs and startup failures.",
+      "check": "Look for validation messages that interpolate a URI or base-address value. Also look for findings asking for one to be added.",
+      "scope": "general",
+      "topic": "security-and-crypto",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for `CultureInfo.InvariantCulture` or `FormattableString.Invariant` in human-facing messages that interpolate only non-negative integers when the analyzers (CA1305 with warnings as errors) already accept them.",
+      "why": "Non-negative integers format the same in every culture, and the build's analyzers already cover culture-sensitive formatting.",
+      "check": "Check the types of the interpolated values. If they are only non-negative integers and the build passes CA1305, don't report.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": true
+    },
+    {
+      "statement": "Don't ask for an `async ValueTask<T>` method whose common path completes synchronously to be split into a non-async wrapper and an async core unless a benchmark shows the gain.",
+      "why": "An `async ValueTask<T>` method that completes synchronously allocates nothing, and hot paths trade readability for speed only when a benchmark justifies it.",
+      "check": "Check whether the method already returns `ValueTask<T>` and whether a benchmark is cited. Without a benchmark, don't report the state-machine overhead.",
+      "scope": "general",
+      "topic": "performance",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "A type that only its own factory method builds keeps a private classic constructor; don't ask for it to become a primary constructor.",
+      "why": "A primary constructor can't be private, so it would let any code in the assembly build the type without the validating factory (for example `Parse` or `Verify`).",
+      "check": "When a constructor only assigns parameters, check whether it is private and called only from the type's own factory. If so, don't report it under the primary-constructor rule.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't object to naming a `JsonElement` that is the root of a parsed response `document`.",
+      "why": "The root element of a parsed response is the document, and no convention forbids the name.",
+      "check": "Check whether the `JsonElement` named `document` is the root of a parsed response. If it is, don't report the name.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Apply the call-hoisting rule only to a call nested in another call's arguments; don't report calls in string interpolations, `with` initializers, object initializers or short method chains.",
+      "why": "The conventions ask only that a call not be nested in another call's arguments, and they exempt these forms.",
+      "check": "Before reporting a nested call, confirm that it is a direct argument of another call and not in an interpolation hole, an initializer, a `with` expression or a short chain.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a small helper is duplicated on purpose across standalone projects, each copy must carry a `// Copied on purpose` comment naming the other copies; don't ask for a shared support project for it.",
+      "why": "Each project stands alone like the package it tests. The comment keeps the copies discoverable so that a fix reaches all of them.",
+      "check": "Look for helpers that are identical across projects and lack the copied-on-purpose comment naming their siblings.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't require a throwing UTF-8 encoding for reading committed test fixture files; the strict-encoding rule is for untrusted bytes.",
+      "why": "Committed fixtures are never edited and are trusted. A corrupted fixture still fails loudly because its signature, hashes or JSON no longer verify.",
+      "check": "Check whether the bytes being decoded come from an untrusted source or from a committed fixture. Report a lenient encoding only for untrusted bytes.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't write a helper that both writes to an output buffer and returns a value; split it so the helper reads and validates, and the caller writes explicitly.",
+      "why": "Mixing a command with a query means that calling the helper just for its result, or reordering calls, can silently change the output (for example the signed bytes).",
+      "check": "Look for helpers that append to a writer or buffer parameter and also return a value that callers use.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "For a compound refusal condition, test each clause with an input that only that clause refuses, alongside a passing control.",
+      "why": "Otherwise deleting a clause (for example a same-chain check) leaves the suite green.",
+      "check": "For each `||` or `&&` in a guard, look for a test whose input fails only that clause.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Pin both sides of every validated bound in tests: the extreme accepted values and the first refused value on each side.",
+      "why": "Without both sides, changing `<=` to `<` or `< 2` to `<= 2`, or dropping a maximum, goes unnoticed.",
+      "check": "For each limit check in a diff, look for tests at the exact accepted limit and just beyond it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Decode transient data that is only copied onward (for example hex that is only signed) straight into the destination span with span-based APIs such as `Convert.FromHexString(ReadOnlySpan<char>, Span<byte>, ...)`, and allocate arrays only for values that are kept.",
+      "why": "Allocating a temporary array per member just to copy it into a writer adds avoidable short-lived heap allocations.",
+      "check": "Look for `new byte[...]` or array-returning decodes whose result is only copied into a buffer and then dropped.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When the same refusal is thrown from more than one place, build its message once in a local or a small helper instead of repeating the literal.",
+      "why": "If one copy of the message is reworded, the same refusal reports two different texts.",
+      "check": "Look for identical exception message literals in more than one throw site for the same condition.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, name size constants for a binary layout (such as length-prefix and hash sizes) and derive composite lengths from them instead of repeating bare numbers.",
+      "why": "Bare numbers can drift from the layout with nothing at compile time to catch it.",
+      "check": "Look for repeated magic sizes and sums of literals in tests and test builders.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "hash": "f54872dde294427b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Buffers outcomes of #124",
+  "rules": [
+    {
+      "statement": "Don't report that a BCL API might behave differently on other target frameworks when the project targets a single framework and a test already asserts the behavior the code relies on.",
+      "why": "With one target framework, the behavior on that runtime is what matters, and the existing test makes CI fail if a framework added later behaves differently.",
+      "check": "Before raising a per-framework behavior concern, read the TargetFramework(s) in the project's .csproj and look for a test that pins the relied-on BCL behavior; raise it only if the project has several targets or no test covers the behavior.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap XML documentation comment text across several `///` lines of at most about 120 columns instead of writing it as one long line.",
+      "why": "Very long single doc-comment lines are hard to read in diffs, break the files' wrapping convention, and mean the whole line has to be reflowed on the next edit.",
+      "check": "Look for new or edited `///` lines, especially `<summary>` bodies, that run well past 120 columns.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when code has several validation checks that refuse input, give each check its own test cases that assert something only that check produces, such as a distinct error message, so that removing any one check makes a test fail.",
+      "why": "If every refusal throws the same exception and message, a test passes whichever check refused the input, so a redundant-looking guard can be removed without any test failing.",
+      "check": "Look for tests that assert only the exception type for input that more than one check could refuse, and for code paths where different checks throw identical messages.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "When a change departs from an accepted architecture decision record, add an ADR that amends it and update the original record's status, rather than leaving the code and its record out of step.",
+      "why": "If a project stops matching its decision record, the next reader can't tell whether the deviation is allowed.",
+      "check": "Compare added files or settings with the ADRs that govern the affected project, and flag deviations that come with no amending ADR or status update.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

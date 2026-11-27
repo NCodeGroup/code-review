@@ -1,0 +1,52 @@
+{
+  "hash": "30e3523de29f421b",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "NCode.Disposables outcomes of #58",
+  "rules": [
+    {
+      "statement": "When a change alters the text of a thrown exception's message in a minor release, the changelog entry for that change quotes the new message text.",
+      "why": "Callers that match the old message text in tests or log filters stop matching after upgrading; quoting the new text in the release notes lets them see the change, even though the message isn't a documented contract.",
+      "check": "Look for a changed exception message string in production code and confirm the CHANGELOG entry for that change quotes the new text.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/CHANGELOG.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Wrap edited `///` XML doc comment lines within about 120 columns, filling each line evenly with no short line in the middle of a sentence, and keep each `<see cref=\"...\"/>` whole on one line.",
+      "why": "Lines wider than the rest of the file's comments, or uneven wraps, don't match the surrounding comments and force a later edit to reflow them.",
+      "check": "Look at added or edited `///` lines for lines over about 120 columns, a short line breaking a sentence mid-paragraph, or a `<see cref>` split across lines.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report an ADR citation of a number below 1000 (such as `ADR-0131`) as ambiguous for lacking a `project-template` prefix; the `project-template ADR-NNNN` form is only required on a `Supersedes:` line, and a sentence that states only what the record relies on and links the cited record isn't restating it.",
+      "why": "Numbers below 1000 belong to the project template, so an ADR number names one record across both folders, and the writing rules ask records to link what they depend on rather than restate it.",
+      "check": "Before reporting, check the docs/decisions README's numbering rule, whether the citation is on a `Supersedes:` line, and whether the link already points into `project-template/`.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "docs/decisions/**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, when several tests assert the same expected exception message, declare it once as a private const in the test class and use it in each assertion, keeping the test's own copy rather than exposing the library's private constant.",
+      "why": "Copied literals need edits in several places and can drift apart, while the test's independent copy still fails if the library's message changes.",
+      "check": "Look for the same expected message string literal repeated across assertions in one test class.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

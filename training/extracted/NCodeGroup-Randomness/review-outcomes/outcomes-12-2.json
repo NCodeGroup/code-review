@@ -1,0 +1,217 @@
+{
+  "hash": "c0879801e4d1eaf0",
+  "promptHash": "cdf34998a2e974f1",
+  "label": "Randomness outcomes of #12",
+  "rules": [
+    {
+      "statement": "Don't report a void helper that only adds failures to a list the caller passes as a command-query separation violation; the rule forbids a method that both acts and answers.",
+      "why": "A void command that only appends results answers nothing, so it doesn't mix acting and answering. Sibling helpers in the same validator often have the same shape.",
+      "check": "Before reporting, see whether the helper also returns a value or answers a query. If it is void and only mutates the passed collection, and its sibling helpers do the same, don't raise it.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for CultureInfo.InvariantCulture when numbers are interpolated into exception messages meant for people; the invariant-culture rule covers values meant for machines.",
+      "why": "The convention asks for the invariant culture on machine-read values. Exception messages are for people, and an integer such as a long formats with no group separators in any culture.",
+      "check": "Before reporting, check whether the formatted text is read by a machine (a request path, a protocol value, a persisted value) or only by a person (an exception or log message). Report only the machine case.",
+      "scope": "general",
+      "topic": "text-and-encoding",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't ask for a trailing newline on test fixture files that are stored byte for byte as an external service served them.",
+      "why": "Such fixtures are captured documents that are never edited. Adding an LF would make them differ from what the service serves.",
+      "check": "Before reporting a missing trailing LF on a fixture, check the fixtures README or the repository conventions for a byte-exact or never-edited rule.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/Fixtures/**"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't report a chain of member accesses on one receiver as a nested-call violation; the no-nested-call rule covers only a call nested in another call's arguments.",
+      "why": "The rule asks you to hoist call results that are passed as arguments into named locals. No rule covers a fluent chain such as a.B.Get<T>(x).Value.ToArray().",
+      "check": "Raise it only when a method call appears inside another call's argument list, including constructor arguments and lambda bodies. Don't raise a plain member-access chain.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Before reporting that a test name doesn't match a test-data builder's setting, check how the builder derives the named count from that setting.",
+      "why": "Test names may count what the builder produces (for example, setting + 1), or count from the point the code under test starts, rather than echo the raw setting. In that case the name is accurate.",
+      "check": "Read the builder's defaults and derived properties, and the sibling test that pins the other side of the limit, before raising a name/setting mismatch.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test that cancelling the caller's token surfaces an OperationCanceledException and not a wrapped domain exception.",
+      "why": "Without this test, a regression could turn host shutdown into a domain error that is logged as an outage.",
+      "check": "For each async component that translates exceptions, look for a test that passes a cancelled token and asserts ThrowsAnyAsync<OperationCanceledException>.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, pin each inclusive or exclusive limit with one case exactly at the limit and one case just past it.",
+      "why": "If no test sits on the limit, flipping >= to > or making an off-by-one change leaves the suite green.",
+      "check": "For each comparison against a limit in the code under test, look for a case at the exact value and one a tick or unit beyond it.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, give every validation failure branch its own test that asserts the failure message with an ordinal comparison.",
+      "why": "If a guard has no test, it can be removed or its message changed without any test failing.",
+      "check": "Map each failure message in a validator to a test that triggers it and asserts the message text.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, test that a cache doesn't keep a failed fetch: the next call after a failure fetches again and succeeds.",
+      "why": "If a failure were cached, a transient outage would persist until restart with no failing test.",
+      "check": "For caching components, look for a test where the first fetch fails, the second succeeds, and two requests are recorded.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, cover every public overload, including Action<TOptions> configure overloads, with a test that asserts its effect.",
+      "why": "Without that test, a regression such as an overload not applying its delegate would go unnoticed.",
+      "check": "List the public overloads that a diff adds and look for a test that calls each one.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, assert a message substring that is unique to the rule under test, not text that several failure paths share.",
+      "why": "If two tests assert the same shared substring, each passes when the other path refuses, so neither pins its own rule.",
+      "check": "Compare the asserted substrings of sibling failure tests with the messages each path produces.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, for each registration method that calls ValidateOnStart, add a test that starts a host with invalid options and asserts an OptionsValidationException that names the key.",
+      "why": "Tests that only call Validate directly would stay green if ValidateOnStart were dropped from a registration path.",
+      "check": "For each AddX registration that validates on start, look for a host-start test with an invalid value.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In a test project, move test wiring and assertion helpers that several test classes duplicate into shared test infrastructure.",
+      "why": "Copies of wiring have to be changed twice and can drift apart.",
+      "check": "Look for identical setup, dispose loops or assertion helpers copied between test classes.",
+      "scope": "general",
+      "topic": "testing",
+      "applies_to": [
+        "**/*Tests/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Extract repeated validation or exception-translation blocks that differ only by a name or parameter into one shared helper.",
+      "why": "Copies can drift, and two components would then report different errors for the same failure.",
+      "check": "Look for near-identical try/catch or catch-filter blocks repeated within a class or across sibling classes.",
+      "scope": "general",
+      "topic": "errors-and-validation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Don't pass two parameters that identify the same entity (such as a name and an index); pass one and derive the other from it.",
+      "why": "A long positional list of similar values is easy to misorder, and the values can disagree.",
+      "check": "Look for method signatures in a diff that gain a parameter redundant with an existing one.",
+      "scope": "general",
+      "topic": "code-organization",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Register services with TryAdd* unconditionally, and don't use an Any() guard with an early return that skips registering other services.",
+      "why": "If something else registers the guarded service first, the early return silently leaves the dependent services unregistered.",
+      "check": "Look for services.Any(...) checks followed by AddSingleton or a return in DI extension methods.",
+      "scope": "general",
+      "topic": "dependency-injection",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Keep measured or volatile external figures (rates, cadences, dates of observed state) out of ADR Consequences and XML docs, or date them; state the rationale and keep the dated figures in the ADR's Context.",
+      "why": "Undated figures go stale unnoticed, and readers may tune limits on the old numbers.",
+      "check": "Look for numeric cadences, estimates or observed-state claims in XML docs, READMEs or ADR Consequences without an 'as of <date>' qualifier.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs",
+        "**/*.md"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "Give a documented method a <param> tag for each parameter, and a <returns> tag when it returns a value.",
+      "why": "Without them, IntelliSense describes none of the parameters.",
+      "check": "Look for /// summaries on methods that lack <param> or <returns> tags.",
+      "scope": "general",
+      "topic": "documentation",
+      "applies_to": [
+        "**/*.cs"
+      ],
+      "enforced_by_tools": false
+    },
+    {
+      "statement": "In production code, write transient buffers that are used once, such as hash outputs and decoded data, into stackalloc spans or ArrayPool<byte>.Shared buffers through the Try/destination overloads, not into newly allocated arrays.",
+      "why": "The allocating overloads add avoidable allocations on each call, which matters for large inputs.",
+      "check": "Look for HashData(x) and Convert.FromBase64String results that are used once and discarded on hot or per-request paths.",
+      "scope": "general",
+      "topic": "allocations-and-buffers",
+      "applies_to": [
+        "src/**/*.cs"
+      ],
+      "enforced_by_tools": false
+    }
+  ]
+}

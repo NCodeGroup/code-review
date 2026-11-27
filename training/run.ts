@@ -5,7 +5,8 @@
 // prompts and its maintainer's review comments.
 //
 //   node training/run.ts --repo NCodeGroup/Identity --checkout C:\GitHub\NCode\Identity [--maintainer polewskm]
-//   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules]
+//   node training/run.ts --repo NCodeGroup/Buffers --checkout ../Buffers --comments <folder> --only outcomes
+//   node training/run.ts --generalize-only [--holdout-only] [--no-taught-rules] [--topics security-and-crypto,...]
 //   node training/run.ts --retag
 //
 // 1. Extract: Opus reads each source and lists the rules a reviewer could check, phrased in general terms. The bot's own
@@ -220,6 +221,63 @@ function fetchPullComments(repository: string): PullComment[] {
     comments.push(...batch);
     if (batch.length < 100) return comments;
   }
+}
+
+// One review thread as the GitHub MCP server's get_review_comments lists a pull request's threads: the comments in order,
+// the first one the thread's root, each with its author's login.
+export interface SavedThread {
+  comments?: { body?: string; path?: string; line?: number | null; original_line?: number | null; author?: string }[];
+}
+
+// The bot's login as the GitHub MCP server writes a thread's author: without the "[bot]" suffix.
+export const savedBotLogin = botLogin.replace(/\[bot\]$/, '');
+
+// The review comments of the saved threads under `folder`, as fetchPullComments lists them, for a session that can't
+// call `gh api`: one subfolder per repository, named for it, with one file per pull request, <number>.json, and its
+// later pages, <number>.p2.json and on, each holding the `review_threads` that get_review_comments returned. Each
+// comment gets an id, each reply the id of its thread's root, and the bot's login gets back its "[bot]" suffix. No
+// diff hunk is saved, so a maintainer's comment read from here reaches the extraction without its diff.
+export function savedComments(folder: string, repository: string): PullComment[] {
+  const dir = path.join(folder, repository.split('/')[1]!);
+  if (!existsSync(dir))
+    throw new Error(`--comments: no folder ${dir}; save each pull request's threads there as <number>.json.`);
+  const comments: PullComment[] = [];
+  let id = 0;
+  const files = readdirSync(dir)
+    .map((name) => ({ name, match: /^(\d+)(?:\.p(\d+))?\.json$/.exec(name) }))
+    .filter((f) => f.match)
+    .sort((a, b) => Number(a.match![1]) - Number(b.match![1]) || Number(a.match![2] ?? 1) - Number(b.match![2] ?? 1));
+  if (!files.length) throw new Error(`--comments: ${dir} holds no <number>.json file of saved review threads.`);
+  for (const { name, match } of files) {
+    const url = `https://api.github.com/repos/${repository}/pulls/${match![1]}`;
+    const file = path.join(dir, name);
+    let saved: { review_threads?: unknown };
+    try {
+      saved = JSON.parse(readFileSync(file, 'utf8')) as { review_threads?: unknown };
+    } catch (error) {
+      throw new Error(`--comments: ${file} isn't valid JSON (${(error as Error).message}).`);
+    }
+    if (!Array.isArray(saved.review_threads))
+      throw new Error(`--comments: ${file} has no review_threads list, so it isn't a saved page.`);
+    for (const thread of saved.review_threads as SavedThread[]) {
+      let rootId: number | undefined;
+      for (const c of thread.comments ?? []) {
+        const comment: PullComment = {
+          id: ++id,
+          ...(rootId ? { in_reply_to_id: rootId } : {}),
+          ...(c.author ? { user: { login: c.author === savedBotLogin ? botLogin : c.author } } : {}),
+          ...(c.body !== undefined ? { body: c.body } : {}),
+          ...(c.path !== undefined ? { path: c.path } : {}),
+          line: c.line ?? null,
+          original_line: c.original_line ?? null,
+          pull_request_url: url,
+        };
+        rootId ??= comment.id;
+        comments.push(comment);
+      }
+    }
+  }
+  return comments;
 }
 
 // The maintainer's top-level review comments with the diff they were on and the replies, one source per pull request.
@@ -593,6 +651,20 @@ const titles: Record<string, string> = {
   performance: 'Performance',
 };
 
+// The topics --topics names, each checked against the topic list, or undefined without the option, when a run rebuilds
+// every topic from an empty folder.
+export function namedTopics(option: string | undefined): string[] | undefined {
+  const named = option?.split(',');
+  const unknown = named?.filter((t) => !(topics as readonly string[]).includes(t));
+  if (unknown?.length)
+    throw new Error(`--topics: no topic ${unknown.join(', ')}; the topics are ${topics.join(', ')}.`);
+  return named;
+}
+
+// How long one generalization request may take: a large topic's answer takes Opus longer than the five minutes a
+// review's request gets.
+export const generalizeApiTimeoutMs = 20 * 60_000;
+
 async function generalize(
   run: AgentRun,
   calls: CallRecord[],
@@ -608,9 +680,12 @@ async function generalize(
   const scopes = sourceScopes();
   console.log(`${folder}/: ${usable.length} rules${exclude.size ? `, holding out ${exclude.size} sources` : ''}`);
   const out = path.join(root, folder);
-  rmSync(out, { recursive: true, force: true });
+  // --topics regenerates only the topics it names and keeps the folder's other files, such as after one topic's call
+  // failed; without it the folder is rebuilt from scratch.
+  const only = namedTopics(arg('topics'));
+  if (!only) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  await mapWithConcurrency([...topics], 4, async (topic) => {
+  await mapWithConcurrency(only ?? [...topics], 4, async (topic) => {
     const rules = usable.filter(({ rule }) => rule.topic === topic);
     if (!rules.length) return;
     const input = rules.map(({ rule, source }) => ({ ...rule, source }));
@@ -623,6 +698,7 @@ async function generalize(
       maxTurns: 3,
       budgetUsd: 15,
       cache: false,
+      apiTimeoutMs: generalizeApiTimeoutMs,
     });
     calls.push(...result.records);
     if (!result.output) {
@@ -690,7 +766,8 @@ async function main(): Promise<void> {
       const { dir: extractedDir, repoName } = extractedFolder(path.join(root, 'training', 'extracted'), repository);
       const only = arg('only')?.split(',');
       const maintainer = arg('maintainer') ?? 'polewskm';
-      const comments = fetchPullComments(repository);
+      const commentsFolder = arg('comments');
+      const comments = commentsFolder ? savedComments(commentsFolder, repository) : fetchPullComments(repository);
       const sources = [
         ...decisionRecords(checkout, repoName),
         ...conventionFiles(checkout, repoName),
