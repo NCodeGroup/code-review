@@ -126,6 +126,27 @@ test("the caller's concurrency group puts only a first line of /review in the pu
   }
 });
 
+test("the caller's review job reviews Dependabot's own pushes and no other push", () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8')) as {
+    on: { pull_request_target: { types: string[] } };
+    jobs: { review: { if: string } };
+  };
+  assert.deepEqual(workflow.on.pull_request_target.types, [
+    'opened',
+    'reopened',
+    'ready_for_review',
+    'synchronize',
+    'closed',
+  ]);
+  const condition = workflow.jobs.review.if;
+  assert.ok(condition.includes("((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||"));
+  assert.ok(
+    condition.includes(
+      "(github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]')",
+    ),
+  );
+});
+
 test('parseCommand reads /review explain with a finding id and no question', () => {
   assert.deepEqual(parseCommand('/review explain F3'), {
     kind: 'explain',
