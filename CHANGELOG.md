@@ -6,11 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-27
+
 ### Added
 
 - The `declined` eval subset, also a `subset` choice of the Eval workflow, runs four must-not cases built from findings the maintainer declined, one for each kind that `prompts/specialist.md` tells the reviewers not to report: a test-project rule (`null!` in an argument-validation test, nested test doubles), a compatibility or changelog note asked of a pre-release repository, older text on a line a renumber only rewrote, and another repository's `[Unreleased]` changelog rule asked of a plan that writes its own dated section ([#191](https://github.com/NCodeGroup/code-review/issues/191), [ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
 
 - `npm run train` reads review threads saved from the GitHub MCP server's `get_review_comments` with `--comments <folder>`, for a session that can't call `gh api`, and refuses a folder that holds none. `--topics` regenerates only the guidance topics it names, and a topic's generalization call may take 20 minutes, so the largest topic no longer times out ([ADR-1005](docs/decisions/1005-training-learns-from-the-bots-findings-as-the-maintainer-answered-them.md)).
+
+- CI's `test` check fails a pull request that changes what the action's consumers run, `action.yml`, `src/`, `prompts/`, `reviewers/`, `guidance/` or the runtime dependencies, until it adds a release section newer than the base branch's, so its merge always tags and publishes that version; Dependabot's updates ship with the next release ([ADR-1012](docs/decisions/1012-a-pull-request-that-changes-what-consumers-run-must-add-its-release.md)).
 
 ### Changed
 
@@ -325,7 +329,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.5.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/NCodeGroup/code-review/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/NCodeGroup/code-review/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/NCodeGroup/code-review/compare/v1.4.1...v1.4.2

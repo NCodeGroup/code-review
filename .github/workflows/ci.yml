@@ -41,6 +41,14 @@ jobs:
         with:
           node-version-file: .node-version
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      # A pull request that changes what the action's consumers run adds the release section its merge publishes, so
+      # tag-release.yml releases every such merge (ADR-1012). Dependabot can't write the changelog, so its updates ship
+      # with the next release. The base branch's name reaches the script through the environment, never the command.
+      - name: Check the release
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node tools/release-check.ts "origin/$env:BASE_REF"
       - name: Check the decision index
         run: ./.template/Test-AdrIndex.ps1
       # Each source file starts with the copyright line and the SPDX license line (ADR-0027).
