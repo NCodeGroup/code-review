@@ -1,6 +1,6 @@
 # 1006. A plan that reaches consumers releases when its pull request merges
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 1012)
 - **Date:** 2026-11-14
 - **Deciders:** Marcin Polewski
 

@@ -15,7 +15,7 @@ const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 // Yields each line with whether it is inside a fenced code block, where a heading or a link definition is only text. As
 // in CommonMark, only a run of the opening fence's character at least as long as it, with nothing after it, closes it,
 // and a fence that is never closed runs to the end. The fence's own lines count as inside it, the closing one aside.
-function* linesWithFences(lines: readonly string[]): Generator<[index: number, line: string, inFence: boolean]> {
+export function* linesWithFences(lines: readonly string[]): Generator<[index: number, line: string, inFence: boolean]> {
   let fence: { char: string; length: number } | undefined;
   for (const [index, line] of lines.entries()) {
     const marker = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
