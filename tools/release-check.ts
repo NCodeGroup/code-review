@@ -44,6 +44,15 @@ function newer(a: string, b: string): boolean {
   return false;
 }
 
+// How many changed files the refusal names before it counts the rest.
+const namedFiles = 5;
+
+// A message as a workflow command's text: %, CR and LF escaped, so a file name can't end the annotation or start
+// another command.
+export function workflowCommandText(message: string): string {
+  return message.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+}
+
 // Why the pull request can't merge as it is, or undefined: it changes nothing a consumer runs, or its changelog's newest
 // release section is newer than the base's and holds the release's changes.
 export function releaseProblem(
@@ -63,7 +72,9 @@ export function releaseProblem(
     }
   }
   const named =
-    changed.length > 5 ? `${changed.slice(0, 5).join(', ')} and ${changed.length - 5} more` : changed.join(', ');
+    changed.length > namedFiles
+      ? `${changed.slice(0, namedFiles).join(', ')} and ${changed.length - namedFiles} more`
+      : changed.join(', ');
   return (
     `This pull request changes what the action's consumers run (${named}), so its merge must release it: ` +
     `move CHANGELOG.md's [Unreleased] entries into a new '## [<version>] - YYYY-MM-DD' section newer than ${before ?? 'the last release'}, ` +
@@ -76,24 +87,27 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     const [base] = process.argv.slice(2);
     if (!base) throw new Error('Usage: node tools/release-check.ts <base ref>');
     const git = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8' });
+    // A file the base branch doesn't have is undefined; any other git failure, such as a missing object, throws.
     const atBase = (file: string) => {
       try {
-        return git('show', `${base}:${file}`);
+        execFileSync('git', ['cat-file', '-e', `${base}:${file}`], { stdio: 'ignore' });
       } catch {
         return undefined;
       }
+      return git('show', `${base}:${file}`);
     };
     const files = git('diff', '--name-only', `${base}...HEAD`).split('\n').filter(Boolean);
     const changed = shippedChanges(files, atBase('package.json'), readFileSync('package.json', 'utf8'));
-    const problem = releaseProblem(changed, atBase('CHANGELOG.md') ?? '', readFileSync('CHANGELOG.md', 'utf8'));
+    const changelog = readFileSync('CHANGELOG.md', 'utf8');
+    const problem = releaseProblem(changed, atBase('CHANGELOG.md') ?? '', changelog);
     if (problem) throw new Error(problem);
     console.log(
       changed.length
-        ? `Release: ${newestRelease(readFileSync('CHANGELOG.md', 'utf8'))}, for ${changed.join(', ')}.`
+        ? `Release: ${newestRelease(changelog)}, for ${changed.join(', ')}.`
         : 'Release: none needed; nothing a consumer runs changed.',
     );
   } catch (error) {
-    console.error(`::error::${(error as Error).message}`);
+    console.error(`::error::${workflowCommandText((error as Error).message)}`);
     process.exitCode = 1;
   }
 }

@@ -31,8 +31,8 @@ until it does. Its merge then always tags and publishes that version through `ta
 - When any are listed, the pull request's newest `## [x.y.z] - YYYY-MM-DD` section must be newer than the base branch's
   and list its changes, as `tools/release-notes.ts` checks before a release. Otherwise the check fails and names the
   files.
-- A pull request that changes nothing a consumer runs needs no section and releases nothing, as ADR-1006 and the
-  template's ADR-0032 say.
+- A pull request that changes nothing a consumer runs needs no section and releases nothing, as ADR-1006 and
+  project-template ADR-0032 say.
 - Dependabot's pull requests skip the check: Dependabot can't write the changelog, so its updates ship with the next
   release. So does a change to `package-lock.json` alone, which only Dependabot makes in practice.
 - When another pull request lands the same version first, the check fails on the next run against the new base, and

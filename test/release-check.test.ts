@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { newestRelease, releaseProblem, shippedChanges } from '../tools/release-check.ts';
+import { newestRelease, releaseProblem, shippedChanges, workflowCommandText } from '../tools/release-check.ts';
 
 const changelog = (...versions: string[]) =>
   [
@@ -28,6 +28,8 @@ test('shippedChanges keeps the files a consumer runs and leaves out tests, docs,
       'training/run.ts',
       'CHANGELOG.md',
       'srcs/x.ts',
+      'docs/action.yml',
+      'action.yml.bak',
     ]),
     ['action.yml', 'src/agent.ts', 'prompts/synthesis.md', 'reviewers/tests.md', 'guidance/testing.md'],
   );
@@ -83,4 +85,8 @@ test('releaseProblem names the first five shipped files and counts the rest', ()
     releaseProblem(files, changelog('1.5.1'), changelog('1.5.1')) ?? '',
     /\(src\/a\.ts, src\/b\.ts, src\/c\.ts, src\/d\.ts, src\/e\.ts and 2 more\)/,
   );
+});
+
+test('workflowCommandText escapes %, CR and LF so a message stays one annotation', () => {
+  assert.equal(workflowCommandText('100% of a\r\nb\n::warning::x'), '100%25 of a%0D%0Ab%0A::warning::x');
 });
