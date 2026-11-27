@@ -199,9 +199,9 @@ What a maintainer sees and does once the repository is set up; [Commands](../REA
 
 - Opening, reopening or marking a pull request ready starts a review, drafts included.
 - An automatic run on a commit already reviewed stops, and its log says "<commit> was already reviewed; comment /review to review it again."
-- A push starts nothing, so comment `/review` as a top-level comment whose first line is exactly `/review`; lines below it, such as a `---` footer, are fine.
+- A push starts nothing, except Dependabot's to its own pull request, so comment `/review` as a top-level comment whose first line is exactly `/review`; lines below it, such as a `---` footer, are fine.
 - Only people with write access can. A private organization membership counts as a contributor, so make it public or be added as a collaborator.
-- A pull request a bot opens isn't reviewed when it opens, so a maintainer approves Dependabot's where an approval is required.
+- Dependabot's pull requests are reviewed when they open and after each push Dependabot makes, such as a rebase, so a clean review approves them and the NCode Review pin bump merges by itself; another bot's pull request waits for a `/review` ([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
 - The `skip-review` label skips the automatic reviews.
 - A pull request from a fork is reviewed only where `code-review.yml` passes `review-forks: true` (v1.7.0 on): when it opens or reopens as ready for review, when it's marked ready, and on a writer's `/review`, never as a draft when it opens, and it is never approved ([Pull requests from forks](../README.md#pull-requests-from-forks), [ADR-1013](decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
 - After three reviews with no comment from a writer, an automatic review posts "Paused: comment `/review` to resume".
@@ -242,7 +242,7 @@ What a maintainer sees and does once the repository is set up; [Commands](../REA
   - a push starts nothing: comment `/review`.
   - the commit was already reviewed: comment `/review`.
   - the comment isn't top-level, doesn't have `/review` alone on its first line, or comes from someone without write access: see [4.1](#41-starting-a-review).
-  - a bot's pull request, a fork's pull request without `review-forks: true`, a fork's draft or the `skip-review` label: see [4.1](#41-starting-a-review).
+  - another bot's pull request, a fork's pull request without `review-forks: true`, a fork's draft or the `skip-review` label: see [4.1](#41-starting-a-review).
   - "Paused": comment `/review`.
   - "Review budget used up", when the plan's API credits are used up or the Anthropic login failed and the Bedrock key is missing, refused or throttled: see [1.4](#14-set-up-anthropic) and [1.5](#15-store-the-organization-secrets).
   - a public repository without the `pull_request_target` event policy from 2026-12-02: see [2.4](#24-require-the-approval).
