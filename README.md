@@ -113,10 +113,11 @@ on:
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, a push Dependabot makes to its own pull request, or a top-level
-    # `/review`, `/review explain` or `/review teach` comment on one from someone with write access. The engine checks
-    # the comment again and skips anything else. A plain `/review` on a closed pull request doesn't run, so it can't
-    # cancel or displace the outcomes job. The concurrency group below decides which comments can cancel a review.
+    # A pull request when it opens or is marked ready, a fork's only once it isn't a draft, a push Dependabot makes to
+    # its own pull request, or a top-level `/review`, `/review explain` or `/review teach` comment on one from someone
+    # with write access. The engine checks the comment again and skips anything else. A plain `/review` on a closed pull
+    # request doesn't run, so it can't cancel or displace the outcomes job. The concurrency group below decides which
+    # comments can cancel a review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
@@ -159,9 +160,9 @@ jobs:
           review-forks: true
 
   outcomes:
-    # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
-    # records what became of each finding, by rules alone. It makes no model call, so it runs outside the code-review
-    # environment, without id-token: write, the Bedrock key or a checkout.
+    # A closed pull request, merged or not, a fork's too, whoever closed it (a merge queue merges as a bot) and whatever
+    # its labels: records what became of each finding, by rules alone. It makes no model call, so it runs outside the
+    # code-review environment, without id-token: write, the Bedrock key or a checkout.
     if: >-
       github.event_name == 'pull_request_target' && github.event.action == 'closed'
     runs-on: ubuntu-latest
