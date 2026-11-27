@@ -1082,6 +1082,7 @@ test('action.yml keeps the app key and every app token out of the review step', 
     'CODE_REVIEW_ORGANIZATION_ID',
     'CODE_REVIEW_OUT',
     'CODE_REVIEW_PR_PATH',
+    'CODE_REVIEW_REVIEW_FORKS',
     'CODE_REVIEW_SERVICE_ACCOUNT_ID',
     'CODE_REVIEW_WORKSPACE_ID',
   ]);
@@ -1096,6 +1097,16 @@ test('action.yml gives the approve input to the publish step only', () => {
   assert.ok(reviewStep && publishStep);
   assert.equal('CODE_REVIEW_APPROVE' in reviewStep.env, false);
   assert.equal(publishStep.env['CODE_REVIEW_APPROVE'], '${{ inputs.approve }}');
+});
+
+test('action.yml gives review-forks to the decide and review steps only', () => {
+  const steps = actionSteps();
+  const holders = steps.filter((s) => s.text.includes('inputs.review-forks'));
+  assert.deepEqual(
+    holders.map((s) => s.id),
+    ['ack-decide', 'review'],
+  );
+  for (const step of holders) assert.equal(step.env['CODE_REVIEW_REVIEW_FORKS'], '${{ inputs.review-forks }}');
 });
 
 test('action.yml gives the app key only to the token steps, and each token only to the steps that write to the pull request', () => {
@@ -1128,7 +1139,7 @@ test("action.yml gives the approver's key only to its token step, and its token 
   assert.equal(minted?.with['private-key'], '${{ inputs.approver-private-key }}');
   assert.equal(
     minted?.if,
-    "steps.review.outputs.reviewed == 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''",
+    "steps.review.outputs.reviewed == 'true' && steps.review.outputs.fork != 'true' && inputs.approve == 'true' && inputs.approver-private-key != ''",
   );
   const users = steps.filter((s) => s.text.includes('steps.approver-token.outputs.token')).map((s) => s.id || s.name);
   assert.deepEqual(users, ['publish']);
@@ -1171,7 +1182,10 @@ test('action.yml acknowledges before setup-node and npm ci, and never lets the a
   assert.deepEqual(Object.keys(revoke?.env ?? {}), ['CODE_REVIEW_APP_TOKEN']);
   assert.ok(revoke?.text.includes('acknowledge.ts" revoke'));
   assert.equal(steps[index('ack-decide')]?.env['CODE_REVIEW_GITHUB_TOKEN'], '${{ inputs.github-token }}');
-  assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), ['CODE_REVIEW_GITHUB_TOKEN']);
+  assert.deepEqual(Object.keys(steps[index('ack-decide')]?.env ?? {}), [
+    'CODE_REVIEW_GITHUB_TOKEN',
+    'CODE_REVIEW_REVIEW_FORKS',
+  ]);
 });
 
 test("action.yml mints the reaction's token with the pull requests permission alone and keeps it out of the review step", () => {
