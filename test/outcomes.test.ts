@@ -1096,7 +1096,7 @@ test('readOutcomes reads the outcomes the review step left, and none after a rev
 
 test('the caller triggers on closed, and the action gives a closed run no model key', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-  assert.match(readme, /types: \[opened, reopened, ready_for_review, closed\]/);
+  assert.match(readme, /types: \[opened, reopened, ready_for_review, synchronize, closed\]/);
   const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
   const caller = readme.slice(callerStart, readme.indexOf('\n```', callerStart));
   assertOutcomesJob(caller, 'README');

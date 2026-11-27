@@ -147,6 +147,18 @@ test("the caller's review job reviews Dependabot's own pushes and no other push"
   );
 });
 
+test("the README's caller has this repository's review job if: and triggers", () => {
+  type Caller = { on: { pull_request_target: { types: string[] } }; jobs: { review: { if: string } } };
+  const workflow = parse(
+    readFileSync(new URL('../.github/workflows/code-review.yml', import.meta.url), 'utf8'),
+  ) as Caller;
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const callerStart = readme.indexOf('```yaml\n', readme.indexOf('## Using it')) + '```yaml\n'.length;
+  const caller = parse(readme.slice(callerStart, readme.indexOf('\n```', callerStart))) as Caller;
+  assert.equal(caller.jobs.review.if, workflow.jobs.review.if);
+  assert.deepEqual(caller.on.pull_request_target.types, workflow.on.pull_request_target.types);
+});
+
 test('parseCommand reads /review explain with a finding id and no question', () => {
   assert.deepEqual(parseCommand('/review explain F3'), {
     kind: 'explain',

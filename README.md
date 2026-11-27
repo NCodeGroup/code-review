@@ -107,20 +107,22 @@ To set NCode Review up for an organization or a repository, follow [docs/setup.m
 name: Code review
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, closed]
+    types: [opened, reopened, ready_for_review, synchronize, closed]
   issue_comment:
     types: [created]
 permissions: {}
 jobs:
   review:
-    # A pull request when it opens or is marked ready, or a top-level `/review`, `/review explain` or `/review teach`
-    # comment on one from someone with write access. The engine checks the comment again and skips anything else. A plain
-    # `/review` on a closed pull request doesn't run, so it can't cancel or displace the outcomes job. The concurrency
-    # group below decides which comments can cancel a review.
+    # A pull request when it opens or is marked ready, a push Dependabot makes to its own pull request, or a top-level
+    # `/review`, `/review explain` or `/review teach` comment on one from someone with write access. The engine checks
+    # the comment again and skips anything else. A plain `/review` on a closed pull request doesn't run, so it can't
+    # cancel or displace the outcomes job. The concurrency group below decides which comments can cancel a review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.sender.type != 'Bot' && !contains(github.event.pull_request.labels.*.name, 'skip-review')) ||
+        !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
+        ((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||
+          (github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]'))) ||
       (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot' && github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/review') &&
         (github.event.issue.state == 'open' || startsWith(github.event.comment.body, '/review explain') ||
@@ -181,8 +183,9 @@ jobs:
 its own review, and the pull request's code is only read, never built or run. The workflow doesn't check the head
 out: the engine fetches the exact commit itself, after it has decided to review, with git started without
 configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
-that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
-`/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger, unless the caller
+that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing, except
+Dependabot's to its own pull request ([project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md));
+comment `/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger, unless the caller
 turns on [`review-forks`](#pull-requests-from-forks).
 
 The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
@@ -234,7 +237,8 @@ before 1.0.0 changed it in minor releases; their changelog sections say how.
 
 The action has no outputs. A caller needs:
 
-- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, and `issue_comment`,
+- the triggers `pull_request_target`, with the types `opened, reopened, ready_for_review, closed`, plus `synchronize`
+  to review Dependabot's own pushes, and `issue_comment`,
   with the type `created`;
 - a `review` job with `environment: code-review`, the permissions `id-token: write`, `contents: read`, `issues: read`
   and `pull-requests: read`, the default branch checked out into `base` with `persist-credentials: false`, and the
@@ -317,7 +321,7 @@ you to the repository as a collaborator.
 
 | Comment | What happens |
 |---|---|
-| `/review` | Reviews the pull request's latest commit. Pushes start no review, so use this after changes. |
+| `/review` | Reviews the pull request's latest commit. Pushes start no review, except Dependabot's to its own pull request, so use this after changes. |
 | `/review explain F3 [question]` | Reads the code again and answers about the newest review's F3 in a comment: "Re F3 (link): …", ending with "Still holds because …" or "On reflection this doesn't hold: …". The question is optional and may go on over several lines. |
 | `/review explain <link> [question]` | The same for the inline finding comment the link points to, from any review of this pull request. Finding ids restart at F1 in every review, so use a link for an earlier review's finding. |
 | `/review teach <rule>` | Opens an issue labelled `review-guidance` in this repository with the rule, to add to its `.github/code-review/guidance.md`, and replies with a link to it. The rule may go on over several lines. |
@@ -403,8 +407,9 @@ which only the default branch can deploy to, so a pull request's workflow never 
 
 A push removes the approval when the ruleset dismisses stale reviews and requires approval of the last push, and
 `/review` approves again. `/run-feedback` and `/run-issues` comment it after each push; after a hand push, comment
-`/review` yourself, because NCode Review doesn't review on `synchronize`. With the approver, require one approval, of
-the last push, in the ruleset; without it, require none where one person can write.
+`/review` yourself, because a push starts a review only when Dependabot makes it to its own pull request, so a clean
+review approves Dependabot's pull requests by itself. With the approver, require one approval, of the last push, in the
+ruleset; without it, require none where one person can write.
 
 The trade-offs: an NCode Review outage or budget stop blocks merges where the approval is required until it is fixed or
 the ruleset changes, and a leaked approver key can mint a Contents: write token for the repositories the approver is
