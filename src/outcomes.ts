@@ -447,7 +447,8 @@ export function withOutcomes(body: string, section: string): string {
 }
 
 // The review step on a closed pull request: collects the outcomes and leaves them for the publish step. It never makes
-// a model call, so the provider, the proxy and the credentials are never set up.
+// a model call, so the provider, the proxy and the credentials are never set up. With review-forks, a fork's pull
+// request records its outcomes like any other.
 export async function recordOutcomes(
   api: Api,
   event: {
@@ -456,9 +457,10 @@ export async function recordOutcomes(
   repository: string,
   outDir: string,
   log: (line: string) => void = writeLog,
+  options: { reviewForks?: boolean } = {},
 ): Promise<void> {
   const pullRequest = event.pull_request;
-  if (isFromFork(pullRequest, repository)) {
+  if (!options.reviewForks && isFromFork(pullRequest, repository)) {
     log(`#${pullRequest?.number} comes from a fork, and forks aren't reviewed; no outcomes to record.`);
     return;
   }
