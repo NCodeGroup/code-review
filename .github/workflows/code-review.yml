@@ -93,7 +93,7 @@ jobs:
           persist-credentials: false
 
       - name: Review
-        uses: NCodeGroup/code-review@06f654d475d42ddd674d35159b227500e74947dc # v1.6.0
+        uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
@@ -121,6 +121,6 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@06f654d475d42ddd674d35159b227500e74947dc # v1.6.0
+        uses: NCodeGroup/code-review@c88c378ad166b57027bf504526e09585e727c33c # v1.7.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
