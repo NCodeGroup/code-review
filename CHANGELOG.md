@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-27
+
+### Added
+
+- The `review-forks` input, off by default, reviews a pull request from a fork when it opens or reopens as ready for review, when it's marked ready, and on a writer's `/review`, `/review explain` or `/review teach`. A fork's draft gets no automatic review, a fork's closed pull request records its outcomes, and a fork's pull request is never approved: its summary's `Approval:` line says a maintainer approves it, and the NCode Review Approver's token isn't minted for it. The README's Pull requests from forks section gives the caller's `if:` ([#251](https://github.com/NCodeGroup/code-review/issues/251), [ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
+
+### Changed
+
+- This repository's `code-review.yml` and the README's caller review a pull request Dependabot opens, when it opens and after each push Dependabot makes to it, such as a rebase, so a clean review approves it and the NCode Review pin bump merges with no person's action; another bot's pull request waits for a `/review`. `docs/setup.md`, `code-review-auto-merge.yml`'s header and `GOVERNANCE.md` say so ([#253](https://github.com/NCodeGroup/code-review/issues/253), [project-template ADR-0041](https://github.com/NCodeGroup/project-template/blob/main/template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+
 ## [1.6.0] - 2026-11-27
 
 ### Added
@@ -329,7 +339,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The first release: a GitHub composite action that reviews a pull request with reviewers on the Claude Agent SDK and posts the findings as the "Code review" check run, a summary comment and inline threads.
 
-[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.6.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/code-review/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/NCodeGroup/code-review/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/NCodeGroup/code-review/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/NCodeGroup/code-review/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/NCodeGroup/code-review/compare/v1.4.2...v1.5.0
