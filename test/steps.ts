@@ -46,8 +46,15 @@ export function runStep(
 }
 
 // Runs main.ts on `event` in `dir`, with the review step's environment and a read-only token. Without model credentials,
-// a run that goes on to review stops at choosing a provider, after every GitHub read, and before any model call.
-export function reviewStep(dir: string, event: unknown, rest: FakeRoutes['rest'], fails: boolean) {
+// a run that goes on to review stops at choosing a provider, after every GitHub read, and before any model call. `env`
+// adds to the step's environment, after the defaults, such as the `review-forks` input.
+export function reviewStep(
+  dir: string,
+  event: unknown,
+  rest: FakeRoutes['rest'],
+  fails: boolean,
+  env: Record<string, string> = {},
+) {
   const out = path.join(dir, 'out');
   const output = path.join(dir, 'output');
   const eventFile = path.join(dir, 'event.json');
@@ -65,6 +72,7 @@ export function reviewStep(dir: string, event: unknown, rest: FakeRoutes['rest']
       GITHUB_REPOSITORY: 'o/r',
       GITHUB_EVENT_PATH: eventFile,
       GITHUB_OUTPUT: output,
+      ...env,
     },
     fails,
   );

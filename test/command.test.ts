@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { after, test } from 'node:test';
 import { parse } from 'yaml';
 import {
   commandFromEvent,
@@ -14,6 +16,13 @@ import {
   skipReason,
   skipReasonFor,
 } from '../src/command.ts';
+import { pullRequestCheckout, reviewStep } from './steps.ts';
+
+const made: string[] = [];
+
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 test('commandFromEvent accepts only an exact /review from a writer on a pull request', () => {
   const event = (body: string, association = 'MEMBER', pullRequest: unknown = {}) => ({
@@ -344,4 +353,39 @@ test("skipReasonFor skips a fork's draft for an automatic run with review-forks,
     (await skipReasonFor('automatic', draft, 'NCodeGroup/code-review', lookup(undefined).fn)) ?? '',
     /comes from a fork/,
   );
+});
+
+test("the review step reviews a fork's ready pull request only with review-forks on", () => {
+  for (const [value, reviews] of [
+    ['true', true],
+    ['false', false],
+  ] as const) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fork-run-'));
+    made.push(dir);
+    const checkout = pullRequestCheckout(dir);
+    const event = {
+      action: 'opened',
+      pull_request: {
+        number: 1,
+        draft: false,
+        user: { login: 'stranger' },
+        author_association: 'FIRST_TIME_CONTRIBUTOR',
+        base: { ref: 'main', sha: checkout.base },
+        head: { sha: checkout.head, repo: { full_name: 'stranger/r' } },
+      },
+    };
+    const { stdout } = reviewStep(
+      dir,
+      event,
+      {
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/issues?state=open&sort=updated&direction=desc&per_page=100&page=1': [],
+      },
+      false,
+      { CODE_REVIEW_REVIEW_FORKS: value },
+    );
+    if (reviews) assert.match(stdout, /::warning::No provider available/);
+    else assert.match(stdout, /#1 comes from a fork, and forks aren't reviewed\./);
+  }
 });
