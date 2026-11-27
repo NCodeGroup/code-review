@@ -1,6 +1,6 @@
 # 1009. A clean review approves the pull request
 
-- **Status:** Accepted (amended by [1011](1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md))
+- **Status:** Accepted (amended by [1011](1011-the-approval-is-submitted-by-an-approver-app-that-can-write.md) and [1013](1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md))
 - **Date:** 2026-11-15
 - **Deciders:** Marcin Polewski
 
