@@ -234,7 +234,7 @@ test('postPausedNotice posts the notice as a comment on the pull request', async
 
 // The steps run as child processes, as the action runs them, so the test sees what main.ts and publish.ts do end to
 // end; fake-github.ts answers every fetch, so nothing reaches the network.
-function automaticRun(issueComments: ListedComment[]) {
+function automaticRun(issueComments: ListedComment[], action = 'ready_for_review') {
   const dir = temp('pause-run-');
   const out = path.join(dir, 'out');
   const output = path.join(dir, 'output');
@@ -243,7 +243,7 @@ function automaticRun(issueComments: ListedComment[]) {
   writeFileSync(
     event,
     JSON.stringify({
-      action: 'ready_for_review',
+      action,
       pull_request: { number: 1, head: { sha: 'f'.repeat(40), repo: { full_name: 'o/r' } } },
     }),
   );
@@ -348,6 +348,22 @@ test('an automatic review after the pause notice posts nothing more', () => {
   assert.ok(!existsSync(path.join(out, 'paused.json')));
   // An acknowledged check run is still completed as paused.
   assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'status.json'), 'utf8')), pausedStatus());
+});
+
+test("a push Dependabot makes after three reviews with no writer's comment pauses, and a writer's @dependabot rebase starts the count again", async () => {
+  const dependabot = { login: 'dependabot[bot]', type: 'Bot' };
+  // Its opening and two rebases, with Dependabot's own comment between: a bot's comment doesn't reset the count.
+  const rebased = [
+    summary(0, true),
+    summary(2, true),
+    said(3, 'Looks like this PR is already up-to-date with main!', 'NONE', dependabot),
+    summary(4),
+  ];
+  assert.equal(automaticRun(rebased, 'synchronize').output, 'paused=true\n');
+  assert.equal(
+    (await unansweredReviews([...rebased, said(5, '@dependabot rebase', 'OWNER')], byAssociation)).reviews,
+    0,
+  );
 });
 
 test('closing a pull request after three unanswered reviews records the outcomes and never pauses', () => {
