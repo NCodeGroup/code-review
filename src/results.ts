@@ -89,6 +89,8 @@ export interface Results {
   // Findings whose one-click suggestion was left out because the pull request's author can't write to the repository;
   // absent when none was.
   suggestionsWithheld?: number;
+  // The pull request comes from a fork, so the publish step never approves it; absent for one from the repository.
+  fromFork?: boolean;
   // Added lines per file, for the files findings are in.
   changedLines: Record<string, number[]>;
   // Deep for a change to a sensitive path, light for one to documentation only; absent in results saved without one.

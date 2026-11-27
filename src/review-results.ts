@@ -16,6 +16,8 @@ export interface ReviewContext {
   // Whether the pull request's author can write to the repository: only then do findings keep their one-click
   // suggestions. Absent counts as no.
   authorCanWrite?: boolean;
+  // Whether the pull request comes from a fork, which is never approved.
+  fromFork?: boolean;
   provider: Provider;
   providerReason: string;
   switchedToBedrock?: string;
@@ -97,6 +99,7 @@ export function buildResults(outcome: Review, context: ReviewContext): Results {
     ...(context.skippedByConfig ? { skippedByConfig: context.skippedByConfig } : {}),
     warnings: [...(context.warnings ?? []), ...outcome.warnings],
     ...(withheld ? { suggestionsWithheld: withheld } : {}),
+    ...(context.fromFork ? { fromFork: true } : {}),
     changedLines: changedLinesFor(
       context.diff,
       findings.map((f) => f.file),
