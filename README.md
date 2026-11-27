@@ -24,8 +24,9 @@ scanned for secrets before they're written.
 
 Within seconds of the event, before setup-node and `npm ci`, the action acknowledges the
 review: 👀 on a `/review` comment, and the "Code review" check run in progress, "Review started at <commit>; it usually
-takes a few minutes", linked to the run. It decides exactly as the review step does, so a pull request from a fork, an
-automatic run on a commit already reviewed, and a closed pull request get nothing, and a comment from someone without
+takes a few minutes", linked to the run. It decides exactly as the review step does, so a pull request from a fork without
+[`review-forks`](#pull-requests-from-forks), a fork's draft when it opens, an automatic run on a commit already
+reviewed, and a closed pull request get nothing, and a comment from someone without
 write access gets nothing. A comment from someone with write access that starts with `/review` and then a space or its
 end but isn't a command, such as `/review please`, gets 😕 instead, so its author can tell that no review started; the
 run's log lists the commands. `/review explain` and `/review teach` get nothing either: they aren't
@@ -181,7 +182,8 @@ its own review, and the pull request's code is only read, never built or run. Th
 out: the engine fetches the exact commit itself, after it has decided to review, with git started without
 configuration, hooks or a credential helper, and gives up on a fetch that takes longer than three minutes. A workflow
 that checks the head out into `pr` itself is also accepted, if it is at that commit. Pushes start nothing; comment
-`/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger.
+`/review` to review the latest commit. Pull requests from forks aren't reviewed, by either trigger, unless the caller
+turns on [`review-forks`](#pull-requests-from-forks).
 
 The acknowledgement needs nothing more from this workflow: its token comes from the app's key the action already
 receives, so the job's own permissions stay read-only. It needs a `node` with TypeScript type stripping (22.18 or
@@ -191,6 +193,20 @@ acknowledgement.
 The `outcomes` job runs only when a pull request closes. It makes no model call, so it runs outside the `code-review`
 environment, without `id-token: write`, the Bedrock key or a checkout, and only the app's key reaches it, to post the
 outcomes. It shares the review's concurrency group, so it waits for a review in progress.
+
+### Pull requests from forks
+
+A pull request from a fork isn't reviewed unless the caller passes `review-forks: true` (v1.7.0 on) to the NCode Review step of both jobs. With it, a fork's pull request is reviewed when it opens or reopens as ready for review and when it's marked ready, and a writer's `/review`, `/review explain` and `/review teach` work on it, drafts included. A fork's draft gets no automatic review, its pushes start nothing, and the loop limit and the cost ceiling apply as to any pull request. First-time contributors are reviewed too, and their pull request's closing records its outcomes.
+
+Its review is never an approval, whatever `approve` says: its author can't write to the repository and can try to steer the verdict through the diff, so the summary's `Approval:` line says a maintainer approves it, and the NCode Review Approver's token isn't minted. Nothing from the fork is built or run: the engine fetches the commit the event names from this repository's `refs/pull/<number>/head`, only to read it, and the author's description, commit subjects and one-click suggestions stay out, as for anyone without write access. Against a burst of pull requests from many accounts, set GitHub's [interaction limits](https://docs.github.com/en/communities/moderating-comments-and-conversations/limiting-interactions-in-your-repository) or turn the input off ([ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
+
+The caller's `if:` lets a fork's events through. In the `review` job, replace the line `github.event.pull_request.head.repo.full_name == github.repository &&` with:
+
+```yaml
+        (github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&
+```
+
+In the `outcomes` job, the `if:` becomes `github.event_name == 'pull_request_target' && github.event.action == 'closed'`, so a fork's closed pull request records its outcomes.
 
 ## Interface
 
@@ -214,6 +230,7 @@ before 1.0.0 changed it in minor releases; their changelog sections say how.
 | `approve` | no | `false` | Submits a review whose verdict is Approve as an approving review, so a ruleset can require one approval; every other review stays a comment and dismisses the bot's earlier approval. |
 | `approver-private-key` | no | | The NCode Review Approver app's private key, from the repository's code-review environment; with `approve` on, the approval is submitted as the approver, which meets a required approval. |
 | `approver-client-id` | no | `Iv23liDPFX1K6NjGIr9i` | The NCode Review Approver app's client ID. |
+| `review-forks` | no | `false` | Reviews a pull request from a fork when it opens or reopens as ready for review, when it's marked ready, and on a writer's `/review`; never a fork's draft automatically, and never as an approval. See [Pull requests from forks](#pull-requests-from-forks). |
 
 The action has no outputs. A caller needs:
 
@@ -369,7 +386,9 @@ request's head is still the reviewed commit, and, for a full review, no should-f
 open. A re-review relies on its verdict, which already counts the earlier findings that wait. A review whose only
 findings are nits approves when every reviewer ran in full and verification lowered or refuted nothing. Every other
 review stays a comment and dismisses the bot's earlier approval of the pull request, so a later blocker never leaves an
-old approval standing. Drafts are approved like any pull request; fork pull requests are skipped, as for every review.
+old approval standing. Drafts are approved like any pull request. A pull request from a fork never is, even with
+[`review-forks`](#pull-requests-from-forks): its `Approval:` line says a maintainer approves it
+([ADR-1013](docs/decisions/1013-a-forks-pull-request-is-reviewed-on-opt-in-once-ready-and-never-approved.md)).
 The summary comment has an `Approval:` line that says "Approved" or "Not approved" with the reason. When GitHub refuses
 an approval, the run warns, dismisses the earlier approval too, and the summary says the approval couldn't be submitted.
 
