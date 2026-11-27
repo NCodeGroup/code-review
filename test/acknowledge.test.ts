@@ -176,20 +176,19 @@ test('decideReview acknowledges an automatic review of a new commit, with no com
   assert.equal(r.counts.pullRequest, 0);
 });
 
+const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
+
 test('decideReview gives nothing for an automatic review of a commit already reviewed, or of a fork', async () => {
   const r = readers(own, sha);
   assert.equal(
     (await decideReview({ pull_request: own }, repository, r.readPullRequest, r.reviewedHead)).review,
     false,
   );
-  const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
   assert.equal(
     (await decideReview({ pull_request: fork }, repository, r.readPullRequest, r.reviewedHead)).review,
     false,
   );
 });
-
-const fork = { ...own, head: { sha, repo: { full_name: 'someone/code-review' } } };
 
 test("decideRun with review-forks gives a writer's /review, /review explain and /review teach on a fork's pull request", async () => {
   for (const [body, kind] of [
