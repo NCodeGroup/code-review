@@ -134,8 +134,8 @@ export async function postThreads(
   }
 }
 
-// Submits an approving review at the reviewed head, unless the pull request's head moved or can't be read. A refusal only
-// warns; true when the approval was submitted.
+// Submits an approving review at the reviewed head, unless the pull request's head moved, can't be read, or is in
+// another repository. A refusal only warns; true when the approval was submitted.
 export async function submitApproval(
   api: Api,
   results: Pick<Results, 'repository' | 'pullRequest' | 'headSha'>,
@@ -144,12 +144,16 @@ export async function submitApproval(
 ): Promise<boolean> {
   const pull = `/repos/${results.repository}/pulls/${results.pullRequest}`;
   try {
-    const current = (await api('GET', pull)) as { head?: { sha?: string } };
+    const current = (await api('GET', pull)) as { head?: { sha?: string; repo?: { full_name?: string } | null } };
     const sha = current?.head?.sha;
     if (sha !== results.headSha) {
       log(
         `::warning::The pull request's head moved to ${String(sha).slice(0, 7)} since the review of ${results.headSha.slice(0, 7)}, so it isn't approved.`,
       );
+      return false;
+    }
+    if (current?.head?.repo?.full_name !== results.repository) {
+      log("::warning::The pull request's head is in another repository, so it isn't approved.");
       return false;
     }
   } catch (error) {

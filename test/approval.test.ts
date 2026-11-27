@@ -168,6 +168,16 @@ test('an approve verdict with a reviewer error does not approve', () => {
   assert.equal(approvalFor({ ...clean, reviewers }, none).approve, false);
 });
 
+test("a fork's clean review never approves, and its Approval line says a maintainer approves it", () => {
+  const approval = approvalFor({ ...clean, fromFork: true }, none);
+  assert.equal(approval.approve, false);
+  assert.equal(approval.fork, true);
+  assert.equal(
+    approvalLine(approval, 'not-approved'),
+    '**Approval: Not approved** — a pull request from a fork is approved by a maintainer.',
+  );
+});
+
 test('approvalLine words each state', () => {
   const none = { approve: false, blockers: 0, shouldFix: 0, earlierOpen: 0 };
   assert.equal(approvalLine(none, 'approved'), '**Approval: Approved** — no blocker or should-fix finding remains.');
@@ -201,7 +211,9 @@ function fakeApi(handler: (call: string, body?: unknown) => unknown) {
 }
 
 test('submitApproval approves at the reviewed head and returns true', async () => {
-  const fake = fakeApi((call) => (call.startsWith('GET') ? { head: { sha: target.headSha } } : {}));
+  const fake = fakeApi((call) =>
+    call.startsWith('GET') ? { head: { sha: target.headSha, repo: { full_name: 'o/r' } } } : {},
+  );
   assert.equal(await submitApproval(fake.api, target, [], () => {}), true);
   assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7', 'POST /repos/o/r/pulls/7/reviews']);
   const body = fake.bodies[1] as { event: string; commit_id: string };
@@ -211,16 +223,24 @@ test('submitApproval approves at the reviewed head and returns true', async () =
 
 test('submitApproval posts nothing when the head moved', async () => {
   const logs: string[] = [];
-  const fake = fakeApi(() => ({ head: { sha: '9999999aaaa' } }));
+  const fake = fakeApi(() => ({ head: { sha: '9999999aaaa', repo: { full_name: 'o/r' } } }));
   assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
   assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7']);
   assert.match(logs[0] ?? '', /::warning::.*moved/);
 });
 
+test('submitApproval posts nothing when the head is in another repository', async () => {
+  const logs: string[] = [];
+  const fake = fakeApi(() => ({ head: { sha: target.headSha, repo: { full_name: 'someone/r' } } }));
+  assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
+  assert.deepEqual(fake.calls, ['GET /repos/o/r/pulls/7']);
+  assert.match(logs[0] ?? '', /head is in another repository/);
+});
+
 test('submitApproval warns and returns false when the POST throws', async () => {
   const logs: string[] = [];
   const fake = fakeApi((call) => {
-    if (call.startsWith('GET')) return { head: { sha: target.headSha } };
+    if (call.startsWith('GET')) return { head: { sha: target.headSha, repo: { full_name: 'o/r' } } };
     throw new Error('HTTP 422');
   });
   assert.equal(await submitApproval(fake.api, target, [], (line) => logs.push(line)), false);
@@ -289,14 +309,16 @@ test('applyApproval dismisses and says not-approved when approve is false', asyn
 });
 
 test('applyApproval approves without dismissing when the head matches', async () => {
-  const fake = fakeApi((call) => (call === `GET /repos/o/r/pulls/7` ? { head: { sha: target.headSha } } : {}));
+  const fake = fakeApi((call) =>
+    call === `GET /repos/o/r/pulls/7` ? { head: { sha: target.headSha, repo: { full_name: 'o/r' } } } : {},
+  );
   assert.equal(await applyApproval(fake.api, target, true, [], () => {}), 'approved');
   assert.equal(fake.calls.filter((c) => c.startsWith('PUT')).length, 0);
 });
 
 test('applyApproval dismisses and says refused when the POST fails', async () => {
   const fake = fakeApi((call) => {
-    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha, repo: { full_name: 'o/r' } } };
     if (call.startsWith('POST')) throw new Error('HTTP 422');
     return call.startsWith('GET') ? botApproval : {};
   });
@@ -329,11 +351,11 @@ const approverApproval = [{ id: 5, state: 'APPROVED', user: { login: 'ncode-revi
 
 function approverPair(options: { postThrows?: boolean } = {}) {
   const review = fakeApi((call) => {
-    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha, repo: { full_name: 'o/r' } } };
     return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
   });
   const approver = fakeApi((call) => {
-    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha } };
+    if (call === 'GET /repos/o/r/pulls/7') return { head: { sha: target.headSha, repo: { full_name: 'o/r' } } };
     if (call.startsWith('POST') && options.postThrows) throw new Error('HTTP 422');
     return call.startsWith('GET') ? [...botApproval, ...approverApproval] : {};
   });
