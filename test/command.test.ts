@@ -10,6 +10,7 @@ import {
   isFromFork,
   maxQuestionChars,
   parseCommand,
+  reviewForksOn,
   skipReason,
   skipReasonFor,
 } from '../src/command.ts';
@@ -304,4 +305,43 @@ test('skipReasonFor skips a fork for either trigger', async () => {
       /comes from a fork/,
     );
   }
+});
+
+test('reviewForksOn is true only for true, ignoring case and spaces', () => {
+  assert.equal(reviewForksOn('true'), true);
+  assert.equal(reviewForksOn(' TRUE '), true);
+  assert.equal(reviewForksOn('yes'), false);
+  assert.equal(reviewForksOn(''), false);
+  assert.equal(reviewForksOn(undefined), false);
+});
+
+test('skipReason reviews a pull request from a fork with review-forks, and looks up its reviewed head', async () => {
+  const fork = { ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } };
+  const fresh = lookup('b'.repeat(40));
+  assert.equal(await skipReason(fork, 'NCodeGroup/code-review', fresh.fn, true), undefined);
+  assert.equal(fresh.calls, 1);
+  assert.match(
+    (await skipReason(fork, 'NCodeGroup/code-review', lookup('a'.repeat(40)).fn, true)) ?? '',
+    /already reviewed/,
+  );
+});
+
+test("skipReasonFor skips a fork's draft for an automatic run with review-forks, and reviews it on a /review", async () => {
+  const fork = { ...own, head: { ...own.head, repo: { full_name: 'someone/code-review' } } };
+  const draft = { ...fork, draft: true };
+  const looked = lookup(undefined);
+  assert.match(
+    (await skipReasonFor('automatic', draft, 'NCodeGroup/code-review', looked.fn, true)) ?? '',
+    /#7 is a draft from a fork/,
+  );
+  assert.equal(looked.calls, 0);
+  assert.equal(await skipReasonFor('comment', draft, 'NCodeGroup/code-review', looked.fn, true), undefined);
+  assert.equal(
+    await skipReasonFor('automatic', { ...fork, draft: false }, 'NCodeGroup/code-review', lookup(undefined).fn, true),
+    undefined,
+  );
+  assert.match(
+    (await skipReasonFor('automatic', draft, 'NCodeGroup/code-review', lookup(undefined).fn)) ?? '',
+    /comes from a fork/,
+  );
 });

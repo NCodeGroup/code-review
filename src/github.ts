@@ -147,6 +147,7 @@ export function githubReader(token: string | undefined, fetchFn: typeof fetch = 
 
 export interface PullRequestRef {
   number?: number;
+  draft?: boolean;
   head?: { sha?: string; repo?: { full_name?: string } | null };
 }
 
