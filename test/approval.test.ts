@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { after, test } from 'node:test';
 import { approvalFor, approvalLine, approveOn } from '../src/approval.ts';
 import {
   applyApproval,
@@ -14,6 +17,12 @@ import {
 import type { ThreadNode } from '../src/rereview.ts';
 import { summaryComment, type Results } from '../src/results.ts';
 import { threadBody } from '../src/threads.ts';
+import { runStep } from './steps.ts';
+
+const made: string[] = [];
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 const finding = {
   id: 'F1',
@@ -497,4 +506,82 @@ test('approverFromEnv is quiet when the caller gave no approver key', () => {
   const { makeApi } = recordApi();
   const got = approverFromEnv({ CODE_REVIEW_APPROVER: 'false' }, makeApi);
   assert.deepEqual(got, { missing: false });
+});
+
+// The publish step with approval on and the approver's key given but no approver token, for a pull request from a fork or not.
+function publishApproving(fromFork: boolean) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'approval-'));
+  made.push(dir);
+  const out = path.join(dir, 'out');
+  mkdirSync(out);
+  const results: Results = {
+    repository: 'o/r',
+    pullRequest: 1,
+    headSha: 'f'.repeat(40),
+    provider: 'bedrock',
+    providerReason: 'test',
+    summary: 'Clean.',
+    verdict: 'approve',
+    findings: [],
+    reviewers: [{ name: 'hygiene', status: 'ran', model: 'haiku', findingCount: 0 }],
+    skipped: [],
+    synthesisModel: '',
+    calls: [],
+    costUsd: 0,
+    durationMs: 0,
+    notShown: [],
+    dropped: [],
+    changedLines: {},
+    ...(fromFork ? { fromFork: true } : {}),
+  };
+  writeFileSync(path.join(out, 'results.json'), JSON.stringify(results));
+  return runStep(
+    'publish.ts',
+    dir,
+    {
+      rest: {
+        'POST https://api.github.com/repos/o/r/check-runs': { html_url: 'https://github.com/o/r/runs/1' },
+        'GET https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/issues/1/comments?per_page=100&page=1': [],
+        'GET https://api.github.com/repos/o/r/pulls/1/reviews?per_page=100&page=1': [],
+        'POST https://api.github.com/repos/o/r/issues/1/comments': {
+          html_url: 'https://github.com/o/r/pull/1#issuecomment-1',
+        },
+      },
+      graphql: [
+        [
+          'reviewThreads',
+          {
+            data: {
+              repository: {
+                pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } },
+              },
+            },
+          },
+        ],
+      ],
+    },
+    {
+      CODE_REVIEW_OUT: out,
+      CODE_REVIEW_APP_TOKEN: 'app-token',
+      CODE_REVIEW_APPROVE: 'true',
+      CODE_REVIEW_APPROVER: 'true',
+    },
+  );
+}
+
+test("the publish step warns that the approver is missing only for a pull request that isn't from a fork", () => {
+  const fork = publishApproving(true);
+  assert.ok(!fork.stdout.includes(approverMissingWarning), fork.stdout);
+  assert.equal(
+    fork.requests.some((r) => r.method === 'GET' && r.url === 'https://api.github.com/repos/o/r/pulls/1'),
+    false,
+  );
+  const summary = fork.requests.find(
+    (r) => r.method === 'POST' && r.url === 'https://api.github.com/repos/o/r/issues/1/comments',
+  );
+  const body: string = summary!.body.body;
+  assert.ok(body.includes('a pull request from a fork is approved by a maintainer'), body);
+  const own = publishApproving(false);
+  assert.ok(own.stdout.includes(approverMissingWarning), own.stdout);
 });
