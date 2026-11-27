@@ -135,13 +135,16 @@ function pathGuard(checkout: string): HookCallback {
 // Prompt caching is on unless a call turns it off: a call with tools reads its earlier turns' prefix, and calls that share
 // a first block read each other's. The context, selection and synthesis calls have no tools and make one request each, so
 // they turn it off (issue #133).
+// How long one model request may take unless its call asks for longer.
+export const defaultApiTimeoutMs = 5 * 60_000;
+
 // apiTimeoutMs bounds each model request; a review's calls keep the default, and a training call that writes a long
 // answer passes a longer one, since Claude Code retries a request that times out and then gives up.
 export function agentEnvironment(
   run: AgentRun,
   home: string,
   cache = true,
-  apiTimeoutMs = 300_000,
+  apiTimeoutMs = defaultApiTimeoutMs,
 ): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',

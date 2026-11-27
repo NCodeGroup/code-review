@@ -256,3 +256,19 @@ test('savedComments refuses a missing folder, a folder without saved pages and a
     /7\.json has no review_threads/,
   );
 });
+
+test('savedComments names the file that holds invalid JSON', async () => {
+  const { savedComments } = await import('../training/run.ts');
+  assert.throws(
+    () => savedComments(savedFolder({ '7.json': '{"review_threads": [' }), 'o/r'),
+    /7\.json isn't valid JSON/,
+  );
+});
+
+test('namedTopics returns the topics --topics names and refuses one that is not a topic', async () => {
+  const { generalizeApiTimeoutMs, namedTopics } = await import('../training/run.ts');
+  assert.equal(namedTopics(undefined), undefined);
+  assert.deepEqual(namedTopics('security-and-crypto,testing'), ['security-and-crypto', 'testing']);
+  assert.throws(() => namedTopics('testing,secrets'), /no topic secrets; the topics are /);
+  assert.ok(generalizeApiTimeoutMs > 300_000);
+});
